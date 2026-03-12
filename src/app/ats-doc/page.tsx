@@ -181,7 +181,7 @@ export default function ATSPresentationPage() {
 
         /* NAV */
         nav {
-          position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+          position: fixed; top: 70px; left: 0; right: 0; z-index: 100;
           display: flex; align-items: center; justify-content: space-between;
           padding: 0 48px;
           height: 56px;
