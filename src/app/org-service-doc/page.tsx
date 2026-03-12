@@ -473,7 +473,7 @@ PATCH /api/users/ritu-uuid/reporting-to
         <div className="code-block">
           {`POST /api/teams
 {
-  "name": "Papitha's Team",
+  "name": "Papitha's Teams",
   "category": "KaaS",
   "businessUnitId": "kaas-bu-uuid",
   "dataPolicy": "SHARED"
