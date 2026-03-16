@@ -1,122 +1,164 @@
 /* eslint-disable react/no-unescaped-entities */
-"use client";
+'use client';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from 'react';
 
 const TEAM = [
   {
-    name: "Rahul",
-    role: "Architect + TL",
-    color: "#E11D48",
-    bg: "#fff1f2",
-    tag: "LEAD",
-    owns: ["DB Schema Design", "API Contracts", "Auth Scaffold", "PR Reviews", "Unblocking Team"],
-    note: "Monitors, guides, debugs. The backbone of every decision.",
+    name: 'Rahul',
+    role: 'Architect + TL',
+    color: '#E11D48',
+    bg: '#fff1f2',
+    tag: 'LEAD',
+    owns: ['DB Schema Design', 'API Contracts', 'Auth Scaffold', 'PR Reviews', 'Unblocking Team'],
+    note: 'Monitors, guides, debugs. The backbone of every decision.',
   },
   {
-    name: "Binta",
-    role: "Backend Core",
-    color: "#0891B2",
-    bg: "#ecfeff",
-    tag: "BACKEND",
-    owns: ["Auth Service", "Job Service", "Candidate Service", "Mentors Swathi"],
-    note: "Owns the heart of the ATS. All core business logic lives here.",
+    name: 'Binta',
+    role: 'Backend Core',
+    color: '#0891B2',
+    bg: '#ecfeff',
+    tag: 'BACKEND',
+    owns: ['Auth Service', 'Job Service', 'Candidate Service', 'Mentors Swathi'],
+    note: 'Owns the heart of the ATS. All core business logic lives here.',
   },
   {
-    name: "Swathi",
-    role: "Backend + Occasional Frontend",
-    color: "#7C3AED",
-    bg: "#f5f3ff",
-    tag: "BACKEND",
-    owns: ["Job Service (support)", "Candidate Service (support)", "Admin Panel UI (occasional)"],
-    note: "Paired with Binta. Learning backend through real production work.",
+    name: 'Swathi',
+    role: 'Backend + Occasional Frontend',
+    color: '#7C3AED',
+    bg: '#f5f3ff',
+    tag: 'BACKEND',
+    owns: ['Job Service (support)', 'Candidate Service (support)', 'Admin Panel UI (occasional)'],
+    note: 'Paired with Binta. Learning backend through real production work.',
   },
   {
-    name: "Shruti",
-    role: "Frontend",
-    color: "#D97706",
-    bg: "#fffbeb",
-    tag: "FRONTEND",
-    owns: ["Recruiter Panel", "Active Jobs View", "Candidate Pipeline Board", "MY REPORT Screen"],
-    note: "Strong potential. Builds the recruiter-facing UI end to end.",
+    name: 'Shruti',
+    role: 'Frontend',
+    color: '#D97706',
+    bg: '#fffbeb',
+    tag: 'FRONTEND',
+    owns: ['Recruiter Panel', 'Active Jobs View', 'Candidate Pipeline Board', 'MY REPORT Screen'],
+    note: 'Strong potential. Builds the recruiter-facing UI end to end.',
   },
   {
-    name: "Vignesh",
-    role: "Integration Logic",
-    color: "#059669",
-    bg: "#ecfdf5",
-    tag: "INTEGRATION",
-    owns: ["Chrome Extension (Naukri)", "n8n Automation Workflows", "Portal Integration Design"],
-    note: "Drives WHAT gets integrated and HOW automation flows work.",
+    name: 'Vignesh',
+    role: 'Integration Logic',
+    color: '#059669',
+    bg: '#ecfdf5',
+    tag: 'INTEGRATION',
+    owns: ['Chrome Extension (Naukri)', 'n8n Automation Workflows', 'Portal Integration Design'],
+    note: 'Drives WHAT gets integrated and HOW automation flows work.',
   },
   {
-    name: "Bharath",
-    role: "Integration Backend",
-    color: "#2563EB",
-    bg: "#eff6ff",
-    tag: "BACKEND",
-    owns: ["Integration Service API", "Webhook Endpoints", "Prisma Models", "Paired with Vignesh"],
+    name: 'Bharath',
+    role: 'Integration Backend',
+    color: '#2563EB',
+    bg: '#eff6ff',
+    tag: 'BACKEND',
+    owns: ['Integration Service API', 'Webhook Endpoints', 'Prisma Models', 'Paired with Vignesh'],
     note: "Builds the Node/Express layer under Vignesh's direction.",
   },
 ];
 
 const SERVICES = [
-  { name: "Auth Service", owner: "Binta", phase: "Phase 1", color: "#E11D48", desc: "JWT, login, roles, middleware" },
-  { name: "User & Org", owner: "Binta", phase: "Phase 1–2", color: "#0891B2", desc: "Users, teams, hierarchy, BUs" },
-  { name: "Job Service", owner: "Binta + Swathi", phase: "Phase 2", color: "#7C3AED", desc: "Job CRUD, assignment, pipeline" },
-  { name: "Candidate Service", owner: "Binta + Swathi", phase: "Phase 2", color: "#059669", desc: "CV model, status tracking, job mapping" },
-  { name: "Integration Service", owner: "Vignesh + Bharath", phase: "Phase 2–3", color: "#D97706", desc: "Naukri capture, webhooks, n8n" },
-  { name: "Reporting Service", owner: "Binta", phase: "Phase 3–4", color: "#64748B", desc: "KPI dashboard, MY REPORT, exports" },
-  { name: "Frontend (Next.js)", owner: "Shruti + Swathi", phase: "Phase 1–4", color: "#2563EB", desc: "Admin panel, recruiter UI, pipeline views" },
+  {
+    name: 'Auth Service',
+    owner: 'Binta',
+    phase: 'Phase 1',
+    color: '#E11D48',
+    desc: 'JWT, login, roles, middleware',
+  },
+  {
+    name: 'User & Org',
+    owner: 'Binta',
+    phase: 'Phase 1–2',
+    color: '#0891B2',
+    desc: 'Users, teams, hierarchy, BUs',
+  },
+  {
+    name: 'Job Service',
+    owner: 'Binta + Swathi',
+    phase: 'Phase 2',
+    color: '#7C3AED',
+    desc: 'Job CRUD, assignment, pipeline',
+  },
+  {
+    name: 'Candidate Service',
+    owner: 'Binta + Swathi',
+    phase: 'Phase 2',
+    color: '#059669',
+    desc: 'CV model, status tracking, job mapping',
+  },
+  {
+    name: 'Integration Service',
+    owner: 'Vignesh + Bharath',
+    phase: 'Phase 2–3',
+    color: '#D97706',
+    desc: 'Naukri capture, webhooks, n8n',
+  },
+  {
+    name: 'Reporting Service',
+    owner: 'Binta',
+    phase: 'Phase 3–4',
+    color: '#64748B',
+    desc: 'KPI dashboard, MY REPORT, exports',
+  },
+  {
+    name: 'Frontend (Next.js)',
+    owner: 'Shruti + Swathi',
+    phase: 'Phase 1–4',
+    color: '#2563EB',
+    desc: 'Admin panel, recruiter UI, pipeline views',
+  },
 ];
 
 const PHASES = [
   {
-    num: "01",
-    label: "Foundation",
-    weeks: "Week 1–2",
-    color: "#E11D48",
+    num: '01',
+    label: 'Foundation',
+    weeks: 'Week 1–2',
+    color: '#E11D48',
     tasks: [
-      ["Rahul", "DB schemas, API contracts, Auth scaffold"],
-      ["Binta", "User & Org service skeleton"],
-      ["Vignesh + Bharath", "Naukri research, n8n setup, Integration structure"],
-      ["Shruti + Swathi", "Next.js setup, auth UI, shared components"],
+      ['Rahul', 'DB schemas, API contracts, Auth scaffold'],
+      ['Binta', 'User & Org service skeleton'],
+      ['Vignesh + Bharath', 'Naukri research, n8n setup, Integration structure'],
+      ['Shruti + Swathi', 'Next.js setup, auth UI, shared components'],
     ],
   },
   {
-    num: "02",
-    label: "Core Logic",
-    weeks: "Week 3–4",
-    color: "#7C3AED",
+    num: '02',
+    label: 'Core Logic',
+    weeks: 'Week 3–4',
+    color: '#7C3AED',
     tasks: [
-      ["Binta + Swathi", "Job Service + Candidate Service full build"],
-      ["Vignesh + Bharath", "Naukri CV capture pipeline, first live integration"],
-      ["Shruti", "Recruiter panel consuming live APIs"],
-      ["Swathi (frontend)", "Admin panel screens against live User APIs"],
+      ['Binta + Swathi', 'Job Service + Candidate Service full build'],
+      ['Vignesh + Bharath', 'Naukri CV capture pipeline, first live integration'],
+      ['Shruti', 'Recruiter panel consuming live APIs'],
+      ['Swathi (frontend)', 'Admin panel screens against live User APIs'],
     ],
   },
   {
-    num: "03",
-    label: "Wiring",
-    weeks: "Week 5–6",
-    color: "#059669",
+    num: '03',
+    label: 'Wiring',
+    weeks: 'Week 5–6',
+    color: '#059669',
     tasks: [
-      ["Rahul", "Cross-service wiring, API gateway decisions"],
-      ["Binta", "Reporting Service start, KPI aggregation"],
-      ["Vignesh + Bharath", "Automation triggers, LinkedIn + Foundit integration"],
-      ["Shruti + Swathi", "MY REPORT screen, pipeline visualization, sales panel"],
+      ['Rahul', 'Cross-service wiring, API gateway decisions'],
+      ['Binta', 'Reporting Service start, KPI aggregation'],
+      ['Vignesh + Bharath', 'Automation triggers, LinkedIn + Foundit integration'],
+      ['Shruti + Swathi', 'MY REPORT screen, pipeline visualization, sales panel'],
     ],
   },
   {
-    num: "04",
-    label: "Stabilize",
-    weeks: "Week 7+",
-    color: "#2563EB",
+    num: '04',
+    label: 'Stabilize',
+    weeks: 'Week 7+',
+    color: '#2563EB',
     tasks: [
-      ["Binta", "Complete Reporting Service, exports"],
-      ["Vignesh + Bharath", "Automation polish, error handling, retries"],
-      ["Shruti + Swathi", "E2E testing, role-based access checks, polish"],
-      ["Rahul", "Full E2E flow testing, bug triage, Cloud Run deploy"],
+      ['Binta', 'Complete Reporting Service, exports'],
+      ['Vignesh + Bharath', 'Automation polish, error handling, retries'],
+      ['Shruti + Swathi', 'E2E testing, role-based access checks, polish'],
+      ['Rahul', 'Full E2E flow testing, bug triage, Cloud Run deploy'],
     ],
   },
 ];
@@ -132,7 +174,7 @@ export default function ATSPresentationPage() {
       const observer = new IntersectionObserver(
         ([entry]) => {
           if (entry.isIntersecting) {
-            setVisibleCards((prev) => {
+            setVisibleCards(prev => {
               const next = [...prev];
               next[i] = true;
               return next;
@@ -144,7 +186,7 @@ export default function ATSPresentationPage() {
       observer.observe(ref);
       return observer;
     });
-    return () => observers.forEach((o) => o?.disconnect());
+    return () => observers.forEach(o => o?.disconnect());
   }, []);
 
   return (
@@ -574,8 +616,10 @@ export default function ATSPresentationPage() {
       <nav>
         <div className="nav-logo mono">ATS · INTERNAL BUILD</div>
         <ul className="nav-links">
-          {["Team", "Services", "Integration", "Phases", "Workflow"].map((l) => (
-            <li key={l}><a href={`#${l.toLowerCase()}`}>{l}</a></li>
+          {['Team', 'Services', 'Integration', 'Phases', 'Workflow'].map(l => (
+            <li key={l}>
+              <a href={`#${l.toLowerCase()}`}>{l}</a>
+            </li>
           ))}
         </ul>
       </nav>
@@ -585,13 +629,23 @@ export default function ATSPresentationPage() {
         <div className="hero-left">
           <div className="hero-eyebrow mono">Sprint Plan · 2026</div>
           <h1 className="hero-title">
-            Building<br />the <span>ATS</span><br />Together.
+            Building
+            <br />
+            the <span>ATS</span>
+            <br />
+            Together.
           </h1>
           <p className="hero-desc">
-            Clean microservices from day one. Six developers, one architect, four phases. Here's exactly who builds what and how it all connects.
+            Clean microservices from day one. Six developers, one architect, four phases. Here's
+            exactly who builds what and how it all connects.
           </p>
           <div className="hero-stats">
-            {[["6", "Developers"], ["7", "Services"], ["4", "Phases"], ["1", "Goal"]].map(([n, l]) => (
+            {[
+              ['6', 'Developers'],
+              ['7', 'Services'],
+              ['4', 'Phases'],
+              ['1', 'Goal'],
+            ].map(([n, l]) => (
               <div key={l}>
                 <div className="hero-stat-num">{n}</div>
                 <div className="hero-stat-label mono">{l}</div>
@@ -603,15 +657,15 @@ export default function ATSPresentationPage() {
           <div className="flow-label mono">ATS Flow Overview</div>
           <ul className="flow-list">
             {[
-              "Login + Role-Based Access",
-              "Admin & Company Setup",
-              "Job Requirement Module",
-              "Candidate Database + CV Capture",
-              "Pipeline + Status Tracking",
-              "Interview + Feedback Module",
-              "Offer + Joining Module",
-              "Reports + KPI Dashboards",
-              "Naukri + Portal Integrations",
+              'Login + Role-Based Access',
+              'Admin & Company Setup',
+              'Job Requirement Module',
+              'Candidate Database + CV Capture',
+              'Pipeline + Status Tracking',
+              'Interview + Feedback Module',
+              'Offer + Joining Module',
+              'Reports + KPI Dashboards',
+              'Naukri + Portal Integrations',
             ].map((item, i) => (
               <li className="flow-item" key={i}>
                 <span className="flow-num mono">0{i + 1}</span>
@@ -627,32 +681,43 @@ export default function ATSPresentationPage() {
       <section id="team">
         <div className="section-header">
           <div className="section-num mono">01 /</div>
-          <h2 className="section-title">The Team &<br />Their Ownership</h2>
+          <h2 className="section-title">
+            The Team &<br />
+            Their Ownership
+          </h2>
         </div>
         <div className="team-grid">
           {TEAM.map((person, i) => (
             <div
               key={person.name}
-              className={`team-card ${visibleCards[i] ? "visible" : ""}`}
-              ref={(el) => { cardRefs.current[i] = el; }}
+              className={`team-card ${visibleCards[i] ? 'visible' : ''}`}
+              ref={el => {
+                cardRefs.current[i] = el;
+              }}
               style={{
                 transitionDelay: `${i * 80}ms`,
               }}
             >
               <div
                 className="team-card-accent"
-                style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", background: person.color }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '3px',
+                  background: person.color,
+                }}
               />
-              <div
-                className="team-tag mono"
-                style={{ background: person.bg, color: person.color }}
-              >
+              <div className="team-tag mono" style={{ background: person.bg, color: person.color }}>
                 {person.tag}
               </div>
-              <div className="team-name" style={{ color: person.color }}>{person.name}</div>
+              <div className="team-name" style={{ color: person.color }}>
+                {person.name}
+              </div>
               <div className="team-role">{person.role}</div>
               <ul className="team-owns">
-                {person.owns.map((o) => (
+                {person.owns.map(o => (
                   <li key={o}>{o}</li>
                 ))}
               </ul>
@@ -666,15 +731,21 @@ export default function ATSPresentationPage() {
       <section id="services" className="services-section">
         <div className="section-header">
           <div className="section-num mono">02 /</div>
-          <h2 className="section-title" style={{ color: "#fff" }}>Microservice<br />Ownership Map</h2>
+          <h2 className="section-title" style={{ color: '#fff' }}>
+            Microservice
+            <br />
+            Ownership Map
+          </h2>
         </div>
         <div className="services-grid">
-          {SERVICES.map((s) => (
+          {SERVICES.map(s => (
             <div className="service-card" key={s.name}>
               <div className="service-dot" style={{ background: s.color }} />
               <div className="service-name">{s.name}</div>
               <div className="service-desc mono">{s.desc}</div>
-              <div className="service-owner" style={{ color: s.color }}>{s.owner}</div>
+              <div className="service-owner" style={{ color: s.color }}>
+                {s.owner}
+              </div>
               <div className="service-phase mono">{s.phase}</div>
             </div>
           ))}
@@ -684,29 +755,83 @@ export default function ATSPresentationPage() {
       {/* INTEGRATION DEEP DIVE */}
       <section id="integration" className="integration-section">
         <div className="section-header">
-          <div className="section-num mono" style={{ color: "#059669" }}>03 /</div>
-          <h2 className="section-title">Vignesh + Bharath<br />Integration Service</h2>
+          <div className="section-num mono" style={{ color: '#059669' }}>
+            03 /
+          </div>
+          <h2 className="section-title">
+            Vignesh + Bharath
+            <br />
+            Integration Service
+          </h2>
         </div>
 
-        <p style={{ fontSize: "15px", color: "var(--muted)", maxWidth: "600px", lineHeight: "1.7", marginBottom: "16px" }}>
-          This is the most specific question — what exactly do these two build and how does it connect to the rest of the system. Here it is clearly.
+        <p
+          style={{
+            fontSize: '15px',
+            color: 'var(--muted)',
+            maxWidth: '600px',
+            lineHeight: '1.7',
+            marginBottom: '16px',
+          }}
+        >
+          This is the most specific question — what exactly do these two build and how does it
+          connect to the rest of the system. Here it is clearly.
         </p>
 
         <div className="integration-flow">
           {[
-            { num: "STEP 01", title: "Recruiter opens CV", desc: "On Naukri, LinkedIn, or Foundit portal", owner: "Recruiter action" },
-            { num: "STEP 02", title: "Chrome Extension fires", desc: "Reads candidate data from the page DOM", owner: "Vignesh builds" },
-            { num: "STEP 03", title: "POST to Integration API", desc: "/integration/candidate/capture endpoint", owner: "Bharath builds" },
-            { num: "STEP 04", title: "n8n workflow triggers", desc: "Validates, enriches, routes the payload", owner: "Vignesh builds" },
-            { num: "STEP 05", title: "Calls Candidate Service", desc: "POST /candidates/import — Binta's endpoint", owner: "One connection" },
-            { num: "STEP 06", title: "Candidate appears in ATS", desc: "Under the correct job, instantly", owner: "Done." },
+            {
+              num: 'STEP 01',
+              title: 'Recruiter opens CV',
+              desc: 'On Naukri, LinkedIn, or Foundit portal',
+              owner: 'Recruiter action',
+            },
+            {
+              num: 'STEP 02',
+              title: 'Chrome Extension fires',
+              desc: 'Reads candidate data from the page DOM',
+              owner: 'Vignesh builds',
+            },
+            {
+              num: 'STEP 03',
+              title: 'POST to Integration API',
+              desc: '/integration/candidate/capture endpoint',
+              owner: 'Bharath builds',
+            },
+            {
+              num: 'STEP 04',
+              title: 'n8n workflow triggers',
+              desc: 'Validates, enriches, routes the payload',
+              owner: 'Vignesh builds',
+            },
+            {
+              num: 'STEP 05',
+              title: 'Calls Candidate Service',
+              desc: "POST /candidates/import — Binta's endpoint",
+              owner: 'One connection',
+            },
+            {
+              num: 'STEP 06',
+              title: 'Candidate appears in ATS',
+              desc: 'Under the correct job, instantly',
+              owner: 'Done.',
+            },
           ].map((step, i, arr) => (
             <>
               <div className="flow-step" key={step.num}>
                 <div className="flow-step-num mono">{step.num}</div>
                 <div className="flow-step-title">{step.title}</div>
                 <div className="flow-step-desc mono">{step.desc}</div>
-                <div style={{ marginTop: "12px", fontSize: "11px", fontWeight: "600", color: "var(--green)" }}>{step.owner}</div>
+                <div
+                  style={{
+                    marginTop: '12px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    color: 'var(--green)',
+                  }}
+                >
+                  {step.owner}
+                </div>
               </div>
               {i < arr.length - 1 && <div className="flow-connector">→</div>}
             </>
@@ -715,35 +840,61 @@ export default function ATSPresentationPage() {
 
         <div className="vignesh-bharath-split">
           <div className="split-card">
-            <div className="split-card-tag mono" style={{ color: "#D97706", background: "#FEF3C7", padding: "4px 10px", borderRadius: "2px" }}>
+            <div
+              className="split-card-tag mono"
+              style={{
+                color: '#D97706',
+                background: '#FEF3C7',
+                padding: '4px 10px',
+                borderRadius: '2px',
+              }}
+            >
               INTEGRATION LOGIC
             </div>
-            <div className="split-card-name" style={{ color: "#D97706" }}>Vignesh</div>
+            <div className="split-card-name" style={{ color: '#D97706' }}>
+              Vignesh
+            </div>
             <div className="split-card-role">Drives the WHAT and the HOW of automation</div>
             <ul className="split-card-items">
               {[
-                "Chrome extension — captures CV data from Naukri page DOM",
-                "n8n workflow design — what triggers, what gets sent where",
-                "Portal integration strategy — Naukri, LinkedIn, Foundit",
-                "Automation error handling and retry logic",
+                'Chrome extension — captures CV data from Naukri page DOM',
+                'n8n workflow design — what triggers, what gets sent where',
+                'Portal integration strategy — Naukri, LinkedIn, Foundit',
+                'Automation error handling and retry logic',
                 "Defines the payload shape Bharath's API will receive",
-              ].map((item) => <li key={item}>{item}</li>)}
+              ].map(item => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </div>
           <div className="split-card">
-            <div className="split-card-tag mono" style={{ color: "#2563EB", background: "#EFF6FF", padding: "4px 10px", borderRadius: "2px" }}>
+            <div
+              className="split-card-tag mono"
+              style={{
+                color: '#2563EB',
+                background: '#EFF6FF',
+                padding: '4px 10px',
+                borderRadius: '2px',
+              }}
+            >
               BACKEND LAYER
             </div>
-            <div className="split-card-name" style={{ color: "#2563EB" }}>Bharath</div>
-            <div className="split-card-role">Builds the Node/Express/Prisma layer under Vignesh's direction</div>
+            <div className="split-card-name" style={{ color: '#2563EB' }}>
+              Bharath
+            </div>
+            <div className="split-card-role">
+              Builds the Node/Express/Prisma layer under Vignesh's direction
+            </div>
             <ul className="split-card-items">
               {[
-                "POST /integration/candidate/capture — receives CV from extension",
-                "POST /integration/webhook/foundit — Foundit webhook receiver",
-                "POST /integration/webhook/linkedin — LinkedIn webhook receiver",
-                "GET /integration/candidates/:jobId — list captured candidates",
+                'POST /integration/candidate/capture — receives CV from extension',
+                'POST /integration/webhook/foundit — Foundit webhook receiver',
+                'POST /integration/webhook/linkedin — LinkedIn webhook receiver',
+                'GET /integration/candidates/:jobId — list captured candidates',
                 "Calls Binta's POST /candidates/import — the only cross-service connection",
-              ].map((item) => <li key={item}>{item}</li>)}
+              ].map(item => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </div>
         </div>
@@ -753,12 +904,18 @@ export default function ATSPresentationPage() {
       <section id="phases">
         <div className="section-header">
           <div className="section-num mono">04 /</div>
-          <h2 className="section-title">Sprint Phases<br />In Parallel</h2>
+          <h2 className="section-title">
+            Sprint Phases
+            <br />
+            In Parallel
+          </h2>
         </div>
         <div className="phases-grid">
-          {PHASES.map((phase) => (
+          {PHASES.map(phase => (
             <div className="phase-card" key={phase.num}>
-              <div className="phase-num-big" style={{ color: phase.color }}>{phase.num}</div>
+              <div className="phase-num-big" style={{ color: phase.color }}>
+                {phase.num}
+              </div>
               <div className="phase-label">{phase.label}</div>
               <div className="phase-weeks mono">{phase.weeks}</div>
               <ul className="phase-tasks">
@@ -778,32 +935,45 @@ export default function ATSPresentationPage() {
       <section id="workflow" className="workflow-section">
         <div className="section-header">
           <div className="section-num mono">05 /</div>
-          <h2 className="section-title">Cross-Service Dev<br />Without Bottlenecks</h2>
+          <h2 className="section-title">
+            Cross-Service Dev
+            <br />
+            Without Bottlenecks
+          </h2>
         </div>
-        <p style={{ fontSize: "15px", color: "var(--muted)", maxWidth: "560px", lineHeight: "1.7", marginBottom: "0" }}>
-          Nobody waits for anyone else's service. Contract-first development means every dev works against a fake version of every API from day one.
+        <p
+          style={{
+            fontSize: '15px',
+            color: 'var(--muted)',
+            maxWidth: '560px',
+            lineHeight: '1.7',
+            marginBottom: '0',
+          }}
+        >
+          Nobody waits for anyone else's service. Contract-first development means every dev works
+          against a fake version of every API from day one.
         </p>
         <div className="workflow-cards">
           {[
             {
-              step: "STEP 01",
-              title: "Rahul writes all contracts",
-              desc: "Week 1. Every API endpoint, response shape, and error code is defined before anyone writes a single route. This is the most critical output of the entire project.",
-              code: "GET /jobs → [{ id, title, status, assignedTo }]\nPOST /candidates/import → { candidateId }\nGET /candidates/:jobId → [{ id, name, stage }]",
+              step: 'STEP 01',
+              title: 'Rahul writes all contracts',
+              desc: 'Week 1. Every API endpoint, response shape, and error code is defined before anyone writes a single route. This is the most critical output of the entire project.',
+              code: 'GET /jobs → [{ id, title, status, assignedTo }]\nPOST /candidates/import → { candidateId }\nGET /candidates/:jobId → [{ id, name, stage }]',
             },
             {
-              step: "STEP 02",
-              title: "Everyone runs json-server",
-              desc: "One command. One JSON file. Every dev gets a local fake API that returns data in the exact shape of the real service. No waiting. No blocking.",
-              code: "npx json-server db.json --port 3001\n\n// db.json matches the contract exactly\n// Shruti hits localhost:3001/jobs\n// Binta builds the real service separately",
+              step: 'STEP 02',
+              title: 'Everyone runs json-server',
+              desc: 'One command. One JSON file. Every dev gets a local fake API that returns data in the exact shape of the real service. No waiting. No blocking.',
+              code: 'npx json-server db.json --port 3001\n\n// db.json matches the contract exactly\n// Shruti hits localhost:3001/jobs\n// Binta builds the real service separately',
             },
             {
-              step: "STEP 03",
-              title: "Real services replace mocks",
+              step: 'STEP 03',
+              title: 'Real services replace mocks',
               desc: "When Binta's Job Service is ready, Shruti changes one line — the base URL. Everything works because the shape was agreed upfront. No rework.",
               code: "// Before\nconst API = 'http://localhost:3001'\n\n// After Binta ships\nconst API = 'http://job-service/api'\n\n// That's the only change needed.",
             },
-          ].map((card) => (
+          ].map(card => (
             <div className="workflow-card" key={card.step}>
               <div className="workflow-step-num mono">{card.step}</div>
               <div className="workflow-card-title">{card.title}</div>
@@ -816,9 +986,13 @@ export default function ATSPresentationPage() {
 
       {/* FOOTER */}
       <footer>
-        <div>ATS Internal Build · <span>Confidential</span></div>
+        <div>
+          ATS Internal Build · <span>Confidential</span>
+        </div>
         <div className="mono">6 devs · Clean microservices · GCP Cloud Run</div>
-        <div>Built by <span>the team</span></div>
+        <div>
+          Built by <span>the team</span>
+        </div>
       </footer>
     </>
   );

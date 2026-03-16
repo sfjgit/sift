@@ -1,20 +1,20 @@
-"use client";
+'use client';
 
-import { useState } from "react";
+import { useState } from 'react';
 
 const SECTIONS = [
-  "Overview",
-  "Architecture",
-  "Auth Routes",
-  "User Routes",
-  "Role Routes",
-  "Team Routes",
-  "Business Unit Routes",
-  "Client Routes",
-  "Requirement Routes",
-  "OrgFlow Routes",
-  "Auto Routing Logic",
-  "Audit Log",
+  'Overview',
+  'Architecture',
+  'Auth Routes',
+  'User Routes',
+  'Role Routes',
+  'Team Routes',
+  'Business Unit Routes',
+  'Client Routes',
+  'Requirement Routes',
+  'OrgFlow Routes',
+  'Auto Routing Logic',
+  'Audit Log',
 ];
 
 const content: Record<string, React.ReactNode> = {
@@ -52,16 +52,16 @@ const content: Record<string, React.ReactNode> = {
         <div className="section-label">What this service owns</div>
         <div className="list-items">
           {[
-            "Auth — login, register, refresh, logout",
-            "Users — profiles, hierarchy, reporting structure",
-            "Roles — DB-driven roles with per-module permissions",
-            "Teams — free-flow naming, parent/child hierarchy",
-            "Business Units — sub-BU support, team and client grouping",
-            "Clients — sales creates, admin approves, SPOC management",
-            "Requirements — job requirements with full lifecycle tracking",
-            "OrgFlow — visual flow graph of entire org structure",
-            "AuditLog — every action logged with before/after data",
-          ].map((item) => (
+            'Auth — login, register, refresh, logout',
+            'Users — profiles, hierarchy, reporting structure',
+            'Roles — DB-driven roles with per-module permissions',
+            'Teams — free-flow naming, parent/child hierarchy',
+            'Business Units — sub-BU support, team and client grouping',
+            'Clients — sales creates, admin approves, SPOC management',
+            'Requirements — job requirements with full lifecycle tracking',
+            'OrgFlow — visual flow graph of entire org structure',
+            'AuditLog — every action logged with before/after data',
+          ].map(item => (
             <div className="list-item" key={item}>
               <span className="dot" />
               {item}
@@ -183,7 +183,7 @@ When total filledOpenings = totalOpenings → Requirement auto CLOSED`}
     </div>
   ),
 
-  "Auth Routes": (
+  'Auth Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -194,58 +194,58 @@ When total filledOpenings = totalOpenings → Requirement auto CLOSED`}
       <RouteTable
         routes={[
           {
-            method: "POST",
-            path: "/api/auth/register",
-            access: "Super Admin only",
-            desc: "Create a new user. Only super admin can create users.",
+            method: 'POST',
+            path: '/api/auth/register',
+            access: 'Super Admin only',
+            desc: 'Create a new user. Only super admin can create users.',
             body: `{ email, password, role, firstName, lastName }`,
             response: `{ id, email, role, createdAt }`,
           },
           {
-            method: "POST",
-            path: "/api/auth/login",
-            access: "Public",
-            desc: "Login with email and password. Returns access + refresh token.",
+            method: 'POST',
+            path: '/api/auth/login',
+            access: 'Public',
+            desc: 'Login with email and password. Returns access + refresh token.',
             body: `{ email, password }`,
             response: `{ accessToken, refreshToken, user: { id, email, role } }`,
           },
           {
-            method: "POST",
-            path: "/api/auth/refresh",
-            access: "Public",
-            desc: "Rotate refresh token. Old token deleted, new pair issued.",
+            method: 'POST',
+            path: '/api/auth/refresh',
+            access: 'Public',
+            desc: 'Rotate refresh token. Old token deleted, new pair issued.',
             body: `{ refreshToken }`,
             response: `{ accessToken, refreshToken }`,
           },
           {
-            method: "POST",
-            path: "/api/auth/logout",
-            access: "Public",
-            desc: "Revoke refresh token from DB.",
+            method: 'POST',
+            path: '/api/auth/logout',
+            access: 'Public',
+            desc: 'Revoke refresh token from DB.',
             body: `{ refreshToken }`,
             response: `{ success: true }`,
           },
           {
-            method: "GET",
-            path: "/api/auth/verify",
-            access: "Any authenticated",
-            desc: "Internal route. Other services call this to verify a token.",
+            method: 'GET',
+            path: '/api/auth/verify',
+            access: 'Any authenticated',
+            desc: 'Internal route. Other services call this to verify a token.',
             body: `Bearer token in header`,
             response: `{ userId, email, role }`,
           },
           {
-            method: "PATCH",
-            path: "/api/auth/reset-password/:userId",
-            access: "Super Admin only",
-            desc: "Admin resets any user password. Stores plain for recovery.",
+            method: 'PATCH',
+            path: '/api/auth/reset-password/:userId',
+            access: 'Super Admin only',
+            desc: 'Admin resets any user password. Stores plain for recovery.',
             body: `{ newPassword }`,
             response: `{ success: true }`,
           },
           {
-            method: "GET",
-            path: "/api/auth/user-credentials/:userId",
-            access: "Super Admin only",
-            desc: "Admin views stored plain password for a user.",
+            method: 'GET',
+            path: '/api/auth/user-credentials/:userId',
+            access: 'Super Admin only',
+            desc: 'Admin views stored plain password for a user.',
             body: `-`,
             response: `{ email, passwordPlain }`,
           },
@@ -254,63 +254,61 @@ When total filledOpenings = totalOpenings → Requirement auto CLOSED`}
     </div>
   ),
 
-  "User Routes": (
+  'User Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
         <h2 className="heading">User Routes</h2>
-        <p className="sub">
-          User profiles, hierarchy management. Only super admin creates users.
-        </p>
+        <p className="sub">User profiles, hierarchy management. Only super admin creates users.</p>
       </div>
 
       <RouteTable
         routes={[
           {
-            method: "GET",
-            path: "/api/users",
-            access: "Admin",
-            desc: "List all users. Supports filters: role, teamId, buId, isActive.",
+            method: 'GET',
+            path: '/api/users',
+            access: 'Admin',
+            desc: 'List all users. Supports filters: role, teamId, buId, isActive.',
             body: `Query: ?role=TEAM_LEAD&buId=xxx`,
             response: `[{ id, firstName, lastName, role, team, businessUnit }]`,
           },
           {
-            method: "GET",
-            path: "/api/users/:id",
-            access: "Admin or self",
-            desc: "Get single user profile with team, BU, reporting chain.",
+            method: 'GET',
+            path: '/api/users/:id',
+            access: 'Admin or self',
+            desc: 'Get single user profile with team, BU, reporting chain.',
             body: `-`,
             response: `{ id, firstName, ..., team, businessUnit, reportingTo }`,
           },
           {
-            method: "PATCH",
-            path: "/api/users/:id",
-            access: "Admin",
-            desc: "Update user profile fields. Cannot change role here — use role routes.",
+            method: 'PATCH',
+            path: '/api/users/:id',
+            access: 'Admin',
+            desc: 'Update user profile fields. Cannot change role here — use role routes.',
             body: `{ firstName, phone, workingLocation, timezone, ... }`,
             response: `{ updated user }`,
           },
           {
-            method: "PATCH",
-            path: "/api/users/:id/deactivate",
-            access: "Admin",
-            desc: "Deactivate user. Does not delete.",
+            method: 'PATCH',
+            path: '/api/users/:id/deactivate',
+            access: 'Admin',
+            desc: 'Deactivate user. Does not delete.',
             body: `-`,
             response: `{ success: true }`,
           },
           {
-            method: "PATCH",
-            path: "/api/users/:id/reporting-to",
-            access: "Admin",
-            desc: "Set who this user reports to. Builds the org hierarchy.",
+            method: 'PATCH',
+            path: '/api/users/:id/reporting-to',
+            access: 'Admin',
+            desc: 'Set who this user reports to. Builds the org hierarchy.',
             body: `{ reportingToId }`,
             response: `{ updated user }`,
           },
           {
-            method: "GET",
-            path: "/api/users/:id/subordinates",
-            access: "Admin or the user themselves",
-            desc: "Get all users reporting to this person. Recursive down the chain.",
+            method: 'GET',
+            path: '/api/users/:id/subordinates',
+            access: 'Admin or the user themselves',
+            desc: 'Get all users reporting to this person. Recursive down the chain.',
             body: `-`,
             response: `[{ id, firstName, lastName, role }]`,
           },
@@ -335,7 +333,7 @@ PATCH /api/users/ritu-uuid/reporting-to
     </div>
   ),
 
-  "Role Routes": (
+  'Role Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -348,41 +346,41 @@ PATCH /api/users/ritu-uuid/reporting-to
       <RouteTable
         routes={[
           {
-            method: "GET",
-            path: "/api/roles",
-            access: "Admin",
-            desc: "List all roles with their permissions.",
+            method: 'GET',
+            path: '/api/roles',
+            access: 'Admin',
+            desc: 'List all roles with their permissions.',
             body: `-`,
             response: `[{ id, name, permissions: [...] }]`,
           },
           {
-            method: "POST",
-            path: "/api/roles",
-            access: "Super Admin",
-            desc: "Create a new role.",
+            method: 'POST',
+            path: '/api/roles',
+            access: 'Super Admin',
+            desc: 'Create a new role.',
             body: `{ name, description }`,
             response: `{ id, name }`,
           },
           {
-            method: "DELETE",
-            path: "/api/roles/:id",
-            access: "Super Admin",
-            desc: "Delete role. Cannot delete if isSystem = true.",
+            method: 'DELETE',
+            path: '/api/roles/:id',
+            access: 'Super Admin',
+            desc: 'Delete role. Cannot delete if isSystem = true.',
             body: `-`,
             response: `{ success: true }`,
           },
           {
-            method: "PUT",
-            path: "/api/roles/:id/permissions",
-            access: "Super Admin",
-            desc: "Set permissions for a role across all modules.",
+            method: 'PUT',
+            path: '/api/roles/:id/permissions',
+            access: 'Super Admin',
+            desc: 'Set permissions for a role across all modules.',
             body: `[{ module, canView, canAdd, canEdit, canDelete, scope }]`,
             response: `{ updated permissions }`,
           },
           {
-            method: "PATCH",
-            path: "/api/users/:id/role",
-            access: "Super Admin",
+            method: 'PATCH',
+            path: '/api/users/:id/role',
+            access: 'Super Admin',
             desc: "Change a user's role.",
             body: `{ roleId }`,
             response: `{ updated user }`,
@@ -405,7 +403,7 @@ PATCH /api/users/ritu-uuid/reporting-to
     </div>
   ),
 
-  "Team Routes": (
+  'Team Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -418,50 +416,50 @@ PATCH /api/users/ritu-uuid/reporting-to
       <RouteTable
         routes={[
           {
-            method: "GET",
-            path: "/api/teams",
-            access: "Admin",
-            desc: "List all teams. Filter by buId, category, isActive.",
+            method: 'GET',
+            path: '/api/teams',
+            access: 'Admin',
+            desc: 'List all teams. Filter by buId, category, isActive.',
             body: `Query: ?buId=xxx&category=KaaS`,
             response: `[{ id, name, category, members, businessUnit }]`,
           },
           {
-            method: "POST",
-            path: "/api/teams",
-            access: "Admin",
-            desc: "Create a team.",
+            method: 'POST',
+            path: '/api/teams',
+            access: 'Admin',
+            desc: 'Create a team.',
             body: `{ name, description, category, businessUnitId, parentTeamId?, dataPolicy }`,
             response: `{ id, name }`,
           },
           {
-            method: "PATCH",
-            path: "/api/teams/:id",
-            access: "Admin",
-            desc: "Update team details.",
+            method: 'PATCH',
+            path: '/api/teams/:id',
+            access: 'Admin',
+            desc: 'Update team details.',
             body: `{ name, category, dataPolicy, ... }`,
             response: `{ updated team }`,
           },
           {
-            method: "POST",
-            path: "/api/teams/:id/members",
-            access: "Admin",
-            desc: "Add a user to a team with a role.",
+            method: 'POST',
+            path: '/api/teams/:id/members',
+            access: 'Admin',
+            desc: 'Add a user to a team with a role.',
             body: `{ userId, teamRole }`,
             response: `{ TeamMember }`,
           },
           {
-            method: "DELETE",
-            path: "/api/teams/:id/members/:userId",
-            access: "Admin",
-            desc: "Remove a user from a team.",
+            method: 'DELETE',
+            path: '/api/teams/:id/members/:userId',
+            access: 'Admin',
+            desc: 'Remove a user from a team.',
             body: `-`,
             response: `{ success: true }`,
           },
           {
-            method: "GET",
-            path: "/api/teams/:id/members",
-            access: "Admin or TL of that team",
-            desc: "List all members of a team.",
+            method: 'GET',
+            path: '/api/teams/:id/members',
+            access: 'Admin or TL of that team',
+            desc: 'List all members of a team.',
             body: `-`,
             response: `[{ userId, user, teamRole, joinedAt }]`,
           },
@@ -491,7 +489,7 @@ POST /api/teams/team-uuid/members
     </div>
   ),
 
-  "Business Unit Routes": (
+  'Business Unit Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -502,34 +500,34 @@ POST /api/teams/team-uuid/members
       <RouteTable
         routes={[
           {
-            method: "GET",
-            path: "/api/business-units",
-            access: "Admin",
-            desc: "List all BUs with their child BUs, teams, client count.",
+            method: 'GET',
+            path: '/api/business-units',
+            access: 'Admin',
+            desc: 'List all BUs with their child BUs, teams, client count.',
             body: `-`,
             response: `[{ id, name, parentBU, childBUs, teams }]`,
           },
           {
-            method: "POST",
-            path: "/api/business-units",
-            access: "Super Admin",
-            desc: "Create a BU. Can set parentBUId to make it a sub-BU.",
+            method: 'POST',
+            path: '/api/business-units',
+            access: 'Super Admin',
+            desc: 'Create a BU. Can set parentBUId to make it a sub-BU.',
             body: `{ name, parentBUId? }`,
             response: `{ id, name }`,
           },
           {
-            method: "PATCH",
-            path: "/api/business-units/:id",
-            access: "Super Admin",
-            desc: "Update BU name or parent.",
+            method: 'PATCH',
+            path: '/api/business-units/:id',
+            access: 'Super Admin',
+            desc: 'Update BU name or parent.',
             body: `{ name?, parentBUId? }`,
             response: `{ updated BU }`,
           },
           {
-            method: "GET",
-            path: "/api/business-units/:id/tree",
-            access: "Admin",
-            desc: "Get full BU tree — all child BUs, teams, users under this BU.",
+            method: 'GET',
+            path: '/api/business-units/:id/tree',
+            access: 'Admin',
+            desc: 'Get full BU tree — all child BUs, teams, users under this BU.',
             body: `-`,
             response: `{ id, name, childBUs: [...], teams: [...], users: [...] }`,
           },
@@ -538,7 +536,7 @@ POST /api/teams/team-uuid/members
     </div>
   ),
 
-  "Client Routes": (
+  'Client Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -551,82 +549,82 @@ POST /api/teams/team-uuid/members
       <RouteTable
         routes={[
           {
-            method: "POST",
-            path: "/api/clients",
-            access: "CSM / BDM",
-            desc: "Sales creates a client. Status starts as PENDING.",
+            method: 'POST',
+            path: '/api/clients',
+            access: 'CSM / BDM',
+            desc: 'Sales creates a client. Status starts as PENDING.',
             body: `{ name, vmsName, category, industry, website, country, state, city, businessUnitId }`,
             response: `{ id, name, status: PENDING }`,
           },
           {
-            method: "GET",
-            path: "/api/clients",
-            access: "Role scoped",
-            desc: "List clients. Admin sees all. Sales sees their own. DL sees their BU.",
+            method: 'GET',
+            path: '/api/clients',
+            access: 'Role scoped',
+            desc: 'List clients. Admin sees all. Sales sees their own. DL sees their BU.',
             body: `Query: ?status=ACTIVE&category=KaaS&buId=xxx`,
             response: `[{ id, name, category, status, businessUnit, teamAssignments }]`,
           },
           {
-            method: "GET",
-            path: "/api/clients/:id",
-            access: "Role scoped",
-            desc: "Get full client with contacts, handlers, teams, requirements.",
+            method: 'GET',
+            path: '/api/clients/:id',
+            access: 'Role scoped',
+            desc: 'Get full client with contacts, handlers, teams, requirements.',
             body: `-`,
             response: `{ id, name, contacts, handlers, teamAssignments, requirements }`,
           },
           {
-            method: "PATCH",
-            path: "/api/clients/:id/approve",
-            access: "Admin only",
-            desc: "Admin approves a pending client.",
+            method: 'PATCH',
+            path: '/api/clients/:id/approve',
+            access: 'Admin only',
+            desc: 'Admin approves a pending client.',
             body: `-`,
             response: `{ status: ACTIVE, approvedBy, approvedAt }`,
           },
           {
-            method: "POST",
-            path: "/api/clients/:id/teams",
-            access: "Admin",
-            desc: "Assign a team to this client. Requirements will auto-route to this team.",
+            method: 'POST',
+            path: '/api/clients/:id/teams',
+            access: 'Admin',
+            desc: 'Assign a team to this client. Requirements will auto-route to this team.',
             body: `{ teamId }`,
             response: `{ ClientTeamAssignment }`,
           },
           {
-            method: "DELETE",
-            path: "/api/clients/:id/teams/:teamId",
-            access: "Admin",
-            desc: "Remove team from client.",
+            method: 'DELETE',
+            path: '/api/clients/:id/teams/:teamId',
+            access: 'Admin',
+            desc: 'Remove team from client.',
             body: `-`,
             response: `{ success: true }`,
           },
           {
-            method: "POST",
-            path: "/api/clients/:id/handlers",
-            access: "Admin",
-            desc: "Assign a user as client handler.",
+            method: 'POST',
+            path: '/api/clients/:id/handlers',
+            access: 'Admin',
+            desc: 'Assign a user as client handler.',
             body: `{ userId, role }`,
             response: `{ ClientHandler }`,
           },
           {
-            method: "POST",
-            path: "/api/clients/:id/contacts",
-            access: "Admin / CSM",
-            desc: "Add a SPOC to the client.",
+            method: 'POST',
+            path: '/api/clients/:id/contacts',
+            access: 'Admin / CSM',
+            desc: 'Add a SPOC to the client.',
             body: `{ firstName, lastName, designation, email, phone, linkedinUrl, isPrimary }`,
             response: `{ ClientContact }`,
           },
           {
-            method: "POST",
-            path: "/api/clients/:id/contacts/:contactId/handlers",
-            access: "Admin",
-            desc: "Assign a user to handle a specific SPOC.",
+            method: 'POST',
+            path: '/api/clients/:id/contacts/:contactId/handlers',
+            access: 'Admin',
+            desc: 'Assign a user to handle a specific SPOC.',
             body: `{ userId }`,
             response: `{ ContactHandler }`,
           },
           {
-            method: "POST",
-            path: "/api/clients/:id/notes",
-            access: "CSM / Admin",
-            desc: "Add a note to the client.",
+            method: 'POST',
+            path: '/api/clients/:id/notes',
+            access: 'CSM / Admin',
+            desc: 'Add a note to the client.',
             body: `{ content }`,
             response: `{ ClientNote }`,
           },
@@ -659,104 +657,104 @@ POST /api/clients/oracle-uuid/teams
     </div>
   ),
 
-  "Requirement Routes": (
+  'Requirement Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
         <h2 className="heading">Requirement Routes</h2>
         <p className="sub">
-          Full lifecycle. Sales raises → admin approves → auto routes to teams →
-          TL assigns recruiters → openings tracked → auto closes.
+          Full lifecycle. Sales raises → admin approves → auto routes to teams → TL assigns
+          recruiters → openings tracked → auto closes.
         </p>
       </div>
 
       <RouteTable
         routes={[
           {
-            method: "POST",
-            path: "/api/requirements",
-            access: "CSM / BDM / Admin",
-            desc: "Raise a new requirement. reqCode auto generated. Status starts DRAFT.",
+            method: 'POST',
+            path: '/api/requirements',
+            access: 'CSM / BDM / Admin',
+            desc: 'Raise a new requirement. reqCode auto generated. Status starts DRAFT.',
             body: `{ title, clientId, clientContactId, jobType, remoteType, totalOpenings, salaryMin, salaryMax, priority, location, startDate, respondBy }`,
             response: `{ id, reqCode, status: DRAFT }`,
           },
           {
-            method: "GET",
-            path: "/api/requirements",
-            access: "Role scoped",
+            method: 'GET',
+            path: '/api/requirements',
+            access: 'Role scoped',
             desc: "List requirements. Sales sees their own. TL sees team's. Admin sees all.",
             body: `Query: ?status=ACTIVE&clientId=xxx&teamId=xxx`,
             response: `[{ id, reqCode, title, client, status, totalOpenings, filledOpenings }]`,
           },
           {
-            method: "GET",
-            path: "/api/requirements/:id",
-            access: "Role scoped",
-            desc: "Full requirement detail — assignments, documents, notes, status history.",
+            method: 'GET',
+            path: '/api/requirements/:id',
+            access: 'Role scoped',
+            desc: 'Full requirement detail — assignments, documents, notes, status history.',
             body: `-`,
             response: `{ id, reqCode, client, assignments, documents, notes, statusHistory }`,
           },
           {
-            method: "PATCH",
-            path: "/api/requirements/:id/approve",
-            access: "Admin only",
-            desc: "Admin approves requirement. Status → ACTIVE. Auto routing triggers here.",
+            method: 'PATCH',
+            path: '/api/requirements/:id/approve',
+            access: 'Admin only',
+            desc: 'Admin approves requirement. Status → ACTIVE. Auto routing triggers here.',
             body: `{ deliveryLeadId?, teamLeadId? }`,
             response: `{ status: ACTIVE, assignments created for each client team }`,
           },
           {
-            method: "PATCH",
-            path: "/api/requirements/:id/status",
-            access: "Admin / DL",
-            desc: "Change status. Every change logged in RequirementStatusHistory.",
+            method: 'PATCH',
+            path: '/api/requirements/:id/status',
+            access: 'Admin / DL',
+            desc: 'Change status. Every change logged in RequirementStatusHistory.',
             body: `{ status, reason? }`,
             response: `{ updated requirement, statusHistory entry }`,
           },
           {
-            method: "POST",
-            path: "/api/requirements/:id/assign",
-            access: "TL / DL / Admin",
-            desc: "Assign requirement to individual recruiter or entire team. Set opening split.",
+            method: 'POST',
+            path: '/api/requirements/:id/assign',
+            access: 'TL / DL / Admin',
+            desc: 'Assign requirement to individual recruiter or entire team. Set opening split.',
             body: `{ assignmentType, recruiterId?, teamId?, allocatedOpenings? }`,
             response: `{ RequirementAssignment }`,
           },
           {
-            method: "PATCH",
-            path: "/api/requirements/:id/assignments/:assignmentId/fill",
-            access: "TL / Admin",
-            desc: "Mark openings as filled for an assignment. Auto closes req if total met.",
+            method: 'PATCH',
+            path: '/api/requirements/:id/assignments/:assignmentId/fill',
+            access: 'TL / Admin',
+            desc: 'Mark openings as filled for an assignment. Auto closes req if total met.',
             body: `{ filledCount }`,
             response: `{ updated assignment, requirement status if closed }`,
           },
           {
-            method: "POST",
-            path: "/api/requirements/:id/documents",
-            access: "Any assigned",
-            desc: "Upload file or log event on requirement. Type: FILE_UPLOAD, NOTE, ISSUE_RAISED etc.",
+            method: 'POST',
+            path: '/api/requirements/:id/documents',
+            access: 'Any assigned',
+            desc: 'Upload file or log event on requirement. Type: FILE_UPLOAD, NOTE, ISSUE_RAISED etc.',
             body: `{ type, fileName?, fileUrl?, content?, isIssue? }`,
             response: `{ RequirementDocument }`,
           },
           {
-            method: "PATCH",
-            path: "/api/requirements/:id/documents/:docId/resolve",
-            access: "TL / Admin",
-            desc: "Mark an issue as resolved.",
+            method: 'PATCH',
+            path: '/api/requirements/:id/documents/:docId/resolve',
+            access: 'TL / Admin',
+            desc: 'Mark an issue as resolved.',
             body: `-`,
             response: `{ issueResolved: true, resolvedBy, resolvedAt }`,
           },
           {
-            method: "POST",
-            path: "/api/requirements/:id/notes",
-            access: "Any assigned",
-            desc: "Add a note to the requirement.",
+            method: 'POST',
+            path: '/api/requirements/:id/notes',
+            access: 'Any assigned',
+            desc: 'Add a note to the requirement.',
             body: `{ content }`,
             response: `{ RequirementNote }`,
           },
           {
-            method: "GET",
-            path: "/api/requirements/:id/history",
-            access: "Any assigned",
-            desc: "Full status history of this requirement.",
+            method: 'GET',
+            path: '/api/requirements/:id/history',
+            access: 'Any assigned',
+            desc: 'Full status history of this requirement.',
             body: `-`,
             response: `[{ fromStatus, toStatus, changedBy, reason, changedAt }]`,
           },
@@ -804,7 +802,7 @@ PATCH /api/requirements/req-uuid/assignments/ritu-assign-id/fill
     </div>
   ),
 
-  "OrgFlow Routes": (
+  'OrgFlow Routes': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -817,34 +815,34 @@ PATCH /api/requirements/req-uuid/assignments/ritu-assign-id/fill
       <RouteTable
         routes={[
           {
-            method: "GET",
-            path: "/api/org-flow",
-            access: "Admin",
-            desc: "Get all flow nodes and edges. Frontend builds full org chart from this.",
+            method: 'GET',
+            path: '/api/org-flow',
+            access: 'Admin',
+            desc: 'Get all flow nodes and edges. Frontend builds full org chart from this.',
             body: `Query: ?fromType=BUSINESS_UNIT&fromId=xxx`,
             response: `[{ fromType, fromId, fromLabel, toType, toId, toLabel, relation }]`,
           },
           {
-            method: "POST",
-            path: "/api/org-flow",
-            access: "Admin",
-            desc: "Create a flow edge. Usually auto created when teams/clients/users are assigned.",
+            method: 'POST',
+            path: '/api/org-flow',
+            access: 'Admin',
+            desc: 'Create a flow edge. Usually auto created when teams/clients/users are assigned.',
             body: `{ fromType, fromId, fromLabel, toType, toId, toLabel, relation }`,
             response: `{ OrgFlow }`,
           },
           {
-            method: "PATCH",
-            path: "/api/org-flow/:id",
-            access: "Admin",
-            desc: "Update a flow edge — change relation or labels.",
+            method: 'PATCH',
+            path: '/api/org-flow/:id',
+            access: 'Admin',
+            desc: 'Update a flow edge — change relation or labels.',
             body: `{ relation?, fromLabel?, toLabel? }`,
             response: `{ updated OrgFlow }`,
           },
           {
-            method: "DELETE",
-            path: "/api/org-flow/:id",
-            access: "Admin",
-            desc: "Remove a flow edge.",
+            method: 'DELETE',
+            path: '/api/org-flow/:id',
+            access: 'Admin',
+            desc: 'Remove a flow edge.',
             body: `-`,
             response: `{ success: true }`,
           },
@@ -852,7 +850,9 @@ PATCH /api/requirements/req-uuid/assignments/ritu-assign-id/fill
       />
 
       <div>
-        <div className="section-label">Example — what gets stored when Oracle is assigned to KaaS Team A</div>
+        <div className="section-label">
+          Example — what gets stored when Oracle is assigned to KaaS Team A
+        </div>
         <div className="code-block">
           {`// Auto created on POST /api/clients/oracle-uuid/teams
 {
@@ -880,7 +880,7 @@ PATCH /api/requirements/req-uuid/assignments/ritu-assign-id/fill
     </div>
   ),
 
-  "Auto Routing Logic": (
+  'Auto Routing Logic': (
     <div className="space-y-8">
       <div>
         <div className="tag">Backend Logic</div>
@@ -1003,7 +1003,7 @@ export const approveRequirement = async (req, res) => {
     </div>
   ),
 
-  "Audit Log": (
+  'Audit Log': (
     <div className="space-y-8">
       <div>
         <div className="tag">Module</div>
@@ -1014,18 +1014,18 @@ export const approveRequirement = async (req, res) => {
       <RouteTable
         routes={[
           {
-            method: "GET",
-            path: "/api/audit-logs",
-            access: "Super Admin",
-            desc: "List audit logs. Filter by module, actorId, action, date range.",
+            method: 'GET',
+            path: '/api/audit-logs',
+            access: 'Super Admin',
+            desc: 'List audit logs. Filter by module, actorId, action, date range.',
             body: `Query: ?module=Requirement&actorId=xxx&from=2026-01-01`,
             response: `[{ actorId, action, module, recordId, oldData, newData, ip, createdAt }]`,
           },
           {
-            method: "GET",
-            path: "/api/audit-logs/:recordId",
-            access: "Admin",
-            desc: "Full history of a specific record — all changes ever made to it.",
+            method: 'GET',
+            path: '/api/audit-logs/:recordId',
+            access: 'Admin',
+            desc: 'Full history of a specific record — all changes ever made to it.',
             body: `-`,
             response: `[{ action, oldData, newData, actorId, createdAt }]`,
           },
@@ -1096,11 +1096,11 @@ function RouteTable({
   }[];
 }) {
   const methodColor: Record<string, string> = {
-    GET: "#22c55e",
-    POST: "#3b82f6",
-    PATCH: "#f59e0b",
-    PUT: "#8b5cf6",
-    DELETE: "#ef4444",
+    GET: '#22c55e',
+    POST: '#3b82f6',
+    PATCH: '#f59e0b',
+    PUT: '#8b5cf6',
+    DELETE: '#ef4444',
   };
 
   return (
@@ -1110,7 +1110,7 @@ function RouteTable({
           <div className="route-top">
             <span
               className="method-badge"
-              style={{ background: methodColor[r.method] + "22", color: methodColor[r.method] }}
+              style={{ background: methodColor[r.method] + '22', color: methodColor[r.method] }}
             >
               {r.method}
             </span>
@@ -1135,7 +1135,7 @@ function RouteTable({
 }
 
 export default function CoreServiceDocs() {
-  const [active, setActive] = useState("Overview");
+  const [active, setActive] = useState('Overview');
 
   return (
     <>
@@ -1427,10 +1427,10 @@ export default function CoreServiceDocs() {
           <div className="sidebar-port">Port 4001</div>
         </div>
         <nav className="sidebar-nav">
-          {SECTIONS.map((s) => (
+          {SECTIONS.map(s => (
             <button
               key={s}
-              className={`nav-item ${active === s ? "active" : ""}`}
+              className={`nav-item ${active === s ? 'active' : ''}`}
               onClick={() => setActive(s)}
             >
               {s}

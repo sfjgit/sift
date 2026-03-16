@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from 'next/link';
 
 export default function Home() {
   return (
@@ -8,17 +8,15 @@ export default function Home() {
         <div
           className="absolute top-[-20%] left-[10%] w-[600px] h-[600px] rounded-full opacity-10"
           style={{
-            background:
-              "radial-gradient(circle, #4f6ef7 0%, transparent 70%)",
-            filter: "blur(80px)",
+            background: 'radial-gradient(circle, #4f6ef7 0%, transparent 70%)',
+            filter: 'blur(80px)',
           }}
         />
         <div
           className="absolute bottom-[-10%] right-[5%] w-[500px] h-[500px] rounded-full opacity-8"
           style={{
-            background:
-              "radial-gradient(circle, #7c3aed 0%, transparent 70%)",
-            filter: "blur(100px)",
+            background: 'radial-gradient(circle, #7c3aed 0%, transparent 70%)',
+            filter: 'blur(100px)',
           }}
         />
         {/* Subtle grid */}
@@ -26,8 +24,8 @@ export default function Home() {
           className="absolute inset-0 opacity-[0.025]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
-            backgroundSize: "64px 64px",
+              'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+            backgroundSize: '64px 64px',
           }}
         />
       </div>
@@ -51,17 +49,12 @@ export default function Home() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-              <path
-                d="M5 9H11"
-                stroke="white"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
+              <path d="M5 9H11" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </div>
           <span
             className="text-[15px] font-semibold tracking-tight text-white/90"
-            style={{ letterSpacing: "-0.02em" }}
+            style={{ letterSpacing: '-0.02em' }}
           >
             TalentOS
           </span>
@@ -69,16 +62,14 @@ export default function Home() {
 
         {/* Dummy nav links */}
         <div className="hidden md:flex items-center gap-1">
-          {["Pipeline", "Candidates", "Jobs", "Analytics", "Settings"].map(
-            (item) => (
-              <button
-                key={item}
-                className="px-3.5 py-1.5 rounded-md text-sm text-white/40 hover:text-white/80 hover:bg-white/[0.05] transition-all duration-150"
-              >
-                {item}
-              </button>
-            )
-          )}
+          {['Pipeline', 'Candidates', 'Jobs', 'Analytics', 'Settings'].map(item => (
+            <button
+              key={item}
+              className="px-3.5 py-1.5 rounded-md text-sm text-white/40 hover:text-white/80 hover:bg-white/[0.05] transition-all duration-150"
+            >
+              {item}
+            </button>
+          ))}
         </div>
 
         {/* Actual doc routes */}
@@ -100,12 +91,7 @@ export default function Home() {
                 strokeWidth="1.3"
                 strokeLinejoin="round"
               />
-              <path
-                d="M8 2v3h3"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-              />
+              <path d="M8 2v3h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
             Org Service
           </Link>
@@ -126,12 +112,7 @@ export default function Home() {
                 strokeWidth="1.3"
                 strokeLinejoin="round"
               />
-              <path
-                d="M8 2v3h3"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-              />
+              <path d="M8 2v3h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             </svg>
             ATS Docs
           </Link>
@@ -153,16 +134,15 @@ export default function Home() {
         {/* Headline */}
         <h1
           className="max-w-3xl text-[56px] font-bold leading-[1.08] tracking-tight text-white mb-6"
-          style={{ letterSpacing: "-0.03em" }}
+          style={{ letterSpacing: '-0.03em' }}
         >
           Hire faster.
           <br />
           <span
             style={{
-              background:
-                "linear-gradient(135deg, #6b8eff 0%, #a78bfa 50%, #818cf8 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
+              background: 'linear-gradient(135deg, #6b8eff 0%, #a78bfa 50%, #818cf8 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
             }}
           >
             Track smarter.
@@ -170,9 +150,8 @@ export default function Home() {
         </h1>
 
         <p className="max-w-md text-base text-white/40 leading-relaxed mb-10">
-          A unified applicant tracking system built for scale — manage
-          pipelines, coordinate interviews, and make better hiring decisions,
-          all in one place.
+          A unified applicant tracking system built for scale — manage pipelines, coordinate
+          interviews, and make better hiring decisions, all in one place.
         </p>
 
         {/* CTAs */}
@@ -180,8 +159,8 @@ export default function Home() {
           <button
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-all duration-150"
             style={{
-              background: "linear-gradient(135deg, #4f6ef7 0%, #7c3aed 100%)",
-              boxShadow: "0 0 24px rgba(79,110,247,0.3)",
+              background: 'linear-gradient(135deg, #4f6ef7 0%, #7c3aed 100%)',
+              boxShadow: '0 0 24px rgba(79,110,247,0.3)',
             }}
           >
             Open Dashboard
@@ -212,14 +191,14 @@ export default function Home() {
         {/* Stats row */}
         <div className="flex items-center gap-10 mt-20 pt-10 border-t border-white/[0.06]">
           {[
-            { value: "6", label: "Team members" },
-            { value: "3", label: "Services" },
-            { value: "v1", label: "Current version" },
+            { value: '6', label: 'Team members' },
+            { value: '3', label: 'Services' },
+            { value: 'v1', label: 'Current version' },
           ].map(({ value, label }) => (
             <div key={label} className="text-center">
               <div
                 className="text-2xl font-bold text-white mb-0.5"
-                style={{ letterSpacing: "-0.03em" }}
+                style={{ letterSpacing: '-0.03em' }}
               >
                 {value}
               </div>
