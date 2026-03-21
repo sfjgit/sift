@@ -5,11 +5,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import env from '@/config/env';
-import { useAuth } from '@/context/AuthContext';
 
 export default function SignInPage() {
   const router = useRouter();
-  const { login } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,9 +37,9 @@ export default function SignInPage() {
       }
 
       // Hand off to AuthContext — it will store user + tokens
-      await login(email, password);
+      // await login(email, password);
       toast.success('Welcome back!');
-      // router.push('/dashboard');
+      router.push('/dashboard');
     } catch {
       toast.error('Something went wrong. Please try again.');
     } finally {
