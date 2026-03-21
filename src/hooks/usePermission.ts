@@ -9,5 +9,6 @@ export function usePermission(module: string, action: Action): boolean {
   if (!user) return false;
   if (user.isSuperAdmin) return true;
   const perm = user.role.permissions.find(p => p.module === module);
+  console.log(module, action, perm);
   return perm ? (perm[action] ?? false) : false;
 }
