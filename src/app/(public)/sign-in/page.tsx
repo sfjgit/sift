@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import env from '@/config/env';
+import { useAuth } from '@/context/AuthContext';
 
 export default function SignInPage() {
   const router = useRouter();
-
+  const { login } = useAuth(); // import this
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -23,21 +24,21 @@ export default function SignInPage() {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/core/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      // const res = await fetch(`${env.NEXT_PUBLIC_API_URL}/core/api/auth/login`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ email, password }),
+      // });
 
-      const data = await res.json();
+      // const data = await res.json();
 
-      if (!res.ok) {
-        toast.error(data.message ?? 'Invalid credentials');
-        return;
-      }
+      // if (!res.ok) {
+      //   toast.error(data.message ?? 'Invalid credentials');
+      //   return;
+      // }
 
       // Hand off to AuthContext — it will store user + tokens
-      // await login(email, password);
+      await login(email, password);
       toast.success('Welcome back!');
       router.push('/dashboard');
     } catch {
