@@ -1,4 +1,4 @@
-import api from './api';
+import { useAxios } from '@/hooks/useAxios';
 
 export interface CreateRolePayload {
   name: string;
@@ -16,13 +16,28 @@ export interface SetPermissionsPayload {
   }[];
 }
 
-export const rolesApi = {
-  getAll: () => api.get('/roles'),
+// export const rolesApi = {
+//   getAll: () => api.get('/roles'),
 
-  create: (data: CreateRolePayload) => api.post('/roles', data),
+//   create: (data: CreateRolePayload) => api.post('/roles', data),
 
-  delete: (id: string) => api.delete(`/roles/${id}`),
+//   delete: (id: string) => api.delete(`/roles/${id}`),
 
-  setPermissions: (id: string, data: SetPermissionsPayload) =>
-    api.put(`/roles/${id}/permissions`, data),
-};
+//   setPermissions: (id: string, data: SetPermissionsPayload) =>
+//     api.put(`/roles/${id}/permissions`, data),
+// };
+
+export function useRolesApi() {
+  const api = useAxios();
+
+  return {
+    getAll: () => api.get('/roles'),
+
+    create: (data: CreateRolePayload) => api.post('/roles', data),
+
+    delete: (id: string) => api.delete(`/roles/${id}`),
+
+    setPermissions: (id: string, data: SetPermissionsPayload) =>
+      api.put(`/roles/${id}/permissions`, data),
+  };
+}
