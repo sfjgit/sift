@@ -3,11 +3,11 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { requirementsApi } from '@/lib/requirements.api';
 import { clientsApi } from '@/lib/clients.api';
-import { teamsApi } from '@/lib/teams.api';
+import { useTeamsApi } from '@/lib/teams.api';
 import PermissionGate from '@/components/ui/PermissionGate';
 import Link from 'next/link';
+import { useRequirementsApi } from '@/lib/requirements.api';
 
 interface Stats {
   totalRequirements: number;
@@ -17,10 +17,12 @@ interface Stats {
 }
 
 export default function DashboardPage() {
+  const requirementsApi = useRequirementsApi();
   const { user } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [recentRequirements, setRecentRequirements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const teamsApi = useTeamsApi();
 
   useEffect(() => {
     async function load() {
@@ -163,7 +165,7 @@ function RequirementRow({ req }: { req: any }) {
 
   return (
     <Link
-      href={`/requirements/${req.id}`}
+      href={`/dashboard/requirements/${req.id}`}
       className="flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-card hover:bg-muted/30 transition-all duration-150"
     >
       <div className="min-w-0">
