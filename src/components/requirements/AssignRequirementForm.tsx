@@ -36,7 +36,7 @@ export default function AssignRequirementForm({
     }
 
     loadUsers();
-  }, [usersApi]);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

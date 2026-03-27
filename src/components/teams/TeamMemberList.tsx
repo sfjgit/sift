@@ -43,7 +43,11 @@ export default function TeamMemberList({ members, refresh }: TeamMemberListProps
           {members.length ? (
             members.map((m: TeamMember) => (
               <TableRow key={m.userId}>
-                <TableCell>{m.user?.name}</TableCell>
+                <TableCell>
+                  {[m.user?.firstName, m.user?.middleName, m.user?.lastName]
+                    .filter(Boolean)
+                    .join(' ')}
+                </TableCell>
                 <TableCell>{m.teamRole}</TableCell>
 
                 <TableCell className="text-right">

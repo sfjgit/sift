@@ -45,11 +45,50 @@ export type TeamMember = {
   userId: string;
   teamId: string;
   user?: {
-    name: string;
+    firstName: string;
+    middleName: string | null;
+    lastName: string;
   };
   teamRole: 'LEAD' | 'CO_LEAD' | 'MEMBER';
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
+};
+
+export type ClientAssignment = {
+  id: string;
+  client: {
+    id: string;
+    name: string;
+  };
+  assignedBy: {
+    firstName: string;
+    lastName: string;
+  };
+  assignedAt: string;
+};
+
+export type RequirementAssignment = {
+  id: string;
+  requirement: {
+    id: string;
+    title: string;
+  };
+  recruiter?: {
+    firstName: string;
+    lastName: string;
+  } | null;
+  status: string;
+  allocatedOpenings?: number;
+  filledOpenings: number;
+};
+
+export type TeamDetails = {
+  id: string;
+  name: string;
+  description: string | null;
+  members: TeamMember[];
+  clientAssignments: ClientAssignment[];
+  requirementAssignments: RequirementAssignment[];
 };
 
 // export const teamsApi = {
@@ -70,6 +109,8 @@ export function useTeamsApi() {
   const api = useAxios();
   return {
     getAll: (params?: GetTeamsParams) => api.get('/teams', { params }),
+
+    getOne: (id: string) => api.get(`/teams/${id}`),
 
     create: (data: CreateTeamPayload) => api.post('/teams', data),
 

@@ -52,7 +52,12 @@ export default function TeamMemberDialog({ teamId }: TeamMemberDialogProps) {
       {members.map(m => (
         <div key={m.userId} className="flex items-center justify-between border rounded-md p-2">
           <div>
-            <p className="text-sm font-medium">{m.user?.name || 'No Name'}</p>
+            <p className="text-sm font-medium">
+              {' '}
+              {[m.user?.firstName, m.user?.middleName, m.user?.lastName]
+                .filter(Boolean)
+                .join(' ') || 'No members found'}
+            </p>
             <p className="text-xs text-muted-foreground">{m.teamRole}</p>
           </div>
 

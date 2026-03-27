@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import AddMemberDialog from '@/components/teams/AddMemberDialog';
 import TeamMemberList from '@/components/teams/TeamMemberList';
+import TeamDetails from '@/components/teams/TeamDetails';
 
 export default function TeamDetailsPage() {
   const { id } = useParams();
 
-  const { getMembers } = useTeamsApi();
+  const { getMembers, getOne } = useTeamsApi();
 
   const [open, setOpen] = useState(false);
 
@@ -28,6 +29,15 @@ export default function TeamDetailsPage() {
     queryKey: ['team-members', id],
     queryFn: async () => {
       const res = await getMembers(id as string);
+      return res.data.data;
+    },
+    enabled: !!id && !!canView,
+  });
+
+  const { data: teamDetails } = useQuery({
+    queryKey: ['team-details', id],
+    queryFn: async () => {
+      const res = await getOne(id as string);
       return res.data.data;
     },
     enabled: !!id && !!canView,
@@ -53,6 +63,20 @@ export default function TeamDetailsPage() {
           <div className="text-sm text-muted-foreground">Loading members...</div>
         ) : (
           <TeamMemberList members={members || []} refresh={refetch} />
+        )
+      ) : (
+        <div className="flex items-center justify-center h-32 border border-dashed rounded-xl">
+          <p className="text-sm text-muted-foreground">
+            You don’t have access to view team members.
+          </p>
+        </div>
+      )}
+
+      {canView ? (
+        isLoading ? (
+          <div className="text-sm text-muted-foreground">Loading details...</div>
+        ) : (
+          <TeamDetails team={teamDetails} />
         )
       ) : (
         <div className="flex items-center justify-center h-32 border border-dashed rounded-xl">
