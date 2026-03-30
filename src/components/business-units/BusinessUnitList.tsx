@@ -7,8 +7,23 @@ import { BusinessUnitRow } from './BusinessUnitRow';
 
 function EmptyState() {
   return (
-    <div className="flex items-center justify-center h-32 rounded-xl border border-dashed border-border">
-      <p className="text-sm text-muted-foreground">No business units yet</p>
+    <div className="flex flex-col items-center justify-center h-48 border border-dashed border-border rounded-lg">
+      <p className="text-sm font-medium text-foreground">No business units</p>
+      <p className="text-xs text-muted-foreground mt-1">Create a business unit to get started.</p>
+    </div>
+  );
+}
+
+function SkeletonRows() {
+  return (
+    <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="flex items-center gap-4 px-4 py-3.5 bg-card">
+          <div className="h-3.5 w-40 bg-muted rounded animate-pulse" />
+          <div className="h-3 w-24 bg-muted rounded animate-pulse ml-auto" />
+          <div className="h-5 w-14 bg-muted rounded-full animate-pulse" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -23,23 +38,30 @@ export function BusinessUnitList() {
 
   const list = data ?? [];
 
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-16 rounded-lg bg-muted/40 animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-
+  if (isLoading) return <SkeletonRows />;
   if (!list.length) return <EmptyState />;
 
   return (
-    <div className="space-y-2">
-      {list.map((bu: any) => (
-        <BusinessUnitRow key={bu.id} bu={bu} />
-      ))}
+    <div className="border border-border rounded-lg overflow-hidden">
+      {/* Table header */}
+      <div className="grid grid-cols-[1fr_160px_80px] px-4 py-2.5 bg-muted/40 border-b border-border">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Name
+        </span>
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Created
+        </span>
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide text-right">
+          Status
+        </span>
+      </div>
+
+      {/* Rows */}
+      <div className="divide-y divide-border">
+        {list.map((bu: any) => (
+          <BusinessUnitRow key={bu.id} bu={bu} />
+        ))}
+      </div>
     </div>
   );
 }

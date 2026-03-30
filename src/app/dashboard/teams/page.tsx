@@ -22,7 +22,7 @@ export default function TeamsPage() {
   // ✅ React Query
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['teams'],
-    queryFn: () => getAll(), // ✅ FIX
+    queryFn: () => getAll(),
     enabled: !!canView,
   });
 
@@ -32,46 +32,65 @@ export default function TeamsPage() {
   if (canView === undefined) return null;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Teams</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage teams and members</p>
+          <h1
+            className="text-2xl font-semibold text-foreground tracking-tight"
+            style={{ letterSpacing: '-0.02em' }}
+          >
+            Teams
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Manage teams and their members</p>
         </div>
 
-        {/* ✅ Create Button */}
         {canAdd && (
-          <Button onClick={() => setOpen(true)} className="text-sm text-black" variant="outline">
-            <Plus className="w-4 h-4 text-black" />
-            Create Team
+          <Button
+            onClick={() => setOpen(true)}
+            variant="outline"
+            className="bg-gray-200 hover:bg-gray-300"
+          >
+            <Plus className="w-4 h-4" />
+            New Team
           </Button>
         )}
       </div>
 
-      {/* ✅ View Permission */}
+      {/* Divider */}
+      <div className="border-t border-border" />
+
+      {/* Content */}
       {canView ? (
         <>
-          {/* Loading */}
           {isLoading && (
-            <div className="flex items-center justify-center h-32 border border-dashed rounded-xl">
-              <p className="text-sm text-muted-foreground">Loading teams...</p>
+            <div className="border border-border rounded-lg overflow-hidden">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-4 px-4 py-3.5 border-b border-border last:border-0"
+                >
+                  <div className="h-3.5 w-36 bg-muted rounded animate-pulse" />
+                  <div className="h-3 w-20 bg-muted rounded animate-pulse" />
+                  <div className="h-5 w-14 bg-muted rounded-full animate-pulse ml-auto" />
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Error */}
           {isError && (
-            <div className="flex items-center justify-center h-32 border border-dashed rounded-xl">
-              <p className="text-sm text-red-500">Failed to load teams. Try again.</p>
+            <div className="flex items-center justify-center h-40 border border-dashed border-border rounded-lg">
+              <p className="text-sm text-destructive">Failed to load teams. Please try again.</p>
             </div>
           )}
 
-          {/* Data */}
           {!isLoading && !isError && <TeamTable teams={teams} refresh={refetch} />}
         </>
       ) : (
-        <div className="flex items-center justify-center h-32 border border-dashed rounded-xl">
-          <p className="text-sm text-muted-foreground">You don’t have access to view teams.</p>
+        <div className="flex items-center justify-center h-40 border border-dashed border-border rounded-lg">
+          <p className="text-sm text-muted-foreground">
+            You don&apos;t have permission to view teams.
+          </p>
         </div>
       )}
 

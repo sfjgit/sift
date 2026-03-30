@@ -104,7 +104,7 @@ export default function AssignRequirementForm({
           disabled={loading}
           className="h-9 px-5 bg-primary text-white rounded-lg"
         >
-          {loading ? 'Assigning...' : 'Assign'}
+          {loading ? 'Assigning...' : 'Approve & Assign'}
         </button>
       </div>
     </form>

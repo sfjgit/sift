@@ -38,7 +38,6 @@ export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddM
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [teamRole, setTeamRole] = useState<string>('MEMBER');
 
-  // ✅ Fetch users using useQuery
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: users = [], isLoading } = useQuery<any[]>({
     queryKey: ['users'],
@@ -55,7 +54,7 @@ export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddM
       { userId: selectedUserId, teamRole, isActive: true },
     ]);
 
-    await addMembers(teamId, { members }); // ✅ FIXED
+    await addMembers(teamId, { members });
 
     refresh();
     setOpen(false);
@@ -64,14 +63,15 @@ export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddM
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Member</DialogTitle>
+          <DialogTitle className="text-base font-semibold">Add Member</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex flex-col gap-1.5">
-            <Label>Select User</Label>
+        <div className="mt-2 space-y-4">
+          {/* User Select */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">User</Label>
             <Select
               value={selectedUserId}
               onValueChange={value => setSelectedUserId(value)}
@@ -90,29 +90,32 @@ export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddM
             </Select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label>Assign team role</Label>
+          {/* Role Select */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Team Role</Label>
             <Select
               value={teamRole}
               onValueChange={value => setTeamRole(value)}
               disabled={isLoading}
             >
               <SelectTrigger>
-                <SelectValue
-                  placeholder={isLoading ? 'Loading team roles...' : 'Select a team role'}
-                />
+                <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={'MEMBER'}>MEMBER</SelectItem>
-                <SelectItem value={'LEAD'}>LEAD</SelectItem>
-                <SelectItem value={'CO_LEAD'}>CO_LEAD</SelectItem>
+                <SelectItem value="MEMBER">Member</SelectItem>
+                <SelectItem value="LEAD">Lead</SelectItem>
+                <SelectItem value="CO_LEAD">Co-Lead</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="flex justify-end">
-            <Button onClick={handleAdd} disabled={!selectedUserId}>
-              Add
+          {/* Footer */}
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleAdd} disabled={!selectedUserId}>
+              Add Member
             </Button>
           </div>
         </div>

@@ -10,7 +10,8 @@ import {
 } from '@/components/ui/dialog';
 
 import AssignRequirementForm from './AssignRequirementForm';
-import { Plus } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
+import { Button } from '../ui/button';
 
 export default function AssignRequirementDialog({ requirementId }: { requirementId: string }) {
   const [open, setOpen] = useState(false);
@@ -18,12 +19,15 @@ export default function AssignRequirementDialog({ requirementId }: { requirement
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className="h-8 px-3 text-xs rounded-lg border hover:bg-muted/50">Assign</button>
+        <Button variant="outline" className="bg-green-100 text-green-700 hover:bg-green-200">
+          <CheckCircle className="w-4 h-4" />
+          Approve
+        </Button>
       </DialogTrigger>
 
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Assign Requirement</DialogTitle>
+          <DialogTitle>Approve and assign requirement</DialogTitle>
         </DialogHeader>
 
         <AssignRequirementForm requirementId={requirementId} onSuccess={() => setOpen(false)} />
