@@ -1,4 +1,4 @@
-import api from './api';
+import { useAxios } from '@/hooks/useAxios';
 
 export interface GetUsersParams {
   page?: number;
@@ -35,6 +35,7 @@ export interface UpdateUserPayload {
 // };
 
 export function useUsersApi() {
+  const api = useAxios();
   return {
     getAll: (params?: GetUsersParams) => api.get('/users', { params }),
 

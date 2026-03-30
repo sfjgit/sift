@@ -13,7 +13,12 @@ export function BusinessUnitHeader({ bu }: { bu: BusinessUnit }) {
     <div className="rounded-lg border border-border bg-card px-5 py-4 flex items-start justify-between">
       {/* Left */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">{bu.name}</h1>
+        <h1
+          className="text-2xl font-semibold text-foreground tracking-tight"
+          style={{ letterSpacing: '-0.02em' }}
+        >
+          {bu.name}
+        </h1>
 
         <p className="text-sm text-muted-foreground mt-1">Business Unit Details</p>
 

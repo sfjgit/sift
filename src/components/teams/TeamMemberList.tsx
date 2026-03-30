@@ -20,7 +20,6 @@ interface TeamMemberListProps {
 
 export default function TeamMemberList({ members, refresh }: TeamMemberListProps) {
   const { removeMember } = useTeamsApi();
-
   const canEdit = usePermission('TEAM', 'canEdit');
 
   const handleRemove = async (userId: string, teamId: string) => {
@@ -29,49 +28,76 @@ export default function TeamMemberList({ members, refresh }: TeamMemberListProps
   };
 
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Members</h2>
+        <span className="text-xs text-muted-foreground">{members.length} total</span>
+      </div>
 
-        <TableBody>
-          {members.length ? (
-            members.map((m: TeamMember) => (
-              <TableRow key={m.userId}>
-                <TableCell>
-                  {[m.user?.firstName, m.user?.middleName, m.user?.lastName]
-                    .filter(Boolean)
-                    .join(' ')}
-                </TableCell>
-                <TableCell>{m.teamRole}</TableCell>
+      <div className="border border-border rounded-lg overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Name
+              </TableHead>
+              <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Team Role
+              </TableHead>
+              {canEdit && (
+                <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide text-right">
+                  Actions
+                </TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
 
-                <TableCell className="text-right">
+          <TableBody>
+            {members.length ? (
+              members.map((m: TeamMember) => (
+                <TableRow
+                  key={m.userId}
+                  className="hover:bg-muted/30 transition-colors duration-100"
+                >
+                  <TableCell className="px-4 py-3.5 text-sm font-medium text-foreground">
+                    {[m.user?.firstName, m.user?.middleName, m.user?.lastName]
+                      .filter(Boolean)
+                      .join(' ')}
+                  </TableCell>
+
+                  <TableCell className="px-4 py-3.5">
+                    <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-muted text-muted-foreground">
+                      {m.teamRole}
+                    </span>
+                  </TableCell>
+
                   {canEdit && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleRemove(m.userId, m.teamId)}
-                    >
-                      Remove
-                    </Button>
+                    <TableCell className="px-4 py-3.5 text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive/60 hover:bg-destructive/5"
+                        onClick={() => handleRemove(m.userId, m.teamId)}
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
                   )}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={canEdit ? 3 : 2}
+                  className="px-4 py-10 text-center text-sm text-muted-foreground"
+                >
+                  No members added yet
                 </TableCell>
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={3} className="text-center py-6 text-muted-foreground">
-                No members found
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

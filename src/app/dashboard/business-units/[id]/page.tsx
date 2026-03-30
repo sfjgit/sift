@@ -69,7 +69,7 @@ export default function BusinessUnitDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-5xl mx-auto px-4 py-6">
+    <div className="max-w-6xl mx-auto space-y-8">
       {/* Back */}
       <button
         onClick={() => router.back()}

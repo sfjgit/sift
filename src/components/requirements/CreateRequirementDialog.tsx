@@ -9,6 +9,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import RequirementForm from './RequirementForm';
+import { Button } from '../ui/button';
+import { Plus } from 'lucide-react';
 
 export default function CreateRequirementDialog() {
   const [open, setOpen] = useState(false);
@@ -16,9 +18,9 @@ export default function CreateRequirementDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className="h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-          + New Requirement
-        </button>
+        <Button variant="outline" className="bg-gray-200 hover:bg-gray-300">
+          <Plus className="w-4 h-4" /> New Requirement
+        </Button>
       </DialogTrigger>
 
       <DialogContent className="max-w-2xl w-full p-0 gap-0 overflow-hidden">

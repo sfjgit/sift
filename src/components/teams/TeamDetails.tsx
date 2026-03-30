@@ -7,61 +7,71 @@ type Props = {
 };
 
 export default function TeamDetailsView({ team }: Props) {
+  // ✅ Guard: team may be undefined while loading
+  if (!team) return null;
+
+  const clientAssignments = team.clientAssignments ?? [];
+  const requirementAssignments = team.requirementAssignments ?? [];
+
   return (
-    <div className="space-y-6">
-      {/* Team Info */}
-      <div>
-        <h2 className="text-xl font-semibold">{team?.name}</h2>
-        <p className="text-sm text-muted-foreground">{team?.description}</p>
-      </div>
-
-      {/* Members
-      <div>
-        <h3 className="font-medium mb-2">Members</h3>
-        <div className="space-y-2">
-          {team.members?.length ? (
-            team.members.map(m => (
-              <div key={m.userId} className="text-sm border p-2 rounded">
-                {m.user?.firstName} {m.user?.lastName} — {m.teamRole}
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">No members found</p>
-          )}
-        </div>
-      </div> */}
-
+    <div className="space-y-5">
       {/* Client Assignments */}
       <div>
-        <h3 className="font-medium mb-2">Client Assignments</h3>
-        <div className="space-y-2">
-          {team?.clientAssignments?.length ? (
-            team.clientAssignments.map(c => (
-              <div key={c.id} className="text-sm border p-2 rounded">
-                {c.client?.name} (Assigned by {c.assignedBy?.firstName})
-              </div>
-            ))
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground">Client Assignments</h2>
+          <span className="text-xs text-muted-foreground">{clientAssignments.length} total</span>
+        </div>
+
+        <div className="border border-border rounded-lg overflow-hidden">
+          {clientAssignments.length ? (
+            <div className="divide-y divide-border">
+              {clientAssignments.map(c => (
+                <div key={c.id} className="flex items-center justify-between px-4 py-3.5">
+                  <p className="text-sm font-medium text-foreground">{c.client?.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Assigned by {c.assignedBy?.firstName}
+                  </p>
+                </div>
+              ))}
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No client assignments</p>
+            <div className="flex items-center justify-center h-16">
+              <p className="text-sm text-muted-foreground">No client assignments</p>
+            </div>
           )}
         </div>
       </div>
 
       {/* Requirement Assignments */}
       <div>
-        <h3 className="font-medium mb-2">Requirements</h3>
-        <div className="space-y-2">
-          {team.requirementAssignments?.length ? (
-            team.requirementAssignments.map(r => (
-              <div key={r.id} className="text-sm border p-2 rounded">
-                {r.requirement?.title} — {r.status}
-                <div className="text-xs text-muted-foreground">
-                  Filled: {r.filledOpenings} / {r.allocatedOpenings || 0}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground">Requirements</h2>
+          <span className="text-xs text-muted-foreground">
+            {requirementAssignments.length} total
+          </span>
+        </div>
+
+        <div className="border border-border rounded-lg overflow-hidden">
+          {requirementAssignments.length ? (
+            <div className="divide-y divide-border">
+              {requirementAssignments.map(r => (
+                <div key={r.id} className="flex items-center justify-between px-4 py-3.5">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{r.requirement?.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Filled: {r.filledOpenings} / {r.allocatedOpenings ?? 0}
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium bg-muted text-muted-foreground">
+                    {r.status}
+                  </span>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No requirements assigned</p>
+            <div className="flex items-center justify-center h-16">
+              <p className="text-sm text-muted-foreground">No requirements assigned</p>
+            </div>
           )}
         </div>
       </div>

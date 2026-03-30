@@ -8,30 +8,27 @@ export function BusinessUnitRow({ bu }: { bu: any }) {
   return (
     <Link
       href={`/dashboard/business-units/${bu.id}`}
-      className="flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-card hover:bg-muted/30 transition-all duration-150"
+      className="grid grid-cols-[1fr_160px_80px] items-center px-4 py-3.5 bg-card hover:bg-muted/30 transition-colors duration-100"
     >
-      {/* Left */}
+      {/* Name */}
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground truncate">{bu.name}</p>
-
-        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-          <span>{fmtDate(bu.createdAt)}</span>
-
-          {/* Parent indicator */}
-          {bu.parentBUId && <span className="text-muted-foreground/50">• Child BU</span>}
-        </p>
+        {bu.parentBUId && <p className="text-xs text-muted-foreground mt-0.5">Child unit</p>}
       </div>
 
-      {/* Right */}
-      <div className="flex items-center gap-2 shrink-0 ml-4">
+      {/* Created date */}
+      <p className="text-sm text-muted-foreground">{fmtDate(bu.createdAt)}</p>
+
+      {/* Status badge */}
+      <div className="flex justify-end">
         <span
-          className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+          className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${
             bu.isActive
-              ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
               : 'bg-muted text-muted-foreground'
           }`}
         >
-          {bu.isActive ? 'active' : 'inactive'}
+          {bu.isActive ? 'Active' : 'Inactive'}
         </span>
       </div>
     </Link>
