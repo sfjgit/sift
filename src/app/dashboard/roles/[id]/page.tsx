@@ -108,13 +108,13 @@ export default function RolePage() {
   } = useQuery<Role | null>({
     queryKey: ['role', id],
     queryFn: async () => {
-      const res = await rolesApi.getAll();
-      const all: Role[] = res.data.data ?? [];
-      return all.find(r => r.id === id) ?? null;
+      const res = await rolesApi.getOne(id);
+      return res.data?.data ?? null;
     },
     enabled: !!id,
   });
-  const [rows, setRows] = useState<PermissionRow[]>(() => {
+  const [rows, setRows] = useState<PermissionRow[]>([]);
+  const computedRows: PermissionRow[] = (() => {
     if (!role) return [];
 
     const map: Record<string, PermissionRow> = {};
@@ -123,32 +123,39 @@ export default function RolePage() {
     });
 
     return MODULES.map(mod => map[mod] ?? defaultRow(mod));
-  });
+  })();
+
   // Hydrate matrix from fetched permissions
+  const [initializedRoleId, setInitializedRoleId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!role) return;
+    if (!role || role.id === initializedRoleId) return;
     const map: Record<string, PermissionRow> = {};
     (role.permissions ?? []).forEach(p => {
       map[p.module] = p;
     });
 
-    // setRows(MODULES.map(mod => map[mod] ?? defaultRow(mod)));
-    // setDirty(false);
-  }, [role]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRows(MODULES.map(mod => map[mod] ?? defaultRow(mod)));
+    setDirty(false);
+    setInitializedRoleId(role.id);
+  }, [role, initializedRoleId]);
 
+  const displayRows = dirty ? rows : computedRows;
   // ── Save ────────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: () =>
-      rolesApi.setPermissions(id, {
-        permissions: rows.map(r => ({
+      rolesApi.setPermissions(
+        id,
+        displayRows.map(r => ({
           module: r.module.toLowerCase(),
           canView: r.canView,
           canAdd: r.canAdd,
           canEdit: r.canEdit,
           canDelete: r.canDelete,
           scope: r.scope,
-        })),
-      }),
+        }))
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['role', id] });
       queryClient.invalidateQueries({ queryKey: ['roles'] });
@@ -158,21 +165,28 @@ export default function RolePage() {
 
   // ── Row helpers ─────────────────────────────────────────────────────────
   const updateRow = (module: string, patch: Partial<PermissionRow>) => {
-    setRows(prev =>
-      prev.map(r => {
+    setRows(prev => {
+      const base = prev.length ? prev : computedRows;
+
+      return base.map(r => {
         if (r.module !== module) return r;
+
         const next = { ...r, ...patch };
+
         if (patch.canView === false) {
           next.canAdd = false;
           next.canEdit = false;
           next.canDelete = false;
         }
+
         if (patch.canAdd || patch.canEdit || patch.canDelete) {
           next.canView = true;
         }
+
         return next;
-      })
-    );
+      });
+    });
+
     setDirty(true);
   };
 
@@ -316,7 +330,7 @@ export default function RolePage() {
               </TableHeader>
 
               <TableBody>
-                {rows.map(row => (
+                {displayRows.map(row => (
                   <TableRow key={row.module}>
                     {/* Module label */}
                     <TableCell className="pl-6 font-medium text-sm">
