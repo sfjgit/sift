@@ -80,7 +80,7 @@ export const useAxios = (): AxiosInstance => {
 
             if (!refreshed) {
               processQueue(new Error('Refresh token expired'));
-              router.push('/signin');
+              router.push('/sign-in');
               return Promise.reject(error);
             }
 
@@ -89,7 +89,7 @@ export const useAxios = (): AxiosInstance => {
             return instance(originalRequest);
           } catch (refreshError) {
             processQueue(refreshError);
-            router.push('/signin');
+            router.push('/sign-in');
             return Promise.reject(refreshError);
           } finally {
             isRefreshingRef.current = false;
