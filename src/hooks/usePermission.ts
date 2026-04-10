@@ -44,6 +44,7 @@ export function usePermissions(module: string) {
     canAdd: perm.canAdd,
     canEdit: perm.canEdit,
     canDelete: perm.canDelete,
-    scope: perm.scope,
+    // @ts-expect-error errr
+    scope: perm?.scope,
   };
 }

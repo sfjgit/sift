@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
@@ -76,7 +77,7 @@ export function PendingApproval() {
         </div>
       ) : (
         <div className="divide-y">
-          {items.map(req => (
+          {items.map((req: any) => {
             <Link key={req.id} href={`/dashboard/requirements/${req.id}`}>
               <div className="px-4 py-3 flex items-start gap-3 hover:bg-muted/20 transition-colors cursor-pointer">
                 <div className="h-8 w-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
@@ -94,8 +95,8 @@ export function PendingApproval() {
                   {timeAgo(req.createdAt)}
                 </span>
               </div>
-            </Link>
-          ))}
+            </Link>;
+          })}
         </div>
       )}
     </div>

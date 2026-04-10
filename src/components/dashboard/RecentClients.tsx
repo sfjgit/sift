@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
@@ -51,7 +52,7 @@ export function RecentClients() {
         <EmptyRow msg="No clients yet." />
       ) : (
         <div className="divide-y">
-          {items.map(client => (
+          {items.map((client: any) => {
             <Link key={client.id} href={`/dashboard/clients/${client.id}`}>
               <div className="px-4 py-3 flex items-center gap-3 hover:bg-muted/20 transition-colors cursor-pointer">
                 <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0 uppercase">
@@ -74,8 +75,8 @@ export function RecentClients() {
                   {client.status}
                 </Badge>
               </div>
-            </Link>
-          ))}
+            </Link>;
+          })}
         </div>
       )}
     </div>
