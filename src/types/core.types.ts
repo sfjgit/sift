@@ -81,6 +81,7 @@ export interface BusinessUnit {
   id: string;
   name: string;
   isActive: boolean;
+  category: string;
   parentBUId: string | null;
   parentBU: Pick<BusinessUnit, 'id' | 'name'> | null;
   childBUs: Pick<BusinessUnit, 'id' | 'name'>[];
@@ -120,6 +121,8 @@ export interface Client {
   industry: string | null;
   website: string | null;
   country: string;
+  contacts: ClientContact[];
+  handlers: ClientHandler[];
   state: string | null;
   city: string | null;
   address: string | null;

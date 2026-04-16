@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRequirementsApi } from '@/lib/requirements.api';
-import { clientsApi } from '@/lib/clients.api';
+import { useClients } from '@/lib/clients.api';
 
 import {
   Select,
@@ -138,12 +138,11 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
       totalOpenings: 1,
     },
   });
-
   const jobType = watch('jobType');
   const remoteType = watch('remoteType');
   const priority = watch('priority');
   const clientId = watch('clientId');
-
+  const clientsApi = useClients();
   useEffect(() => {
     async function loadClients() {
       const res = await clientsApi.getAll({ limit: 100 });

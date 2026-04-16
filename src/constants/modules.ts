@@ -54,9 +54,9 @@ export const CLIENT_STATUS = {
 export type ClientStatus = (typeof CLIENT_STATUS)[keyof typeof CLIENT_STATUS];
 
 export const CLIENT_STATUS_LABELS: Record<ClientStatus, string> = {
-  PENDING: 'Pending',
-  ACTIVE: 'Active',
-  INACTIVE: 'Inactive',
+  PENDING: 'PENDING',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
 };
 
 export const CLIENT_HANDLER_ROLE = {
