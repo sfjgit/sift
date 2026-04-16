@@ -17,32 +17,63 @@ import { Edit } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-// ✅ Types for Requirement
 export type RequirementStatus = 'ACTIVE' | 'DRAFT' | 'CLOSED';
 
 export interface Requirement {
   id: string;
   title: string;
   reqCode: string;
-  client?: {
-    id: string;
-    name: string;
-  };
+  client?: { id: string; name: string };
   status: RequirementStatus;
   totalOpenings: number;
   filledOpenings: number;
+}
+
+interface Stats {
+  total: number;
+  active: number;
+  closed: number;
+  draft: number;
 }
 
 // =========================
 // Main Page
 // =========================
 export default function RequirementsPage() {
+  const requirementsApi = useRequirementsApi();
+  const [data, setData] = useState<Requirement[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await requirementsApi.getAll({ limit: 20 });
+        const requirements: Requirement[] = res.data.data ?? [];
+
+        setData(requirements);
+
+        // Derive stats — swap this out for a dedicated /stats API call if you have one
+        setStats({
+          total: res.data.total ?? requirements.length,
+          active: requirements.filter(r => r.status === 'ACTIVE').length,
+          closed: requirements.filter(r => r.status === 'CLOSED').length,
+          draft: requirements.filter(r => r.status === 'DRAFT').length,
+        });
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <RequirementsHeader />
-      <RequirementStats />
+      <RequirementStats stats={stats} loading={loading} />
       <RequirementFilters />
-      <RequirementList />
+      <RequirementList data={data} loading={loading} />
     </div>
   );
 }
@@ -57,7 +88,6 @@ function RequirementsHeader() {
         <h1 className="text-2xl font-semibold tracking-tight">Requirements</h1>
         <p className="text-sm text-muted-foreground">Manage and track hiring needs</p>
       </div>
-
       <PermissionGate module="requirements" action="canAdd">
         <CreateRequirementDialog />
       </PermissionGate>
@@ -68,13 +98,13 @@ function RequirementsHeader() {
 // =========================
 // Stats
 // =========================
-function RequirementStats() {
+function RequirementStats({ stats, loading }: { stats: Stats | null; loading: boolean }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <StatCard label="Total" value={120} loading={false} />
-      <StatCard label="Active" value={80} loading={false} highlight />
-      <StatCard label="Closed" value={20} loading={false} />
-      <StatCard label="On Hold" value={10} loading={false} />
+      <StatCard label="Total" value={stats?.total} loading={loading} />
+      <StatCard label="Active" value={stats?.active} loading={loading} highlight />
+      <StatCard label="Closed" value={stats?.closed} loading={loading} />
+      <StatCard label="Draft" value={stats?.draft} loading={loading} />
     </div>
   );
 }
@@ -131,7 +161,6 @@ function RequirementFilters() {
           </SelectGroup>
         </SelectContent>
       </Select>
-
       <Input placeholder="Search title or code..." className="input w-64" />
     </div>
   );
@@ -140,24 +169,7 @@ function RequirementFilters() {
 // =========================
 // Requirement List
 // =========================
-function RequirementList() {
-  const requirementsApi = useRequirementsApi();
-  const [data, setData] = useState<Requirement[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await requirementsApi.getAll({ limit: 20 });
-        setData(res.data.data ?? []);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load();
-  }, []);
-
+function RequirementList({ data, loading }: { data: Requirement[]; loading: boolean }) {
   if (loading) {
     return (
       <div className="space-y-2">
@@ -196,12 +208,10 @@ function RequirementRow({ req }: { req: Requirement }) {
           {req.reqCode} · {req.client?.name ?? 'No Client'}
         </p>
       </div>
-
       <div className="flex items-center gap-4">
         <p className="text-xs text-muted-foreground">
           {req.filledOpenings}/{req.totalOpenings}
         </p>
-
         <StatusBadge status={req.status} />
         <Button variant="outline" size="sm">
           <Edit className="w-2 h-2" />
@@ -220,6 +230,5 @@ function StatusBadge({ status }: { status: RequirementStatus }) {
     DRAFT: 'text-muted-foreground bg-muted',
     CLOSED: 'text-muted-foreground bg-muted',
   };
-
   return <span className={`text-xs px-2 py-1 rounded ${styles[status]}`}>{status}</span>;
 }
