@@ -4,13 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Building2, Briefcase, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { usePermissions } from '@/hooks/usePermission';
-import { clientsApi } from '@/lib/clients.api';
+import { useClients } from '@/lib/clients.api';
 import { useRequirementsApi } from '@/lib/requirements.api';
 import { MODULES, QUERY_KEYS } from '@/constants/modules';
 import { StatCard } from './StatCard';
 
 export function StatsRow() {
   const api = useAxios();
+  const clientsApi = useClients();
   const clientPerms = usePermissions(MODULES.CLIENTS);
   const reqPerms = usePermissions(MODULES.REQUIREMENTS);
 
