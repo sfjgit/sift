@@ -15,6 +15,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useClients } from '@/lib/clients.api';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import AddContactDialog from '@/components/clients/AddContactDialog';
+import { AddHandlerDialog } from '@/components/clients/Addhandlerdialog';
+import { useCallback, useState } from 'react';
 
 // Feature
 
@@ -32,6 +34,9 @@ export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const openDialog = useCallback(() => setDialogOpen(true), []);
+
   const { canView, canEdit, canAdd } = usePermissions(MODULES.CLIENTS);
 
   const clientApi = useClients();
@@ -44,6 +49,10 @@ export default function ClientDetailPage() {
   });
 
   const client = data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assignedUserIds = client?.handlers?.map((h: any) => h.userId) ?? [];
+  const primaryContactId = client?.contacts?.[0]?.id ?? '';
 
   const approveMutation = useMutation({
     mutationFn: () => clientApi.approve(id),
@@ -242,12 +251,31 @@ export default function ClientDetailPage() {
 
               {/* HANDLERS */}
               <TabsContent value="handlers" className="mt-0 focus-visible:outline-none">
-                <h3 className="mb-3 text-sm font-bold text-slate-700">
-                  Handlers{' '}
-                  <span className="ml-1 font-normal text-slate-400">
-                    ({client.handlers?.length})
-                  </span>
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="mb-3 text-sm font-bold text-slate-700">
+                    Handlers{' '}
+                    <span className="ml-1 font-normal text-slate-400">
+                      ({client.handlers?.length})
+                    </span>
+                  </h3>
+                  <button
+                    onClick={openDialog}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#0066CC] px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-[#0052A3] active:scale-95 transition-all"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Add Handler
+                  </button>
+                </div>
                 <HandlersPanel handlers={client.handlers} />
               </TabsContent>
 
@@ -261,6 +289,13 @@ export default function ClientDetailPage() {
                 </h3>
                 <TeamsPanel teamAssignments={client.teamAssignments} />
               </TabsContent>
+              <AddHandlerDialog
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                clientId={client.id}
+                contactId={primaryContactId}
+                assignedUserIds={assignedUserIds}
+              />
             </div>
           </div>
         </Tabs>
