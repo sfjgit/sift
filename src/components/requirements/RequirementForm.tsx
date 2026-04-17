@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useRequirementsApi } from '@/lib/requirements.api';
+import { Client, useRequirementsApi } from '@/lib/requirements.api';
 import { useClients } from '@/lib/clients.api';
+import { BusinessUnit } from '@/types/clients.types';
 
 import {
   Select,
@@ -14,15 +15,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useBusinessUnitsApi } from '@/lib/business-units.api';
 
 const schema = z.object({
+  businessUnitId: z.string(),
   title: z.string().min(1),
+  description: z.string().min(1),
   clientId: z.string().min(1),
-  // jobType: z.string(),
   jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
-  // remoteType: z.string(),
   remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
-  // priority: z.string(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   totalOpenings: z.coerce.number().min(1),
   location: z.string().optional(),
@@ -33,7 +34,6 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-// ── Shared input class ─────────────────────────────────────────────────────────
 const inputCls = [
   'input h-9 w-full text-sm rounded-md px-3',
   'bg-muted/30 border border-border',
@@ -42,7 +42,6 @@ const inputCls = [
   'transition-[border-color,box-shadow]',
 ].join(' ');
 
-// ── Field wrapper ──────────────────────────────────────────────────────────────
 function Field({
   label,
   required,
@@ -65,7 +64,6 @@ function Field({
   );
 }
 
-// ── Section label ──────────────────────────────────────────────────────────────
 function SectionLabel({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-3">
@@ -77,7 +75,6 @@ function SectionLabel({ title }: { title: string }) {
   );
 }
 
-// ── Reusable SelectField ───────────────────────────────────────────────────────
 function SelectField({
   label,
   value,
@@ -109,18 +106,19 @@ function SelectField({
   );
 }
 
-// ── Priority badge colours ────────────────────────────────────────────────────
 const priorityDot: Record<string, string> = {
   LOW: 'bg-emerald-500',
   MEDIUM: 'bg-amber-500',
   HIGH: 'bg-rose-500',
 };
 
-// ── Main form ──────────────────────────────────────────────────────────────────
 export default function RequirementForm({ onSuccess }: { onSuccess: () => void }) {
   const requirementsApi = useRequirementsApi();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [clients, setClients] = useState<any[]>([]);
+  const clientsApi = useClients();
+  const businessUnitsApi = useBusinessUnitsApi();
+
+  const [clients, setClients] = useState<Client[]>([]);
+  const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([]); // ✅ fixed typo
 
   const {
     register,
@@ -138,24 +136,28 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
       totalOpenings: 1,
     },
   });
+
   const jobType = watch('jobType');
   const remoteType = watch('remoteType');
   const priority = watch('priority');
   const clientId = watch('clientId');
-  const clientsApi = useClients();
+  const businessUnitId = watch('businessUnitId'); // ✅ fixed typo
+
   useEffect(() => {
-    async function loadClients() {
-      const res = await clientsApi.getAll({ limit: 100 });
-      setClients(res.data.data ?? []);
+    async function load() {
+      const clientsRes = await clientsApi.getAll({ limit: 100 });
+      setClients(clientsRes.data.data ?? []);
+      //  business units API call
+      const buRes = await businessUnitsApi.getAll();
+      setBusinessUnits(buRes.data.data ?? []);
     }
-    loadClients();
+    load();
   }, []);
 
   const onSubmit = async (data: FormData) => {
     await requirementsApi.create({
       ...data,
       respondBy: data.respondBy ? new Date(data.respondBy).toISOString() : undefined,
-      // createdById: user?.id,
     });
     onSuccess();
   };
@@ -173,8 +175,24 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* Client dropdown */}
+      <Field label="Job Description" required>
+        <textarea
+          {...register('description')}
+          rows={4}
+          className={[
+            'w-full text-sm rounded-md px-3 py-2',
+            'bg-muted/30 border border-border',
+            'placeholder:text-muted-foreground/40',
+            'focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50',
+            'transition-[border-color,box-shadow]',
+            'resize-none overflow-y-auto max-h-40',
+          ].join(' ')}
+          placeholder="Describe the role, responsibilities, and requirements..."
+        />
+      </Field>
+
+      {/* ── Client / BU / Openings ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-3 gap-4">
         <Field label="Client" required>
           <Select value={clientId} onValueChange={v => setValue('clientId', v)}>
             <SelectTrigger className="h-9 w-full text-sm bg-muted/30 border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-[border-color,box-shadow]">
@@ -184,6 +202,21 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
               {clients.map(c => (
                 <SelectItem key={c.id} value={c.id} className="text-sm">
                   {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Business Unit" required>
+          <Select value={businessUnitId ?? ''} onValueChange={v => setValue('businessUnitId', v)}>
+            <SelectTrigger className="h-9 w-full text-sm bg-muted/30 border-border focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-[border-color,box-shadow]">
+              <SelectValue placeholder="Select business unit" />
+            </SelectTrigger>
+            <SelectContent>
+              {businessUnits.map((bu: BusinessUnit) => (
+                <SelectItem key={bu.id} value={bu.id} className="text-sm">
+                  {bu.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -202,7 +235,6 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
         <SelectField
           label="Job Type"
           value={jobType}
-          // onChange={v => setValue('jobType', v)}
           onChange={v => setValue('jobType', v as FormData['jobType'])}
           options={[
             { label: 'Full Time', value: 'PERMANENT' },
@@ -214,7 +246,6 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
         <SelectField
           label="Remote Type"
           value={remoteType}
-          // onChange={v => setValue('remoteType', v)}
           onChange={v => setValue('remoteType', v as FormData['remoteType'])}
           options={[
             { label: 'Onsite', value: 'ONSITE' },
@@ -223,7 +254,6 @@ export default function RequirementForm({ onSuccess }: { onSuccess: () => void }
           ]}
         />
 
-        {/* Priority — with coloured dot indicator */}
         <Field label="Priority">
           <Select
             value={priority}
