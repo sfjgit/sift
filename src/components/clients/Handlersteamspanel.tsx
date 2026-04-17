@@ -2,7 +2,9 @@
 // HANDLERS
 // ─────────────────────────────────────────
 
+import { useUsersApi } from '@/lib/users.api';
 import { ClientHandler, ClientTeamAssignment } from '@/types/core.types';
+import { useQuery } from '@tanstack/react-query';
 
 interface HandlersProps {
   handlers: ClientHandler[];
@@ -23,6 +25,20 @@ function formatDate(iso: string) {
 }
 
 export function HandlersPanel({ handlers }: HandlersProps) {
+  const userIds = handlers.map(h => h.userId);
+  const usersApi = useUsersApi();
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users', userIds],
+    queryFn: async () => {
+      const responses = await Promise.all(userIds.map(id => usersApi.getOne(id)));
+      return responses.map(res => res.data?.data);
+    },
+    staleTime: 60 * 2000, // 2 mins
+    enabled: handlers.length > 0,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userMap = new Map(usersData?.map((u: any) => [u.id, `${u.firstName} ${u.lastName}`]));
   if (handlers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-12">
@@ -46,9 +62,11 @@ export function HandlersPanel({ handlers }: HandlersProps) {
             {/* User ID */}
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                User ID
+                Handler
               </p>
-              <p className="mt-0.5 font-mono text-sm text-slate-700 truncate">{h.userId}</p>
+              <p className="mt-0.5 font-mono text-sm text-slate-700 truncate">
+                {userMap.get(h.userId) ?? 'Loading...'}
+              </p>
             </div>
 
             {/* Assigned date */}
