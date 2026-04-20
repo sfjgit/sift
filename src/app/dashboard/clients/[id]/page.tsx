@@ -17,6 +17,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import AddContactDialog from '@/components/clients/AddContactDialog';
 import { AddHandlerDialog } from '@/components/clients/Addhandlerdialog';
 import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
 
 // Feature
 
@@ -56,6 +57,14 @@ export default function ClientDetailPage() {
 
   const approveMutation = useMutation({
     mutationFn: () => clientApi.approve(id),
+    onSuccess: () => {
+      // Refetch client data after approval
+      toast.success('Client approved successfully');
+    },
+    onError: () => {
+      toast.error('Failed to approve client');
+      console.error('Approval error', error);
+    },
   });
 
   // ── Auth loading ───────────────────────────────────────
