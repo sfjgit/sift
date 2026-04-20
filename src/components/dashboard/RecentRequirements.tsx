@@ -48,10 +48,9 @@ export function RecentRequirements() {
   const { data, isLoading } = useQuery({
     queryKey: [QUERY_KEYS.REQUIREMENTS, 'recent'],
     queryFn: () => getAll({ page: 1, limit: 6 }),
-    staleTime: 30_000,
   });
 
-  const items = data?.data?.items ?? [];
+  const items = data?.data?.data ?? [];
 
   return (
     <div className="border rounded-xl overflow-hidden bg-card">
@@ -76,7 +75,7 @@ export function RecentRequirements() {
         <EmptyRow msg="No requirements yet." />
       ) : (
         <div className="divide-y">
-          {items.map((req: any) => {
+          {items.map((req: any) => (
             <Link key={req.id} href={`/dashboard/requirements/${req.id}`}>
               <div className="px-4 py-3 flex items-start gap-3 hover:bg-muted/20 transition-colors cursor-pointer">
                 <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -101,8 +100,8 @@ export function RecentRequirements() {
                   </span>
                 </div>
               </div>
-            </Link>;
-          })}
+            </Link>
+          ))}
         </div>
       )}
     </div>

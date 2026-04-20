@@ -3,6 +3,7 @@
 import { usePermission } from '@/hooks/usePermission';
 import { BusinessUnitList } from '@/components/business-units/BusinessUnitList';
 import { CreateBusinessUnitDialog } from '@/components/business-units/CreateBusinessUnitDialog';
+import { BusinessUnitDashboard } from '@/components/business-units/BusinessUnitDashboard';
 
 export default function BusinessUnitsPage() {
   const canView = usePermission('business_units', 'canView');
@@ -31,7 +32,8 @@ export default function BusinessUnitsPage() {
 
       {/* Content */}
       {canView ? (
-        <BusinessUnitList />
+        // <BusinessUnitList />
+        <BusinessUnitDashboard />
       ) : (
         <div className="flex items-center justify-center h-40 border border-dashed border-border rounded-lg">
           <p className="text-sm text-muted-foreground">

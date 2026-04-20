@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 // import { useAxios } from '@/hooks/useAxios';
-import { clientsApi } from '@/lib/clients.api';
+import { useClients } from '@/lib/clients.api';
 import { QUERY_KEYS } from '@/constants/modules';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,14 +20,14 @@ const CLIENT_STATUS_STYLE: Record<string, string> = {
 
 export function RecentClients() {
   //   const api = useAxios();
+  const clientsApi = useClients();
 
   const { data, isLoading } = useQuery({
     queryKey: [QUERY_KEYS.CLIENTS, 'recent'],
     queryFn: () => clientsApi.getAll({ page: 1, limit: 6 }),
-    staleTime: 30_000,
   });
 
-  const items = data?.data?.items ?? [];
+  const items = data?.data?.data ?? [];
 
   return (
     <div className="border rounded-xl overflow-hidden bg-card">
@@ -52,7 +52,7 @@ export function RecentClients() {
         <EmptyRow msg="No clients yet." />
       ) : (
         <div className="divide-y">
-          {items.map((client: any) => {
+          {items.map((client: any) => (
             <Link key={client.id} href={`/dashboard/clients/${client.id}`}>
               <div className="px-4 py-3 flex items-center gap-3 hover:bg-muted/20 transition-colors cursor-pointer">
                 <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0 uppercase">
@@ -75,8 +75,8 @@ export function RecentClients() {
                   {client.status}
                 </Badge>
               </div>
-            </Link>;
-          })}
+            </Link>
+          ))}
         </div>
       )}
     </div>
