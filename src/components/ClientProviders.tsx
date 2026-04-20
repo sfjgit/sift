@@ -3,7 +3,8 @@
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/context/AuthContext';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -21,31 +22,34 @@ interface ClientProvidersProps {
  *  - Toaster (sonner)             — toast notifications
  */
 export default function ClientProviders({ children }: ClientProvidersProps) {
+  const [queryClient] = useState(() => new QueryClient());
   return (
-    <ThemeProvider
-      attribute="class" // injects .dark on <html>
-      defaultTheme="dark"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <AuthProvider>
-        {children}
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            classNames: {
-              toast:
-                'bg-card text-card-foreground border border-border shadow-lg rounded-lg text-sm',
-              title: 'font-medium',
-              description: 'text-muted-foreground',
-              actionButton: 'bg-primary text-primary-foreground',
-              cancelButton: 'bg-muted text-muted-foreground',
-              error: 'border-destructive/40',
-              success: 'border-chart-4/40',
-            },
-          }}
-        />
-      </AuthProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider
+        attribute="class" // injects .dark on <html>
+        defaultTheme="dark"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <AuthProvider>
+          {children}
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              classNames: {
+                toast:
+                  'bg-card text-card-foreground border border-border shadow-lg rounded-lg text-sm',
+                title: 'font-medium',
+                description: 'text-muted-foreground',
+                actionButton: 'bg-primary text-primary-foreground',
+                cancelButton: 'bg-muted text-muted-foreground',
+                error: 'border-destructive/40',
+                success: 'border-chart-4/40',
+              },
+            }}
+          />
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

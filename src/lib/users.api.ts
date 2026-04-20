@@ -1,4 +1,4 @@
-import api from './api';
+import { useAxios } from '@/hooks/useAxios';
 
 export interface GetUsersParams {
   page?: number;
@@ -19,17 +19,35 @@ export interface UpdateUserPayload {
   dateOfJoin?: string;
 }
 
-export const usersApi = {
-  getAll: (params?: GetUsersParams) => api.get('/users', { params }),
+// export const usersApi = {
+//   getAll: (params?: GetUsersParams) => api.get('/users', { params }),
 
-  getOne: (id: string) => api.get(`/users/${id}`),
+//   getOne: (id: string) => api.get(`/users/${id}`),
 
-  update: (id: string, data: UpdateUserPayload) => api.patch(`/users/${id}`, data),
+//   update: (id: string, data: UpdateUserPayload) => api.patch(`/users/${id}`, data),
 
-  deactivate: (id: string) => api.patch(`/users/${id}/deactivate`),
+//   deactivate: (id: string) => api.patch(`/users/${id}/deactivate`),
 
-  setReportingManager: (id: string, reportingToId: string) =>
-    api.patch(`/users/${id}/reporting-to`, { reportingToId }),
+//   setReportingManager: (id: string, reportingToId: string) =>
+//     api.patch(`/users/${id}/reporting-to`, { reportingToId }),
 
-  getSubordinates: (id: string) => api.get(`/users/${id}/subordinates`),
-};
+//   getSubordinates: (id: string) => api.get(`/users/${id}/subordinates`),
+// };
+
+export function useUsersApi() {
+  const api = useAxios();
+  return {
+    getAll: (params?: GetUsersParams) => api.get('/users', { params }),
+
+    getOne: (id: string) => api.get(`/users/${id}`),
+
+    update: (id: string, data: UpdateUserPayload) => api.patch(`/users/${id}`, data),
+
+    deactivate: (id: string) => api.patch(`/users/${id}/deactivate`),
+
+    setReportingManager: (id: string, reportingToId: string) =>
+      api.patch(`/users/${id}/reporting-to`, { reportingToId }),
+
+    getSubordinates: (id: string) => api.get(`/users/${id}/subordinates`),
+  };
+}

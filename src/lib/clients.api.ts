@@ -1,4 +1,4 @@
-import api from './api';
+import { useAxios } from '@/hooks/useAxios';
 
 export interface CreateClientPayload {
   name: string;
@@ -36,17 +36,15 @@ export interface AssignHandlerPayload {
   role: 'PRIMARY' | 'SECONDARY' | 'BACKUP';
 }
 
-export const clientsApi = {
-  getAll: (params?: GetClientsParams) => api.get('/clients', { params }),
-
-  getOne: (id: string) => api.get(`/clients/${id}`),
-
-  create: (data: CreateClientPayload) => api.post('/clients', data),
-
-  approve: (id: string) => api.patch(`/clients/${id}/approve`),
-
-  addContact: (id: string, data: AddContactPayload) => api.post(`/clients/${id}/contacts`, data),
-
-  assignContactHandler: (id: string, contactId: string, data: AssignHandlerPayload) =>
-    api.post(`/clients/${id}/contacts/${contactId}/handlers`, data),
-};
+export function useClients() {
+  const api = useAxios();
+  return {
+    getAll: (params?: GetClientsParams) => api.get('/clients', { params }),
+    getOne: (id: string) => api.get(`/clients/${id}`),
+    create: (data: CreateClientPayload) => api.post('/clients', data),
+    approve: (id: string) => api.patch(`/clients/${id}/approve`),
+    addContact: (id: string, data: AddContactPayload) => api.post(`/clients/${id}/contacts`, data),
+    assignContactHandler: (id: string, contactId: string, data: AssignHandlerPayload) =>
+      api.post(`/clients/${id}/contacts/${contactId}/handlers`, data),
+  };
+}
