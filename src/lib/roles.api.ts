@@ -5,6 +5,14 @@ export interface CreateRolePayload {
   description?: string;
 }
 
+export type Role = {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 // export interface SetPermissionsPayload {
 //   permissions: {
 //     module: string;

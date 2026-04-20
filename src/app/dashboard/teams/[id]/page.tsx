@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { usePermission } from '@/hooks/usePermission';
 import { useTeamsApi } from '@/lib/teams.api';
 import { useQuery } from '@tanstack/react-query';
-
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import AddMemberDialog from '@/components/teams/AddMemberDialog';
@@ -13,6 +13,7 @@ import TeamDetails from '@/components/teams/TeamDetails';
 import { Plus } from 'lucide-react';
 
 export default function TeamDetailsPage() {
+  const router = useRouter();
   const { id } = useParams();
 
   const { getMembers, getOne } = useTeamsApi();
@@ -48,6 +49,22 @@ export default function TeamDetailsPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
+      {/* Back */}
+      <button
+        onClick={() => router.back()}
+        className="self-start flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors group"
+      >
+        <svg
+          className="size-3.5 transition-transform group-hover:-translate-x-0.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Teams
+      </button>
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

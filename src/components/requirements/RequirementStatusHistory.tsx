@@ -100,11 +100,19 @@ export function RequirementStatusHistory({ history, requirementId }: Props) {
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="OPEN">OPEN</SelectItem>
+                      <SelectItem value="DRAFT">DRAFT</SelectItem>
+                      <SelectItem value="PENDING_APPROVAL">PENDING_APPROVAL</SelectItem>
+                      <SelectItem value="ACTIVE">ACTIVE</SelectItem>
+                      <SelectItem value="ON_HOLD">ON_HOLD</SelectItem>
+                      <SelectItem value="CLOSED">CLOSED</SelectItem>
+                      <SelectItem value="CANCELLED">CANCELLED</SelectItem>
+                    </SelectContent>
+                    {/* <SelectContent>
+                      <SelectItem value="DRAFT">DRAFT</SelectItem>
                       <SelectItem value="IN_PROGRESS">IN_PROGRESS</SelectItem>
                       <SelectItem value="ON_HOLD">ON_HOLD</SelectItem>
                       <SelectItem value="CLOSED">CLOSED</SelectItem>
-                    </SelectContent>
+                    </SelectContent> */}
                   </Select>
 
                   {/* Reason */}
