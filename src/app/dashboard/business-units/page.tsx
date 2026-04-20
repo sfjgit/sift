@@ -92,7 +92,7 @@ function BUCard({ bu }: { bu: BU }) {
 
   return (
     <Link href={`/dashboard/business-units/${bu.id}`}>
-      <div className="group rounded-xl border border-border bg-white p-5 hover:border-indigo-300 hover:shadow-md transition-all duration-150 cursor-pointer">
+      <div className="group rounded-xl border border-border bg-white p-5 hover:border-indigo-300 hover:shadow-md transition-all duration-150 cursor-pointer mt-3">
         <div className="flex items-center justify-between">
           {/* Left */}
           <div className="flex items-center gap-3 min-w-0">
@@ -338,7 +338,7 @@ export default function BusinessUnitsPage() {
   const canAdd = usePermission('business_units', 'canAdd');
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-10">
+    <div className="max-w-8xl mx-auto space-y-6 pb-10">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

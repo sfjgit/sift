@@ -12,3 +12,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     </AuthGate>
   );
 }
+
+// export default function DashboardLayout({ children }: { children: ReactNode }) {
+//   return (
+//     <AuthGate>
+//       <div className="h-screen flex flex-col bg-background overflow-hidden">
+//         {/* Navbar */}
+//         <div className="flex-shrink-0">
+//           <DashboardNav />
+//         </div>
+
+//         {/* Page content */}
+//         <main className="flex-1 min-h-0 px-6 pt-6 overflow-hidden">{children}</main>
+//       </div>
+//     </AuthGate>
+//   );
+// }
