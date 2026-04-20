@@ -48,7 +48,7 @@ export default function ClientsPage() {
     return filteredClients.slice(start, start + limit);
   }, [filteredClients, page, limit]);
 
-  // ================= PERMISSION HANDLING =================
+  // ================= PERMISSION HANDLING =======================
 
   if (canView === undefined) {
     return (
