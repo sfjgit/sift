@@ -42,7 +42,7 @@ export function useClients() {
     getAll: (params?: GetClientsParams) => api.get('/clients', { params }),
     getOne: (id: string) => api.get(`/clients/${id}`),
     create: (data: CreateClientPayload) => api.post('/clients', data),
-    approve: (id: string) => api.patch(`/clients/${id}/approve`),
+    approve: (id: string) => api.post(`/clients/${id}/approve`),
     addContact: (id: string, data: AddContactPayload) => api.post(`/clients/${id}/contacts`, data),
     assignContactHandler: (id: string, contactId: string, data: AssignHandlerPayload) =>
       api.post(`/clients/${id}/contacts/${contactId}/handlers`, data),

@@ -1,5 +1,6 @@
 import { useAxios } from '@/hooks/useAxios';
 
+export type TeamRole = 'LEAD' | 'CO_LEAD' | 'MEMBER';
 export interface CreateTeamPayload {
   name: string;
   description?: string;
@@ -115,6 +116,8 @@ export function useTeamsApi() {
     create: (data: CreateTeamPayload) => api.post('/teams', data),
 
     update: (id: string, data: UpdateTeamPayload) => api.patch(`/teams/${id}`, data),
+
+    remove: (id: string) => api.delete(`/teams/${id}`),
 
     addMembers: (id: string, data: AddMembersPayload) =>
       api.post(`/teams/${id}/members`, data.members),

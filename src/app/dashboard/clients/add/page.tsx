@@ -11,7 +11,7 @@ import { useClients } from '@/lib/clients.api';
 import { useBusinessUnitsApi } from '@/lib/business-units.api';
 import { usePermissions } from '@/hooks/usePermission';
 import { MODULES } from '@/constants/modules';
-import { CreateClientPayload } from '@/types/core.types';
+import { BusinessUnit, CreateClientPayload } from '@/types/core.types';
 
 // ── Schema (mirrors backend exactly) ────────────────────────────────────────
 const createClientSchema = z.object({
@@ -252,13 +252,15 @@ export default function NewClientPage() {
     mode: 'onTouched', // validate on blur, not on every keystroke
   });
 
-  const { data: businessUnits = [], isLoading: buLoading } = useQuery({
+  const { data, isLoading: buLoading } = useQuery({
     queryKey: ['business-units'],
     queryFn: async () => {
       const res = await businessUnitsApi.getAll();
-      return res.data.data as Array<{ id: string; name: string }>;
+      return res.data.data;
     },
   });
+
+  const businessUnits = Array.isArray(data) ? data : [];
 
   const createMutation = useMutation({
     mutationFn: (data: CreateClientPayload) => clientsApi.create(data),
@@ -555,7 +557,10 @@ export default function NewClientPage() {
                       <SelectInput
                         name="businessUnitId"
                         placeholder={buLoading ? 'Loading…' : 'Select business unit'}
-                        options={businessUnits.map(bu => ({ value: bu.id, label: bu.name }))}
+                        options={businessUnits.map((bu: BusinessUnit) => ({
+                          value: bu.id,
+                          label: bu.name,
+                        }))}
                         disabled={buLoading}
                       />
                     </Field>

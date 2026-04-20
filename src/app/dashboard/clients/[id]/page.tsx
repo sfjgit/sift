@@ -17,6 +17,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import AddContactDialog from '@/components/clients/AddContactDialog';
 import { AddHandlerDialog } from '@/components/clients/Addhandlerdialog';
 import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
 
 // Feature
 
@@ -56,6 +57,14 @@ export default function ClientDetailPage() {
 
   const approveMutation = useMutation({
     mutationFn: () => clientApi.approve(id),
+    onSuccess: () => {
+      // Refetch client data after approval
+      toast.success('Client approved successfully');
+    },
+    onError: () => {
+      toast.error('Failed to approve client');
+      console.error('Approval error', error);
+    },
   });
 
   // ── Auth loading ───────────────────────────────────────
@@ -121,7 +130,7 @@ export default function ClientDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-8xl mx-auto space-y-6">
       <div
         className="flex h-screen flex-col space-y-2 overflow-hidden bg-slate-50"
         style={{ fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif" }}
@@ -171,7 +180,7 @@ export default function ClientDetailPage() {
 
           {/* ── Tab content — only this div scrolls ─────────── */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-[1080px] px-6 py-6 space-y-5">
+            <div className="mx-auto max-w-8xl px-6 py-6 space-y-5">
               {/* OVERVIEW */}
               <TabsContent value="overview" className="mt-0 space-y-5 focus-visible:outline-none">
                 <StatsBar client={client} />

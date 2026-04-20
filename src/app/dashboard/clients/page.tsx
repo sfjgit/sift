@@ -48,7 +48,7 @@ export default function ClientsPage() {
     return filteredClients.slice(start, start + limit);
   }, [filteredClients, page, limit]);
 
-  // ================= PERMISSION HANDLING =================
+  // ================= PERMISSION HANDLING =======================
 
   if (canView === undefined) {
     return (
@@ -82,7 +82,11 @@ export default function ClientsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    // <div className="max-w-6xl mx-auto space-y-6">
+    <div
+      className="flex flex-col overflow-hidden max-w-8xl mx-auto space-y-6"
+      style={{ height: 'calc(100vh - 64px)' }} // adjust if needed
+    >
       <div>
         <h1
           className="text-2xl font-semibold text-foreground tracking-tight"

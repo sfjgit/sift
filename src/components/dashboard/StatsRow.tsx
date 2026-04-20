@@ -50,14 +50,14 @@ export function StatsRow() {
         <>
           <StatCard
             label="Total Clients"
-            value={allClients?.data?.total}
+            value={allClients?.data?.pagination?.total}
             icon={Building2}
             href="/dashboard/clients"
             isLoading={l1}
           />
           <StatCard
             label="Active Clients"
-            value={activeClients?.data?.total}
+            value={activeClients?.data?.pagination?.total}
             icon={CheckCircle2}
             href="/dashboard/clients?status=ACTIVE"
             isLoading={l2}
@@ -70,14 +70,14 @@ export function StatsRow() {
         <>
           <StatCard
             label="Total Reqs"
-            value={allReqs?.data?.total}
+            value={allReqs?.data?.count}
             icon={Briefcase}
             href="/dashboard/requirements"
             isLoading={l3}
           />
           <StatCard
             label="Active Reqs"
-            value={activeReqs?.data?.total}
+            value={activeReqs?.data?.count}
             icon={TrendingUp}
             href="/dashboard/requirements?status=ACTIVE"
             isLoading={l4}

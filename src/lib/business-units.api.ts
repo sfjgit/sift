@@ -83,6 +83,8 @@ export function useBusinessUnitsApi() {
   return {
     getAll: () => api.get('/business-units'),
 
+    getOne: (id: string) => api.get(`/business-units/${id}`),
+
     create: (data: CreateBUPayload) => api.post('/business-units', data),
 
     update: (id: string, data: UpdateBUPayload) => api.patch(`/business-units/${id}`, data),

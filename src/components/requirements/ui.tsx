@@ -40,10 +40,10 @@ export function InfoRow({
 }) {
   return (
     <div className={`flex items-start gap-2 ${className}`}>
-      <span className="min-w-[130px] text-[12px] text-muted-foreground/70 shrink-0 pt-px">
+      <span className="min-w-32.5 text-[12px] text-muted-foreground/70 shrink-0 pt-px">
         {label}
       </span>
-      <span className="text-[13px] text-foreground font-medium break-words">
+      <span className="text-[13px] text-foreground font-medium wrap-break-word">
         {value ?? <span className="text-muted-foreground/40 font-normal">—</span>}
       </span>
     </div>
