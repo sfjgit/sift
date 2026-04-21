@@ -79,7 +79,7 @@ export default function RequirementDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 max-w-6xl mx-auto px-4 py-6">
+    <div className="flex flex-col gap-5 max-w-8xl mx-auto px-4 py-6">
       {/* Back */}
       <button
         onClick={() => router.back()}
