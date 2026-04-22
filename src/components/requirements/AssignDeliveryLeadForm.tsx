@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useUsersApi } from '@/lib/users.api';
 
 import {
@@ -14,8 +14,9 @@ import {
 import { useRequirementsApi } from '@/lib/requirements.api';
 import { useRolesApi } from '@/lib/roles.api';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
-export default function AssignRequirementForm({
+export default function AssignDeliveryLead({
   requirementId,
   onSuccess,
 }: {
@@ -25,10 +26,7 @@ export default function AssignRequirementForm({
   const usersApi = useUsersApi();
   const requirementsApi = useRequirementsApi();
   const [deliveryLeadId, setDeliveryLeadId] = useState('');
-  const [teamLeadId, setTeamLeadId] = useState('');
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const rolesApi = useRolesApi();
@@ -62,13 +60,14 @@ export default function AssignRequirementForm({
     try {
       setLoading(true);
 
-      await requirementsApi.approve(requirementId, {
-        deliveryLeadId,
-        teamLeadId,
+      await requirementsApi.assign(requirementId, {
+        assignmentType: 'TEAM',
+        recruiterId: deliveryLeadId,
       });
-
+      toast.success('Requirement assigned to delivery lead successfully');
       onSuccess();
     } catch (err) {
+      toast.error('Failed to assign requirement to delivery lead');
       console.error(err);
     } finally {
       setLoading(false);
@@ -102,7 +101,7 @@ export default function AssignRequirementForm({
             <SelectValue placeholder="Select Team Lead" />
           </SelectTrigger>
           <SelectContent>
-            {users.map(user => (
+            {teamLeads.map((user: any) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.firstName} {user.lastName}
               </SelectItem>

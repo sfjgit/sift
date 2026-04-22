@@ -39,14 +39,14 @@ export function CompactTable<T>({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {rows?.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="px-3 py-6 text-center text-muted-foreground">
                 {emptyMessage}
               </td>
             </tr>
           ) : (
-            rows.map((row, i) => (
+            rows?.map((row, i) => (
               <tr
                 key={i}
                 className={cn(

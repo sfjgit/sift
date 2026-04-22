@@ -239,7 +239,7 @@ export function RequirementsSection({ requirements, buId }: RequirementsSectionP
 
   return (
     <section>
-      <SectionHeader title="Requirements" count={requirements.length} />
+      <SectionHeader title="Requirements" count={requirements?.length} />
       <CompactTable
         columns={columns}
         rows={requirements}
