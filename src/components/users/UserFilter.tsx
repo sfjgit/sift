@@ -18,9 +18,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { useBusinessUnitsApi } from '@/lib/business-units.api';
 
 export type FilterValues = {
   name: string;
+  businessUnitId: string;
   teamId: string;
   roleId: string;
 };
@@ -29,11 +31,22 @@ interface UserFilterProps {
   onApply: (data: FilterValues) => void;
 }
 
-const EMPTY: FilterValues = { name: '', teamId: '', roleId: '' };
+const EMPTY: FilterValues = { name: '', businessUnitId: '', teamId: '', roleId: '' };
 
 export const UserFilter = ({ onApply }: UserFilterProps) => {
   const teamsApi = useTeamsApi();
   const rolesApi = useRolesApi();
+  const buApi = useBusinessUnitsApi();
+
+  const { data: businessUnits = [], isLoading: buLoading } = useQuery({
+    queryKey: ['business-units'],
+    queryFn: async () => {
+      const res = await buApi.getAll();
+      return res?.data?.data ?? [];
+    },
+    staleTime: 1000 * 60 * 5, // ✅ 5 mins cache
+    refetchOnWindowFocus: false, // ✅ IMPORTANT
+  });
 
   const { data: teams } = useQuery({
     queryKey: ['teams'],
@@ -43,11 +56,11 @@ export const UserFilter = ({ onApply }: UserFilterProps) => {
     },
   });
 
-  const { data: roles } = useQuery({
-    queryKey: ['roles'],
+  const { data: roles, isLoading } = useQuery({
+    queryKey: ['roles-filter'],
     queryFn: async () => {
       const res = await rolesApi.getAll();
-      return res.data?.data ?? [];
+      return res.data.data;
     },
   });
 
@@ -76,6 +89,44 @@ export const UserFilter = ({ onApply }: UserFilterProps) => {
             {...register('name')}
           />
         </div>
+      </div>
+
+      {/* ── Business Unit filter ───────────────────── */}
+      <div className="flex flex-col gap-1.5 min-w-[180px]">
+        <Label className="text-xs text-muted-foreground font-medium">Business Unit</Label>
+        <Controller
+          name="businessUnitId"
+          control={control}
+          render={({ field }) => (
+            <Select
+              value={field.value || undefined}
+              onValueChange={val => field.onChange(val === 'all' ? '' : val)}
+            >
+              <SelectTrigger className="h-9 text-sm w-[180px]">
+                <SelectValue placeholder="All BUs" />
+              </SelectTrigger>
+              <SelectContent key={businessUnits.length}>
+                <SelectItem value="all">All BUs</SelectItem>
+
+                {buLoading ? (
+                  <SelectItem value="loading" disabled>
+                    Loading business units...
+                  </SelectItem>
+                ) : businessUnits.length > 0 ? (
+                  businessUnits.map((bu: any) => (
+                    <SelectItem key={bu.id} value={bu.id}>
+                      {bu.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="empty" disabled>
+                    No business units found
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          )}
+        />
       </div>
 
       {/* ── Team filter ──────────────────────────── */}
@@ -115,11 +166,18 @@ export const UserFilter = ({ onApply }: UserFilterProps) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All roles</SelectItem>
-                {roles?.map((role: any) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.name}
-                  </SelectItem>
-                ))}
+
+                {isLoading ? (
+                  <div className="px-2 py-1 text-xs text-muted-foreground">Loading roles...</div>
+                ) : roles?.length > 0 ? (
+                  roles.map((role: any) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="px-2 py-1 text-xs text-muted-foreground">No roles found</div>
+                )}
               </SelectContent>
             </Select>
           )}

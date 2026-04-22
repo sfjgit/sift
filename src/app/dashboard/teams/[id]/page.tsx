@@ -45,10 +45,12 @@ export default function TeamDetailsPage() {
     enabled: !!id && !!canView,
   });
 
+  const buId = teamDetails?.businessUnitId;
+
   if (canView === undefined) return null;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-8xl mx-auto space-y-8">
       {/* Back */}
       <button
         onClick={() => router.back()}
@@ -118,7 +120,13 @@ export default function TeamDetailsPage() {
         </div>
       )}
 
-      <AddMemberDialog open={open} setOpen={setOpen} teamId={id as string} refresh={refetch} />
+      <AddMemberDialog
+        open={open}
+        setOpen={setOpen}
+        teamId={id as string}
+        refresh={refetch}
+        buId={buId}
+      />
     </div>
   );
 }

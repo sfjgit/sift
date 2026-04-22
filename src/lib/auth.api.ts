@@ -1,3 +1,4 @@
+import { useAxios } from '@/hooks/useAxios';
 import api from './api';
 
 export interface LoginPayload {
@@ -23,3 +24,10 @@ export const authApi = {
 
   getUserCredentials: (userId: string) => api.get(`/auth/user-credentials/${userId}`),
 };
+
+export function useAuthApi() {
+  const api = useAxios();
+  return {
+    register: (data: Record<string, unknown>) => api.post('/auth/register', data),
+  };
+}

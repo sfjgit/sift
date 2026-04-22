@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -11,6 +12,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useRequirementsApi } from '@/lib/requirements.api';
+import { useRolesApi } from '@/lib/roles.api';
+import { useQuery } from '@tanstack/react-query';
 
 export default function AssignRequirementForm({
   requirementId,
@@ -28,15 +31,30 @@ export default function AssignRequirementForm({
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 🔥 Fetch users
-  useEffect(() => {
-    async function loadUsers() {
-      const res = await usersApi.getAll({ limit: 100 });
-      setUsers(res.data.data ?? []);
-    }
+  const rolesApi = useRolesApi();
 
-    loadUsers();
-  }, []);
+  const { data: usersRes } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const res = await usersApi.getAll();
+      return res.data.data ?? [];
+    },
+  });
+
+  const { data: rolesRes } = useQuery({
+    queryKey: ['roles'],
+    queryFn: async () => {
+      const res = await rolesApi.getAll();
+      return res.data.data ?? [];
+    },
+  });
+
+  const deliveryLeadRole = rolesRes?.find((r: any) => r.name === 'DELIVERY_LEAD');
+
+  const deliveryLeads =
+    deliveryLeadRole && usersRes
+      ? usersRes.filter((u: any) => u.roleId === deliveryLeadRole.id)
+      : [];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,7 +85,7 @@ export default function AssignRequirementForm({
             <SelectValue placeholder="Select Delivery Lead" />
           </SelectTrigger>
           <SelectContent>
-            {users.map(user => (
+            {deliveryLeads.map((user: any) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.firstName} {user.lastName}
               </SelectItem>
@@ -77,7 +95,7 @@ export default function AssignRequirementForm({
       </div>
 
       {/* Team Lead */}
-      <div className="flex flex-col gap-1.5">
+      {/* <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium">Team Lead</label>
         <Select value={teamLeadId} onValueChange={setTeamLeadId}>
           <SelectTrigger>
@@ -91,7 +109,7 @@ export default function AssignRequirementForm({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </div> */}
 
       {/* Actions */}
       <div className="flex justify-end gap-2 pt-2 border-t">

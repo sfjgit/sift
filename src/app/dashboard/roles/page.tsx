@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import CreateRoleForm from '@/components/roles/CreateRoleForm';
 import RolesList from '@/components/roles/RolesList';
+import { Plus } from 'lucide-react';
 
 export default function Page() {
   const [showForm, setShowForm] = useState(false);
@@ -20,7 +21,10 @@ export default function Page() {
           <h1 className="text-xl font-semibold tracking-tight">Role Management</h1>
           <p className="text-sm text-muted-foreground">Add, update and delete roles.</p>
         </div>
-        <Button onClick={() => setShowForm(true)}>Create Role</Button>
+        <Button variant="outline" onClick={() => setShowForm(true)}>
+          <Plus className="w-4 h-4" />
+          Create Role
+        </Button>
       </div>
 
       {/* Roles Table */}

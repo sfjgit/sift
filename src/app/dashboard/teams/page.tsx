@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -8,6 +9,7 @@ import { BusinessUnit, useBusinessUnitsApi } from '@/lib/business-units.api';
 import TeamDialog from '@/components/teams/TeamDialog';
 import TeamTable from '@/components/teams/TeamTable';
 import { Search, SlidersHorizontal } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 export default function TeamsPage() {
   const [open, setOpen] = useState(false);
@@ -41,7 +43,6 @@ export default function TeamsPage() {
 
   // ── client-side filter ─────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return allTeams.filter((t: any) => {
       const matchBU = buFilter === 'ALL' || t.businessUnitId === buFilter;
       const matchStatus =
@@ -54,6 +55,28 @@ export default function TeamsPage() {
       return matchBU && matchStatus && matchSearch;
     });
   }, [allTeams, buFilter, status, search]);
+
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const router = useRouter();
+
+  const toggleRow = (id: string) => {
+    const newSet = new Set(selectedRows);
+    newSet.has(id) ? newSet.delete(id) : newSet.add(id);
+    setSelectedRows(newSet);
+  };
+
+  const toggleAll = () => {
+    if (selectedRows.size === filtered.length) {
+      setSelectedRows(new Set());
+    } else {
+      setSelectedRows(new Set(filtered.map((t: any) => t.id)));
+    }
+  };
+
+  const allChecked = filtered.length > 0 && selectedRows.size === filtered.length;
+
+  // const colTemplate = '40px 50px 1.5fr 1.2fr 1fr 120px';
+  const colTemplate = '1.5fr 1.2fr 1fr 120px';
 
   if (canView === undefined) return null;
 
@@ -238,7 +261,152 @@ export default function TeamsPage() {
           Failed to load teams. Please try again.
         </div>
       ) : (
-        <TeamTable teams={filtered} refresh={refetch} />
+        <div
+          style={{
+            border: '1px solid #e2e8f0',
+            borderRadius: 8,
+            background: '#fff',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+          {/* HEADER */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: colTemplate,
+              background: '#f8fafc',
+              borderBottom: '1px solid #e2e8f0',
+              padding: '0 12px',
+            }}
+          >
+            {/* <div style={{ padding: '10px 0' }}>
+              <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+            </div>
+
+            <div style={{ padding: '10px 0', fontSize: 11 }}>#</div> */}
+
+            {['Team Name', 'Business Unit', 'Members', 'Status'].map(label => (
+              <div
+                key={label}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#94a3b8',
+                  padding: '10px 8px',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* BODY */}
+          <div style={{ overflowY: 'auto' }}>
+            {isLoading ? (
+              [...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: colTemplate,
+                    padding: '0 12px',
+                    borderBottom: '1px solid #f1f5f9',
+                  }}
+                >
+                  {[...Array(6)].map((_, j) => (
+                    <div key={j} style={{ padding: '14px 8px' }}>
+                      <div style={{ height: 14, background: '#f1f5f9', borderRadius: 3 }} />
+                    </div>
+                  ))}
+                </div>
+              ))
+            ) : filtered.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                No teams found
+              </div>
+            ) : (
+              filtered.map((team: any, idx: number) => {
+                const checked = selectedRows.has(team.id);
+
+                return (
+                  <div
+                    key={team.id}
+                    onClick={() => router.push(`/dashboard/teams/${team.id}`)}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: colTemplate,
+                      padding: '0 12px',
+                      borderBottom: '1px solid #f1f5f9',
+                      background: checked ? '#eff6ff' : idx % 2 === 0 ? '#fff' : '#fafafa',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {/* Checkbox */}
+                    {/* <div style={{ padding: '12px 0' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRow(team.id)}
+                      />
+                    </div> */}
+
+                    {/* Index */}
+                    {/* <div style={{ padding: '12px 0' }}>
+                      <span
+                        style={{
+                          width: 22,
+                          height: 22,
+                          background: '#eff6ff',
+                          color: '#3b82f6',
+                          fontSize: 11,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: 4,
+                        }}
+                      >
+                        {idx + 1}
+                      </span>
+                    </div> */}
+
+                    {/* Team Name */}
+                    <div style={{ padding: '12px 8px', fontSize: 13, fontWeight: 500 }}>
+                      {team.name}
+                    </div>
+
+                    {/* Business Unit */}
+                    <div style={{ padding: '12px 8px', fontSize: 13 }}>
+                      {team.businessUnit?.name ?? '—'}
+                    </div>
+
+                    {/* Members */}
+                    <div style={{ padding: '12px 8px', fontSize: 13 }}>
+                      {team.members?.length ?? 0}
+                    </div>
+
+                    {/* Status */}
+                    <div style={{ padding: '12px 8px' }}>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: '4px 8px',
+                          borderRadius: 999,
+                          background: team.isActive ? '#dcfce7' : '#fee2e2',
+                          color: team.isActive ? '#16a34a' : '#dc2626',
+                        }}
+                      >
+                        {team.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       )}
 
       {/* Dialog */}

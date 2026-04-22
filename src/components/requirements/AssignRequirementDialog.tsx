@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog';
 
 import AssignRequirementForm from './AssignRequirementForm';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Plus } from 'lucide-react';
 import { Button } from '../ui/button';
 
 export default function AssignRequirementDialog({ requirementId }: { requirementId: string }) {
@@ -21,7 +21,7 @@ export default function AssignRequirementDialog({ requirementId }: { requirement
       <DialogTrigger asChild>
         <Button variant="outline" className="bg-green-100 text-green-700 hover:bg-green-200">
           <CheckCircle className="w-4 h-4" />
-          Approve
+          Assign to Delivery Manager
         </Button>
       </DialogTrigger>
 

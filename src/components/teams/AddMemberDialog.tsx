@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
@@ -28,23 +29,40 @@ type AddMemberDialogProps = {
   open: boolean;
   setOpen: (open: boolean) => void;
   teamId: string;
+  buId: string;
   refresh: () => void;
 };
 
-export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddMemberDialogProps) {
+export default function AddMemberDialog({
+  open,
+  setOpen,
+  teamId,
+  refresh,
+  buId,
+}: AddMemberDialogProps) {
   const { addMembers } = useTeamsApi();
   const usersApi = useUsersApi();
 
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [teamRole, setTeamRole] = useState<string>('MEMBER');
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: users = [], isLoading } = useQuery<any[]>({
-    queryKey: ['users'],
+  // const { data: users = [], isLoading } = useQuery<any[]>({
+  //   queryKey: ['users'],
+  //   queryFn: async () => {
+  //     const res = await usersApi.getAll({ limit: 100 });
+  //     return res.data.data ?? [];
+  //   },
+  // });
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['users-by-bu', buId],
     queryFn: async () => {
-      const res = await usersApi.getAll({ limit: 100 });
-      return res.data.data ?? [];
+      const res = await usersApi.getAll({
+        buId: buId,
+        limit: 100,
+      });
+      return res.data.data;
     },
+    enabled: !!buId,
   });
 
   const handleAdd = async () => {
@@ -81,7 +99,7 @@ export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddM
                 <SelectValue placeholder={isLoading ? 'Loading users...' : 'Select a user'} />
               </SelectTrigger>
               <SelectContent>
-                {users.map(user => (
+                {users.map((user: any) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.firstName} {user.lastName}
                   </SelectItem>
@@ -96,7 +114,7 @@ export default function AddMemberDialog({ open, setOpen, teamId, refresh }: AddM
             <Select
               value={teamRole}
               onValueChange={value => setTeamRole(value)}
-              disabled={isLoading}
+              // disabled={isLoading}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a role" />
