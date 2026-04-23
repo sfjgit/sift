@@ -97,7 +97,8 @@ export default function RolesPage() {
     else setSelectedRows(new Set(paginated.map(r => r.id)));
   };
 
-  const colTemplate = '40px 50px 1fr 1.5fr 100px 120px 100px';
+  // const colTemplate = '40px 50px 1fr 1.5fr 100px 120px 100px';
+  const colTemplate = '1fr 1.5fr 120px 120px 120px';
 
   return (
     <div
@@ -234,7 +235,7 @@ export default function RolesPage() {
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0' }}>
+          {/* <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0' }}>
             <input
               type="checkbox"
               checked={allChecked}
@@ -255,7 +256,7 @@ export default function RolesPage() {
             }}
           >
             #
-          </div>
+          </div> */}
           {[
             ['Name', true],
             ['Description', false],
@@ -340,7 +341,7 @@ export default function RolesPage() {
                   }}
                 >
                   {/* Checkbox */}
-                  <div
+                  {/* <div
                     style={{ display: 'flex', alignItems: 'center', padding: '12px 0' }}
                     onClick={e => e.stopPropagation()}
                   >
@@ -350,10 +351,10 @@ export default function RolesPage() {
                       onChange={() => toggleRow(role.id)}
                       style={{ cursor: 'pointer' }}
                     />
-                  </div>
+                  </div> */}
 
                   {/* Row # */}
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '12px 0' }}>
+                  {/* <div style={{ display: 'flex', alignItems: 'center', padding: '12px 0' }}>
                     <span
                       style={{
                         width: 22,
@@ -370,7 +371,7 @@ export default function RolesPage() {
                     >
                       {rowNum}
                     </span>
-                  </div>
+                  </div> */}
 
                   {/* Name */}
                   <div

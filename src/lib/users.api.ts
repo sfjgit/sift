@@ -5,7 +5,7 @@ export interface GetUsersParams {
   limit?: number;
   search?: string;
   roleId?: string;
-  businessUnitId?: string;
+  buId?: string;
   isActive?: boolean;
 }
 

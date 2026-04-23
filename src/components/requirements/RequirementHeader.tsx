@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import AssignRequirementDialog from './AssignRequirementDialog';
 import { Badge } from './ui';
 
