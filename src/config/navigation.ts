@@ -1,6 +1,6 @@
 // config/navigation.ts
-// Add a new nav item here when a new section is added to the app.
-// module must match what is seeded in RolePermission.module in the DB.
+// module must match RolePermission.module seeded in DB exactly.
+// Order here = order in navbar.
 
 export interface NavItem {
   label: string;
@@ -9,13 +9,14 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Overview', href: '/dashboard', module: 'requirements' },
-  { label: 'Requirements', href: '/dashboard/requirements', module: 'requirements' },
-  { label: 'Clients', href: '/dashboard/clients', module: 'clients' },
-  { label: 'Teams', href: '/dashboard/teams', module: 'teams' },
-  { label: 'Users', href: '/dashboard/users', module: 'users' },
-  { label: 'Business Units', href: '/dashboard/business-units', module: 'business_units' },
-  { label: 'Roles', href: '/dashboard/roles', module: 'settings' },
-  { label: 'Reports', href: '/dashboard/reports', module: 'reports' },
-  { label: 'Settings', href: '/dashboard/settings', module: 'settings' },
+  { label: 'Dashboard', href: '/dashboard', module: 'requirements' }, // everyone with any permission sees dashboard
+  { label: 'Requirements', href: '/requirements', module: 'requirements' },
+  { label: 'Clients', href: '/clients', module: 'clients' },
+  { label: 'Teams', href: '/teams', module: 'teams' },
+  { label: 'Users', href: '/users', module: 'users' },
+  { label: 'Business Units', href: '/business-units', module: 'business_units' },
+  { label: 'Roles', href: '/roles', module: 'settings' },
+  { label: 'Reports', href: '/reports', module: 'reports' },
+  { label: 'Audit Logs', href: '/audit-logs', module: 'settings' }, // super admin only — settings scope
+  { label: 'Settings', href: '/settings', module: 'settings' },
 ];

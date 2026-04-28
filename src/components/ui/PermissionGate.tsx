@@ -26,6 +26,6 @@ export default function PermissionGate({
   fallback = null,
   children,
 }: PermissionGateProps) {
-  const allowed = usePermission(module, action);
+  const allowed = usePermission(module);
   return allowed ? <>{children}</> : <>{fallback}</>;
 }

@@ -26,7 +26,7 @@ interface RouteGuardProps {
 export default function RouteGuard({ module, children }: RouteGuardProps) {
   const router = useRouter();
   const { isLoading, isAuthenticated } = useAuth();
-  const canView = usePermission(module, 'canView');
+  const canView = usePermission(module);
 
   useEffect(() => {
     if (isLoading) return;

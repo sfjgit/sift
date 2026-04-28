@@ -44,7 +44,33 @@ export default function HeroSection() {
             boxShadow: '0 0 24px color-mix(in oklch, var(--color-primary) 30%, transparent)',
           }}
         >
-          Open Dashboard
+          <Link href="/dashboard">Get Started</Link>
+
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M3 7h8M8 4l3 3-3 3"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-primary-foreground transition-all duration-150"
+          style={{
+            background:
+              'linear-gradient(135deg, var(--color-primary) 0%, var(--color-chart-3) 100%)',
+            boxShadow: '0 0 24px color-mix(in oklch, var(--color-primary) 30%, transparent)',
+          }}
+        >
+          <Link href="/sign-in">Sign In</Link>
           <svg
             width="14"
             height="14"

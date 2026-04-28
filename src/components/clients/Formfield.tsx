@@ -1,6 +1,6 @@
 'use client';
 
-import { FieldConfig } from '@/app/dashboard/clients/add/config/Bufieldconfig';
+import { FieldConfig } from '@/app/(dashboard)/clients/add/config/Bufieldconfig';
 import { ClientFormSchema } from '@/hooks/useNewClientForm';
 import { type UseFormReturn, Controller } from 'react-hook-form';
 

@@ -4,7 +4,7 @@ import {
   BUFieldLayout,
   FieldKey,
   ALL_FIELD_DEFS,
-} from '@/app/dashboard/clients/add/config/Bufieldconfig';
+} from '@/app/(dashboard)/clients/add/config/Bufieldconfig';
 
 import { type UseFormReturn } from 'react-hook-form';
 import FormField from './Formfield';
