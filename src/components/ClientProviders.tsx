@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 import { AuthProvider } from '@/context/AuthContext';
 import { useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TooltipProvider } from './ui/tooltip';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -32,7 +33,7 @@ export default function ClientProviders({ children }: ClientProvidersProps) {
         disableTransitionOnChange
       >
         <AuthProvider>
-          {children}
+          <TooltipProvider>{children}</TooltipProvider>
           <Toaster
             position="bottom-right"
             toastOptions={{

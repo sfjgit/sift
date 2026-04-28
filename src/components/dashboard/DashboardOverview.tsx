@@ -761,10 +761,12 @@ export default function DashboardOverview() {
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {req.reqCode || '—'} · {req.client.name}
-                    {(req.createdBy.firstName || req.createdBy.lastName) &&
+                    {(req.reqCode && req.reqCode) || '—'} · {req.client?.name && req.client.name}
+                    {req.createdBy &&
+                      (req.createdBy.firstName || req.createdBy.lastName) &&
                       ` · ${req.createdBy.firstName} ${req.createdBy.lastName}`.trimEnd()}
-                    {req.totalOpenings > 0 &&
+                    {req.totalOpenings &&
+                      req.totalOpenings > 0 &&
                       ` · ${req.totalOpenings} opening${req.totalOpenings !== 1 ? 's' : ''}`}
                   </p>
                 </div>
