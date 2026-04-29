@@ -224,10 +224,18 @@ export interface RequirementFilters {
   remoteType: RemoteType | '';
   clientId: string;
   buId: string;
+  createdById: string;
+  assignedTeamId: string;
   assignedToMe: boolean;
   breached: boolean;
+  respondByFrom: string;
+  respondByTo: string;
+  startDateFrom: string;
+  startDateTo: string;
+  createdFrom: string;
+  createdTo: string;
   page: number;
   limit: number;
-  sortBy: 'createdAt' | 'updatedAt' | 'respondBy' | 'priority' | 'status';
+  sortBy: 'createdAt' | 'updatedAt' | 'respondBy' | 'priority' | 'status' | 'startDate';
   sortDir: 'asc' | 'desc';
 }

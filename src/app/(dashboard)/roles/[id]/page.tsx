@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
 import { PermissionsMatrix } from '@/components/roles/PermissionsMatrix';
@@ -54,9 +55,11 @@ export default function RoleDetailPage() {
       return res.data;
     },
     onSuccess: () => {
+      toast.success('Role deleted');
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       router.push('/roles');
     },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to delete role'),
   });
 
   if (roleQuery.isLoading) {
@@ -81,8 +84,9 @@ export default function RoleDetailPage() {
 
   const role = roleQuery.data.data;
 
-  // All module names from this role's permissions
-  const modules = role.permissions.map(p => p.module).sort();
+  // modules now comes from the API response directly (always full list)
+  const modules: string[] =
+    (role as any).modules ?? role.permissions.map((p: any) => p.module).sort();
 
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
@@ -141,7 +145,12 @@ export default function RoleDetailPage() {
                 <span>user{role._count.users !== 1 ? 's' : ''}</span>
               </div>
               <div className="mt-0.5 text-xs">
-                {role._count.permissions} module{role._count.permissions !== 1 ? 's' : ''}
+                {
+                  role.permissions.filter(
+                    (p: any) => p.canView || p.canAdd || p.canEdit || p.canDelete
+                  ).length
+                }{' '}
+                modules with access
               </div>
             </div>
           </div>
@@ -166,7 +175,7 @@ export default function RoleDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {role.users.map(u => (
+              {role.users.map((u: any) => (
                 <div
                   key={u.id}
                   className="flex items-center justify-between py-2 border-b last:border-0"

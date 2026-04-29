@@ -1,116 +1,75 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAxios } from '@/hooks/useAxios';
-import { usePermission } from '@/hooks/usePermission';
 import { PermissionsMatrix } from '@/components/roles/PermissionsMatrix';
-import type {
-  RoleDetailResponse,
-  ModulesResponse,
-  UpdateRolePayload,
-  PermissionRowPayload,
-} from '@/types/role.types';
+import type { RoleDetailResponse, PermissionRowPayload } from '@/types/role.types';
 
 export default function RoleEditPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const axios = useAxios();
-  const permission = usePermission('settings');
-
-  useEffect(() => {
-    if (!permission.canEdit) router.replace(`/roles/${id}`);
-  }, [permission.canEdit, id, router]);
+  const queryClient = useQueryClient();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [permissions, setPermissions] = useState<PermissionRowPayload[]>([]);
-  const [error, setError] = useState('');
 
   // ── Fetch role ────────────────────────────────────────────────────────────
   const roleQuery = useQuery<RoleDetailResponse>({
     queryKey: ['role', id],
-    queryFn: async () => {
-      const res = await axios.get<RoleDetailResponse>(`/roles/${id}`);
-      return res.data;
-    },
+    queryFn: async () => (await axios.get<RoleDetailResponse>(`/roles/${id}`)).data,
     enabled: !!id,
   });
 
-  // ── Fetch modules ─────────────────────────────────────────────────────────
-  const modulesQuery = useQuery<ModulesResponse>({
+  // ── Fetch modules — from API, always returns full list ────────────────────
+  const modulesQuery = useQuery<{ success: boolean; data: string[] }>({
     queryKey: ['role-modules'],
-    queryFn: async () => {
-      const res = await axios.get<ModulesResponse>('/roles/modules');
-      return res.data;
-    },
-    staleTime: 10 * 60 * 1000,
+    queryFn: async () => (await axios.get('/roles/modules')).data,
+    staleTime: Infinity, // modules don't change at runtime
   });
 
-  // Pre-fill from existing role
+  // Populate form once both queries resolve
   useEffect(() => {
     const role = roleQuery.data?.data;
     if (!role) return;
-    setName(
-      role.name
-        .replace(/_/g, ' ')
-        .toLowerCase()
-        .replace(/\b\w/g, c => c.toUpperCase())
-    );
+    setName(role.name.replace(/_/g, ' '));
     setDescription(role.description ?? '');
-    setPermissions(
-      role.permissions.map(p => ({
-        module: p.module,
-        canView: p.canView,
-        canAdd: p.canAdd,
-        canEdit: p.canEdit,
-        canDelete: p.canDelete,
-        scope: p.scope,
-      }))
-    );
+    setPermissions(role.permissions as PermissionRowPayload[]);
   }, [roleQuery.data]);
 
-  const modules = modulesQuery.data?.data ?? [];
-  const role = roleQuery.data?.data;
-
-  // ── Update mutation ───────────────────────────────────────────────────────
-  const updateMutation = useMutation({
-    mutationFn: async (payload: UpdateRolePayload) => {
-      const res = await axios.put(`/roles/${id}`, payload);
-      return res.data;
+  // ── Save mutation ─────────────────────────────────────────────────────────
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        name: name.trim(),
+        description: description.trim() || null,
+        permissions,
+      };
+      return (await axios.put(`/roles/${id}`, payload)).data;
     },
-    onSuccess: () => router.push(`/roles/${id}`),
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? 'Failed to update role');
+    onSuccess: () => {
+      toast.success('Role updated');
+      queryClient.invalidateQueries({ queryKey: ['role', id] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      router.push(`/roles/${id}`);
     },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update role'),
   });
 
-  function handleSubmit() {
-    setError('');
-    if (!name.trim()) {
-      setError('Role name is required');
-      return;
-    }
-
-    const payload: UpdateRolePayload = {
-      name: name.trim().toUpperCase().replace(/\s+/g, '_'),
-      description: description.trim() || null,
-      permissions,
-    };
-    updateMutation.mutate(payload);
-  }
-
-  if (roleQuery.isLoading) {
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (roleQuery.isLoading || modulesQuery.isLoading) {
     return (
-      <div className="mx-auto max-w-3xl p-6 space-y-4">
+      <div className="max-w-4xl mx-auto p-6 space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-64 w-full" />
@@ -118,98 +77,160 @@ export default function RoleEditPage() {
     );
   }
 
-  return (
-    <div className="mx-auto max-w-3xl p-6">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="mb-6 flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" />
+  if (roleQuery.isError || !roleQuery.data?.data) {
+    return (
+      <div className="p-6 text-sm text-destructive">
+        Failed to load role.{' '}
+        <Button variant="link" onClick={() => router.back()}>
+          Go back
         </Button>
-        <div>
-          <h1 className="text-xl font-semibold">Edit Role</h1>
-          <p className="text-sm text-muted-foreground">{role?.name.replace(/_/g, ' ')}</p>
-        </div>
       </div>
+    );
+  }
 
-      <div className="space-y-6">
-        {/* ── Role info ────────────────────────────────────────────────── */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">Role Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="name">
-                Role Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                disabled={role?.isSystem} // can't rename system roles
-              />
-              {role?.isSystem && (
-                <p className="text-xs text-muted-foreground">
-                  System role names cannot be changed.
-                </p>
-              )}
-            </div>
+  const role = roleQuery.data.data;
 
-            <div className="space-y-1.5">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                rows={2}
-                className="resize-none text-sm"
-              />
-            </div>
-          </CardContent>
-        </Card>
+  // modules from API response (always the full system list)
+  // falls back to role.modules if API includes it, then to modulesQuery
+  const modules: string[] = (role as any).modules ?? modulesQuery.data?.data ?? [];
 
-        {/* ── Permissions matrix ───────────────────────────────────────── */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base">Permissions</CardTitle>
-            <CardDescription className="text-xs">
-              Changes take effect immediately for all users with this role.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {modulesQuery.isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="h-10 rounded-md bg-muted animate-pulse" />
-                ))}
-              </div>
-            ) : (
-              <PermissionsMatrix modules={modules} rows={permissions} onChange={setPermissions} />
-            )}
-          </CardContent>
-        </Card>
+  const activeCount = permissions.filter(
+    p => p.canView || p.canAdd || p.canEdit || p.canDelete
+  ).length;
 
-        {/* ── Error ────────────────────────────────────────────────────── */}
-        {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        {/* ── Actions ──────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+  return (
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      {/* ── Header ───────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="sm" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
+            size="sm"
             onClick={() => router.back()}
-            disabled={updateMutation.isPending}
+            disabled={saveMutation.isPending}
           >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={updateMutation.isPending}>
-            {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save Changes
+          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? 'Saving…' : 'Save changes'}
           </Button>
         </div>
+      </div>
+
+      {/* ── Role header card ─────────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="pt-6 flex items-center gap-4">
+          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <svg
+              className="h-5 w-5 text-primary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold">Edit Role</p>
+            <p className="text-sm text-muted-foreground">
+              {role.name} · {activeCount} module{activeCount !== 1 ? 's' : ''} with access
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Role details ─────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Role details</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">
+              Role name <span className="text-destructive">*</span>
+            </label>
+            <Input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              disabled={role.isSystem}
+              placeholder="e.g. Sales Manager"
+            />
+            <p className="text-xs text-muted-foreground">
+              Saved as:{' '}
+              <span className="font-mono">{name.trim().toUpperCase().replace(/\s+/g, '_')}</span>
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Description</label>
+            <Textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={2}
+              className="resize-none"
+              placeholder="What does this role do?"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Permissions ──────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Permissions</CardTitle>
+          <CardDescription>
+            Toggle a module on, then set what actions are allowed and the data scope. Changes take
+            effect immediately for all users with this role.
+          </CardDescription>
+          {/* Scope legend */}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-1">
+            {[
+              ['OWN', 'own records'],
+              ['TEAM', 'team records'],
+              ['MANAGER', 'manager + team'],
+              ['BU', 'entire BU'],
+              ['ALL', 'all records'],
+            ].map(([k, v]) => (
+              <span key={k}>
+                <span className="font-mono font-semibold text-foreground">{k}</span> = {v}
+              </span>
+            ))}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {modules.length === 0 ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 text-amber-800 px-4 py-3 text-sm flex items-center gap-2">
+              <svg
+                className="h-4 w-4 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Could not load modules from server. Check the /roles/modules endpoint.
+            </div>
+          ) : (
+            <PermissionsMatrix modules={modules} rows={permissions} onChange={setPermissions} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Bottom actions ────────────────────────────────────────────────── */}
+      <div className="flex justify-end gap-2 pb-6">
+        <Button variant="outline" onClick={() => router.back()} disabled={saveMutation.isPending}>
+          Cancel
+        </Button>
+        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+        </Button>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useRouter, useParams } from 'next/navigation';
@@ -51,7 +52,6 @@ import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
 import { cn } from '@/lib/utils';
 
-// ── exact imports from your types file ──────────────────────────────────────
 import type {
   BUDetail,
   BUDetailResponse,
@@ -71,10 +71,136 @@ import type {
 } from '@/types/bu.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// API response types (what actually comes back from the server)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface APITeamStub {
+  id: string;
+  name: string;
+  nodeType: string;
+  category: string;
+  _count: { members: number };
+}
+
+interface APITeamArc {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  _count: { teams: number };
+  teams: APITeamStub[];
+}
+
+interface APIUserTeamMembership {
+  teamRole: TeamRole;
+  team: {
+    id: string;
+    name: string;
+    category: string;
+  };
+}
+
+interface APIUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  employeeId: string;
+  role: { id: string; name: string };
+  teamMemberships: APIUserTeamMembership[];
+}
+
+interface APIBUDetail extends Omit<BUDetail, 'teams' | 'users'> {
+  teamArcs: APITeamArc[];
+  users: APIUser[];
+}
+
+interface APIBUDetailResponse {
+  success: boolean;
+  data: APIBUDetail;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Adapted types for components
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface AdaptedMember {
+  id: string;
+  teamRole: TeamRole;
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    employeeId?: string | null;
+  };
+}
+
+interface AdaptedTeam {
+  id: string;
+  name: string;
+  nodeType: string;
+  category: string;
+  arcId: string;
+  arcName: string;
+  _count: { members: number };
+  members: AdaptedMember[];
+}
+
+interface AdaptedBU extends Omit<APIBUDetail, 'teamArcs' | 'users'> {
+  teamArcs: APITeamArc[];
+  teams: AdaptedTeam[];
+  users: APIUser[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data adapter — maps API shape → component-ready shape
+// ─────────────────────────────────────────────────────────────────────────────
+
+function adaptBUData(raw: APIBUDetail): AdaptedBU {
+  const flatTeams: AdaptedTeam[] = (raw.teamArcs ?? []).flatMap(arc =>
+    arc.teams.map(team => {
+      // Collect members for this team from the flat users list via teamMemberships
+      const members: AdaptedMember[] = (raw.users ?? []).flatMap(user =>
+        user.teamMemberships
+          .filter(m => m.team.id === team.id)
+          .map(m => ({
+            id: `${user.id}::${team.id}`,
+            teamRole: m.teamRole,
+            user: {
+              id: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              employeeId: user.employeeId,
+            },
+          }))
+      );
+
+      return {
+        id: team.id,
+        name: team.name,
+        nodeType: team.nodeType,
+        category: team.category,
+        arcId: arc.id,
+        arcName: arc.name,
+        _count: { members: team._count.members },
+        members,
+      };
+    })
+  );
+
+  return {
+    ...raw,
+    teams: flatTeams,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ini = (f: string, l: string) => `${f[0] ?? ''}${l[0] ?? ''}`.toUpperCase();
+const ini = (f: string, l: string) => `${f?.[0] ?? ''}${l?.[0] ?? ''}`.toUpperCase();
 
 function fmtSalary(min?: number | null, max?: number | null, type?: string | null) {
   if (!min && !max) return null;
@@ -396,11 +522,11 @@ function HierarchyNode({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Team node — recursive, uses BUTeamDetail exactly
+// Member row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MemberRow({ member }: { member: BUTeamDetail['members'][number] }) {
-  const cfg = ROLE_CFG[member.teamRole];
+function MemberRow({ member }: { member: AdaptedMember }) {
+  const cfg = ROLE_CFG[member.teamRole] ?? ROLE_CFG.MEMBER;
   const Icon = cfg.icon;
   return (
     <div className="flex items-center gap-2 py-1.5">
@@ -432,192 +558,157 @@ function MemberRow({ member }: { member: BUTeamDetail['members'][number] }) {
   );
 }
 
-// NOTE: BUTeamDetail doesn't carry parentTeamId in your current types file.
-// Add `parentTeamId: string | null` to BUTeamDetail to enable the recursive tree.
-// Until then the teams tab renders a flat list of team cards, each expandable.
-function TeamCard({ team, allTeams }: { team: BUTeamDetail; allTeams: BUTeamDetail[] }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Team card
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TeamCard({ team }: { team: AdaptedTeam }) {
   const router = useRouter();
   const [showMembers, setShowMembers] = useState(false);
-
-  // child teams — works once parentTeamId is added to BUTeamDetail
-  const childTeams = allTeams.filter((t: any) => t.parentTeamId === team.id);
-  const [childrenOpen, setChildrenOpen] = useState(true);
 
   const lead = team.members.find(m => m.teamRole === 'LEAD');
   const iconCls = NODE_TYPE_ICON_CLS[team.nodeType] ?? 'bg-muted text-muted-foreground';
   const borderCls = NODE_TYPE_BORDER[team.nodeType] ?? 'border-l-blue-400';
 
   return (
-    <div>
-      <div
-        className={cn(
-          'border border-border/60 rounded-lg overflow-hidden bg-card transition-shadow hover:shadow-sm',
-          'border-l-2',
-          borderCls
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3">
-          {/* collapse toggle for children */}
-          <button
-            className={cn(
-              'shrink-0 text-muted-foreground hover:text-foreground transition-colors',
-              !childTeams.length && 'invisible'
-            )}
-            onClick={() => setChildrenOpen(v => !v)}
-          >
-            {childrenOpen ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-          </button>
-
-          <div
-            className={cn('flex h-7 w-7 items-center justify-center rounded-md shrink-0', iconCls)}
-          >
-            <Network className="h-3.5 w-3.5" />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                className="text-sm font-medium hover:text-primary transition-colors"
-                onClick={() => router.push(`/teams/${team.id}`)}
-              >
-                {team.name}
-              </button>
-              {team.category && (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'text-[10px] px-1.5 py-0',
-                    CAT_CLS[team.category] ?? 'bg-muted text-muted-foreground'
-                  )}
-                >
-                  {team.category}
-                </Badge>
-              )}
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 text-muted-foreground border-muted"
-              >
-                {team.nodeType}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-3 mt-0.5">
-              {lead && (
-                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                  <Crown className="h-2.5 w-2.5 text-amber-500" />
-                  {lead.user.firstName} {lead.user.lastName}
-                </span>
-              )}
-              <span className="text-[11px] text-muted-foreground">
-                {team._count.members} member{team._count.members !== 1 ? 's' : ''}
-              </span>
-            </div>
-          </div>
-
-          {/* Stacked avatar preview */}
-          <div className="flex -space-x-1.5 shrink-0">
-            {team.members.slice(0, 5).map(m => (
-              <Avatar key={m.id} className="h-6 w-6 border border-background">
-                <AvatarFallback className="text-[9px] bg-muted">
-                  {ini(m.user.firstName, m.user.lastName)}
-                </AvatarFallback>
-              </Avatar>
-            ))}
-          </div>
-
-          <button
-            className="shrink-0 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground border border-border/60 rounded px-2 py-1 hover:bg-muted/40 transition-colors"
-            onClick={() => setShowMembers(v => !v)}
-          >
-            <Users className="h-3 w-3" />
-            {showMembers ? 'Hide' : 'Members'}
-          </button>
+    <div
+      className={cn(
+        'border border-border/60 rounded-lg overflow-hidden bg-card transition-shadow hover:shadow-sm',
+        'border-l-2',
+        borderCls
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div
+          className={cn('flex h-7 w-7 items-center justify-center rounded-md shrink-0', iconCls)}
+        >
+          <Network className="h-3.5 w-3.5" />
         </div>
 
-        {/* Members panel */}
-        {showMembers && (
-          <div className="border-t bg-muted/20 px-4 py-3">
-            {team.members.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No members yet</p>
-            ) : (
-              <>
-                {team.members.filter(m => m.teamRole !== 'MEMBER').length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                      Leadership
-                    </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              className="text-sm font-medium hover:text-primary transition-colors"
+              onClick={() => router.push(`/teams/${team.id}`)}
+            >
+              {team.name}
+            </button>
+            {team.category && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  'text-[10px] px-1.5 py-0',
+                  CAT_CLS[team.category] ?? 'bg-muted text-muted-foreground'
+                )}
+              >
+                {team.category}
+              </Badge>
+            )}
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 text-muted-foreground border-muted"
+            >
+              {team.nodeType}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5">
+            {lead && (
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Crown className="h-2.5 w-2.5 text-amber-500" />
+                {lead.user.firstName} {lead.user.lastName}
+              </span>
+            )}
+            <span className="text-[11px] text-muted-foreground">
+              {team._count.members} member{team._count.members !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+
+        {/* Stacked avatar preview */}
+        <div className="flex -space-x-1.5 shrink-0">
+          {team.members.slice(0, 5).map(m => (
+            <Avatar key={m.id} className="h-6 w-6 border border-background">
+              <AvatarFallback className="text-[9px] bg-muted">
+                {ini(m.user.firstName, m.user.lastName)}
+              </AvatarFallback>
+            </Avatar>
+          ))}
+        </div>
+
+        <button
+          className="shrink-0 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground border border-border/60 rounded px-2 py-1 hover:bg-muted/40 transition-colors"
+          onClick={() => setShowMembers(v => !v)}
+        >
+          <Users className="h-3 w-3" />
+          {showMembers ? 'Hide' : 'Members'}
+        </button>
+      </div>
+
+      {/* Members panel */}
+      {showMembers && (
+        <div className="border-t bg-muted/20 px-4 py-3">
+          {team.members.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No members yet</p>
+          ) : (
+            <>
+              {team.members.filter(m => m.teamRole !== 'MEMBER').length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Leadership
+                  </p>
+                  {team.members
+                    .filter(m => m.teamRole !== 'MEMBER')
+                    .map(m => (
+                      <MemberRow key={m.id} member={m} />
+                    ))}
+                </div>
+              )}
+              {team.members.filter(m => m.teamRole === 'MEMBER').length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Members ({team.members.filter(m => m.teamRole === 'MEMBER').length})
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-4">
                     {team.members
-                      .filter(m => m.teamRole !== 'MEMBER')
+                      .filter(m => m.teamRole === 'MEMBER')
                       .map(m => (
                         <MemberRow key={m.id} member={m} />
                       ))}
                   </div>
-                )}
-                {team.members.filter(m => m.teamRole === 'MEMBER').length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                      Members ({team.members.filter(m => m.teamRole === 'MEMBER').length})
-                    </p>
-                    <div className="grid grid-cols-2 gap-x-4">
-                      {team.members
-                        .filter(m => m.teamRole === 'MEMBER')
-                        .map(m => (
-                          <MemberRow key={m.id} member={m} />
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Child teams — indented with connector line */}
-      {childTeams.length > 0 && childrenOpen && (
-        <div className="relative mt-1.5 ml-6">
-          <div className="absolute left-0 top-0 bottom-2 w-px bg-border/50" />
-          <div className="pl-4 space-y-2">
-            {childTeams.map(child => (
-              <TeamCard key={child.id} team={child} allTeams={allTeams} />
-            ))}
-          </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function TeamsTab({ teams }: { teams: BUTeamDetail[] }) {
-  // root teams = those whose parentTeamId isn't in this BU's team list
-  const teamIds = new Set(teams.map(t => t.id));
-  const roots = teams.filter((t: any) => !t.parentTeamId || !teamIds.has(t.parentTeamId));
+// ─────────────────────────────────────────────────────────────────────────────
+// Teams tab — arc-grouped
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (!teams.length) {
+function TeamsTab({ bu }: { bu: AdaptedBU }) {
+  if (!bu.teams.length) {
     return <p className="text-sm text-muted-foreground text-center py-10">No active teams</p>;
   }
 
+  // Group adapted teams by arcId preserving arc order
+  const arcMap = new Map<string, { arc: APITeamArc; teams: AdaptedTeam[] }>();
+  for (const arc of bu.teamArcs) {
+    arcMap.set(arc.id, { arc, teams: [] });
+  }
+  for (const team of bu.teams) {
+    arcMap.get(team.arcId)?.teams.push(team);
+  }
+
   return (
-    <div className="p-4 space-y-3">
+    <div className="p-4 space-y-6">
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5 border border-border/50">
-        <span className="font-medium text-xs text-foreground">Edge types</span>
-        {(Object.entries(EDGE_CFG) as [EdgeType, (typeof EDGE_CFG)[EdgeType]][]).map(
-          ([type, cfg]) => {
-            const Icon = cfg.icon;
-            return (
-              <span key={type} className={cn('flex items-center gap-1.5', cfg.color)}>
-                <Icon className="h-3 w-3" />
-                {type.replace(/_/g, ' ')}
-              </span>
-            );
-          }
-        )}
-        <Separator orientation="vertical" className="h-4" />
+        <span className="font-medium text-xs text-foreground">Node types</span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-0.5 bg-violet-400 rounded" />
           MANAGEMENT
@@ -631,11 +722,35 @@ function TeamsTab({ teams }: { teams: BUTeamDetail[] }) {
           INDIVIDUAL
         </span>
       </div>
-      <div className="space-y-2">
-        {roots.map(team => (
-          <TeamCard key={team.id} team={team} allTeams={teams} />
-        ))}
-      </div>
+
+      {/* Arc sections */}
+      {[...arcMap.values()].map(({ arc, teams }) => (
+        <div key={arc.id}>
+          <div className="flex items-center gap-2 mb-3">
+            <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {arc.name}
+            </p>
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {teams.length} team{teams.length !== 1 ? 's' : ''}
+            </Badge>
+            {arc.isActive ? (
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
+            )}
+          </div>
+          {teams.length === 0 ? (
+            <p className="text-xs text-muted-foreground pl-1">No teams in this arc</p>
+          ) : (
+            <div className="space-y-2">
+              {teams.map(team => (
+                <TeamCard key={team.id} team={team} />
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -644,11 +759,14 @@ function TeamsTab({ teams }: { teams: BUTeamDetail[] }) {
 // Overview tab
 // ─────────────────────────────────────────────────────────────────────────────
 
-function OverviewTab({ bu }: { bu: BUDetail }) {
+function OverviewTab({ bu }: { bu: AdaptedBU }) {
   const router = useRouter();
-  const breakdown = REQ_ORDER.map(s => ({ s, n: bu.reqBreakdown[s] ?? 0 })).filter(e => e.n > 0);
+  const breakdown = REQ_ORDER.map(s => ({
+    s,
+    n: (bu.reqBreakdown as ReqBreakdown)[s] ?? 0,
+  })).filter(e => e.n > 0);
 
-  // leads across all teams
+  // Leads across all adapted teams
   const leads = bu.teams.flatMap(t =>
     t.members.filter(m => m.teamRole === 'LEAD').map(m => ({ ...m, teamName: t.name }))
   );
@@ -670,7 +788,7 @@ function OverviewTab({ bu }: { bu: BUDetail }) {
           <span className="text-3xl font-semibold tabular-nums leading-none">
             {bu._count.users}
           </span>
-          <span className="text-[11px] text-muted-foreground">{bu.teams.length} teams</span>
+          <span className="text-[11px] text-muted-foreground">{bu._count.teams} teams</span>
         </div>
         <div className="bg-muted/50 rounded-xl p-4 flex flex-col gap-2">
           <div className="flex items-center gap-2">
@@ -735,11 +853,44 @@ function OverviewTab({ bu }: { bu: BUDetail }) {
                   <div
                     className={cn('h-full rounded-full transition-all', REQ_BAR_CLS[s])}
                     style={{
-                      width: `${bu._count.requirements > 0 ? Math.round((n / bu._count.requirements) * 100) : 0}%`,
+                      width: `${
+                        bu._count.requirements > 0
+                          ? Math.round((n / bu._count.requirements) * 100)
+                          : 0
+                      }%`,
                     }}
                   />
                 </div>
                 <span className="text-xs tabular-nums font-medium w-5 text-right">{n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Arc summary */}
+      {bu.teamArcs.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+            Team Arcs ({bu.teamArcs.length})
+          </p>
+          <div className="space-y-1.5">
+            {bu.teamArcs.map(arc => (
+              <div
+                key={arc.id}
+                className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-border/60 bg-muted/20"
+              >
+                <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="flex-1 text-sm font-medium truncate">{arc.name}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {arc._count.teams} team{arc._count.teams !== 1 ? 's' : ''}
+                </span>
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full shrink-0',
+                    arc.isActive ? 'bg-emerald-500' : 'bg-red-400'
+                  )}
+                />
               </div>
             ))}
           </div>
@@ -783,7 +934,7 @@ function OverviewTab({ bu }: { bu: BUDetail }) {
             Sub-units ({bu.childBUs.length})
           </p>
           <div className="space-y-1.5">
-            {bu.childBUs.map(child => (
+            {bu.childBUs.map((child: any) => (
               <button
                 key={child.id}
                 className="w-full flex items-center gap-3 px-3.5 py-3 rounded-lg border border-border/60 hover:bg-muted/50 hover:border-border transition-all text-left group"
@@ -798,7 +949,8 @@ function OverviewTab({ bu }: { bu: BUDetail }) {
                 <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="flex-1 text-sm font-medium truncate">{child.name}</span>
                 <span className="text-[11px] text-muted-foreground">
-                  {child._count.users}u · {child._count.teams}t · {child._count.clients}c
+                  {child._count?.users ?? 0}u · {child._count?.teams ?? 0}t ·{' '}
+                  {child._count?.clients ?? 0}c
                 </span>
                 <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
               </button>
@@ -823,9 +975,9 @@ export default function BUDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [selectedReq, setSelectedReq] = useState<BURequirementDetail | null>(null);
 
-  const { data, isLoading, isError } = useQuery<BUDetailResponse>({
+  const { data, isLoading, isError } = useQuery<APIBUDetailResponse>({
     queryKey: ['business-unit', id],
-    queryFn: async () => (await axios.get<BUDetailResponse>(`/business-units/${id}`)).data,
+    queryFn: async () => (await axios.get<APIBUDetailResponse>(`/business-units/${id}`)).data,
     enabled: !!id,
   });
 
@@ -859,7 +1011,8 @@ export default function BUDetailPage() {
     );
   }
 
-  const bu = data.data;
+  // Adapt the raw API response into component-ready shape
+  const bu = adaptBUData(data.data);
 
   const canDelete =
     permission.canDelete &&
@@ -870,18 +1023,18 @@ export default function BUDetailPage() {
 
   // Breadcrumb: grandparent → parent → current
   const breadcrumb = [
-    bu.parentBU?.parentBU ?? null,
+    (bu.parentBU as any)?.parentBU ?? null,
     bu.parentBU ? { id: bu.parentBU.id, name: bu.parentBU.name } : null,
     { id: bu.id, name: bu.name },
   ].filter(Boolean) as Array<{ id: string; name: string }>;
 
   // Build tree root from available parent data
-  const leafChildren: TreeNode[] = bu.childBUs.map(c => ({
+  const leafChildren: TreeNode[] = bu.childBUs.map((c: any) => ({
     ...c,
-    _count: { users: c._count.users, teams: c._count.teams },
-    childBUs: c.childBUs.map(gc => ({
+    _count: { users: c._count?.users ?? 0, teams: c._count?.teams ?? 0 },
+    childBUs: (c.childBUs ?? []).map((gc: any) => ({
       ...gc,
-      _count: { users: gc._count.users, teams: 0 },
+      _count: { users: gc._count?.users ?? 0, teams: 0 },
       childBUs: [],
     })),
   }));
@@ -894,8 +1047,11 @@ export default function BUDetailPage() {
     childBUs: leafChildren,
   };
 
-  const treeRoot: TreeNode = bu.parentBU?.parentBU
-    ? { ...bu.parentBU.parentBU, childBUs: [{ ...bu.parentBU, childBUs: [currentNode] }] }
+  const treeRoot: TreeNode = (bu.parentBU as any)?.parentBU
+    ? {
+        ...(bu.parentBU as any).parentBU,
+        childBUs: [{ ...bu.parentBU, childBUs: [currentNode] }],
+      }
     : bu.parentBU
       ? { ...bu.parentBU, childBUs: [currentNode] }
       : currentNode;
@@ -1031,7 +1187,7 @@ export default function BUDetailPage() {
           </TabsContent>
 
           <TabsContent value="teams" className="m-0">
-            <TeamsTab teams={bu.teams} />
+            <TeamsTab bu={bu} />
           </TabsContent>
 
           {/* Users */}
@@ -1041,7 +1197,7 @@ export default function BUDetailPage() {
             ) : (
               <>
                 <div className="divide-y">
-                  {bu.users.map((u: BUUserDetail) => (
+                  {bu.users.map((u: APIUser) => (
                     <div
                       key={u.id}
                       className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
@@ -1076,7 +1232,7 @@ export default function BUDetailPage() {
                             <TooltipContent className="max-w-xs text-xs">
                               <div className="space-y-1.5">
                                 {u.teamMemberships.map((m, i) => {
-                                  const cfg = ROLE_CFG[m.teamRole];
+                                  const cfg = ROLE_CFG[m.teamRole] ?? ROLE_CFG.MEMBER;
                                   const Icon = cfg.icon;
                                   return (
                                     <div key={i} className="flex items-center gap-1.5">
