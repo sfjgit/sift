@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from '@/lib/utils';
 import {
   Select,
   SelectContent,
@@ -9,6 +10,7 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   type PermissionRowPayload,
   type PermissionScope,
@@ -16,214 +18,310 @@ import {
   formatModule,
 } from '@/types/role.types';
 
-// ─────────────────────────────────────────
-// PERMISSIONS MATRIX
-//
-// Renders a table of modules × canView/canAdd/canEdit/canDelete/scope.
-// readOnly = true → detail page (no inputs)
-// readOnly = false → create/edit page (interactive)
-// ─────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
-  modules: string[]; // all available modules from DB
-  rows: PermissionRowPayload[]; // current permission state
+  modules: string[];
+  rows: PermissionRowPayload[];
   readOnly?: boolean;
   onChange?: (rows: PermissionRowPayload[]) => void;
 }
 
-const ACTIONS: { key: keyof PermissionRowPayload; label: string }[] = [
-  { key: 'canView', label: 'View' },
-  { key: 'canAdd', label: 'Add' },
-  { key: 'canEdit', label: 'Edit' },
-  { key: 'canDelete', label: 'Delete' },
-];
+// ─────────────────────────────────────────────────────────────────────────────
+// Scope styles
+// ─────────────────────────────────────────────────────────────────────────────
 
-export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }: Props) {
-  // Get the permission row for a module, or return a blank default
-  function getRow(module: string): PermissionRowPayload {
+const SCOPE_STYLES: Record<PermissionScope, { badge: string; desc: string }> = {
+  OWN: {
+    badge:
+      'border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400',
+    desc: 'Own records only',
+  },
+  TEAM: {
+    badge:
+      'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
+    desc: 'Team records',
+  },
+  MANAGER: {
+    badge:
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
+    desc: 'Manager + team records',
+  },
+  BU: {
+    badge:
+      'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-400',
+    desc: 'Entire BU',
+  },
+  ALL: {
+    badge:
+      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400',
+    desc: 'All records',
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getRow(rows: PermissionRowPayload[], module: string): PermissionRowPayload {
+  return (
+    rows.find(r => r.module === module) ?? {
+      module,
+      canView: false,
+      canAdd: false,
+      canEdit: false,
+      canDelete: false,
+      scope: 'OWN',
+    }
+  );
+}
+
+function hasAnyPermission(row: PermissionRowPayload) {
+  return row.canView || row.canAdd || row.canEdit || row.canDelete;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Read-only tick
+// ─────────────────────────────────────────────────────────────────────────────
+
+function Tick({ checked }: { checked: boolean }) {
+  if (checked) {
     return (
-      rows.find(r => r.module === module) ?? {
-        module,
-        canView: false,
-        canAdd: false,
-        canEdit: false,
-        canDelete: false,
-        scope: 'OWN',
-      }
+      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/50">
+        <svg
+          className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+          viewBox="0 0 12 12"
+          fill="none"
+        >
+          <path
+            d="M2 6.5L4.5 9L10 3.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
     );
   }
+  return (
+    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted/60">
+      <svg className="h-3 w-3 text-muted-foreground/40" viewBox="0 0 12 12" fill="none">
+        <path d="M3 9L9 3M3 3l6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }: Props) {
   function updateRow(module: string, patch: Partial<PermissionRowPayload>) {
     if (!onChange) return;
     const existing = rows.find(r => r.module === module);
-
     if (existing) {
       onChange(rows.map(r => (r.module === module ? { ...r, ...patch } : r)));
     } else {
-      // First time this module gets touched — add it
-      onChange([...rows, { ...getRow(module), ...patch }]);
+      onChange([...rows, { ...getRow(rows, module), ...patch }]);
     }
   }
 
-  // When canView is unchecked — also uncheck everything else
+  function handleModuleToggle(module: string, enabled: boolean) {
+    if (enabled) {
+      updateRow(module, { canView: true });
+    } else {
+      updateRow(module, { canView: false, canAdd: false, canEdit: false, canDelete: false });
+    }
+  }
+
   function handleViewChange(module: string, checked: boolean) {
     if (!checked) {
-      updateRow(module, {
-        canView: false,
-        canAdd: false,
-        canEdit: false,
-        canDelete: false,
-      });
+      updateRow(module, { canView: false, canAdd: false, canEdit: false, canDelete: false });
     } else {
       updateRow(module, { canView: true });
     }
   }
 
-  // canAdd/canEdit/canDelete require canView
   function handleActionChange(
     module: string,
     key: 'canAdd' | 'canEdit' | 'canDelete',
     checked: boolean
   ) {
-    const row = getRow(module);
+    const row = getRow(rows, module);
     const patch: Partial<PermissionRowPayload> = { [key]: checked };
-    // Auto-enable canView if any action is enabled
     if (checked && !row.canView) patch.canView = true;
     updateRow(module, patch);
   }
 
+  // ── Empty state ───────────────────────────────────────────────────────────
+
+  if (!modules.length) {
+    return (
+      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
+        No modules available
+      </div>
+    );
+  }
+
+  // ── Read-only ─────────────────────────────────────────────────────────────
+
+  if (readOnly) {
+    const activeRows = modules.map(m => getRow(rows, m)).filter(hasAnyPermission);
+    const inactiveModules = modules.filter(m => !hasAnyPermission(getRow(rows, m)));
+
+    return (
+      <div className="space-y-1">
+        {activeRows.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">No permissions granted</p>
+        )}
+        {activeRows.map(row => (
+          <div
+            key={row.module}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border/50 bg-card"
+          >
+            <span className="text-sm font-medium w-40 shrink-0">{formatModule(row.module)}</span>
+            <div className="flex items-center gap-2 flex-1">
+              {(['canView', 'canAdd', 'canEdit', 'canDelete'] as const).map(key => (
+                <span key={key} className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Tick checked={row[key] as boolean} />
+                  {key.replace('can', '')}
+                </span>
+              ))}
+            </div>
+            <Badge
+              variant="outline"
+              className={cn('text-[10px] px-1.5 py-0', SCOPE_STYLES[row.scope].badge)}
+            >
+              {row.scope}
+            </Badge>
+          </div>
+        ))}
+        {inactiveModules.length > 0 && (
+          <div className="pt-2">
+            <p className="text-[11px] text-muted-foreground mb-1.5 px-1">No access</p>
+            <div className="flex flex-wrap gap-1.5">
+              {inactiveModules.map(m => (
+                <Badge
+                  key={m}
+                  variant="outline"
+                  className="text-[10px] text-muted-foreground/60 border-muted"
+                >
+                  {formatModule(m)}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Edit ──────────────────────────────────────────────────────────────────
+
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-muted/40">
-            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[180px]">
-              Module
-            </th>
-            {ACTIONS.map(a => (
-              <th
-                key={a.key}
-                className="px-3 py-3 text-center text-xs font-semibold text-muted-foreground w-[72px]"
-              >
-                {a.label}
-              </th>
+    <div className="space-y-2">
+      {/* Column headers */}
+      <div className="grid grid-cols-[200px_48px_repeat(4,_56px)_120px] gap-2 px-3 pb-1">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Module
+        </span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
+          On
+        </span>
+        {['View', 'Add', 'Edit', 'Delete'].map(l => (
+          <span
+            key={l}
+            className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center"
+          >
+            {l}
+          </span>
+        ))}
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Scope
+        </span>
+      </div>
+
+      {/* Rows */}
+      {modules.map(module => {
+        const row = getRow(rows, module);
+        const active = hasAnyPermission(row);
+
+        return (
+          <div
+            key={module}
+            className={cn(
+              'grid grid-cols-[200px_48px_repeat(4,_56px)_120px] gap-2 items-center px-3 py-2.5 rounded-lg border transition-all',
+              active ? 'border-border bg-card shadow-sm' : 'border-border/40 bg-muted/20'
+            )}
+          >
+            <div>
+              <p className={cn('text-sm font-medium', !active && 'text-muted-foreground')}>
+                {formatModule(module)}
+              </p>
+            </div>
+
+            {/* Master toggle */}
+            <div className="flex justify-center">
+              <Switch
+                checked={active}
+                onCheckedChange={v => handleModuleToggle(module, v)}
+                className="scale-75"
+              />
+            </div>
+
+            {/* canView */}
+            <div className="flex justify-center">
+              <Checkbox
+                checked={row.canView}
+                disabled={!active}
+                onCheckedChange={c => handleViewChange(module, !!c)}
+                className={cn(!active && 'opacity-30')}
+              />
+            </div>
+
+            {/* canAdd, canEdit, canDelete */}
+            {(['canAdd', 'canEdit', 'canDelete'] as const).map(key => (
+              <div key={key} className="flex justify-center">
+                <Checkbox
+                  checked={row[key] as boolean}
+                  disabled={!row.canView}
+                  onCheckedChange={c => handleActionChange(module, key, !!c)}
+                  className={cn(!row.canView && 'opacity-30')}
+                />
+              </div>
             ))}
-            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground w-[120px]">
-              Scope
-            </th>
-          </tr>
-        </thead>
 
-        <tbody className="divide-y divide-border">
-          {modules.map(module => {
-            const row = getRow(module);
-
-            return (
-              <tr
-                key={module}
-                className={`transition-colors ${row.canView ? 'bg-background' : 'bg-muted/20'}`}
+            {/* Scope */}
+            <div>
+              <Select
+                value={row.scope}
+                disabled={!active}
+                onValueChange={v => updateRow(module, { scope: v as PermissionScope })}
               >
-                {/* Module name */}
-                <td className="px-4 py-3">
-                  <span className="font-medium text-foreground">{formatModule(module)}</span>
-                </td>
-
-                {/* canView */}
-                <td className="px-3 py-3 text-center">
-                  {readOnly ? (
-                    <ReadOnlyCheck checked={row.canView} />
-                  ) : (
-                    <Checkbox
-                      checked={row.canView}
-                      onCheckedChange={c => handleViewChange(module, !!c)}
-                      className="mx-auto"
-                    />
-                  )}
-                </td>
-
-                {/* canAdd, canEdit, canDelete */}
-                {(['canAdd', 'canEdit', 'canDelete'] as const).map(key => (
-                  <td key={key} className="px-3 py-3 text-center">
-                    {readOnly ? (
-                      <ReadOnlyCheck checked={row[key] as boolean} />
-                    ) : (
-                      <Checkbox
-                        checked={row[key] as boolean}
-                        disabled={!row.canView} // can't set actions without view
-                        onCheckedChange={c => handleActionChange(module, key, !!c)}
-                        className="mx-auto"
-                      />
-                    )}
-                  </td>
-                ))}
-
-                {/* Scope */}
-                <td className="px-4 py-3">
-                  {readOnly ? (
-                    <ScopeBadge scope={row.scope} />
-                  ) : (
-                    <Select
-                      value={row.scope}
-                      disabled={!row.canView}
-                      onValueChange={v => updateRow(module, { scope: v as PermissionScope })}
-                    >
-                      <SelectTrigger className="h-7 w-[100px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SCOPE_OPTIONS.map(o => (
-                          <SelectItem key={o.value} value={o.value} className="text-xs">
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                <SelectTrigger className={cn('h-7 w-full text-xs', !active && 'opacity-40')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SCOPE_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value} className="text-xs">
+                      <div>
+                        <span>{o.label}</span>
+                        <span className="ml-1.5 text-muted-foreground text-[10px]">
+                          — {SCOPE_STYLES[o.value as PermissionScope].desc}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+      })}
     </div>
-  );
-}
-
-// ── Read-only check mark ──────────────────────────────────────────────────────
-
-function ReadOnlyCheck({ checked }: { checked: boolean }) {
-  return checked ? (
-    <span className="inline-flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-      <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
-        <path
-          d="M3 8.5L6.5 12L13 5"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  ) : (
-    <span className="inline-block w-4 h-4 rounded border border-border/50 bg-muted/30" />
-  );
-}
-
-// ── Scope badge ───────────────────────────────────────────────────────────────
-
-const SCOPE_BADGE_STYLES: Record<PermissionScope, string> = {
-  OWN: 'border-gray-200   bg-gray-50   text-gray-600   dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400',
-  TEAM: 'border-blue-200   bg-blue-50   text-blue-700   dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
-  MANAGER:
-    'border-amber-200  bg-amber-50  text-amber-700  dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
-  BU: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-400',
-  ALL: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400',
-};
-
-function ScopeBadge({ scope }: { scope: PermissionScope }) {
-  return (
-    <Badge variant="outline" className={`text-[10px] ${SCOPE_BADGE_STYLES[scope]}`}>
-      {scope}
-    </Badge>
   );
 }

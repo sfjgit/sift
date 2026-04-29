@@ -10,6 +10,8 @@ import { useDebounce } from 'use-debounce';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -42,8 +44,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetFooter,
+} from '@/components/ui/sheet';
+import { Label } from '@/components/ui/label';
 
 // import useAxios from '@/hooks/useAxios';
 import type {
@@ -85,8 +95,16 @@ const DEFAULT_FILTERS: RequirementFilters = {
   remoteType: '',
   clientId: '',
   buId: '',
+  createdById: '',
+  assignedTeamId: '',
   assignedToMe: false,
   breached: false,
+  respondByFrom: '',
+  respondByTo: '',
+  startDateFrom: '',
+  startDateTo: '',
+  createdFrom: '',
+  createdTo: '',
   page: 1,
   limit: 25,
   sortBy: 'createdAt',
@@ -97,10 +115,8 @@ const DEFAULT_FILTERS: RequirementFilters = {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function statusVariant(
-  status: RequirementStatus
-): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (status) {
+function statusVariant(s: RequirementStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (s) {
     case 'ACTIVE':
       return 'default';
     case 'DRAFT':
@@ -114,8 +130,8 @@ function statusVariant(
   }
 }
 
-function priorityVariant(priority: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (priority) {
+function priorityVariant(p: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (p) {
     case 'HIGH':
       return 'destructive';
     case 'MEDIUM':
@@ -130,6 +146,24 @@ function humanize(str: string) {
     .split('_')
     .map(w => w.charAt(0) + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+function countActiveFilters(f: RequirementFilters): number {
+  let n = 0;
+  if (f.status) n++;
+  if (f.priority) n++;
+  if (f.jobType) n++;
+  if (f.remoteType) n++;
+  if (f.clientId) n++;
+  if (f.buId) n++;
+  if (f.createdById) n++;
+  if (f.assignedTeamId) n++;
+  if (f.assignedToMe) n++;
+  if (f.breached) n++;
+  if (f.respondByFrom || f.respondByTo) n++;
+  if (f.startDateFrom || f.startDateTo) n++;
+  if (f.createdFrom || f.createdTo) n++;
+  return n;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,11 +186,7 @@ function StatCard({
       <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
         {label}
       </span>
-      <span
-        className={`text-2xl font-bold tabular-nums ${
-          alert ? 'text-destructive' : 'text-foreground'
-        }`}
-      >
+      <span className={`text-2xl font-bold tabular-nums ${alert ? 'text-destructive' : ''}`}>
         {value}
       </span>
       {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
@@ -194,12 +224,10 @@ function RowActions({
   onEdit: (id: string) => void;
 }) {
   const transitions = VALID_TRANSITIONS[req.status];
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
-          <span className="sr-only">Actions</span>
+        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
           ···
         </Button>
       </DropdownMenuTrigger>
@@ -222,6 +250,305 @@ function RowActions({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Filter sheet — all advanced filters
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FilterSheet({
+  filters,
+  setFilter,
+  onClear,
+  activeCount,
+  clients,
+  businessUnits,
+}: {
+  filters: RequirementFilters;
+  setFilter: <K extends keyof RequirementFilters>(k: K, v: RequirementFilters[K]) => void;
+  onClear: () => void;
+  activeCount: number;
+  clients: { id: string; name: string }[];
+  businessUnits: { id: string; name: string }[];
+}) {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 gap-1.5">
+          Filters
+          {activeCount > 0 && (
+            <span className="bg-primary text-primary-foreground rounded-full text-xs px-1.5 py-0.5 leading-none">
+              {activeCount}
+            </span>
+          )}
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="w-80 flex flex-col gap-0 p-0">
+        <SheetHeader className="px-5 py-4 border-b">
+          <SheetTitle>Filters</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+          {/* Status */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Status</Label>
+            <Select
+              value={filters.status || '_'}
+              onValueChange={v => setFilter('status', v === '_' ? '' : (v as RequirementStatus))}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">All statuses</SelectItem>
+                {STATUS_OPTIONS.map(s => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Priority */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Priority
+            </Label>
+            <Select
+              value={filters.priority || '_'}
+              onValueChange={v =>
+                setFilter('priority', v === '_' ? '' : (v as 'LOW' | 'MEDIUM' | 'HIGH'))
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All priorities" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">All priorities</SelectItem>
+                <SelectItem value="HIGH">High</SelectItem>
+                <SelectItem value="MEDIUM">Medium</SelectItem>
+                <SelectItem value="LOW">Low</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Job type */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Job type
+            </Label>
+            <Select
+              value={filters.jobType || '_'}
+              onValueChange={v =>
+                setFilter('jobType', v === '_' ? '' : (v as RequirementFilters['jobType']))
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">All types</SelectItem>
+                <SelectItem value="CONTRACT">Contract</SelectItem>
+                <SelectItem value="PERMANENT">Permanent</SelectItem>
+                <SelectItem value="CONTRACT_TO_HIRE">Contract to hire</SelectItem>
+                <SelectItem value="FREELANCE">Freelance</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Remote */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Remote type
+            </Label>
+            <Select
+              value={filters.remoteType || '_'}
+              onValueChange={v =>
+                setFilter('remoteType', v === '_' ? '' : (v as RequirementFilters['remoteType']))
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">All</SelectItem>
+                <SelectItem value="ONSITE">Onsite</SelectItem>
+                <SelectItem value="REMOTE">Remote</SelectItem>
+                <SelectItem value="HYBRID">Hybrid</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Client */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Client</Label>
+            <Select
+              value={filters.clientId || '_'}
+              onValueChange={v => setFilter('clientId', v === '_' ? '' : v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All clients" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">All clients</SelectItem>
+                {clients.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* BU */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Business unit
+            </Label>
+            <Select
+              value={filters.buId || '_'}
+              onValueChange={v => setFilter('buId', v === '_' ? '' : v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All BUs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">All BUs</SelectItem>
+                {businessUnits.map(b => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          {/* Respond by range */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Respond by
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">From</span>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={filters.respondByFrom}
+                  onChange={e => setFilter('respondByFrom', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">To</span>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={filters.respondByTo}
+                  onChange={e => setFilter('respondByTo', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Start date range */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Start date
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">From</span>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={filters.startDateFrom}
+                  onChange={e => setFilter('startDateFrom', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">To</span>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={filters.startDateTo}
+                  onChange={e => setFilter('startDateTo', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Created at range */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Created</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">From</span>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={filters.createdFrom}
+                  onChange={e => setFilter('createdFrom', e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">To</span>
+                <Input
+                  type="date"
+                  className="h-9"
+                  value={filters.createdTo}
+                  onChange={e => setFilter('createdTo', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Toggles */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+              Quick filters
+            </Label>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setFilter('assignedToMe', !filters.assignedToMe)}
+                className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm transition-colors ${
+                  filters.assignedToMe
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Assigned to me
+                {filters.assignedToMe && <span className="text-xs">✓</span>}
+              </button>
+              <button
+                onClick={() => setFilter('breached', !filters.breached)}
+                className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm transition-colors ${
+                  filters.breached
+                    ? 'border-destructive bg-destructive/5 text-destructive'
+                    : 'border-border text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Breached only
+                {filters.breached && <span className="text-xs">✓</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <SheetFooter className="px-5 py-4 border-t">
+          {activeCount > 0 && (
+            <Button variant="outline" className="w-full" onClick={onClear}>
+              Clear all filters
+            </Button>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -237,7 +564,12 @@ export default function RequirementsPage() {
     to: RequirementStatus;
   } | null>(null);
 
-  // Build query string
+  function setFilter<K extends keyof RequirementFilters>(key: K, value: RequirementFilters[K]) {
+    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
+  }
+
+  // ── Query string ───────────────────────────────────────────────────────────
+
   const qs = useCallback(() => {
     const p: Record<string, string> = {
       page: String(filters.page),
@@ -252,19 +584,27 @@ export default function RequirementsPage() {
     if (filters.remoteType) p.remoteType = filters.remoteType;
     if (filters.clientId) p.clientId = filters.clientId;
     if (filters.buId) p.buId = filters.buId;
+    if (filters.createdById) p.createdById = filters.createdById;
+    if (filters.assignedTeamId) p.assignedTeamId = filters.assignedTeamId;
     if (filters.assignedToMe) p.assignedToMe = 'true';
     if (filters.breached) p.breached = 'true';
+    if (filters.respondByFrom) p.respondByFrom = new Date(filters.respondByFrom).toISOString();
+    if (filters.respondByTo) p.respondByTo = new Date(filters.respondByTo).toISOString();
+    if (filters.startDateFrom) p.startDateFrom = new Date(filters.startDateFrom).toISOString();
+    if (filters.startDateTo) p.startDateTo = new Date(filters.startDateTo).toISOString();
+    if (filters.createdFrom) p.createdFrom = new Date(filters.createdFrom).toISOString();
+    if (filters.createdTo) p.createdTo = new Date(filters.createdTo).toISOString();
     return new URLSearchParams(p).toString();
   }, [filters, debouncedSearch]);
 
-  // Stats
+  // ── Queries ────────────────────────────────────────────────────────────────
+
   const { data: statsRes } = useQuery<RequirementStatsResponse>({
     queryKey: ['requirement-stats'],
     queryFn: async () => (await axios.get('/requirements/stats')).data,
     staleTime: 30_000,
   });
 
-  // List
   const {
     data: listRes,
     isLoading,
@@ -275,12 +615,29 @@ export default function RequirementsPage() {
     placeholderData: prev => prev,
   });
 
+  // clients and BUs for filter dropdowns
+  const { data: clientsRes } = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['clients-dropdown'],
+    queryFn: async () => (await axios.get('/clients?limit=200&status=ACTIVE')).data,
+    staleTime: 60_000,
+  });
+
+  const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['bus-dropdown'],
+    queryFn: async () => (await axios.get('/business-units?limit=100')).data,
+    staleTime: 60_000,
+  });
+
   const requirements = listRes?.data ?? [];
   const meta = listRes?.meta;
   const permissions = listRes?.permissions;
   const stats = statsRes?.data;
+  const clients = clientsRes?.data ?? [];
+  const businessUnits = busRes?.data ?? [];
+  const activeFilterCount = countActiveFilters(filters);
 
-  // Status mutation
+  // ── Status mutation ────────────────────────────────────────────────────────
+
   const statusMutation = useMutation({
     mutationFn: async ({ id, toStatus }: { id: string; toStatus: RequirementStatus }) =>
       (await axios.patch(`/requirements/${id}/status`, { toStatus })).data,
@@ -293,26 +650,14 @@ export default function RequirementsPage() {
       setStatusDialog(null);
     },
     onError: (err: unknown) => {
-      const msg =
+      toast.error(
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        'Failed to update status';
-      toast.error(msg);
+          'Failed to update status'
+      );
     },
   });
 
-  // Filter helpers
-  function setFilter<K extends keyof RequirementFilters>(key: K, value: RequirementFilters[K]) {
-    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
-  }
-
-  const hasActiveFilters = !!(
-    filters.status ||
-    filters.priority ||
-    filters.jobType ||
-    filters.remoteType ||
-    filters.assignedToMe ||
-    filters.breached
-  );
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -331,7 +676,7 @@ export default function RequirementsPage() {
         )}
       </div>
 
-      {/* Stats strip */}
+      {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard
@@ -346,28 +691,43 @@ export default function RequirementsPage() {
             alert={stats.breached > 0}
             sub="respondBy overdue"
           />
-          <StatCard label="Created this week" value={stats.recentlyCreated} />
+          <StatCard label="This week" value={stats.recentlyCreated} sub="created" />
         </div>
       )}
 
       <Separator />
 
-      {/* Filters */}
+      {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
+        {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Input
             placeholder="Search title, code, client…"
             value={filters.search}
             onChange={e => setFilters(p => ({ ...p, search: e.target.value, page: 1 }))}
-            className="h-9"
+            className="h-9 pr-8"
           />
+          {filters.search && (
+            <button
+              onClick={() => setFilter('search', '')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <svg width="14" height="14" viewBox="0 0 15 15" fill="none">
+                <path
+                  d="M11.782 4.032a.575.575 0 1 0-.813-.813L7.5 6.687 4.032 3.22a.575.575 0 0 0-.813.813L6.687 7.5l-3.468 3.468a.575.575 0 0 0 .813.813L7.5 8.313l3.469 3.468a.575.575 0 0 0 .813-.813L8.313 7.5l3.469-3.468Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+          )}
         </div>
 
+        {/* Inline quick filters — status and priority most used */}
         <Select
           value={filters.status || '_'}
           onValueChange={v => setFilter('status', v === '_' ? '' : (v as RequirementStatus))}
         >
-          <SelectTrigger className="h-9 w-[160px]">
+          <SelectTrigger className="h-9 w-[150px]">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -397,70 +757,124 @@ export default function RequirementsPage() {
           </SelectContent>
         </Select>
 
+        {/* Sort */}
         <Select
-          value={filters.jobType || '_'}
-          onValueChange={v =>
-            setFilter('jobType', v === '_' ? '' : (v as RequirementFilters['jobType']))
-          }
+          value={`${filters.sortBy}:${filters.sortDir}`}
+          onValueChange={v => {
+            const [by, dir] = v.split(':') as [RequirementFilters['sortBy'], 'asc' | 'desc'];
+            setFilters(p => ({ ...p, sortBy: by, sortDir: dir, page: 1 }));
+          }}
         >
           <SelectTrigger className="h-9 w-[160px]">
-            <SelectValue placeholder="Job type" />
+            <SelectValue placeholder="Sort by" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="_">All job types</SelectItem>
-            <SelectItem value="CONTRACT">Contract</SelectItem>
-            <SelectItem value="PERMANENT">Permanent</SelectItem>
-            <SelectItem value="CONTRACT_TO_HIRE">Contract to hire</SelectItem>
-            <SelectItem value="FREELANCE">Freelance</SelectItem>
+            <SelectItem value="createdAt:desc">Newest first</SelectItem>
+            <SelectItem value="createdAt:asc">Oldest first</SelectItem>
+            <SelectItem value="respondBy:asc">Respond by ↑</SelectItem>
+            <SelectItem value="respondBy:desc">Respond by ↓</SelectItem>
+            <SelectItem value="priority:desc">Priority high–low</SelectItem>
+            <SelectItem value="startDate:asc">Start date ↑</SelectItem>
+            <SelectItem value="updatedAt:desc">Recently updated</SelectItem>
           </SelectContent>
         </Select>
 
-        <Select
-          value={filters.remoteType || '_'}
-          onValueChange={v =>
-            setFilter('remoteType', v === '_' ? '' : (v as RequirementFilters['remoteType']))
-          }
-        >
-          <SelectTrigger className="h-9 w-[120px]">
-            <SelectValue placeholder="Remote" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">All</SelectItem>
-            <SelectItem value="ONSITE">Onsite</SelectItem>
-            <SelectItem value="REMOTE">Remote</SelectItem>
-            <SelectItem value="HYBRID">Hybrid</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* All filters sheet */}
+        <FilterSheet
+          filters={filters}
+          setFilter={setFilter}
+          onClear={() => setFilters(DEFAULT_FILTERS)}
+          activeCount={activeFilterCount}
+          clients={clients}
+          businessUnits={businessUnits}
+        />
 
-        <div className="flex items-center gap-2 ml-auto flex-wrap">
+        {activeFilterCount > 0 && (
           <Button
-            variant={filters.assignedToMe ? 'secondary' : 'outline'}
+            variant="ghost"
             size="sm"
-            onClick={() => setFilter('assignedToMe', !filters.assignedToMe)}
-            className="h-9"
+            className="h-9 text-muted-foreground"
+            onClick={() => setFilters(DEFAULT_FILTERS)}
           >
-            Assigned to me
+            Clear all
           </Button>
-          <Button
-            variant={filters.breached ? 'destructive' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('breached', !filters.breached)}
-            className="h-9"
-          >
-            Breached
-          </Button>
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFilters(DEFAULT_FILTERS)}
-              className="h-9 text-muted-foreground"
-            >
-              Clear
-            </Button>
+        )}
+      </div>
+
+      {/* Active filter chips */}
+      {activeFilterCount > 0 && (
+        <div className="flex items-center gap-2 flex-wrap -mt-2">
+          {filters.status && (
+            <FilterChip
+              label={`Status: ${STATUS_OPTIONS.find(s => s.value === filters.status)?.label}`}
+              onRemove={() => setFilter('status', '')}
+            />
+          )}
+          {filters.priority && (
+            <FilterChip
+              label={`Priority: ${humanize(filters.priority)}`}
+              onRemove={() => setFilter('priority', '')}
+            />
+          )}
+          {filters.jobType && (
+            <FilterChip
+              label={`Type: ${humanize(filters.jobType)}`}
+              onRemove={() => setFilter('jobType', '')}
+            />
+          )}
+          {filters.remoteType && (
+            <FilterChip
+              label={`Remote: ${humanize(filters.remoteType)}`}
+              onRemove={() => setFilter('remoteType', '')}
+            />
+          )}
+          {filters.clientId && (
+            <FilterChip
+              label={`Client: ${clients.find(c => c.id === filters.clientId)?.name ?? 'Selected'}`}
+              onRemove={() => setFilter('clientId', '')}
+            />
+          )}
+          {filters.buId && (
+            <FilterChip
+              label={`BU: ${businessUnits.find(b => b.id === filters.buId)?.name ?? 'Selected'}`}
+              onRemove={() => setFilter('buId', '')}
+            />
+          )}
+          {filters.assignedToMe && (
+            <FilterChip label="Assigned to me" onRemove={() => setFilter('assignedToMe', false)} />
+          )}
+          {filters.breached && (
+            <FilterChip label="Breached" onRemove={() => setFilter('breached', false)} />
+          )}
+          {(filters.respondByFrom || filters.respondByTo) && (
+            <FilterChip
+              label={`Respond by: ${filters.respondByFrom || '…'} → ${filters.respondByTo || '…'}`}
+              onRemove={() => {
+                setFilter('respondByFrom', '');
+                setFilter('respondByTo', '');
+              }}
+            />
+          )}
+          {(filters.startDateFrom || filters.startDateTo) && (
+            <FilterChip
+              label={`Start date: ${filters.startDateFrom || '…'} → ${filters.startDateTo || '…'}`}
+              onRemove={() => {
+                setFilter('startDateFrom', '');
+                setFilter('startDateTo', '');
+              }}
+            />
+          )}
+          {(filters.createdFrom || filters.createdTo) && (
+            <FilterChip
+              label={`Created: ${filters.createdFrom || '…'} → ${filters.createdTo || '…'}`}
+              onRemove={() => {
+                setFilter('createdFrom', '');
+                setFilter('createdTo', '');
+              }}
+            />
           )}
         </div>
-      </div>
+      )}
 
       {/* Table */}
       <div className="rounded-lg border overflow-hidden">
@@ -470,9 +884,10 @@ export default function RequirementsPage() {
               <TableHead className="w-[110px]">Code</TableHead>
               <TableHead>Title / Skills</TableHead>
               <TableHead className="w-[130px]">Client</TableHead>
+              <TableHead className="w-[80px]">BU</TableHead>
               <TableHead className="w-[120px]">Status</TableHead>
               <TableHead className="w-[80px]">Priority</TableHead>
-              <TableHead className="w-[130px]">Type</TableHead>
+              <TableHead className="w-[110px]">Type</TableHead>
               <TableHead className="w-[90px]">Openings</TableHead>
               <TableHead className="w-[110px]">Respond by</TableHead>
               <TableHead className="w-[40px]" />
@@ -483,17 +898,23 @@ export default function RequirementsPage() {
               <TableSkeleton />
             ) : requirements.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-16 text-muted-foreground text-sm">
+                <TableCell colSpan={10} className="text-center py-16 text-muted-foreground text-sm">
                   No requirements found
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={() => setFilters(DEFAULT_FILTERS)}
+                      className="ml-1 text-primary hover:underline"
+                    >
+                      Clear filters
+                    </button>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
               requirements.map(req => (
                 <TableRow
                   key={req.id}
-                  className={`cursor-pointer hover:bg-muted/40 transition-colors ${
-                    isFetching ? 'opacity-60' : ''
-                  }`}
+                  className={`cursor-pointer hover:bg-muted/40 transition-colors ${isFetching ? 'opacity-60' : ''}`}
                   onClick={() => router.push(`/requirements/${req.id}`)}
                 >
                   <TableCell className="font-mono text-xs text-muted-foreground">
@@ -520,6 +941,12 @@ export default function RequirementsPage() {
                   </TableCell>
 
                   <TableCell>
+                    <span className="text-xs text-muted-foreground line-clamp-1">
+                      {req.businessUnit?.name ?? '—'}
+                    </span>
+                  </TableCell>
+
+                  <TableCell>
                     <div className="flex items-center gap-1">
                       <Badge
                         variant={statusVariant(req.status)}
@@ -543,9 +970,7 @@ export default function RequirementsPage() {
 
                   <TableCell>
                     <span className="text-xs text-muted-foreground">
-                      {humanize(req.jobType)}
-                      {' · '}
-                      {humanize(req.remoteType)}
+                      {humanize(req.jobType)} · {humanize(req.remoteType)}
                     </span>
                   </TableCell>
 
@@ -558,11 +983,7 @@ export default function RequirementsPage() {
                   <TableCell>
                     {req.respondBy ? (
                       <span
-                        className={`text-xs tabular-nums ${
-                          req.isRespondByBreached
-                            ? 'text-destructive font-medium'
-                            : 'text-muted-foreground'
-                        }`}
+                        className={`text-xs tabular-nums ${req.isRespondByBreached ? 'text-destructive font-medium' : 'text-muted-foreground'}`}
                       >
                         {format(new Date(req.respondBy), 'dd MMM yy')}
                       </span>
@@ -621,7 +1042,7 @@ export default function RequirementsPage() {
       )}
 
       {/* Status change dialog */}
-      <AlertDialog open={!!statusDialog} onOpenChange={open => !open && setStatusDialog(null)}>
+      <AlertDialog open={!!statusDialog} onOpenChange={o => !o && setStatusDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm status change</AlertDialogTitle>
@@ -638,13 +1059,10 @@ export default function RequirementsPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={statusMutation.isPending}
-              onClick={() => {
-                if (!statusDialog) return;
-                statusMutation.mutate({
-                  id: statusDialog.req.id,
-                  toStatus: statusDialog.to,
-                });
-              }}
+              onClick={() =>
+                statusDialog &&
+                statusMutation.mutate({ id: statusDialog.req.id, toStatus: statusDialog.to })
+              }
             >
               {statusMutation.isPending ? 'Updating…' : 'Confirm'}
             </AlertDialogAction>
@@ -652,5 +1070,26 @@ export default function RequirementsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filter chip
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FilterChip({ label, onRemove }: { label?: string; onRemove: () => void }) {
+  if (!label) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border bg-muted px-2 py-0.5 text-xs text-foreground">
+      {label}
+      <button onClick={onRemove} className="text-muted-foreground hover:text-foreground ml-0.5">
+        <svg width="10" height="10" viewBox="0 0 15 15" fill="none">
+          <path
+            d="M11.782 4.032a.575.575 0 1 0-.813-.813L7.5 6.687 4.032 3.22a.575.575 0 0 0-.813.813L6.687 7.5l-3.468 3.468a.575.575 0 0 0 .813.813L7.5 8.313l3.469 3.468a.575.575 0 0 0 .813-.813L8.313 7.5l3.469-3.468Z"
+            fill="currentColor"
+          />
+        </svg>
+      </button>
+    </span>
   );
 }
