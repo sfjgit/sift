@@ -1,17 +1,33 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import useSWR from 'swr';
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useDebounce } from 'use-debounce';
+import {
+  Search,
+  Plus,
+  SlidersHorizontal,
+  X,
+  Building2,
+  MoreHorizontal,
+  Briefcase,
+  MapPin,
+  FileText,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+  Pencil,
+  Eye,
+} from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -28,14 +44,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -48,108 +56,184 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetFooter,
 } from '@/components/ui/sheet';
 
 import { useAxios } from '@/hooks/useAxios';
-import type {
-  ClientFilters,
-  ClientListItem,
-  ClientListResponse,
-  ClientStatus,
-  ClientCategory,
-} from './_components/types';
+import { cn } from '@/lib/utils';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+type ClientStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE';
+
+interface ClientFilters {
+  search: string;
+  status: string;
+  industry: string;
+  buId: string;
+  page: number;
+  limit: number;
+  sortBy: string;
+  sortDir: 'asc' | 'desc';
+}
+
+interface ClientListItem {
+  id: string;
+  name: string;
+  vmsName?: string | null;
+  industry?: string | null;
+  city?: string | null;
+  country?: string | null;
+  status: ClientStatus;
+  businessUnit?: { id: string; name: string } | null;
+  spocs?: {
+    id: string;
+    isPrimary: boolean;
+    user: { id: string; firstName: string; lastName: string };
+    serviceLine: { id: string; name: string };
+  }[];
+  _count: { requirements: number };
+  createdAt: string;
+}
+
+interface ClientListResponse {
+  data: ClientListItem[];
+  meta: { total: number; page: number; limit: number; pages: number };
+  permissions?: { canAdd: boolean; canEdit: boolean; canDelete: boolean };
+}
+
+interface BUListResponse {
+  data: { id: string; name: string }[];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS: { value: ClientStatus; label: string }[] = [
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'INACTIVE', label: 'Inactive' },
-];
-
-const CATEGORY_OPTIONS: { value: ClientCategory; label: string }[] = [
-  { value: 'PRODUCT', label: 'Product' },
-  { value: 'SERVICE', label: 'Service' },
-  { value: 'CONSULTING', label: 'Consulting' },
-  { value: 'STAFFING', label: 'Staffing' },
-  { value: 'GOVERNMENT', label: 'Government' },
-  { value: 'NGO', label: 'NGO' },
-  { value: 'OTHER', label: 'Other' },
-];
-
 const DEFAULT_FILTERS: ClientFilters = {
   search: '',
   status: '',
-  category: '',
   industry: '',
   buId: '',
-  handledByMe: false,
   page: 1,
-  limit: 25,
+  limit: 20,
   sortBy: 'createdAt',
   sortDir: 'desc',
 };
+
+const STATUS_CONFIG: Record<ClientStatus, { label: string; cls: string }> = {
+  ACTIVE: {
+    label: 'Active',
+    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400',
+  },
+  PENDING: {
+    label: 'Pending',
+    cls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400',
+  },
+  INACTIVE: {
+    label: 'Inactive',
+    cls: 'bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400',
+  },
+};
+
+const BG_COLORS = [
+  'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300',
+  'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
+  'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+  'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function statusVariant(s: ClientStatus): 'default' | 'secondary' | 'outline' {
-  switch (s) {
-    case 'ACTIVE':
-      return 'default';
-    case 'PENDING':
-      return 'secondary';
-    case 'INACTIVE':
-      return 'outline';
-  }
+function clientInitials(name: string) {
+  return name
+    .split(' ')
+    .slice(0, 2)
+    .map(w => w[0] ?? '')
+    .join('')
+    .toUpperCase();
 }
 
-function humanize(str: string) {
-  return str
-    .split('_')
-    .map(w => w.charAt(0) + w.slice(1).toLowerCase())
-    .join(' ');
+function clientColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return BG_COLORS[Math.abs(hash) % BG_COLORS.length];
 }
 
 function countFilters(f: ClientFilters) {
-  return [f.status, f.category, f.industry, f.buId, f.handledByMe].filter(Boolean).length;
+  return [f.status, f.industry, f.buId].filter(Boolean).length;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
+// Skeleton
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TableSkeleton() {
+function ClientsSkeleton() {
   return (
-    <>
+    <div className="divide-y divide-border">
       {Array.from({ length: 8 }).map((_, i) => (
-        <TableRow key={i}>
-          {Array.from({ length: 7 }).map((_, j) => (
-            <TableCell key={j}>
-              <Skeleton className="h-4 w-full" />
-            </TableCell>
-          ))}
-        </TableRow>
+        <div key={i} className="flex items-center gap-4 px-5 py-4">
+          <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+          <div className="flex-1 flex flex-col gap-1.5">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-5 w-24 hidden sm:block" />
+          <Skeleton className="h-5 w-16 hidden md:block" />
+          <Skeleton className="h-7 w-7 rounded-md" />
+        </div>
       ))}
-    </>
+    </div>
   );
 }
 
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Sort header
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SortHeader({
+  label,
+  field,
+  current,
+  dir,
+  onSort,
+}: {
+  label: string;
+  field: string;
+  current: string;
+  dir: 'asc' | 'desc';
+  onSort: (field: string) => void;
+}) {
+  const active = current === field;
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border bg-muted px-2 py-0.5 text-xs text-foreground">
+    <button
+      onClick={() => onSort(field)}
+      className={cn(
+        'flex items-center gap-1 text-xs font-semibold uppercase tracking-wide transition-colors',
+        active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+      )}
+    >
       {label}
-      <button onClick={onRemove} className="text-muted-foreground hover:text-foreground ml-0.5">
-        ✕
-      </button>
-    </span>
+      {active ? (
+        dir === 'asc' ? (
+          <ArrowUp className="h-3 w-3" />
+        ) : (
+          <ArrowDown className="h-3 w-3" />
+        )
+      ) : (
+        <ArrowUpDown className="h-3 w-3 opacity-40" />
+      )}
+    </button>
   );
 }
 
@@ -174,9 +258,10 @@ function FilterSheet({
     <Sheet>
       <SheetTrigger asChild>
         <Button variant="outline" size="sm" className="h-9 gap-2">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
           Filters
           {activeCount > 0 && (
-            <span className="bg-primary text-primary-foreground rounded-full text-[10px] px-1.5 py-0.5 leading-none font-medium">
+            <span className="bg-primary text-primary-foreground rounded-full text-[10px] px-1.5 py-0.5 leading-none font-bold">
               {activeCount}
             </span>
           )}
@@ -184,69 +269,54 @@ function FilterSheet({
       </SheetTrigger>
       <SheetContent className="w-80 flex flex-col p-0">
         <SheetHeader className="px-5 py-4 border-b shrink-0">
-          <SheetTitle>Filters</SheetTitle>
+          <SheetTitle className="text-base">Filter clients</SheetTitle>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
-            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-6">
+          <div className="flex flex-col gap-2.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Status
             </Label>
-            <Select
-              value={filters.status || '_'}
-              onValueChange={v => setFilter('status', v === '_' ? '' : (v as ClientStatus))}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">All statuses</SelectItem>
-                {STATUS_OPTIONS.map(s => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              {(['', 'ACTIVE', 'PENDING', 'INACTIVE'] as const).map(s => {
+                const isAll = s === '';
+                const active = filters.status === s;
+                const cfg = s ? STATUS_CONFIG[s as ClientStatus] : null;
+                return (
+                  <button
+                    key={s || 'all'}
+                    onClick={() => setFilter('status', s)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg border text-xs font-medium transition-all',
+                      active
+                        ? cfg
+                          ? cn(cfg.cls, 'border-current')
+                          : 'bg-primary text-primary-foreground border-primary'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    )}
+                  >
+                    {isAll ? 'All' : cfg?.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Category
-            </Label>
-            <Select
-              value={filters.category || '_'}
-              onValueChange={v => setFilter('category', v === '_' ? '' : (v as ClientCategory))}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">All categories</SelectItem>
-                {CATEGORY_OPTIONS.map(c => (
-                  <SelectItem key={c.value} value={c.value}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          <div className="flex flex-col gap-2.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Industry
             </Label>
             <Input
-              className="h-9"
-              placeholder="e.g. Technology"
+              className="h-9 text-sm"
+              placeholder="e.g. IT Services"
               value={filters.industry}
               onChange={e => setFilter('industry', e.target.value)}
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Business unit
+          <div className="flex flex-col gap-2.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Business Unit
             </Label>
             <Select
               value={filters.buId || '_'}
@@ -256,7 +326,7 @@ function FilterSheet({
                 <SelectValue placeholder="All BUs" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_">All BUs</SelectItem>
+                <SelectItem value="_">All business units</SelectItem>
                 {businessUnits.map(b => (
                   <SelectItem key={b.id} value={b.id}>
                     {b.name}
@@ -265,31 +335,194 @@ function FilterSheet({
               </SelectContent>
             </Select>
           </div>
-
-          <Separator />
-
-          <button
-            onClick={() => setFilter('handledByMe', !filters.handledByMe)}
-            className={`flex items-center justify-between rounded-md border px-3 py-2.5 text-sm transition-colors ${
-              filters.handledByMe
-                ? 'border-primary bg-primary/5 text-primary'
-                : 'border-border hover:bg-muted/50'
-            }`}
-          >
-            <span>Handled by me</span>
-            {filters.handledByMe && <span className="text-xs font-medium">✓</span>}
-          </button>
         </div>
 
-        <SheetFooter className="px-5 py-4 border-t shrink-0">
+        <SheetFooter className="px-5 py-4 border-t shrink-0 flex-col gap-2">
           {activeCount > 0 && (
             <Button variant="outline" className="w-full" onClick={onClear}>
-              Clear all filters
+              <X className="h-3.5 w-3.5 mr-2" />
+              Clear {activeCount} filter{activeCount > 1 ? 's' : ''}
             </Button>
           )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Client row
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ClientRow({
+  client,
+  canEdit,
+  canDelete,
+  onDelete,
+  isValidating,
+}: {
+  client: ClientListItem;
+  canEdit: boolean;
+  canDelete: boolean;
+  onDelete: (id: string) => void;
+  isValidating: boolean;
+}) {
+  const router = useRouter();
+  const cfg = STATUS_CONFIG[client.status];
+  const color = clientColor(client.name);
+  const primarySpoc = client.spocs?.find(s => s.isPrimary);
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-4 px-5 py-3.5 hover:bg-muted/30 transition-colors cursor-pointer group',
+        isValidating && 'opacity-60'
+      )}
+      onClick={() => router.push(`/clients/${client.id}`)}
+    >
+      <div
+        className={cn(
+          'h-9 w-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0',
+          color
+        )}
+      >
+        {clientInitials(client.name)}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+            {client.name}
+          </span>
+          {client.vmsName && (
+            <span className="text-[10px] text-muted-foreground font-mono hidden lg:inline shrink-0">
+              {client.vmsName}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
+          {client.industry && (
+            <span className="flex items-center gap-1">
+              <Briefcase className="h-3 w-3 shrink-0" />
+              {client.industry}
+            </span>
+          )}
+          {(client.city || client.country) && (
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3 w-3 shrink-0" />
+              {[client.city, client.country].filter(Boolean).join(', ')}
+            </span>
+          )}
+          {client.businessUnit && (
+            <span className="flex items-center gap-1">
+              <Building2 className="h-3 w-3 shrink-0" />
+              {client.businessUnit.name}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <Badge
+        variant="outline"
+        className={cn('text-[10px] px-2 py-0.5 shrink-0 hidden sm:flex', cfg.cls)}
+      >
+        {cfg.label}
+      </Badge>
+
+      <div className="hidden md:flex items-center gap-1.5 min-w-[140px]">
+        {primarySpoc ? (
+          <>
+            <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-[9px] font-bold text-primary">
+                {primarySpoc.user.firstName[0]}
+                {primarySpoc.user.lastName[0]}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium truncate">
+                {primarySpoc.user.firstName} {primarySpoc.user.lastName}
+              </p>
+              <p className="text-[10px] text-muted-foreground truncate">
+                {primarySpoc.serviceLine.name}
+              </p>
+            </div>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">No SPOC</span>
+        )}
+      </div>
+
+      <div className="hidden lg:flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <FileText className="h-3.5 w-3.5" />
+          <span className="tabular-nums font-medium">{client._count.requirements}</span>
+        </div>
+      </div>
+
+      <div className="shrink-0" onClick={e => e.stopPropagation()}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => router.push(`/clients/${client.id}`)}>
+              <Eye className="h-3.5 w-3.5 mr-2" />
+              View detail
+            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem onClick={() => router.push(`/clients/${client.id}/edit`)}>
+                <Pencil className="h-3.5 w-3.5 mr-2" />
+                Edit
+              </DropdownMenuItem>
+            )}
+            {canDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => onDelete(client.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty state
+// ─────────────────────────────────────────────────────────────────────────────
+
+function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-3">
+      <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center">
+        <Building2 className="h-5 w-5 text-muted-foreground/50" />
+      </div>
+      <div className="text-center">
+        <p className="text-sm font-semibold">No clients found</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {hasFilters ? 'Try adjusting your filters' : 'Add your first client to get started'}
+        </p>
+      </div>
+      {hasFilters && (
+        <Button variant="outline" size="sm" onClick={onClear}>
+          <X className="h-3.5 w-3.5 mr-2" />
+          Clear filters
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -300,14 +533,13 @@ function FilterSheet({
 export default function ClientsPage() {
   const axios = useAxios();
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   const [filters, setFilters] = useState<ClientFilters>(DEFAULT_FILTERS);
-  const [debouncedSearch] = useDebounce(filters.search, 400);
+  const [debouncedSearch] = useDebounce(filters.search, 350);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   function setFilter<K extends keyof ClientFilters>(key: K, value: ClientFilters[K]) {
-    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
+    setFilters(prev => ({ ...prev, [key]: value, page: key !== 'page' ? 1 : (value as number) }));
   }
 
   const qs = useCallback(() => {
@@ -319,27 +551,24 @@ export default function ClientsPage() {
     };
     if (debouncedSearch) p.search = debouncedSearch;
     if (filters.status) p.status = filters.status;
-    if (filters.category) p.category = filters.category;
     if (filters.industry) p.industry = filters.industry;
     if (filters.buId) p.buId = filters.buId;
-    if (filters.handledByMe) p.handledByMe = 'true';
     return new URLSearchParams(p).toString();
   }, [filters, debouncedSearch]);
+
+  const fetcher = useCallback((url: string) => axios.get(url).then(r => r.data), [axios]);
 
   const {
     data: listRes,
     isLoading,
-    isFetching,
-  } = useQuery<ClientListResponse>({
-    queryKey: ['clients', qs()],
-    queryFn: async () => (await axios.get(`/clients?${qs()}`)).data,
-    placeholderData: prev => prev,
+    isValidating,
+    mutate: mutateList,
+  } = useSWR<ClientListResponse>(`/clients?${qs()}`, fetcher, {
+    keepPreviousData: true,
   });
 
-  const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
-    queryKey: ['bus-dropdown'],
-    queryFn: async () => (await axios.get('/business-units?limit=100')).data,
-    staleTime: 60_000,
+  const { data: busRes } = useSWR<BUListResponse>('/business-units', fetcher, {
+    revalidateOnFocus: false,
   });
 
   const clients = listRes?.data ?? [];
@@ -348,79 +577,71 @@ export default function ClientsPage() {
   const businessUnits = busRes?.data ?? [];
   const activeFilterCount = countFilters(filters);
 
+  const handleSort = (field: string) => {
+    setFilters(prev => ({
+      ...prev,
+      sortBy: field,
+      sortDir: prev.sortBy === field && prev.sortDir === 'desc' ? 'asc' : 'desc',
+      page: 1,
+    }));
+  };
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => (await axios.delete(`/clients/${id}`)).data,
     onSuccess: () => {
       toast.success('Client deleted');
       setDeleteId(null);
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      mutateList();
     },
     onError: () => toast.error('Failed to delete client'),
   });
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col gap-0 h-full">
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 px-6 py-5 border-b bg-card shrink-0">
         <div>
-          <h1 className="text-xl font-semibold">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {meta ? `${meta.total} total` : '—'}
+          <h1 className="text-base font-bold">Clients</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {meta ? `${meta.total.toLocaleString()} total` : 'Loading...'}
           </p>
         </div>
         {permissions?.canAdd && (
-          <Button size="sm" onClick={() => router.push('/clients/new')}>
+          <Button size="sm" className="h-8 gap-1.5" onClick={() => router.push('/clients/new')}>
+            <Plus className="h-3.5 w-3.5" />
             New client
           </Button>
         )}
       </div>
 
-      <Separator />
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 px-6 py-3.5 border-b bg-card shrink-0 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="Search name, VMS, industry…"
+            placeholder="Search clients..."
             value={filters.search}
             onChange={e => setFilters(p => ({ ...p, search: e.target.value, page: 1 }))}
-            className="h-9 pr-8"
+            className="pl-8 h-8 text-sm"
           />
           {filters.search && (
             <button
               onClick={() => setFilter('search', '')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
-              ✕
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
 
         <Select
-          value={filters.status || '_'}
-          onValueChange={v => setFilter('status', v === '_' ? '' : (v as ClientStatus))}
-        >
-          <SelectTrigger className="h-9 w-[130px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">All statuses</SelectItem>
-            {STATUS_OPTIONS.map(s => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
           value={`${filters.sortBy}:${filters.sortDir}`}
           onValueChange={v => {
-            const [by, dir] = v.split(':') as [ClientFilters['sortBy'], 'asc' | 'desc'];
+            const [by, dir] = v.split(':') as [string, 'asc' | 'desc'];
             setFilters(p => ({ ...p, sortBy: by, sortDir: dir, page: 1 }));
           }}
         >
-          <SelectTrigger className="h-9 w-[160px]">
+          <SelectTrigger className="h-8 w-[160px] text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -441,225 +662,129 @@ export default function ClientsPage() {
         />
 
         {activeFilterCount > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 text-muted-foreground"
-            onClick={() => setFilters(DEFAULT_FILTERS)}
-          >
-            Clear all
-          </Button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {filters.status && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-medium',
+                  STATUS_CONFIG[filters.status as ClientStatus].cls
+                )}
+              >
+                {STATUS_CONFIG[filters.status as ClientStatus].label}
+                <button onClick={() => setFilter('status', '')} className="hover:opacity-70">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+            {filters.industry && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border bg-muted text-[11px] font-medium text-foreground">
+                {filters.industry}
+                <button onClick={() => setFilter('industry', '')} className="hover:opacity-70">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+            {filters.buId && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border bg-muted text-[11px] font-medium text-foreground">
+                {businessUnits.find(b => b.id === filters.buId)?.name ?? 'BU'}
+                <button onClick={() => setFilter('buId', '')} className="hover:opacity-70">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+
+        {isValidating && !isLoading && (
+          <span className="text-xs text-muted-foreground animate-pulse ml-auto">Refreshing...</span>
         )}
       </div>
 
-      {/* Active filter chips */}
-      {activeFilterCount > 0 && (
-        <div className="flex items-center gap-2 flex-wrap -mt-2">
-          {filters.status && (
-            <FilterChip
-              label={`Status: ${humanize(filters.status)}`}
-              onRemove={() => setFilter('status', '')}
-            />
-          )}
-          {filters.category && (
-            <FilterChip
-              label={`Category: ${humanize(filters.category)}`}
-              onRemove={() => setFilter('category', '')}
-            />
-          )}
-          {filters.industry && (
-            <FilterChip
-              label={`Industry: ${filters.industry}`}
-              onRemove={() => setFilter('industry', '')}
-            />
-          )}
-          {filters.buId && (
-            <FilterChip
-              label={`BU: ${businessUnits.find(b => b.id === filters.buId)?.name ?? 'Selected'}`}
-              onRemove={() => setFilter('buId', '')}
-            />
-          )}
-          {filters.handledByMe && (
-            <FilterChip label="Handled by me" onRemove={() => setFilter('handledByMe', false)} />
-          )}
+      {/* ── Column headers ──────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 px-5 py-2.5 border-b bg-muted/30 shrink-0">
+        <div className="w-9 shrink-0" />
+        <div className="flex-1">
+          <SortHeader
+            label="Client"
+            field="name"
+            current={filters.sortBy}
+            dir={filters.sortDir}
+            onSort={handleSort}
+          />
         </div>
-      )}
-
-      {/* Table */}
-      <div className="rounded-lg border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/40">
-              <TableHead>Name</TableHead>
-              <TableHead className="w-[100px]">Status</TableHead>
-              <TableHead className="w-[120px]">Category</TableHead>
-              <TableHead className="w-[140px]">Industry</TableHead>
-              <TableHead className="w-[90px]">BU</TableHead>
-              <TableHead className="w-[180px]">Handlers</TableHead>
-              <TableHead className="w-[60px] text-center">Reqs</TableHead>
-              <TableHead className="w-[60px] text-center">Contacts</TableHead>
-              <TableHead className="w-[40px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableSkeleton />
-            ) : clients.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-16 text-sm text-muted-foreground">
-                  No clients found
-                  {activeFilterCount > 0 && (
-                    <button
-                      onClick={() => setFilters(DEFAULT_FILTERS)}
-                      className="ml-1 text-primary hover:underline"
-                    >
-                      Clear filters
-                    </button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ) : (
-              clients.map(client => (
-                <TableRow
-                  key={client.id}
-                  className={`cursor-pointer hover:bg-muted/40 transition-colors ${isFetching ? 'opacity-60' : ''}`}
-                  onClick={() => router.push(`/clients/${client.id}`)}
-                >
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium text-sm">{client.name}</span>
-                      {client.vmsName && (
-                        <span className="text-xs text-muted-foreground">VMS: {client.vmsName}</span>
-                      )}
-                      {(client.city || client.country) && (
-                        <span className="text-xs text-muted-foreground">
-                          {[client.city, client.country].filter(Boolean).join(', ')}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <Badge variant={statusVariant(client.status)} className="text-xs">
-                      {humanize(client.status)}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {client.category ? humanize(client.category) : '—'}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground line-clamp-1">
-                      {client.industry ?? '—'}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {client.businessUnit?.name ?? '—'}
-                    </span>
-                  </TableCell>
-
-                  <TableCell>
-                    {client.handlers.length === 0 ? (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    ) : (
-                      <div className="flex flex-col gap-0.5">
-                        {client.handlers.slice(0, 2).map(h => (
-                          <span key={h.id} className="text-xs leading-snug">
-                            <span className="text-muted-foreground">{humanize(h.role)}: </span>
-                            {h.user.firstName} {h.user.lastName}
-                          </span>
-                        ))}
-                        {client.handlers.length > 2 && (
-                          <span className="text-xs text-muted-foreground">
-                            +{client.handlers.length - 2} more
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </TableCell>
-
-                  <TableCell className="text-center">
-                    <span className="text-sm tabular-nums">{client._count.requirements}</span>
-                  </TableCell>
-
-                  <TableCell className="text-center">
-                    <span className="text-sm tabular-nums">{client._count.contacts}</span>
-                  </TableCell>
-
-                  <TableCell onClick={e => e.stopPropagation()} className="p-1">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground"
-                        >
-                          ···
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => router.push(`/clients/${client.id}`)}>
-                          View detail
-                        </DropdownMenuItem>
-                        {permissions?.canEdit && (
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/clients/${client.id}/edit`)}
-                          >
-                            Edit
-                          </DropdownMenuItem>
-                        )}
-                        {permissions?.canDelete && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => setDeleteId(client.id)}
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+        <div className="w-20 hidden sm:block">
+          <SortHeader
+            label="Status"
+            field="status"
+            current={filters.sortBy}
+            dir={filters.sortDir}
+            onSort={handleSort}
+          />
+        </div>
+        <div className="w-[140px] hidden md:block">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            SPOC
+          </span>
+        </div>
+        <div className="hidden lg:flex items-center gap-3">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground w-12 text-center">
+            Reqs
+          </span>
+        </div>
+        <div className="w-7 shrink-0" />
       </div>
 
-      {/* Pagination */}
+      {/* ── List ────────────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="divide-y divide-border">
+          {isLoading ? (
+            <ClientsSkeleton />
+          ) : clients.length === 0 ? (
+            <EmptyState
+              hasFilters={activeFilterCount > 0 || !!filters.search}
+              onClear={() => setFilters(DEFAULT_FILTERS)}
+            />
+          ) : (
+            clients.map(client => (
+              <ClientRow
+                key={client.id}
+                client={client}
+                canEdit={permissions?.canEdit ?? false}
+                canDelete={permissions?.canDelete ?? false}
+                onDelete={setDeleteId}
+                isValidating={isValidating}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── Pagination ──────────────────────────────────────────────────────── */}
       {meta && meta.pages > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
+        <div className="flex items-center justify-between px-6 py-3.5 border-t bg-card shrink-0">
+          <span className="text-xs text-muted-foreground">
             {(meta.page - 1) * meta.limit + 1}–{Math.min(meta.page * meta.limit, meta.total)} of{' '}
-            {meta.total}
+            {meta.total.toLocaleString()}
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <Button
               variant="outline"
               size="sm"
+              className="h-7 text-xs"
               disabled={filters.page <= 1}
               onClick={() => setFilter('page', filters.page - 1)}
-              className="h-8"
             >
               Previous
             </Button>
-            <span className="px-3 tabular-nums">
+            <span className="text-xs tabular-nums text-muted-foreground px-2">
               {meta.page} / {meta.pages}
             </span>
             <Button
               variant="outline"
               size="sm"
+              className="h-7 text-xs"
               disabled={filters.page >= meta.pages}
               onClick={() => setFilter('page', filters.page + 1)}
-              className="h-8"
             >
               Next
             </Button>
@@ -667,13 +792,13 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Delete confirm */}
+      {/* ── Delete confirm ───────────────────────────────────────────────────── */}
       <AlertDialog open={!!deleteId} onOpenChange={o => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete client?</AlertDialogTitle>
             <AlertDialogDescription>
-              This soft-deletes the client. Existing requirements and contacts are preserved.
+              This soft-deletes the client. Existing requirements and SPOCs are preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -683,7 +808,7 @@ export default function ClientsPage() {
               disabled={deleteMutation.isPending}
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
             >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

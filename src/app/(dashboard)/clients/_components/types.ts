@@ -1,14 +1,5 @@
 export type ClientStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE';
-export type ClientCategory =
-  | 'PRODUCT'
-  | 'SERVICE'
-  | 'CONSULTING'
-  | 'STAFFING'
-  | 'GOVERNMENT'
-  | 'NGO'
-  | 'OTHER';
-export type ClientHandlerRole = 'PRIMARY' | 'SECONDARY' | 'BACKUP';
-export type ClientHandlerStatus = 'ACTIVE' | 'REMOVED' | 'REPLACED';
+export type ClientHandlerRole = 'PRIMARY' | 'SECONDARY' | 'BACKUP'; // kept for spoc isPrimary display
 export type ClientContactStatus = 'ACTIVE' | 'INACTIVE' | 'REMOVED';
 
 export interface UserRef {
@@ -16,19 +7,24 @@ export interface UserRef {
   firstName: string;
   lastName: string;
   employeeId?: string | null;
-  phone?: string | null;
 }
 
-export interface ClientHandler {
+// ── Spoc (what the API actually returns on both list + detail) ────────────────
+
+export interface ClientSpoc {
   id: string;
-  role: ClientHandlerRole;
-  status: ClientHandlerStatus;
+  isPrimary: boolean;
+  isActive: boolean;
+  notes?: string | null;
   assignedAt: string;
   removedAt?: string | null;
-  removedReason?: string | null;
   user: UserRef;
-  assignedBy: UserRef;
+  serviceLine: { id: string; name: string };
+  businessUnit?: { id: string; name: string } | null;
+  assignedBy?: UserRef; // present on detail, absent on list
 }
+
+// ── Contact ───────────────────────────────────────────────────────────────────
 
 export interface ClientContact {
   id: string;
@@ -44,6 +40,8 @@ export interface ClientContact {
   owner?: UserRef | null;
 }
 
+// ── Team assignment ───────────────────────────────────────────────────────────
+
 export interface ClientTeamAssignment {
   id: string;
   assignedAt: string;
@@ -51,13 +49,16 @@ export interface ClientTeamAssignment {
   assignedBy: UserRef;
 }
 
+// ── Note ─────────────────────────────────────────────────────────────────────
+
 export interface ClientNote {
   id: string;
   content: string;
   createdAt: string;
-  updatedAt: string;
   author: UserRef;
 }
+
+// ── Requirement (summary) ─────────────────────────────────────────────────────
 
 export interface ClientRequirement {
   id: string;
@@ -70,36 +71,51 @@ export interface ClientRequirement {
   createdAt: string;
 }
 
+// ── List item — matches getClients select ─────────────────────────────────────
+
 export interface ClientListItem {
   id: string;
   name: string;
   vmsName?: string | null;
-  category?: ClientCategory | null;
+  industry?: string | null;
+  status: ClientStatus;
+  createdAt: string;
+  businessUnit?: { id: string; name: string } | null;
+  createdBy: UserRef;
+  spocs: ClientSpoc[];
+  _count: { requirements: number };
+}
+
+// ── Detail — matches getClientById select ─────────────────────────────────────
+
+export interface ClientDetail {
+  id: string;
+  name: string;
+  vmsName?: string | null;
   industry?: string | null;
   website?: string | null;
   country?: string | null;
+  state?: string | null;
   city?: string | null;
+  address?: string | null;
   status: ClientStatus;
   createdAt: string;
   updatedAt: string;
-  businessUnit?: { id: string; name: string } | null;
-  createdBy: UserRef;
-  approvedBy?: UserRef | null;
-  handlers: { id: string; role: ClientHandlerRole; user: UserRef }[];
-  _count: { contacts: number; requirements: number };
-}
-
-export interface ClientDetail extends ClientListItem {
-  state?: string | null;
-  address?: string | null;
   approvedAt?: string | null;
+  businessUnit?: { id: string; name: string } | null;
   parentClient?: { id: string; name: string } | null;
   childClients: { id: string; name: string; status: ClientStatus }[];
-  contacts: ClientContact[];
-  teamAssignments: ClientTeamAssignment[];
+  createdBy: UserRef;
+  approvedBy?: UserRef | null;
+  spocs: ClientSpoc[];
   notes: ClientNote[];
   requirements: ClientRequirement[];
+  // contacts and teamAssignments not returned by current controller
+  // add here when backend includes them
+  _count: { requirements: number };
 }
+
+// ── API response wrappers ─────────────────────────────────────────────────────
 
 export interface ClientListResponse {
   success: boolean;
@@ -112,17 +128,4 @@ export interface ClientDetailResponse {
   success: boolean;
   data: ClientDetail;
   permissions: { canEdit: boolean; canDelete: boolean };
-}
-
-export interface ClientFilters {
-  search: string;
-  status: ClientStatus | '';
-  category: ClientCategory | '';
-  industry: string;
-  buId: string;
-  handledByMe: boolean;
-  page: number;
-  limit: number;
-  sortBy: 'name' | 'createdAt' | 'updatedAt' | 'status';
-  sortDir: 'asc' | 'desc';
 }

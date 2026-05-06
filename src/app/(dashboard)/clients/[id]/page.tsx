@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useContext, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -17,7 +17,6 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -59,26 +58,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 import { useAxios } from '@/hooks/useAxios';
-// import { AuthContext } from '@/context/AuthContext';
-import type {
-  ClientDetailResponse,
-  ClientDetail,
-  ClientStatus,
-  ClientHandler,
-  ClientContact,
-  ClientNote,
-} from '../_components/types';
+import { useAuth } from '@/context/AuthContext';
+import type { ClientDetailResponse, ClientStatus, ClientSpoc } from '../_components/types';
 import {
-  addHandlerSchema,
-  addContactSchema,
-  updateContactSchema,
+  addSpocSchema,
   addNoteSchema,
-  type AddHandlerInput,
-  type AddContactInput,
-  type UpdateContactInput,
+  type AddSpocInput,
   type AddNoteInput,
 } from '../_components/validators';
-import { useAuth } from '@/context/AuthContext';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -113,10 +100,10 @@ function MetaRow({ label, value }: { label: string; value?: React.ReactNode }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Add handler dialog
+// Add SPOC dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AddHandlerDialog({
+function AddSpocDialog({
   open,
   onClose,
   clientId,
@@ -128,13 +115,12 @@ function AddHandlerDialog({
   onAdded: () => void;
 }) {
   const axios = useAxios();
-  const form = useForm<AddHandlerInput>({
+  const form = useForm<AddSpocInput>({
     // @ts-expect-error err
-    resolver: zodResolver(addHandlerSchema),
-    defaultValues: { userId: '', role: 'PRIMARY' },
+    resolver: zodResolver(addSpocSchema),
+    defaultValues: { userId: '', serviceLineId: '', businessUnitId: '', isPrimary: false },
   });
 
-  // Fetch users for picker
   const { data: usersRes } = useQuery<{
     data: { id: string; firstName: string; lastName: string; employeeId?: string }[];
   }>({
@@ -143,25 +129,42 @@ function AddHandlerDialog({
     staleTime: 60_000,
     enabled: open,
   });
+
+  const { data: slRes } = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['service-lines-dropdown'],
+    queryFn: async () => (await axios.get('/service-lines?limit=100')).data,
+    staleTime: 60_000,
+    enabled: open,
+  });
+
+  const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['bus-dropdown'],
+    queryFn: async () => (await axios.get('/business-units?limit=100')).data,
+    staleTime: 60_000,
+    enabled: open,
+  });
+
   const users = usersRes?.data ?? [];
+  const serviceLines = slRes?.data ?? [];
+  const businessUnits = busRes?.data ?? [];
 
   const mutation = useMutation({
-    mutationFn: async (data: AddHandlerInput) =>
-      (await axios.post(`/clients/${clientId}/handlers`, data)).data,
+    mutationFn: async (data: AddSpocInput) =>
+      (await axios.post(`/clients/${clientId}/spocs`, data)).data,
     onSuccess: () => {
-      toast.success('Handler added');
+      toast.success('SPOC added');
       form.reset();
       onAdded();
       onClose();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to add handler'),
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to add SPOC'),
   });
 
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Add handler</DialogTitle>
+          <DialogTitle>Add SPOC</DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form
@@ -197,226 +200,70 @@ function AddHandlerDialog({
             <FormField
               // @ts-expect-error err
               control={form.control}
-              name="role"
+              name="serviceLineId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Role</FormLabel>
+                  <FormLabel>Service line</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select service line" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="PRIMARY">Primary</SelectItem>
-                      <SelectItem value="SECONDARY">Secondary</SelectItem>
-                      <SelectItem value="BACKUP">Backup</SelectItem>
+                      {serviceLines.map(sl => (
+                        <SelectItem key={sl.id} value={sl.id}>
+                          {sl.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={mutation.isPending}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? 'Adding…' : 'Add handler'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Add / Edit contact dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ContactDialog({
-  open,
-  onClose,
-  clientId,
-  onSaved,
-  existing,
-}: {
-  open: boolean;
-  onClose: () => void;
-  clientId: string;
-  onSaved: () => void;
-  existing?: ClientContact;
-}) {
-  const axios = useAxios();
-  const isEdit = !!existing;
-
-  const form = useForm<AddContactInput>({
-    // @ts-expect-error err
-    resolver: zodResolver(isEdit ? updateContactSchema : addContactSchema),
-    defaultValues: {
-      firstName: existing?.firstName ?? '',
-      lastName: existing?.lastName ?? '',
-      designation: existing?.designation ?? '',
-      email: existing?.email ?? '',
-      phone: existing?.phone ?? '',
-      linkedinUrl: existing?.linkedinUrl ?? '',
-      isPrimary: existing?.isPrimary ?? false,
-    },
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (data: AddContactInput) => {
-      const payload = { ...data, linkedinUrl: data.linkedinUrl || null };
-      if (isEdit)
-        return (await axios.put(`/clients/${clientId}/contacts/${existing!.id}`, payload)).data;
-      return (await axios.post(`/clients/${clientId}/contacts`, payload)).data;
-    },
-    onSuccess: () => {
-      toast.success(isEdit ? 'Contact updated' : 'Contact added');
-      form.reset();
-      onSaved();
-      onClose();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to save contact'),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit contact' : 'Add contact'}</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(d => mutation.mutate(d as any))}
-            className="flex flex-col gap-4"
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                // @ts-expect-error err
-                control={form.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      First name <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input {...(field as any)} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                // @ts-expect-error err
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last name</FormLabel>
-                    <FormControl>
-                      <Input {...(field as any)} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
             <FormField
               // @ts-expect-error err
               control={form.control}
-              name="designation"
+              name="businessUnitId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Designation</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g. HR Manager"
-                      {...(field as any)}
-                      value={field.value ?? ''}
-                    />
-                  </FormControl>
+                  <FormLabel>Business unit</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select BU" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {businessUnits?.map(b => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Email <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input type="email" {...(field as any)} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                // @ts-expect-error err
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone</FormLabel>
-                    <FormControl>
-                      <Input {...(field as any)} value={field.value ?? ''} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                // @ts-expect-error err
-                control={form.control}
-                name="linkedinUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>LinkedIn</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="https://linkedin.com/in/…"
-                        {...(field as any)}
-                        value={field.value ?? ''}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
             <FormField
               // @ts-expect-error err
               control={form.control}
               name="isPrimary"
               render={({ field }) => (
                 <FormItem>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => field.onChange(!field.value)}
-                      className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-                        field.value
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background border-border text-muted-foreground'
-                      }`}
-                    >
-                      {field.value ? '★ Primary contact' : 'Set as primary'}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => field.onChange(!field.value)}
+                    className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                      field.value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background border-border text-muted-foreground'
+                    }`}
+                  >
+                    {field.value ? '★ Primary SPOC' : 'Set as primary'}
+                  </button>
                 </FormItem>
               )}
             />
@@ -430,7 +277,7 @@ function ContactDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Add contact'}
+                {mutation.isPending ? 'Adding…' : 'Add SPOC'}
               </Button>
             </DialogFooter>
           </form>
@@ -449,15 +296,10 @@ export default function ClientDetailPage() {
   const router = useRouter();
   const axios = useAxios();
   const queryClient = useQueryClient();
-  // const { user } = useContext();
   const { user } = useAuth();
 
-  const [addHandlerOpen, setAddHandlerOpen] = useState(false);
-  const [contactDialog, setContactDialog] = useState<{ open: boolean; existing?: ClientContact }>({
-    open: false,
-  });
-  const [removeHandlerId, setRemoveHandlerId] = useState<string | null>(null);
-  const [removeContactId, setRemoveContactId] = useState<string | null>(null);
+  const [addSpocOpen, setAddSpocOpen] = useState(false);
+  const [removeSpocId, setRemoveSpocId] = useState<string | null>(null);
   const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
 
   const noteForm = useForm<AddNoteInput>({
@@ -490,30 +332,17 @@ export default function ClientDetailPage() {
     onError: () => toast.error('Failed to update status'),
   });
 
-  // ── Handler mutations ──────────────────────────────────────────────────────
+  // ── SPOC mutations ─────────────────────────────────────────────────────────
 
-  const removeHandlerMutation = useMutation({
-    mutationFn: async (handlerId: string) =>
-      (await axios.delete(`/clients/${id}/handlers/${handlerId}`)).data,
+  const removeSpocMutation = useMutation({
+    mutationFn: async (spocId: string) =>
+      (await axios.delete(`/clients/${id}/spocs/${spocId}`)).data,
     onSuccess: () => {
-      toast.success('Handler removed');
-      setRemoveHandlerId(null);
+      toast.success('SPOC removed');
+      setRemoveSpocId(null);
       invalidate();
     },
-    onError: () => toast.error('Failed to remove handler'),
-  });
-
-  // ── Contact mutations ──────────────────────────────────────────────────────
-
-  const removeContactMutation = useMutation({
-    mutationFn: async (contactId: string) =>
-      (await axios.delete(`/clients/${id}/contacts/${contactId}`)).data,
-    onSuccess: () => {
-      toast.success('Contact removed');
-      setRemoveContactId(null);
-      invalidate();
-    },
-    onError: () => toast.error('Failed to remove contact'),
+    onError: () => toast.error('Failed to remove SPOC'),
   });
 
   // ── Note mutations ─────────────────────────────────────────────────────────
@@ -560,7 +389,7 @@ export default function ClientDetailPage() {
     return <div className="p-6 text-sm text-muted-foreground">Client not found.</div>;
   }
 
-  const activeHandlers = client.handlers.filter((h: any) => h.status === 'ACTIVE');
+  const activeSpocs = client.spocs.filter(s => s.isActive);
 
   return (
     <div className="flex flex-col h-full">
@@ -586,11 +415,6 @@ export default function ClientDetailPage() {
               <Badge variant={statusVariant(client.status)} className="text-xs">
                 {humanize(client.status)}
               </Badge>
-              {client.category && (
-                <Badge variant="outline" className="text-xs">
-                  {humanize(client.category)}
-                </Badge>
-              )}
               {client.industry && (
                 <span className="text-sm text-muted-foreground">{client.industry}</span>
               )}
@@ -601,7 +425,6 @@ export default function ClientDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0 pt-0.5">
-            {/* Status actions */}
             {permissions?.canEdit && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -644,8 +467,7 @@ export default function ClientDetailPage() {
         <div className="px-6 pb-4 flex items-center gap-3 flex-wrap">
           {[
             { label: 'Requirements', value: client._count.requirements },
-            { label: 'Contacts', value: client._count.contacts },
-            { label: 'Handlers', value: activeHandlers.length },
+            { label: 'SPOCs', value: activeSpocs.length },
             ...(client.requirements.filter(r => r.status === 'ACTIVE').length > 0
               ? [
                   {
@@ -758,44 +580,17 @@ export default function ClientDetailPage() {
                 />
               )}
             </div>
-
-            {client.teamAssignments.length > 0 && (
-              <>
-                <Separator />
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    Teams
-                  </span>
-                  {client.teamAssignments.map(ta => (
-                    <div key={ta.id} className="flex flex-col gap-0.5">
-                      <span className="text-xs font-medium">{ta.team.name}</span>
-                      {ta.team.category && (
-                        <span className="text-xs text-muted-foreground">
-                          {humanize(ta.team.category)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
         </ScrollArea>
 
         {/* Main content */}
         <div className="flex-1 min-w-0 flex flex-col min-h-0 px-6 pt-4 pb-6">
-          <Tabs defaultValue="handlers" className="flex flex-col flex-1 min-h-0">
+          <Tabs defaultValue="spocs" className="flex flex-col flex-1 min-h-0">
             <TabsList className="shrink-0 w-fit">
-              <TabsTrigger value="handlers">
-                Handlers
-                {activeHandlers.length > 0 && (
-                  <span className="ml-1.5 text-xs opacity-60">{activeHandlers.length}</span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="contacts">
-                Contacts
-                {client.contacts.length > 0 && (
-                  <span className="ml-1.5 text-xs opacity-60">{client.contacts.length}</span>
+              <TabsTrigger value="spocs">
+                SPOCs
+                {activeSpocs.length > 0 && (
+                  <span className="ml-1.5 text-xs opacity-60">{activeSpocs.length}</span>
                 )}
               </TabsTrigger>
               <TabsTrigger value="requirements">
@@ -812,27 +607,27 @@ export default function ClientDetailPage() {
               </TabsTrigger>
             </TabsList>
 
-            {/* ── Handlers ──────────────────────────────────────────────────── */}
-            <TabsContent value="handlers" className="mt-4 flex-1 min-h-0">
+            {/* ── SPOCs ─────────────────────────────────────────────────────── */}
+            <TabsContent value="spocs" className="mt-4 flex-1 min-h-0">
               <ScrollArea className="h-full">
                 <div className="flex flex-col gap-4 pb-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      People responsible for managing this client relationship.
+                      Single points of contact managing this client.
                     </p>
                     {permissions?.canEdit && (
-                      <Button size="sm" onClick={() => setAddHandlerOpen(true)}>
-                        + Add handler
+                      <Button size="sm" onClick={() => setAddSpocOpen(true)}>
+                        + Add SPOC
                       </Button>
                     )}
                   </div>
 
-                  {activeHandlers.length === 0 ? (
+                  {activeSpocs.length === 0 ? (
                     <div className="text-center py-10 text-sm text-muted-foreground">
-                      No handlers assigned yet.
+                      No SPOCs assigned yet.
                       {permissions?.canEdit && (
                         <button
-                          onClick={() => setAddHandlerOpen(true)}
+                          onClick={() => setAddSpocOpen(true)}
                           className="ml-1 text-primary hover:underline"
                         >
                           Add one
@@ -841,37 +636,55 @@ export default function ClientDetailPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-2">
-                      {activeHandlers.map((h: any) => (
+                      {activeSpocs.map(s => (
                         <div
-                          key={h.id}
+                          key={s.id}
                           className="rounded-lg border bg-card p-4 flex items-start justify-between gap-3"
                         >
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-sm">
-                                {h.user.firstName} {h.user.lastName}
+                                {s.user.firstName} {s.user.lastName}
                               </span>
-                              <Badge variant="outline" className="text-xs">
-                                {humanize(h.role)}
-                              </Badge>
+                              {s.isPrimary && (
+                                <Badge variant="outline" className="text-xs">
+                                  Primary
+                                </Badge>
+                              )}
                             </div>
-                            {h.user.employeeId && (
+                            {s.user.employeeId && (
                               <span className="text-xs text-muted-foreground font-mono">
-                                {h.user.employeeId}
+                                {s.user.employeeId}
                               </span>
                             )}
-                            <span className="text-xs text-muted-foreground">
-                              Added{' '}
-                              {formatDistanceToNow(new Date(h.assignedAt), { addSuffix: true })} by{' '}
-                              {h.assignedBy.firstName} {h.assignedBy.lastName}
-                            </span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{s.serviceLine.name}</span>
+                              {s.businessUnit && (
+                                <>
+                                  <span>·</span>
+                                  <span>{s.businessUnit.name}</span>
+                                </>
+                              )}
+                            </div>
+                            {s.assignedBy && (
+                              <span className="text-xs text-muted-foreground">
+                                Assigned{' '}
+                                {formatDistanceToNow(new Date(s.assignedAt), { addSuffix: true })}{' '}
+                                by {s.assignedBy.firstName} {s.assignedBy.lastName}
+                              </span>
+                            )}
+                            {s.notes && (
+                              <span className="text-xs text-muted-foreground italic">
+                                {s.notes}
+                              </span>
+                            )}
                           </div>
                           {permissions?.canEdit && (
                             <Button
                               variant="ghost"
                               size="sm"
                               className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                              onClick={() => setRemoveHandlerId(h.id)}
+                              onClick={() => setRemoveSpocId(s.id)}
                             >
                               Remove
                             </Button>
@@ -881,143 +694,38 @@ export default function ClientDetailPage() {
                     </div>
                   )}
 
-                  {/* Handler history */}
-                  {client.handlers.filter((h: any) => h.status !== 'ACTIVE').length > 0 && (
+                  {/* Past SPOCs */}
+                  {client.spocs.filter(s => !s.isActive).length > 0 && (
                     <>
                       <Separator />
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Past handlers
+                        Past SPOCs
                       </p>
                       <div className="flex flex-col gap-2">
-                        {client.handlers
-                          .filter((h: any) => h.status !== 'ACTIVE')
-                          .map((h: any) => (
+                        {client.spocs
+                          .filter(s => !s.isActive)
+                          .map(s => (
                             <div
-                              key={h.id}
+                              key={s.id}
                               className="rounded-lg border bg-muted/30 p-3 flex flex-col gap-0.5 opacity-60"
                             >
                               <div className="flex items-center gap-2">
                                 <span className="text-sm">
-                                  {h.user.firstName} {h.user.lastName}
+                                  {s.user.firstName} {s.user.lastName}
                                 </span>
-                                <Badge variant="outline" className="text-xs">
-                                  {humanize(h.role)}
-                                </Badge>
-                                <Badge variant="outline" className="text-xs">
-                                  {humanize(h.status)}
-                                </Badge>
-                              </div>
-                              {h.removedAt && (
                                 <span className="text-xs text-muted-foreground">
-                                  Removed {format(new Date(h.removedAt), 'dd MMM yyyy')}
-                                  {h.removedReason ? `: ${h.removedReason}` : ''}
+                                  {s.serviceLine.name}
+                                </span>
+                              </div>
+                              {s.removedAt && (
+                                <span className="text-xs text-muted-foreground">
+                                  Removed {format(new Date(s.removedAt), 'dd MMM yyyy')}
                                 </span>
                               )}
                             </div>
                           ))}
                       </div>
                     </>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
-
-            {/* ── Contacts ──────────────────────────────────────────────────── */}
-            <TabsContent value="contacts" className="mt-4 flex-1 min-h-0">
-              <ScrollArea className="h-full">
-                <div className="flex flex-col gap-4 pb-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      Point of contacts at {client.name}.
-                    </p>
-                    {permissions?.canEdit && (
-                      <Button size="sm" onClick={() => setContactDialog({ open: true })}>
-                        + Add contact
-                      </Button>
-                    )}
-                  </div>
-
-                  {client.contacts.length === 0 ? (
-                    <div className="text-center py-10 text-sm text-muted-foreground">
-                      No contacts yet.
-                      {permissions?.canEdit && (
-                        <button
-                          onClick={() => setContactDialog({ open: true })}
-                          className="ml-1 text-primary hover:underline"
-                        >
-                          Add one
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {client.contacts.map(c => (
-                        <div
-                          key={c.id}
-                          className={`rounded-lg border bg-card p-4 flex flex-col gap-2 ${c.isPrimary ? 'border-primary/30' : ''}`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-sm">
-                                {c.firstName} {c.lastName}
-                              </span>
-                              {c.isPrimary && <Badge className="text-xs">Primary</Badge>}
-                            </div>
-                            {permissions?.canEdit && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-muted-foreground shrink-0"
-                                  >
-                                    ···
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    onClick={() => setContactDialog({ open: true, existing: c })}
-                                  >
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => setRemoveContactId(c.id)}
-                                  >
-                                    Remove
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </div>
-                          {c.designation && (
-                            <span className="text-xs text-muted-foreground">{c.designation}</span>
-                          )}
-                          <div className="flex flex-col gap-0.5 text-xs">
-                            <a href={`mailto:${c.email}`} className="text-primary hover:underline">
-                              {c.email}
-                            </a>
-                            {c.phone && <span className="text-muted-foreground">{c.phone}</span>}
-                            {c.linkedinUrl && (
-                              <a
-                                href={c.linkedinUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline truncate"
-                              >
-                                LinkedIn
-                              </a>
-                            )}
-                          </div>
-                          {c.owner && (
-                            <span className="text-xs text-muted-foreground">
-                              Owner: {c.owner.firstName} {c.owner.lastName}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
                   )}
                 </div>
               </ScrollArea>
@@ -1146,56 +854,29 @@ export default function ClientDetailPage() {
 
       {/* ── Dialogs ───────────────────────────────────────────────────────────── */}
 
-      <AddHandlerDialog
-        open={addHandlerOpen}
-        onClose={() => setAddHandlerOpen(false)}
+      <AddSpocDialog
+        open={addSpocOpen}
+        onClose={() => setAddSpocOpen(false)}
         clientId={id}
         onAdded={invalidate}
       />
 
-      <ContactDialog
-        open={contactDialog.open}
-        onClose={() => setContactDialog({ open: false })}
-        clientId={id}
-        existing={contactDialog.existing}
-        onSaved={invalidate}
-      />
-
-      <AlertDialog open={!!removeHandlerId} onOpenChange={o => !o && setRemoveHandlerId(null)}>
+      <AlertDialog open={!!removeSpocId} onOpenChange={o => !o && setRemoveSpocId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove handler?</AlertDialogTitle>
+            <AlertDialogTitle>Remove SPOC?</AlertDialogTitle>
             <AlertDialogDescription>
-              This person will no longer manage this client.
+              This person will no longer be a SPOC for this client.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={removeHandlerMutation.isPending}
-              onClick={() => removeHandlerId && removeHandlerMutation.mutate(removeHandlerId)}
+              disabled={removeSpocMutation.isPending}
+              onClick={() => removeSpocId && removeSpocMutation.mutate(removeSpocId)}
             >
-              {removeHandlerMutation.isPending ? 'Removing…' : 'Remove'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={!!removeContactId} onOpenChange={o => !o && setRemoveContactId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove contact?</AlertDialogTitle>
-            <AlertDialogDescription>Contact will be marked as removed.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={removeContactMutation.isPending}
-              onClick={() => removeContactId && removeContactMutation.mutate(removeContactId)}
-            >
-              {removeContactMutation.isPending ? 'Removing…' : 'Remove'}
+              {removeSpocMutation.isPending ? 'Removing…' : 'Remove'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

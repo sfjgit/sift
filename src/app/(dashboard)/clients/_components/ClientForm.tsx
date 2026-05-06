@@ -51,16 +51,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-const CATEGORIES = [
-  { value: 'PRODUCT', label: 'Product' },
-  { value: 'SERVICE', label: 'Service' },
-  { value: 'CONSULTING', label: 'Consulting' },
-  { value: 'STAFFING', label: 'Staffing' },
-  { value: 'GOVERNMENT', label: 'Government' },
-  { value: 'NGO', label: 'NGO' },
-  { value: 'OTHER', label: 'Other' },
-];
-
 export function ClientForm({
   mode,
   defaultValues,
@@ -77,7 +67,7 @@ export function ClientForm({
     defaultValues: {
       name: '',
       vmsName: '',
-      category: undefined,
+      categoryId: '',
       industry: '',
       website: '',
       country: '',
@@ -85,6 +75,7 @@ export function ClientForm({
       city: '',
       address: '',
       businessUnitId: '',
+
       parentClientId: '',
       ...defaultValues,
     },
@@ -94,12 +85,14 @@ export function ClientForm({
     if (defaultValues) form.reset({ ...form.getValues(), ...defaultValues });
   }, [JSON.stringify(defaultValues)]);
 
+  // BU dropdown — backend returns { data: [...] }
   const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
     queryKey: ['bus-dropdown'],
     queryFn: async () => (await axios.get('/business-units?limit=100')).data,
     staleTime: 60_000,
   });
 
+  // Clients for parent picker
   const { data: clientsRes } = useQuery<{ data: { id: string; name: string }[] }>({
     queryKey: ['clients-dropdown'],
     queryFn: async () => (await axios.get('/clients?limit=200&status=ACTIVE')).data,
@@ -146,32 +139,6 @@ export function ClientForm({
                       value={field.value ?? ''}
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {CATEGORIES.map(c => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -226,7 +193,7 @@ export function ClientForm({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value={undefined}>None</SelectItem>
                       {businessUnits.map(b => (
                         <SelectItem key={b.id} value={b.id}>
                           {b.name}
@@ -255,7 +222,7 @@ export function ClientForm({
                 name={f}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{f}</FormLabel>
+                    <FormLabel className="capitalize">{f}</FormLabel>
                     <FormControl>
                       <Input
                         placeholder={`e.g. ${f === 'country' ? 'India' : f === 'state' ? 'Karnataka' : 'Bengaluru'}`}
@@ -308,7 +275,7 @@ export function ClientForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value={undefined}>None</SelectItem>
                     {clients.map(c => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
@@ -348,7 +315,7 @@ export function detailToFormValues(client: any): Partial<CreateClientInput> {
   return {
     name: client.name,
     vmsName: client.vmsName ?? '',
-    category: client.category ?? undefined,
+    categoryId: client.categoryId ?? '',
     industry: client.industry ?? '',
     website: client.website ?? '',
     country: client.country ?? '',
