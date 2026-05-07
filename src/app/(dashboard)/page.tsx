@@ -1,24 +1,15 @@
 'use client';
 
-import { usePermissions } from '@/hooks/usePermission';
-import { MODULES } from '@/constants/modules';
-import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
-import { StatsRow } from '@/components/dashboard/StatsRow';
-import { PendingApproval } from '@/components/dashboard/PendingApproval';
-import { RecentRequirements } from '@/components/dashboard/RecentRequirements';
-import { RecentClients } from '@/components/dashboard/RecentClients';
-import DashboardOverview from '@/components/dashboard/DashboardOverview';
+// import { StatsRow } from '@/components/dashboard/StatsRow';
 
 export default function DashboardPage() {
-  // @ts-expect-error err
-  const clientPerms = usePermissions(MODULES.CLIENTS);
-  // @ts-expect-error err
-  const reqPerms = usePermissions(MODULES.REQUIREMENTS);
+  // const clientPerms = usePermissions(MODULES.CLIENTS);
+  // const reqPerms = usePermissions(MODULES.REQUIREMENTS);
 
   return (
     <div className="px-6 py-6 max-w-5xl mx-auto space-y-7">
       {/* <DashboardGreeting /> */}
-      <DashboardOverview />
+      {/* <DashboardOverview /> */}
       Stat cards — each internally checks permissions
       {/* <StatsRow /> */}
       {/* Pending approval alert — only renders if data exists */}

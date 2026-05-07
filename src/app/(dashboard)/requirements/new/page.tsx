@@ -1,62 +1,39 @@
+// app/requirements/new/page.tsx
 'use client';
 
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-
-// import useAxios from '@/hooks/useAxios';
-import { RequirementForm } from '../_components/RequirementForm';
-import type { CreateRequirementInput } from '@/lib/validators/requirement.validator';
 import { useAxios } from '@/hooks/useAxios';
+import { RequirementForm, RequirementFormValues } from '../_components/RequirementForm';
 
 export default function NewRequirementPage() {
   const axios = useAxios();
   const router = useRouter();
 
-  const mutation = useMutation({
-    mutationFn: async (data: CreateRequirementInput) => {
-      // convert date strings to ISO
-      const payload = {
-        ...data,
-        startDate: data.startDate ? new Date(data.startDate).toISOString() : null,
-        endDate: data.endDate ? new Date(data.endDate).toISOString() : null,
-        respondBy: data.respondBy ? new Date(data.respondBy).toISOString() : null,
-        clientContactId: data.clientContactId || null,
-        businessUnitId: data.businessUnitId || null,
-      };
-      return (await axios.post('/requirements', payload)).data;
-    },
-    onSuccess: res => {
+  const createMutation = useMutation({
+    mutationFn: async (data: RequirementFormValues) =>
+      (await axios.post('/requirements', data)).data,
+    onSuccess: () => {
       toast.success('Requirement created');
-      router.push(`/requirements/${res.data.id}`);
+      router.push('/requirements');
     },
-    onError: (err: unknown) => {
-      toast.error(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-          'Failed to create requirement'
-      );
-    },
+    // no onError here — form catches and handles it
   });
 
   return (
-    <div className="max-w-3xl mx-auto p-6 flex flex-col gap-6">
-      <div>
-        <button
-          onClick={() => router.back()}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Requirements
-        </button>
-        <h1 className="text-xl font-semibold mt-2">New requirement</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Created as DRAFT — submit for approval once ready.
-        </p>
+    <div className="max-w-3xl mx-auto p-6">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold">New requirement</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Fill in the details below</p>
       </div>
 
       <RequirementForm
         mode="create"
-        onSubmit={data => mutation.mutate(data as CreateRequirementInput)}
-        isPending={mutation.isPending}
+        isPending={createMutation.isPending}
+        onSubmit={async data => {
+          await createMutation.mutateAsync(data); // mutateAsync throws — form catches it
+        }}
         onCancel={() => router.back()}
       />
     </div>

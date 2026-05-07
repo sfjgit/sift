@@ -16,7 +16,8 @@ import {
   type PermissionScope,
   SCOPE_OPTIONS,
   formatModule,
-} from '@/types/role.types';
+  EMPTY_PERMISSION,
+} from '@/components/roles/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -29,36 +30,33 @@ interface Props {
   onChange?: (rows: PermissionRowPayload[]) => void;
 }
 
+type ActionKey = 'canView' | 'canAdd' | 'canEdit' | 'canDelete';
+type ScopeKey = 'canViewScope' | 'canAddScope' | 'canEditScope' | 'canDeleteScope';
+
+const ACTION_TO_SCOPE: Record<ActionKey, ScopeKey> = {
+  canView: 'canViewScope',
+  canAdd: 'canAddScope',
+  canEdit: 'canEditScope',
+  canDelete: 'canDeleteScope',
+};
+
+const ACTIONS: { key: ActionKey; label: string }[] = [
+  { key: 'canView', label: 'View' },
+  { key: 'canAdd', label: 'Add' },
+  { key: 'canEdit', label: 'Edit' },
+  { key: 'canDelete', label: 'Delete' },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Scope styles
+// Scope badge colours
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SCOPE_STYLES: Record<PermissionScope, { badge: string; desc: string }> = {
-  OWN: {
-    badge:
-      'border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400',
-    desc: 'Own records only',
-  },
-  TEAM: {
-    badge:
-      'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
-    desc: 'Team records',
-  },
-  MANAGER: {
-    badge:
-      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
-    desc: 'Manager + team records',
-  },
-  BU: {
-    badge:
-      'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-400',
-    desc: 'Entire BU',
-  },
-  ALL: {
-    badge:
-      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400',
-    desc: 'All records',
-  },
+const SCOPE_BADGE: Record<PermissionScope, string> = {
+  OWN: 'border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400',
+  DEPARTMENT:
+    'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400',
+  BU: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-400',
+  ALL: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,16 +64,7 @@ const SCOPE_STYLES: Record<PermissionScope, { badge: string; desc: string }> = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getRow(rows: PermissionRowPayload[], module: string): PermissionRowPayload {
-  return (
-    rows.find(r => r.module === module) ?? {
-      module,
-      canView: false,
-      canAdd: false,
-      canEdit: false,
-      canDelete: false,
-      scope: 'OWN',
-    }
-  );
+  return rows.find(r => r.module === module) ?? EMPTY_PERMISSION(module);
 }
 
 function hasAnyPermission(row: PermissionRowPayload) {
@@ -108,10 +97,92 @@ function Tick({ checked }: { checked: boolean }) {
   }
   return (
     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted/60">
-      <svg className="h-3 w-3 text-muted-foreground/40" viewBox="0 0 12 12" fill="none">
+      <svg className="h-3 w-3 text-muted-foreground/30" viewBox="0 0 12 12" fill="none">
         <path d="M3 9L9 3M3 3l6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       </svg>
     </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Read-only row
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ReadOnlyRow({ row }: { row: PermissionRowPayload }) {
+  return (
+    <div className="flex items-center gap-4 px-4 py-3 rounded-lg border border-border/50 bg-card w-full">
+      <span className="text-sm font-medium w-36 shrink-0">{formatModule(row.module)}</span>
+      <div className="flex items-center gap-4 flex-1 flex-wrap">
+        {ACTIONS.map(({ key, label }) => {
+          const scopeKey = ACTION_TO_SCOPE[key];
+          const enabled = row[key] as boolean;
+          return (
+            <span
+              key={key}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground min-w-[80px]"
+            >
+              <Tick checked={enabled} />
+              <span>{label}</span>
+              {enabled && (
+                <Badge
+                  variant="outline"
+                  className={cn('text-[9px] px-1 py-0', SCOPE_BADGE[row[scopeKey]])}
+                >
+                  {row[scopeKey]}
+                </Badge>
+              )}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action cell — checkbox + scope select side by side
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ActionCellProps {
+  actionKey: ActionKey;
+  row: PermissionRowPayload;
+  onActionChange: (key: ActionKey, checked: boolean) => void;
+  onScopeChange: (scopeKey: ScopeKey, value: PermissionScope) => void;
+}
+
+function ActionCell({ actionKey, row, onActionChange, onScopeChange }: ActionCellProps) {
+  const scopeKey = ACTION_TO_SCOPE[actionKey];
+  const enabled = row[actionKey] as boolean;
+  const disabled = actionKey === 'canView' ? !hasAnyPermission(row) && !row.canView : !row.canView;
+
+  return (
+    <div className="flex items-center gap-2 w-full">
+      <Checkbox
+        checked={enabled}
+        disabled={disabled}
+        onCheckedChange={c => onActionChange(actionKey, !!c)}
+        className={cn('shrink-0', disabled && 'opacity-30')}
+      />
+      <Select
+        value={row[scopeKey]}
+        disabled={!enabled}
+        onValueChange={v => onScopeChange(scopeKey, v as PermissionScope)}
+      >
+        <SelectTrigger
+          className={cn('h-7 text-xs flex-1 min-w-0', !enabled && 'opacity-30 pointer-events-none')}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SCOPE_OPTIONS.map(o => (
+            <SelectItem key={o.value} value={o.value} className="text-xs">
+              <span className="font-medium">{o.label}</span>
+              <span className="ml-1.5 text-muted-foreground">— {o.desc}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -126,7 +197,7 @@ export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }:
     if (existing) {
       onChange(rows.map(r => (r.module === module ? { ...r, ...patch } : r)));
     } else {
-      onChange([...rows, { ...getRow(rows, module), ...patch }]);
+      onChange([...rows, { ...EMPTY_PERMISSION(module), ...patch }]);
     }
   }
 
@@ -138,26 +209,25 @@ export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }:
     }
   }
 
-  function handleViewChange(module: string, checked: boolean) {
-    if (!checked) {
-      updateRow(module, { canView: false, canAdd: false, canEdit: false, canDelete: false });
-    } else {
-      updateRow(module, { canView: true });
-    }
-  }
-
-  function handleActionChange(
-    module: string,
-    key: 'canAdd' | 'canEdit' | 'canDelete',
-    checked: boolean
-  ) {
+  function handleActionChange(module: string, key: ActionKey, checked: boolean) {
     const row = getRow(rows, module);
     const patch: Partial<PermissionRowPayload> = { [key]: checked };
-    if (checked && !row.canView) patch.canView = true;
+    if (key === 'canView' && !checked) {
+      patch.canAdd = false;
+      patch.canEdit = false;
+      patch.canDelete = false;
+    }
+    if (key !== 'canView' && checked && !row.canView) {
+      patch.canView = true;
+    }
     updateRow(module, patch);
   }
 
-  // ── Empty state ───────────────────────────────────────────────────────────
+  function handleScopeChange(module: string, scopeKey: ScopeKey, value: PermissionScope) {
+    updateRow(module, { [scopeKey]: value });
+  }
+
+  // ── Empty ───────────────────────────────────────────────────────────────
 
   if (!modules.length) {
     return (
@@ -167,42 +237,23 @@ export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }:
     );
   }
 
-  // ── Read-only ─────────────────────────────────────────────────────────────
+  // ── Read-only ───────────────────────────────────────────────────────────
 
   if (readOnly) {
     const activeRows = modules.map(m => getRow(rows, m)).filter(hasAnyPermission);
     const inactiveModules = modules.filter(m => !hasAnyPermission(getRow(rows, m)));
 
     return (
-      <div className="space-y-1">
+      <div className="space-y-1.5 w-full">
         {activeRows.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">No permissions granted</p>
         )}
         {activeRows.map(row => (
-          <div
-            key={row.module}
-            className="flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border/50 bg-card"
-          >
-            <span className="text-sm font-medium w-40 shrink-0">{formatModule(row.module)}</span>
-            <div className="flex items-center gap-2 flex-1">
-              {(['canView', 'canAdd', 'canEdit', 'canDelete'] as const).map(key => (
-                <span key={key} className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Tick checked={row[key] as boolean} />
-                  {key.replace('can', '')}
-                </span>
-              ))}
-            </div>
-            <Badge
-              variant="outline"
-              className={cn('text-[10px] px-1.5 py-0', SCOPE_STYLES[row.scope].badge)}
-            >
-              {row.scope}
-            </Badge>
-          </div>
+          <ReadOnlyRow key={row.module} row={row} />
         ))}
         {inactiveModules.length > 0 && (
-          <div className="pt-2">
-            <p className="text-[11px] text-muted-foreground mb-1.5 px-1">No access</p>
+          <div className="pt-3">
+            <p className="text-[11px] text-muted-foreground mb-2 px-1">No access</p>
             <div className="flex flex-wrap gap-1.5">
               {inactiveModules.map(m => (
                 <Badge
@@ -220,32 +271,34 @@ export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }:
     );
   }
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
+  // ── Edit ─────────────────────────────────────────────────────────────────
+  // Full-width table layout using CSS grid: [module] [toggle] [view] [add] [edit] [delete]
+  // Each action column = checkbox + scope select side-by-side, no truncation
 
   return (
-    <div className="space-y-2">
-      {/* Column headers */}
-      <div className="grid grid-cols-[200px_48px_repeat(4,_56px)_120px] gap-2 px-3 pb-1">
+    <div className="w-full space-y-1.5">
+      {/* Header row */}
+      <div
+        className="grid w-full gap-3 px-4 pb-2"
+        style={{ gridTemplateColumns: '160px 52px repeat(4, 1fr)' }}
+      >
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Module
         </span>
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
           On
         </span>
-        {['View', 'Add', 'Edit', 'Delete'].map(l => (
+        {ACTIONS.map(({ label }) => (
           <span
-            key={l}
-            className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center"
+            key={label}
+            className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            {l}
+            {label}
           </span>
         ))}
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Scope
-        </span>
       </div>
 
-      {/* Rows */}
+      {/* Module rows */}
       {modules.map(module => {
         const row = getRow(rows, module);
         const active = hasAnyPermission(row);
@@ -254,71 +307,31 @@ export function PermissionsMatrix({ modules, rows, readOnly = false, onChange }:
           <div
             key={module}
             className={cn(
-              'grid grid-cols-[200px_48px_repeat(4,_56px)_120px] gap-2 items-center px-3 py-2.5 rounded-lg border transition-all',
+              'grid w-full gap-3 items-center px-4 py-3 rounded-lg border transition-colors',
               active ? 'border-border bg-card shadow-sm' : 'border-border/40 bg-muted/20'
             )}
+            style={{ gridTemplateColumns: '160px 52px repeat(4, 1fr)' }}
           >
-            <div>
-              <p className={cn('text-sm font-medium', !active && 'text-muted-foreground')}>
-                {formatModule(module)}
-              </p>
-            </div>
+            {/* Module name */}
+            <p className={cn('text-sm font-medium truncate', !active && 'text-muted-foreground')}>
+              {formatModule(module)}
+            </p>
 
             {/* Master toggle */}
             <div className="flex justify-center">
-              <Switch
-                checked={active}
-                onCheckedChange={v => handleModuleToggle(module, v)}
-                className="scale-75"
-              />
+              <Switch checked={active} onCheckedChange={v => handleModuleToggle(module, v)} />
             </div>
 
-            {/* canView */}
-            <div className="flex justify-center">
-              <Checkbox
-                checked={row.canView}
-                disabled={!active}
-                onCheckedChange={c => handleViewChange(module, !!c)}
-                className={cn(!active && 'opacity-30')}
+            {/* Action columns */}
+            {ACTIONS.map(({ key }) => (
+              <ActionCell
+                key={key}
+                actionKey={key}
+                row={row}
+                onActionChange={(k, c) => handleActionChange(module, k, c)}
+                onScopeChange={(sk, v) => handleScopeChange(module, sk, v)}
               />
-            </div>
-
-            {/* canAdd, canEdit, canDelete */}
-            {(['canAdd', 'canEdit', 'canDelete'] as const).map(key => (
-              <div key={key} className="flex justify-center">
-                <Checkbox
-                  checked={row[key] as boolean}
-                  disabled={!row.canView}
-                  onCheckedChange={c => handleActionChange(module, key, !!c)}
-                  className={cn(!row.canView && 'opacity-30')}
-                />
-              </div>
             ))}
-
-            {/* Scope */}
-            <div>
-              <Select
-                value={row.scope}
-                disabled={!active}
-                onValueChange={v => updateRow(module, { scope: v as PermissionScope })}
-              >
-                <SelectTrigger className={cn('h-7 w-full text-xs', !active && 'opacity-40')}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCOPE_OPTIONS.map(o => (
-                    <SelectItem key={o.value} value={o.value} className="text-xs">
-                      <div>
-                        <span>{o.label}</span>
-                        <span className="ml-1.5 text-muted-foreground text-[10px]">
-                          — {SCOPE_STYLES[o.value as PermissionScope].desc}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         );
       })}

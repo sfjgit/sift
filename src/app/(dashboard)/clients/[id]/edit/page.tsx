@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -7,8 +8,8 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAxios } from '@/hooks/useAxios';
 import { ClientForm, detailToFormValues } from '../../_components/ClientForm';
-import { ClientDetailResponse } from '../../_components/types';
-import { UpdateClientInput } from '../../_components/validators';
+import type { ClientDetailResponse } from '../../_components/types';
+import type { UpdateClientInput } from '../../_components/validators';
 
 export default function EditClientPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,7 @@ export default function EditClientPage() {
           website: input.website || null,
           businessUnitId: input.businessUnitId || null,
           parentClientId: input.parentClientId || null,
+          categoryId: input.categoryId || null,
         })
       ).data,
     onSuccess: () => {

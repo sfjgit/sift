@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Shield, Trash2, Pencil, Eye, Search } from 'lucide-react';
+import { Plus, Shield, Trash2, Pencil, Eye, Search, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +33,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
 import { formatModule } from '@/types/role.types';
@@ -69,7 +68,7 @@ export default function RolesPage() {
     },
   });
 
-  // ── Filter by search ──────────────────────────────────────────────────────
+  // ── Filter ────────────────────────────────────────────────────────────────
   const roles = rolesQuery.data?.data ?? [];
   const filtered = roles.filter(
     r =>
@@ -159,42 +158,46 @@ export default function RolesPage() {
                   className="cursor-pointer"
                   onClick={() => router.push(`/roles/${role.id}`)}
                 >
-                  {/* Name */}
                   <TableCell>
                     <span className="font-medium">{role.name.replace(/_/g, ' ')}</span>
                   </TableCell>
 
-                  {/* Description */}
-                  <TableCell className="text-sm text-muted-foreground max-w-[240px]">
-                    <span className="truncate block">{role.description ?? '—'}</span>
+                  <TableCell className="max-w-[240px] text-sm text-muted-foreground">
+                    <span className="block truncate">{role.description ?? '—'}</span>
                   </TableCell>
 
-                  {/* Modules — show first 3 then +N */}
+                  {/* show modules that have at least one permission enabled */}
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {role.permissions.slice(0, 3).map(p => (
-                        <Badge
-                          key={p.module}
-                          variant="secondary"
-                          className="text-[10px] font-normal"
-                        >
-                          {formatModule(p.module)}
-                        </Badge>
-                      ))}
-                      {role.permissions.length > 3 && (
+                      {role.permissions
+                        .filter(p => p.canView || p.canAdd || p.canEdit || p.canDelete)
+                        .slice(0, 3)
+                        .map(p => (
+                          <Badge
+                            key={p.module}
+                            variant="secondary"
+                            className="text-[10px] font-normal"
+                          >
+                            {formatModule(p.module)}
+                          </Badge>
+                        ))}
+                      {role.permissions.filter(
+                        p => p.canView || p.canAdd || p.canEdit || p.canDelete
+                      ).length > 3 && (
                         <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                          +{role.permissions.length - 3}
+                          +
+                          {role.permissions.filter(
+                            p => p.canView || p.canAdd || p.canEdit || p.canDelete
+                          ).length - 3}
                         </Badge>
                       )}
                     </div>
                   </TableCell>
 
-                  {/* Users count */}
                   <TableCell className="text-center text-sm tabular-nums">
                     {role._count.users}
                   </TableCell>
 
-                  {/* System badge */}
                   <TableCell className="text-center">
                     {role.isSystem ? (
                       <Badge
@@ -210,7 +213,6 @@ export default function RolesPage() {
                     )}
                   </TableCell>
 
-                  {/* Actions */}
                   <TableCell onClick={e => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -264,7 +266,7 @@ export default function RolesPage() {
                 {deleteTarget?.name.replace(/_/g, ' ')}
               </span>
               ? This cannot be undone.
-              {!!deleteTarget && deleteTarget?._count.users > 0 && (
+              {!!deleteTarget && deleteTarget._count.users > 0 && (
                 <span className="mt-2 block text-destructive">
                   This role has {deleteTarget._count.users} user(s) assigned — reassign them first.
                 </span>

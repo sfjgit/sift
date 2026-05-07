@@ -1,22 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// app/clients/_components/ClientForm.tsx
 'use client';
 
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
@@ -26,22 +20,28 @@ import {
 } from '@/components/ui/select';
 
 import { useAxios } from '@/hooks/useAxios';
-import {
-  createClientSchema,
-  updateClientSchema,
-  type CreateClientInput,
-  type UpdateClientInput,
-} from './validators';
 
-type Mode = 'create' | 'edit';
+// ─── Schema ───────────────────────────────────────────────────────────────────
 
-interface ClientFormProps {
-  mode: Mode;
-  defaultValues?: Partial<CreateClientInput>;
-  onSubmit: (data: CreateClientInput | UpdateClientInput) => void;
-  isPending: boolean;
-  onCancel: () => void;
-}
+const createClientSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(200).trim(),
+  vmsName: z.string().max(200).optional().nullable(),
+  industry: z.string().max(100).optional().nullable(),
+  website: z.string().url('Invalid URL').optional().or(z.literal('')).nullable(),
+  country: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  businessUnitId: z.string().optional().nullable(),
+  parentClientId: z.string().optional().nullable(),
+});
+
+const updateClientSchema = createClientSchema.partial();
+
+export type CreateClientInput = z.infer<typeof createClientSchema>;
+export type UpdateClientInput = z.infer<typeof updateClientSchema>;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -51,33 +51,48 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-const CATEGORIES = [
-  { value: 'PRODUCT', label: 'Product' },
-  { value: 'SERVICE', label: 'Service' },
-  { value: 'CONSULTING', label: 'Consulting' },
-  { value: 'STAFFING', label: 'Staffing' },
-  { value: 'GOVERNMENT', label: 'Government' },
-  { value: 'NGO', label: 'NGO' },
-  { value: 'OTHER', label: 'Other' },
-];
+function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="text-sm font-medium text-foreground">
+      {children}
+      {required && <span className="text-destructive ml-0.5">*</span>}
+    </label>
+  );
+}
 
-export function ClientForm({
-  mode,
-  defaultValues,
-  onSubmit,
-  isPending,
-  onCancel,
-}: ClientFormProps) {
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-destructive mt-1">{message}</p>;
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  mode: 'create' | 'edit';
+  defaultValues?: Partial<CreateClientInput>;
+  onSubmit: (data: CreateClientInput | UpdateClientInput) => void;
+  isPending: boolean;
+  onCancel: () => void;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel }: Props) {
   const axios = useAxios();
   const schema = mode === 'create' ? createClientSchema : updateClientSchema;
 
-  const form = useForm<CreateClientInput>({
-    // @ts-expect-error err
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    formState: { errors },
+  } = useForm<CreateClientInput>({
+    // @ts-expect-error errr
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
       vmsName: '',
-      category: undefined,
       industry: '',
       website: '',
       country: '',
@@ -91,7 +106,7 @@ export function ClientForm({
   });
 
   useEffect(() => {
-    if (defaultValues) form.reset({ ...form.getValues(), ...defaultValues });
+    if (defaultValues) reset(defaultValues as CreateClientInput);
   }, [JSON.stringify(defaultValues)]);
 
   const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
@@ -102,7 +117,7 @@ export function ClientForm({
 
   const { data: clientsRes } = useQuery<{ data: { id: string; name: string }[] }>({
     queryKey: ['clients-dropdown'],
-    queryFn: async () => (await axios.get('/clients?limit=200&status=ACTIVE')).data,
+    queryFn: async () => (await axios.get('/clients?limit=200&sortBy=name&sortDir=asc')).data,
     staleTime: 60_000,
   });
 
@@ -110,245 +125,139 @@ export function ClientForm({
   const clients = clientsRes?.data ?? [];
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-6">
-        {/* Basic info */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Basic info</SectionLabel>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Client name <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <Input placeholder="Acme Corp" {...(field as any)} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="vmsName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>VMS name</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Name in VMS system"
-                      {...(field as any)}
-                      value={field.value ?? ''}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {CATEGORIES.map(c => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="industry"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Industry</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g. Technology"
-                      {...(field as any)}
-                      value={field.value ?? ''}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="website"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Website</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="https://example.com"
-                      {...(field as any)}
-                      value={field.value ?? ''}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
+      {/* Basic info */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Basic info</SectionLabel>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label required>Client name</Label>
+            <Input placeholder="Acme Corp" {...register('name')} />
+            <FieldError message={errors.name?.message} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>VMS name</Label>
+            <Input placeholder="Name in VMS system" {...register('vmsName')} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Industry</Label>
+            <Input placeholder="e.g. Technology" {...register('industry')} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Website</Label>
+            <Input placeholder="https://example.com" {...register('website')} />
+            <FieldError message={errors.website?.message} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Business unit</Label>
+            <Controller
+              control={control}
               name="businessUnitId"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Business unit</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select BU" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {businessUnits.map(b => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Location */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Location</SectionLabel>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {(['country', 'state', 'city'] as const).map(f => (
-              <FormField
-                key={f}
-                // @ts-expect-error err
-                control={form.control}
-                name={f}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{f}</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder={`e.g. ${f === 'country' ? 'India' : f === 'state' ? 'Karnataka' : 'Bengaluru'}`}
-                        {...(field as any)}
-                        value={field.value ?? ''}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            ))}
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Address</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Full address"
-                      {...(field as any)}
-                      value={field.value ?? ''}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Parent client */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Parent client (optional)</SectionLabel>
-          <FormField
-            // @ts-expect-error err
-            control={form.control}
-            name="parentClientId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Parent client</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value ?? ''}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                  </FormControl>
+                <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select BU" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">None</SelectItem>
-                    {clients.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                    {businessUnits.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <FormMessage />
-              </FormItem>
+              )}
+            />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Location */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Location</SectionLabel>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Country</Label>
+            <Input placeholder="e.g. India" {...register('country')} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>State</Label>
+            <Input placeholder="e.g. Karnataka" {...register('state')} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>City</Label>
+            <Input placeholder="e.g. Bengaluru" {...register('city')} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Address</Label>
+            <Input placeholder="Full address" {...register('address')} />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Parent client */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Parent client (optional)</SectionLabel>
+        <div className="flex flex-col gap-1.5">
+          <Label>Parent client</Label>
+          <Controller
+            control={control}
+            name="parentClientId"
+            render={({ field }) => (
+              <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {clients.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           />
         </div>
+      </div>
 
-        <Separator />
+      <Separator />
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending
-              ? mode === 'create'
-                ? 'Creating…'
-                : 'Saving…'
-              : mode === 'create'
-                ? 'Create client'
-                : 'Save changes'}
-          </Button>
-        </div>
-      </form>
-    </Form>
+      {/* Actions */}
+      <div className="flex items-center justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending
+            ? mode === 'create'
+              ? 'Creating…'
+              : 'Saving…'
+            : mode === 'create'
+              ? 'Create client'
+              : 'Save changes'}
+        </Button>
+      </div>
+    </form>
   );
 }
+
+// ─── detailToFormValues ───────────────────────────────────────────────────────
 
 export function detailToFormValues(client: any): Partial<CreateClientInput> {
   return {
     name: client.name,
     vmsName: client.vmsName ?? '',
-    category: client.category ?? undefined,
     industry: client.industry ?? '',
     website: client.website ?? '',
     country: client.country ?? '',

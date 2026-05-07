@@ -1,24 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// components/requirements/RequirementForm.tsx
 'use client';
 
-import { useEffect } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useEffect, useRef, useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import {
   Select,
   SelectContent,
@@ -28,40 +23,66 @@ import {
 } from '@/components/ui/select';
 
 import { useAxios } from '@/hooks/useAxios';
-import { useBUScope } from '@/hooks/useBUScope';
-import {
-  createRequirementSchema,
-  updateRequirementSchema,
-  type CreateRequirementInput,
-  type UpdateRequirementInput,
-} from '@/lib/validators/requirement.validator';
-import type { RequirementDetail } from '@/types/requirements.types';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Schema ───────────────────────────────────────────────────────────────────
 
-type Mode = 'create' | 'edit';
+const schema = z.object({
+  clientSpocId: z.string().min(1, 'SPOC is required'),
+  title: z.string().min(1, 'Title is required').max(300).trim(),
+  description: z.string().max(5000).optional().nullable(),
+  jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
+  remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
+  totalOpenings: z.number().min(1, 'At least 1 opening').default(1),
+  location: z.string().max(200).optional().nullable(),
+  country: z.string().max(100).optional().nullable(),
+  experienceMin: z.number().min(0).optional().nullable(),
+  experienceMax: z.number().min(0).optional().nullable(),
+  salaryMin: z.number().min(0).optional().nullable(),
+  salaryMax: z.number().min(0).optional().nullable(),
+  salaryType: z.enum(['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY']).optional().nullable(),
+  skills: z.array(z.string().trim().min(1)).default([]),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
+  respondBy: z.string().optional().nullable(),
+  turnaroundDays: z.number().min(1).optional().nullable(),
+  jdFileKey: z.string().optional().nullable(),
+  jdFileName: z.string().optional().nullable(),
+  jdFileType: z.string().optional().nullable(),
+});
 
-interface RequirementFormProps {
-  mode: Mode;
-  defaultValues?: Partial<CreateRequirementInput>;
-  onSubmit: (data: CreateRequirementInput | UpdateRequirementInput) => void;
-  isPending: boolean;
-  onCancel: () => void;
+export type RequirementFormValues = z.infer<typeof schema>;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface MyClient {
+  id: string;
+  name: string;
+  vmsName?: string;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+interface ClientSpoc {
+  id: string;
+  isPrimary: boolean;
+  handler: { id: string; firstName: string; lastName: string };
+  serviceLine: { id: string; name: string };
+  businessUnit: { id: string; name: string };
+}
 
-function toDateInput(val?: string | null): string {
-  if (!val) return '';
-  try {
-    return new Date(val).toISOString().slice(0, 10);
-  } catch {
-    return '';
-  }
+// ─── Small helpers ────────────────────────────────────────────────────────────
+
+function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="text-sm font-medium text-foreground">
+      {children}
+      {required && <span className="text-destructive ml-0.5">*</span>}
+    </label>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-destructive mt-1">{message}</p>;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -72,32 +93,65 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Form
-// ─────────────────────────────────────────────────────────────────────────────
+function ReadonlyField({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <div className="h-9 flex items-center px-3 rounded-md border bg-muted/40 text-sm text-muted-foreground">
+        {value ?? '—'}
+      </div>
+    </div>
+  );
+}
 
-export function RequirementForm({
-  mode,
-  defaultValues,
-  onSubmit,
-  isPending,
-  onCancel,
-}: RequirementFormProps) {
+function toDateInput(val?: string | null) {
+  if (!val) return '';
+  try {
+    return new Date(val).toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
+
+function toISOOrNull(val?: string | null) {
+  if (!val) return null;
+  try {
+    return new Date(val).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  mode: 'create' | 'edit';
+  defaultValues?: Partial<RequirementFormValues>;
+  onSubmit: (data: RequirementFormValues) => Promise<void>;
+  isPending: boolean;
+  onCancel: () => void;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCancel }: Props) {
   const axios = useAxios();
-  const buScope = useBUScope('requirements');
 
-  const schema = mode === 'create' ? createRequirementSchema : updateRequirementSchema;
-
-  const form = useForm<CreateRequirementInput>({
-    // @ts-expect-error err
+  const {
+    register,
+    handleSubmit,
+    control,
+    setValue,
+    reset,
+    setError,
+    formState: { errors },
+  } = useForm<RequirementFormValues>({
+    // @ts-expect-error errr
     resolver: zodResolver(schema),
     defaultValues: {
       title: '',
       description: '',
-      clientId: '',
-      clientContactId: '',
-      // auto-apply user's BU if they can't pick
-      businessUnitId: buScope.autoApply ? (buScope.businessUnitId ?? '') : '',
+      clientSpocId: '',
       jobType: undefined,
       remoteType: undefined,
       priority: 'MEDIUM',
@@ -113,741 +167,541 @@ export function RequirementForm({
       endDate: '',
       respondBy: '',
       turnaroundDays: undefined,
-      skillIds: [],
+      skills: [],
+      jdFileKey: null,
+      jdFileName: null,
+      jdFileType: null,
       ...defaultValues,
     },
   });
 
-  const {
-    fields: skillFields,
-    append: appendSkill,
-    remove: removeSkill,
-  } = useFieldArray({
-    control: form.control,
-    name: 'skillIds',
-  });
-
-  // Reset when defaultValues change (edit mode)
   useEffect(() => {
-    if (defaultValues) form.reset({ ...form.getValues(), ...defaultValues });
+    if (defaultValues) reset(defaultValues as RequirementFormValues);
   }, [JSON.stringify(defaultValues)]);
 
-  // ── Dropdown data ──────────────────────────────────────────────────────────
+  // ── Local state ───────────────────────────────────────────────────────────
 
-  const clientId = form.watch('clientId');
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedSpoc, setSelectedSpoc] = useState<ClientSpoc | null>(null);
+  const [skillInput, setSkillInput] = useState('');
+  const [skills, setSkills] = useState<string[]>(defaultValues?.skills ?? []);
+  const [jdUploading, setJdUploading] = useState(false);
+  const [jdDisplayName, setJdDisplayName] = useState(defaultValues?.jdFileName ?? '');
+  const jdInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: clientsRes } = useQuery<{ data: { id: string; name: string }[] }>({
-    queryKey: ['clients-dropdown'],
-    queryFn: async () => (await axios.get('/clients?limit=200&status=ACTIVE')).data,
+  useEffect(() => {
+    setValue('skills', skills);
+  }, [skills]);
+
+  // ── Queries ───────────────────────────────────────────────────────────────
+
+  const { data: clientsRes } = useQuery<{ data: MyClient[] }>({
+    queryKey: ['my-clients'],
+    queryFn: async () => (await axios.get('/clients/mine')).data,
     staleTime: 60_000,
   });
 
-  const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
-    queryKey: ['bus-dropdown'],
-    queryFn: async () => (await axios.get('/business-units?limit=100')).data,
-    staleTime: 60_000,
-  });
-
-  const { data: contactsRes } = useQuery<{
-    data: { id: string; firstName: string; lastName: string; designation?: string | null }[];
-  }>({
-    queryKey: ['client-contacts', clientId],
-    queryFn: async () => (await axios.get(`/clients/${clientId}/contacts?status=ACTIVE`)).data,
-    enabled: !!clientId,
+  const { data: spocsRes } = useQuery<{ data: ClientSpoc[] }>({
+    queryKey: ['client-spocs', selectedClientId],
+    queryFn: async () => (await axios.get(`/clients/${selectedClientId}/spocs?mine=true`)).data,
+    enabled: !!selectedClientId,
     staleTime: 30_000,
   });
 
-  const { data: skillsRes } = useQuery<{ data: { id: string; canonicalName: string }[] }>({
-    queryKey: ['skills-dropdown'],
-    queryFn: async () => (await axios.get('/skills?limit=500')).data,
-    staleTime: 120_000,
-  });
-
   const clients = clientsRes?.data ?? [];
-  const businessUnits = busRes?.data ?? [];
-  const contacts = contactsRes?.data ?? [];
-  const skills = skillsRes?.data ?? [];
+  const spocs = spocsRes?.data ?? [];
 
-  // reset contact when client changes
   useEffect(() => {
-    form.setValue('clientContactId', '');
-  }, [clientId]);
+    setSelectedSpoc(null);
+    setValue('clientSpocId', '');
+  }, [selectedClientId]);
+
+  // ── JD upload ─────────────────────────────────────────────────────────────
+
+  async function handleJdUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setJdUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('folder', 'requirements/jd');
+      const res = await axios.post('/uploads/single', fd);
+      setValue('jdFileKey', res.data.key);
+      setValue('jdFileName', res.data.originalName);
+      setValue('jdFileType', res.data.mimeType);
+      setJdDisplayName(res.data.originalName);
+      toast.success('JD uploaded');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'JD upload failed');
+    } finally {
+      setJdUploading(false);
+    }
+  }
+
+  function removeJd() {
+    setValue('jdFileKey', null);
+    setValue('jdFileName', null);
+    setValue('jdFileType', null);
+    setJdDisplayName('');
+    if (jdInputRef.current) jdInputRef.current.value = '';
+  }
+
+  // ── Skills ────────────────────────────────────────────────────────────────
+
+  function addSkill() {
+    const trimmed = skillInput.trim();
+    if (!trimmed || skills.includes(trimmed)) return;
+    setSkills(prev => [...prev, trimmed]);
+    setSkillInput('');
+  }
+
+  function removeSkill(s: string) {
+    setSkills(prev => prev.filter(x => x !== s));
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+
+  async function handleFormSubmit(data: RequirementFormValues) {
+    try {
+      await onSubmit({
+        ...data,
+        startDate: toISOOrNull(data.startDate),
+        endDate: toISOOrNull(data.endDate),
+        respondBy: toISOOrNull(data.respondBy),
+        skills,
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Something went wrong';
+      const fieldErrors = err?.response?.data?.errors;
+
+      // map server field errors back to inputs
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        Object.entries(fieldErrors).forEach(([field, message]) => {
+          setError(field as keyof RequirementFormValues, {
+            type: 'server',
+            message: message as string,
+          });
+        });
+      }
+
+      toast.error(msg);
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-6">
-        {/* ── Basic info ──────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Basic info</SectionLabel>
+    <form
+      // @ts-expect-error errr
+      onSubmit={handleSubmit(handleFormSubmit)}
+      className="flex flex-col gap-6"
+    >
+      {/* ── Basic info ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Basic info</SectionLabel>
 
-          <FormField
-            // @ts-expect-error err
-            control={form.control}
-            name="title"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Title <span className="text-destructive">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g. Senior React Developer" {...(field as any)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            // @ts-expect-error err
-            control={form.control}
-            name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Description</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Role overview, responsibilities, context…"
-                    rows={4}
-                    className="resize-none"
-                    {...field}
-                    value={(field.value as any) ?? ''}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        <div className="flex flex-col gap-1.5">
+          <Label required>Title</Label>
+          <Input placeholder="e.g. Senior React Developer" {...register('title')} />
+          <FieldError message={errors.title?.message} />
         </div>
 
-        <Separator />
+        <div className="flex flex-col gap-1.5">
+          <Label>Description</Label>
+          <Textarea
+            placeholder="Role overview, responsibilities, context…"
+            rows={4}
+            className="resize-none"
+            {...register('description')}
+          />
+          <FieldError message={errors.description?.message} />
+        </div>
+      </div>
 
-        {/* ── Client ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Client</SectionLabel>
+      <Separator />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {mode === 'create' && (
-              <FormField
-                // @ts-expect-error err
-                control={form.control}
-                name="clientId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Client <span className="text-destructive">*</span>
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value as string}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select client" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {clients.map(c => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+      {/* ── Client & SPOC ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Client & SPOC</SectionLabel>
 
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="clientContactId"
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {mode === 'create' && (
+            <div className="flex flex-col gap-1.5">
+              <Label required>Client</Label>
+              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select client" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.vmsName ? ` (${c.vmsName})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <Label required>SPOC</Label>
+            <Controller
+              control={control}
+              name="clientSpocId"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Client contact</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={(field.value as string) ?? ''}
-                    disabled={!clientId}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={clientId ? 'Select contact' : 'Select client first'}
-                        />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem
-                        // @ts-expect-error err
-                        value={undefined}
-                      >
-                        None
+                <Select
+                  value={field.value}
+                  onValueChange={val => {
+                    field.onChange(val);
+                    setSelectedSpoc(spocs.find(s => s.id === val) ?? null);
+                  }}
+                  disabled={mode === 'create' && !selectedClientId}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        mode === 'create' && !selectedClientId
+                          ? 'Select client first'
+                          : 'Select SPOC'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {spocs.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.handler.firstName} {s.handler.lastName}
+                        {s.isPrimary ? ' · Primary' : ''}
                       </SelectItem>
-                      {contacts.map(c => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.firstName} {c.lastName}
-                          {c.designation ? ` · ${c.designation}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             />
-
-            {buScope.autoApply ? (
-              // BU is auto-applied from user profile — show as read-only info
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Business unit</span>
-                <div className="h-9 flex items-center px-3 rounded-md border bg-muted/40 text-sm text-muted-foreground">
-                  {buScope.businessUnitName ?? 'Your BU (auto-applied)'}
-                </div>
-              </div>
-            ) : (
-              <FormField
-                // @ts-expect-error err
-                control={form.control}
-                name="businessUnitId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Business unit</FormLabel>
-                    <Select onValueChange={field.onChange} value={(field.value as string) ?? ''}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select BU" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem
-                          // @ts-expect-error err
-                          value={undefined}
-                        >
-                          None
-                        </SelectItem>
-                        {businessUnits.map(b => (
-                          <SelectItem key={b.id} value={b.id}>
-                            {b.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            <FieldError message={errors.clientSpocId?.message} />
           </div>
         </div>
 
-        <Separator />
+        {/* Auto-filled from spoc */}
+        {selectedSpoc && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <ReadonlyField label="Business unit" value={selectedSpoc.businessUnit.name} />
+            <ReadonlyField label="Service line" value={selectedSpoc.serviceLine.name} />
+          </div>
+        )}
+      </div>
 
-        {/* ── Job details ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Job details</SectionLabel>
+      <Separator />
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
+      {/* ── Job details ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Job details</SectionLabel>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label required>Job type</Label>
+            <Controller
+              control={control}
               name="jobType"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Job type <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value as string}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="CONTRACT">Contract</SelectItem>
-                      <SelectItem value="PERMANENT">Permanent</SelectItem>
-                      <SelectItem value="CONTRACT_TO_HIRE">Contract to hire</SelectItem>
-                      <SelectItem value="FREELANCE">Freelance</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CONTRACT">Contract</SelectItem>
+                    <SelectItem value="PERMANENT">Permanent</SelectItem>
+                    <SelectItem value="CONTRACT_TO_HIRE">Contract to hire</SelectItem>
+                    <SelectItem value="FREELANCE">Freelance</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             />
+            <FieldError message={errors.jobType?.message} />
+          </div>
 
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
+          <div className="flex flex-col gap-1.5">
+            <Label required>Remote type</Label>
+            <Controller
+              control={control}
               name="remoteType"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Remote type <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value as string}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="ONSITE">Onsite</SelectItem>
-                      <SelectItem value="REMOTE">Remote</SelectItem>
-                      <SelectItem value="HYBRID">Hybrid</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ONSITE">Onsite</SelectItem>
+                    <SelectItem value="REMOTE">Remote</SelectItem>
+                    <SelectItem value="HYBRID">Hybrid</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             />
+            <FieldError message={errors.remoteType?.message} />
+          </div>
 
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
+          <div className="flex flex-col gap-1.5">
+            <Label>Priority</Label>
+            <Controller
+              control={control}
               name="priority"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Priority</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value as string}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Medium" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="HIGH">High</SelectItem>
-                      <SelectItem value="MEDIUM">Medium</SelectItem>
-                      <SelectItem value="LOW">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="totalOpenings"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Total openings</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={1}
-                      {...field}
-                      value={(field.value as number) ?? ''}
-                      onChange={e =>
-                        field.onChange(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="location"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Location</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="e.g. Bengaluru"
-                      {...field}
-                      value={(field.value as any) ?? ''}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="country"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Country</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. India" {...field} value={(field.value as any) ?? ''} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="LOW">Low</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             />
           </div>
         </div>
 
-        <Separator />
-
-        {/* ── Experience & salary ──────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Experience & salary</SectionLabel>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="experienceMin"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Exp. min (yrs)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      placeholder="0"
-                      value={(field.value as any) ?? ''}
-                      onChange={e =>
-                        field.onChange(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="experienceMax"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Exp. max (yrs)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
-                      step={0.5}
-                      placeholder="10"
-                      value={(field.value as any) ?? ''}
-                      onChange={e =>
-                        field.onChange(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="salaryMin"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Salary min</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
-                      placeholder="0"
-                      value={(field.value as any) ?? ''}
-                      onChange={e =>
-                        field.onChange(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="salaryMax"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Salary max</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
-                      placeholder="0"
-                      value={(field.value as any) ?? ''}
-                      onChange={e =>
-                        field.onChange(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Total openings</Label>
+            <Input type="number" min={1} {...register('totalOpenings', { valueAsNumber: true })} />
+            <FieldError message={errors.totalOpenings?.message} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
+          <div className="flex flex-col gap-1.5">
+            <Label>Location</Label>
+            <Input placeholder="e.g. Bengaluru" {...register('location')} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Country</Label>
+            <Input placeholder="e.g. India" {...register('country')} />
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* ── Experience & salary ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Experience & salary</SectionLabel>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Exp. min (yrs)</Label>
+            <Input
+              type="number"
+              min={0}
+              step={0.5}
+              placeholder="0"
+              {...register('experienceMin', { valueAsNumber: true })}
+            />
+            <FieldError message={errors.experienceMin?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Exp. max (yrs)</Label>
+            <Input
+              type="number"
+              min={0}
+              step={0.5}
+              placeholder="10"
+              {...register('experienceMax', { valueAsNumber: true })}
+            />
+            <FieldError message={errors.experienceMax?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Salary min</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="0"
+              {...register('salaryMin', { valueAsNumber: true })}
+            />
+            <FieldError message={errors.salaryMin?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Salary max</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="0"
+              {...register('salaryMax', { valueAsNumber: true })}
+            />
+            <FieldError message={errors.salaryMax?.message} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Salary type</Label>
+            <Controller
+              control={control}
               name="salaryType"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Salary type</FormLabel>
-                  <Select onValueChange={field.onChange} value={(field.value as any) ?? ''}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem
-                        // @ts-expect-error err
-                        value={undefined}
-                      >
-                        None
-                      </SelectItem>
-                      <SelectItem value="MONTHLY">Monthly</SelectItem>
-                      <SelectItem value="ANNUAL">Annual</SelectItem>
-                      <SelectItem value="HOURLY">Hourly</SelectItem>
-                      <SelectItem value="DAILY">Daily</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
+                <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MONTHLY">Monthly</SelectItem>
+                    <SelectItem value="ANNUAL">Annual</SelectItem>
+                    <SelectItem value="HOURLY">Hourly</SelectItem>
+                    <SelectItem value="DAILY">Daily</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             />
           </div>
         </div>
+      </div>
 
-        <Separator />
+      <Separator />
 
-        {/* ── Dates ───────────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <SectionLabel>Dates</SectionLabel>
+      {/* ── Dates ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Dates</SectionLabel>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="startDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Start date</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} value={(field.value as any) ?? ''} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label>Start date</Label>
+            <Input type="date" {...register('startDate')} />
+            <FieldError message={errors.startDate?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>End date</Label>
+            <Input type="date" {...register('endDate')} />
+            <FieldError message={errors.endDate?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Respond by</Label>
+            <Input type="date" {...register('respondBy')} />
+            <FieldError message={errors.respondBy?.message} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Turnaround (days)</Label>
+            <Input
+              type="number"
+              min={1}
+              placeholder="—"
+              {...register('turnaroundDays', { valueAsNumber: true })}
             />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="endDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>End date</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} value={(field.value as any) ?? ''} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="respondBy"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Respond by</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} value={(field.value as any) ?? ''} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              // @ts-expect-error err
-              control={form.control}
-              name="turnaroundDays"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Turnaround (days)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={1}
-                      placeholder="—"
-                      value={(field.value as any) ?? ''}
-                      onChange={e =>
-                        field.onChange(e.target.value ? Number(e.target.value) : undefined)
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <FieldError message={errors.turnaroundDays?.message} />
           </div>
         </div>
+      </div>
 
-        <Separator />
+      <Separator />
 
-        {/* ── Skills ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <SectionLabel>Skills</SectionLabel>
+      {/* ── Skills ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Skills</SectionLabel>
+
+        <div className="flex gap-2">
+          <Input
+            placeholder="Type a skill and press Enter"
+            value={skillInput}
+            onChange={e => setSkillInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addSkill();
+              }
+            }}
+          />
+          <Button type="button" variant="outline" onClick={addSkill}>
+            Add
+          </Button>
+        </div>
+
+        {skills.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {skills.map(s => (
+              <Badge key={s} variant="secondary" className="gap-1 pr-1">
+                {s}
+                <button
+                  type="button"
+                  onClick={() => removeSkill(s)}
+                  className="ml-0.5 hover:text-destructive transition-colors"
+                >
+                  ✕
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* ── JD upload ── */}
+      <div className="flex flex-col gap-4">
+        <SectionLabel>Job description file</SectionLabel>
+
+        {jdDisplayName ? (
+          <div className="flex items-center gap-3 rounded-md border px-3 py-2.5 bg-muted/30">
+            <span className="text-sm flex-1 truncate">{jdDisplayName}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 text-muted-foreground hover:text-destructive shrink-0"
+              onClick={removeJd}
+            >
+              Remove
+            </Button>
+          </div>
+        ) : (
+          <>
+            <input
+              ref={jdInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx"
+              className="hidden"
+              onChange={handleJdUpload}
+            />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => appendSkill({ skillId: '', isMandatory: true, experience: undefined })}
+              disabled={jdUploading}
+              onClick={() => jdInputRef.current?.click()}
             >
-              + Add skill
+              {jdUploading ? 'Uploading…' : 'Upload JD (PDF / DOC)'}
             </Button>
-          </div>
+          </>
+        )}
+      </div>
 
-          {skillFields.length === 0 && (
-            <p className="text-sm text-muted-foreground">No skills added yet.</p>
-          )}
+      <Separator />
 
-          <div className="flex flex-col gap-3">
-            {skillFields.map((field, index) => (
-              <div
-                key={field.id}
-                className="flex items-end gap-3 rounded-md border bg-muted/30 p-3"
-              >
-                {/* Skill select */}
-                <FormField
-                  // @ts-expect-error err
-                  control={form.control}
-                  name={`skillIds.${index}.skillId`}
-                  render={({ field: f }) => (
-                    <FormItem>
-                      <FormLabel>Skill</FormLabel>
-                      <Select onValueChange={f.onChange} value={f.value as string}>
-                        <FormControl>
-                          <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Select skill" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {skills.map(s => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.canonicalName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Experience */}
-                <FormField
-                  // @ts-expect-error err
-                  control={form.control}
-                  name={`skillIds.${index}.experience`}
-                  render={({ field: f }) => (
-                    <FormItem>
-                      <FormLabel>Exp (yrs)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={0}
-                          step={0.5}
-                          className="h-9"
-                          placeholder="—"
-                          value={(f.value as any) ?? ''}
-                          onChange={e =>
-                            f.onChange(e.target.value ? Number(e.target.value) : undefined)
-                          }
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {/* Mandatory toggle */}
-                <FormField
-                  // @ts-expect-error err
-                  control={form.control}
-                  name={`skillIds.${index}.isMandatory`}
-                  render={({ field: f }) => (
-                    <FormItem>
-                      <FormLabel>Mandatory</FormLabel>
-                      <div className="h-9 flex items-center">
-                        <button
-                          type="button"
-                          onClick={() => f.onChange(!f.value)}
-                          className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-                            f.value
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'bg-background text-muted-foreground border-border'
-                          }`}
-                        >
-                          {f.value ? 'Yes' : 'No'}
-                        </button>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                {/* Remove */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 h-9 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeSkill(index)}
-                >
-                  ✕
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* ── Actions ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending
-              ? mode === 'create'
-                ? 'Creating…'
-                : 'Saving…'
-              : mode === 'create'
-                ? 'Create requirement'
-                : 'Save changes'}
-          </Button>
-        </div>
-      </form>
-    </Form>
+      {/* ── Actions ── */}
+      <div className="flex items-center justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isPending || jdUploading}>
+          {isPending
+            ? mode === 'create'
+              ? 'Creating…'
+              : 'Saving…'
+            : mode === 'create'
+              ? 'Create requirement'
+              : 'Save changes'}
+        </Button>
+      </div>
+    </form>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper to convert a RequirementDetail into form default values
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── detailToFormValues ───────────────────────────────────────────────────────
 
-export function detailToFormValues(req: RequirementDetail): Partial<CreateRequirementInput> {
+export function detailToFormValues(req: any): Partial<RequirementFormValues> {
   return {
+    clientSpocId: req.clientSpoc?.id ?? '',
     title: req.title,
     description: req.description ?? '',
-    clientId: req.client.id,
-    clientContactId: req.clientContact?.id ?? '',
-    businessUnitId: req.businessUnit?.id ?? '',
     jobType: req.jobType,
     remoteType: req.remoteType,
     priority: req.priority,
@@ -863,19 +717,9 @@ export function detailToFormValues(req: RequirementDetail): Partial<CreateRequir
     endDate: toDateInput(req.endDate),
     respondBy: toDateInput(req.respondBy),
     turnaroundDays: req.turnaroundDays ?? undefined,
-    skillIds: req.skills.map((s: any) => ({
-      skillId: s.skill.id,
-      isMandatory: s.isMandatory,
-      experience: s.experience ?? undefined,
-    })),
+    skills: req.skills ?? [],
+    jdFileKey: req.jdFileKey ?? null,
+    jdFileName: req.jdFileName ?? null,
+    jdFileType: req.jdFileType ?? null,
   };
 }
-
-// function toDateInput(val?: string | null): string {
-//   if (!val) return '';
-//   try {
-//     return new Date(val).toISOString().slice(0, 10);
-//   } catch {
-//     return '';
-//   }
-// }

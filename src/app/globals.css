@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
@@ -9,8 +9,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-display);
+  --font-mono: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -44,171 +43,108 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   LIGHT MODE
-   Clean cool-white with a hint of blue-gray — not warm beige, not pure white.
-   Primary: Indigo-violet. Accent: Electric violet highlight.
-───────────────────────────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces */
-  --background: oklch(0.971 0.003 264); /* cool near-white, blue tint */
-  --foreground: oklch(0.14 0.02 264); /* near-black, cool */
-
-  --card: oklch(1 0 0); /* pure white cards */
-  --card-foreground: oklch(0.14 0.02 264);
-
+  --background: oklch(0.972 0.002 264);
+  --foreground: oklch(0.13 0.02 264);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.13 0.02 264);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.14 0.02 264);
-
-  /* Brand — deep indigo */
-  --primary: oklch(0.5 0.24 272);
+  --popover-foreground: oklch(0.13 0.02 264);
+  --primary: oklch(0.48 0.22 264);
   --primary-foreground: oklch(0.99 0 0);
-
-  /* Secondary surface */
-  --secondary: oklch(0.94 0.006 264);
-  --secondary-foreground: oklch(0.25 0.025 264);
-
-  /* Muted */
-  --muted: oklch(0.92 0.007 264);
-  --muted-foreground: oklch(0.5 0.025 264);
-
-  /* Accent — electric violet for highlights */
-  --accent: oklch(0.56 0.26 290);
+  --secondary: oklch(0.94 0.005 264);
+  --secondary-foreground: oklch(0.25 0.02 264);
+  --muted: oklch(0.93 0.006 264);
+  --muted-foreground: oklch(0.52 0.022 264);
+  --accent: oklch(0.54 0.24 284);
   --accent-foreground: oklch(0.99 0 0);
-
   --destructive: oklch(0.56 0.22 25);
-
-  --border: oklch(0.88 0.008 264);
-  --input: oklch(0.88 0.008 264);
-  --ring: oklch(0.5 0.24 272);
-
-  /* Charts */
-  --chart-1: oklch(0.5 0.24 272); /* indigo  */
-  --chart-2: oklch(0.6 0.2 210); /* blue    */
-  --chart-3: oklch(0.56 0.2 155); /* emerald */
-  --chart-4: oklch(0.7 0.18 72); /* amber   */
-  --chart-5: oklch(0.6 0.22 355); /* rose    */
-
+  --border: oklch(0.88 0.007 264);
+  --input: oklch(0.88 0.007 264);
+  --ring: oklch(0.48 0.22 264);
+  --chart-1: oklch(0.48 0.22 264);
+  --chart-2: oklch(0.58 0.18 210);
+  --chart-3: oklch(0.55 0.18 155);
+  --chart-4: oklch(0.7 0.17 72);
+  --chart-5: oklch(0.6 0.21 355);
   --radius: 0.5rem;
-
-  --sidebar: oklch(0.96 0.005 264);
-  --sidebar-foreground: oklch(0.14 0.02 264);
-  --sidebar-primary: oklch(0.5 0.24 272);
+  --sidebar: oklch(0.965 0.004 264);
+  --sidebar-foreground: oklch(0.13 0.02 264);
+  --sidebar-primary: oklch(0.48 0.22 264);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.9 0.008 264);
-  --sidebar-accent-foreground: oklch(0.25 0.025 264);
-  --sidebar-border: oklch(0.88 0.008 264);
-  --sidebar-ring: oklch(0.5 0.24 272);
+  --sidebar-accent: oklch(0.9 0.007 264);
+  --sidebar-accent-foreground: oklch(0.25 0.02 264);
+  --sidebar-border: oklch(0.88 0.007 264);
+  --sidebar-ring: oklch(0.48 0.22 264);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   DARK MODE
-   Deep blue-gray — like VS Code / Linear / Vercel dark.
-   NOT pitch black. NOT navy. Deep slate with a cool blue undertone.
-   Think: #0F1117 background, #1A1D27 cards.
-───────────────────────────────────────────────────────────────────────────── */
 .dark {
-  /* Surfaces — layered blue-slate */
-  --background: oklch(0.12 0.018 264); /* #0F1117 — deep blue-slate */
-  --foreground: oklch(0.93 0.008 240); /* cool off-white */
-
-  --card: oklch(0.155 0.018 264); /* #1A1D27 — first layer */
-  --card-foreground: oklch(0.93 0.008 240);
-
-  --popover: oklch(0.17 0.018 264); /* #1E2130 — popup layer */
-  --popover-foreground: oklch(0.93 0.008 240);
-
-  /* Brand — brighter indigo on dark */
-  --primary: oklch(0.62 0.24 272);
+  --background: oklch(0.118 0.016 264);
+  --foreground: oklch(0.92 0.007 240);
+  --card: oklch(0.152 0.016 264);
+  --card-foreground: oklch(0.92 0.007 240);
+  --popover: oklch(0.168 0.016 264);
+  --popover-foreground: oklch(0.92 0.007 240);
+  --primary: oklch(0.62 0.22 264);
   --primary-foreground: oklch(0.99 0 0);
-
-  /* Secondary surface */
-  --secondary: oklch(0.19 0.02 264); /* #21253A */
-  --secondary-foreground: oklch(0.85 0.01 240);
-
-  /* Muted */
-  --muted: oklch(0.22 0.018 264); /* #262B40 */
-  --muted-foreground: oklch(0.55 0.025 240);
-
-  /* Accent — lighter violet */
-  --accent: oklch(0.65 0.24 290);
+  --secondary: oklch(0.188 0.018 264);
+  --secondary-foreground: oklch(0.84 0.009 240);
+  --muted: oklch(0.218 0.016 264);
+  --muted-foreground: oklch(0.54 0.022 240);
+  --accent: oklch(0.64 0.22 284);
   --accent-foreground: oklch(0.99 0 0);
-
   --destructive: oklch(0.63 0.22 25);
-
-  /* Borders — very subtle blue-tinted */
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.62 0.24 272);
-
-  /* Charts — luminosity bumped for dark */
-  --chart-1: oklch(0.65 0.24 272);
-  --chart-2: oklch(0.68 0.2 210);
-  --chart-3: oklch(0.64 0.2 155);
-  --chart-4: oklch(0.76 0.18 72);
-  --chart-5: oklch(0.68 0.22 355);
-
-  --sidebar: oklch(0.14 0.018 264);
-  --sidebar-foreground: oklch(0.9 0.008 240);
-  --sidebar-primary: oklch(0.62 0.24 272);
+  --ring: oklch(0.62 0.22 264);
+  --chart-1: oklch(0.64 0.22 264);
+  --chart-2: oklch(0.66 0.18 210);
+  --chart-3: oklch(0.63 0.18 155);
+  --chart-4: oklch(0.75 0.17 72);
+  --chart-5: oklch(0.67 0.21 355);
+  --sidebar: oklch(0.138 0.016 264);
+  --sidebar-foreground: oklch(0.89 0.007 240);
+  --sidebar-primary: oklch(0.62 0.22 264);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.2 0.02 264);
-  --sidebar-accent-foreground: oklch(0.85 0.01 240);
+  --sidebar-accent: oklch(0.198 0.018 264);
+  --sidebar-accent-foreground: oklch(0.84 0.009 240);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.62 0.24 272);
+  --sidebar-ring: oklch(0.62 0.22 264);
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   BASE STYLES
-───────────────────────────────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
 
   html {
-    /* Smooth scrolling */
     scroll-behavior: smooth;
-    /* Prevent layout shift on scrollbar appear */
     scrollbar-gutter: stable;
   }
 
   body {
     @apply bg-background text-foreground;
     font-family:
-      'Inter',
+      'Manrope',
       -apple-system,
       BlinkMacSystemFont,
-      'Segoe UI',
       sans-serif;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
-    font-size: 0.9375rem; /* 15px — dense but readable for ATS */
+    font-size: 0.9375rem;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
-  /* Headings — Plus Jakarta Sans */
   h1,
   h2,
   h3,
   h4,
   h5,
-  h6,
-  .font-heading,
-  .font-display {
-    font-family:
-      'Plus Jakarta Sans',
-      -apple-system,
-      BlinkMacSystemFont,
-      sans-serif;
-    font-feature-settings: 'ss01', 'cv01';
+  h6 {
+    font-family: 'Manrope', sans-serif;
     line-height: 1.2;
   }
 
@@ -241,106 +177,49 @@
     font-weight: 600;
   }
 
-  /* Mono — JetBrains for IDs, code, stats */
   code,
   kbd,
   pre,
   .font-mono {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-feature-settings:
-      'liga' 1,
-      'calt' 1;
+    font-family: 'JetBrains Mono', monospace;
     font-size: 0.875em;
   }
 
-  /* Tabular numbers for stats/counts */
-  .tabular-nums,
-  [data-stat],
-  .score,
-  .badge-number {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum';
-  }
-
-  /* Custom scrollbar — subtle, matches theme */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.6 0 0 / 20%);
+    background: oklch(0.6 0 0 / 18%);
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.6 0 0 / 35%);
+    background: oklch(0.6 0 0 / 32%);
   }
   .dark ::-webkit-scrollbar-thumb {
-    background: oklch(1 0 0 / 12%);
+    background: oklch(1 0 0 / 10%);
   }
   .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(1 0 0 / 22%);
+    background: oklch(1 0 0 / 20%);
   }
 
-  /* Selection color */
   ::selection {
-    background: oklch(0.5 0.24 272 / 25%);
+    background: oklch(0.48 0.22 264 / 22%);
     color: inherit;
-  }
-  .dark ::selection {
-    background: oklch(0.62 0.24 272 / 30%);
-  }
-
-  /* Focus visible — consistent ring */
-  :focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   UTILITY CLASSES
-───────────────────────────────────────────────────────────────────────────── */
 @layer utilities {
-  /* Glass morphism card — for navbar, modals */
   .glass {
-    background: oklch(1 0 0 / 70%);
+    background: oklch(1 0 0 / 72%);
     backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid oklch(0 0 0 / 8%);
+    border: 1px solid oklch(0 0 0 / 7%);
   }
   .dark .glass {
-    background: oklch(0.155 0.018 264 / 75%);
-    border: 1px solid oklch(1 0 0 / 8%);
-  }
-
-  /* Subtle gradient background for stat cards */
-  .card-gradient {
-    background: linear-gradient(135deg, oklch(1 0 0) 0%, oklch(0.97 0.005 272) 100%);
-  }
-  .dark .card-gradient {
-    background: linear-gradient(135deg, oklch(0.155 0.018 264) 0%, oklch(0.17 0.022 272) 100%);
-  }
-
-  /* Indigo glow for primary buttons/active states */
-  .glow-primary {
-    box-shadow:
-      0 0 0 1px oklch(0.5 0.24 272 / 30%),
-      0 4px 16px oklch(0.5 0.24 272 / 20%);
-  }
-  .dark .glow-primary {
-    box-shadow:
-      0 0 0 1px oklch(0.62 0.24 272 / 40%),
-      0 4px 20px oklch(0.62 0.24 272 / 25%);
-  }
-
-  /* Mesh gradient background — for empty states, hero areas */
-  .mesh-bg {
-    background-image:
-      radial-gradient(at 20% 20%, oklch(0.5 0.24 272 / 8%) 0px, transparent 50%),
-      radial-gradient(at 80% 80%, oklch(0.56 0.26 290 / 6%) 0px, transparent 50%),
-      radial-gradient(at 50% 50%, oklch(0.6 0.2 210 / 5%) 0px, transparent 50%);
+    background: oklch(0.152 0.016 264 / 78%);
+    border: 1px solid oklch(1 0 0 / 7%);
   }
 }

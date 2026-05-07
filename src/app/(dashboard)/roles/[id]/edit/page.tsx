@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
-import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAxios } from '@/hooks/useAxios';
 import { PermissionsMatrix } from '@/components/roles/PermissionsMatrix';
+import { SCOPE_OPTIONS } from '@/types/role.types';
 import type { RoleDetailResponse, PermissionRowPayload } from '@/types/role.types';
 
 export default function RoleEditPage() {
@@ -31,20 +33,21 @@ export default function RoleEditPage() {
     enabled: !!id,
   });
 
-  // ── Fetch modules — from API, always returns full list ────────────────────
+  // ── Fetch modules ─────────────────────────────────────────────────────────
   const modulesQuery = useQuery<{ success: boolean; data: string[] }>({
     queryKey: ['role-modules'],
     queryFn: async () => (await axios.get('/roles/modules')).data,
-    staleTime: Infinity, // modules don't change at runtime
+    staleTime: Infinity,
   });
 
-  // Populate form once both queries resolve
+  // Populate form once role loads
   useEffect(() => {
     const role = roleQuery.data?.data;
     if (!role) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(role.name.replace(/_/g, ' '));
     setDescription(role.description ?? '');
-    setPermissions(role.permissions as PermissionRowPayload[]);
+    setPermissions(role.permissions);
   }, [roleQuery.data]);
 
   // ── Save mutation ─────────────────────────────────────────────────────────
@@ -66,10 +69,10 @@ export default function RoleEditPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update role'),
   });
 
-  // ── Loading ───────────────────────────────────────────────────────────────
+  // ── Loading / error ───────────────────────────────────────────────────────
   if (roleQuery.isLoading || modulesQuery.isLoading) {
     return (
-      <div className="max-w-4xl mx-auto p-6 space-y-4">
+      <div className="max-w-7xl mx-auto p-6 space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-64 w-full" />
@@ -89,17 +92,14 @@ export default function RoleEditPage() {
   }
 
   const role = roleQuery.data.data;
-
-  // modules from API response (always the full system list)
-  // falls back to role.modules if API includes it, then to modulesQuery
-  const modules: string[] = (role as any).modules ?? modulesQuery.data?.data ?? [];
-
+  // @ts-expect-error errr
+  const modules: string[] = role.modules ?? modulesQuery.data?.data ?? [];
   const activeCount = permissions.filter(
     p => p.canView || p.canAdd || p.canEdit || p.canDelete
   ).length;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
@@ -183,20 +183,18 @@ export default function RoleEditPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Permissions</CardTitle>
           <CardDescription>
-            Toggle a module on, then set what actions are allowed and the data scope. Changes take
-            effect immediately for all users with this role.
+            Toggle a module on, then set what actions are allowed and the data scope per action.
+            Changes take effect immediately for all users with this role.
           </CardDescription>
           {/* Scope legend */}
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-1">
-            {[
-              ['OWN', 'own records'],
-              ['TEAM', 'team records'],
-              ['MANAGER', 'manager + team'],
-              ['BU', 'entire BU'],
-              ['ALL', 'all records'],
-            ].map(([k, v]) => (
-              <span key={k}>
-                <span className="font-mono font-semibold text-foreground">{k}</span> = {v}
+            {SCOPE_OPTIONS.map(o => (
+              <span key={o.value}>
+                <span className="font-mono font-semibold text-foreground">{o.value}</span> ={' '}
+                {
+                  // @ts-expect-error errr
+                  o.desc
+                }
               </span>
             ))}
           </div>
@@ -218,7 +216,13 @@ export default function RoleEditPage() {
               Could not load modules from server. Check the /roles/modules endpoint.
             </div>
           ) : (
-            <PermissionsMatrix modules={modules} rows={permissions} onChange={setPermissions} />
+            <PermissionsMatrix
+              modules={modules}
+              // @ts-expect-error errr
+              rows={permissions}
+              // @ts-expect-error errr
+              onChange={setPermissions}
+            />
           )}
         </CardContent>
       </Card>
