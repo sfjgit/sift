@@ -1,3 +1,4 @@
+// app/clients/page.tsx
 'use client';
 
 import { useState, useCallback } from 'react';
@@ -65,9 +66,7 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import { cn } from '@/lib/utils';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ClientStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE';
 
@@ -82,6 +81,16 @@ interface ClientFilters {
   sortDir: 'asc' | 'desc';
 }
 
+interface ClientSpoc {
+  id: string;
+  firstName: string;
+  lastName: string;
+  designation?: string | null;
+  isPrimary: boolean;
+  handler: { id: string; firstName: string; lastName: string };
+  serviceLine: { id: string; name: string };
+}
+
 interface ClientListItem {
   id: string;
   name: string;
@@ -91,12 +100,7 @@ interface ClientListItem {
   country?: string | null;
   status: ClientStatus;
   businessUnit?: { id: string; name: string } | null;
-  spocs?: {
-    id: string;
-    isPrimary: boolean;
-    user: { id: string; firstName: string; lastName: string };
-    serviceLine: { id: string; name: string };
-  }[];
+  spocs?: ClientSpoc[];
   _count: { requirements: number };
   createdAt: string;
 }
@@ -111,9 +115,7 @@ interface BUListResponse {
   data: { id: string; name: string }[];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_FILTERS: ClientFilters = {
   search: '',
@@ -150,9 +152,7 @@ const BG_COLORS = [
   'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function clientInitials(name: string) {
   return name
@@ -173,9 +173,7 @@ function countFilters(f: ClientFilters) {
   return [f.status, f.industry, f.buId].filter(Boolean).length;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Skeleton
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function ClientsSkeleton() {
   return (
@@ -197,9 +195,7 @@ function ClientsSkeleton() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sort header
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Sort header ──────────────────────────────────────────────────────────────
 
 function SortHeader({
   label,
@@ -237,9 +233,7 @@ function SortHeader({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Filter sheet
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Filter sheet ─────────────────────────────────────────────────────────────
 
 function FilterSheet({
   filters,
@@ -271,7 +265,6 @@ function FilterSheet({
         <SheetHeader className="px-5 py-4 border-b shrink-0">
           <SheetTitle className="text-base">Filter clients</SheetTitle>
         </SheetHeader>
-
         <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-6">
           <div className="flex flex-col gap-2.5">
             <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -350,9 +343,7 @@ function FilterSheet({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Client row
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Client row ───────────────────────────────────────────────────────────────
 
 function ClientRow({
   client,
@@ -370,7 +361,9 @@ function ClientRow({
   const router = useRouter();
   const cfg = STATUS_CONFIG[client.status];
   const color = clientColor(client.name);
-  const primarySpoc = client.spocs?.find(s => s.isPrimary);
+
+  // primary spoc = client-side contact person
+  const primarySpoc = client.spocs?.find(s => s.isPrimary) ?? client.spocs?.[0];
 
   return (
     <div
@@ -380,6 +373,7 @@ function ClientRow({
       )}
       onClick={() => router.push(`/clients/${client.id}`)}
     >
+      {/* Avatar */}
       <div
         className={cn(
           'h-9 w-9 rounded-lg flex items-center justify-center text-xs font-bold shrink-0',
@@ -389,6 +383,7 @@ function ClientRow({
         {clientInitials(client.name)}
       </div>
 
+      {/* Name + meta */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
@@ -422,6 +417,7 @@ function ClientRow({
         </div>
       </div>
 
+      {/* Status */}
       <Badge
         variant="outline"
         className={cn('text-[10px] px-2 py-0.5 shrink-0 hidden sm:flex', cfg.cls)}
@@ -429,36 +425,37 @@ function ClientRow({
         {cfg.label}
       </Badge>
 
-      <div className="hidden md:flex items-center gap-1.5 min-w-[140px]">
+      {/* SPOC — now shows client-side contact person + who handles them */}
+      <div className="hidden md:flex items-center gap-1.5 min-w-[160px]">
         {primarySpoc ? (
-          <>
-            <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-[9px] font-bold text-primary">
-                {primarySpoc.user.firstName[0]}
-                {primarySpoc.user.lastName[0]}
-              </span>
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium truncate">
-                {primarySpoc.user.firstName} {primarySpoc.user.lastName}
-              </p>
-              <p className="text-[10px] text-muted-foreground truncate">
-                {primarySpoc.serviceLine.name}
-              </p>
-            </div>
-          </>
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium truncate">
+              {primarySpoc.firstName} {primarySpoc.lastName}
+              {primarySpoc.designation ? (
+                <span className="text-muted-foreground font-normal">
+                  {' '}
+                  · {primarySpoc.designation}
+                </span>
+              ) : null}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              Handled by {primarySpoc.handler.firstName} {primarySpoc.handler.lastName}
+            </p>
+          </div>
         ) : (
           <span className="text-xs text-muted-foreground">No SPOC</span>
         )}
       </div>
 
-      <div className="hidden lg:flex items-center gap-3 shrink-0">
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <FileText className="h-3.5 w-3.5" />
-          <span className="tabular-nums font-medium">{client._count.requirements}</span>
-        </div>
+      {/* Req count */}
+      <div className="hidden lg:flex items-center gap-1 shrink-0">
+        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs tabular-nums font-medium text-muted-foreground">
+          {client._count.requirements}
+        </span>
       </div>
 
+      {/* Actions */}
       <div className="shrink-0" onClick={e => e.stopPropagation()}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -472,13 +469,11 @@ function ClientRow({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuItem onClick={() => router.push(`/clients/${client.id}`)}>
-              <Eye className="h-3.5 w-3.5 mr-2" />
-              View detail
+              <Eye className="h-3.5 w-3.5 mr-2" /> View detail
             </DropdownMenuItem>
             {canEdit && (
               <DropdownMenuItem onClick={() => router.push(`/clients/${client.id}/edit`)}>
-                <Pencil className="h-3.5 w-3.5 mr-2" />
-                Edit
+                <Pencil className="h-3.5 w-3.5 mr-2" /> Edit
               </DropdownMenuItem>
             )}
             {canDelete && (
@@ -488,8 +483,7 @@ function ClientRow({
                   className="text-destructive focus:text-destructive"
                   onClick={() => onDelete(client.id)}
                 >
-                  <Trash2 className="h-3.5 w-3.5 mr-2" />
-                  Delete
+                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
                 </DropdownMenuItem>
               </>
             )}
@@ -500,9 +494,7 @@ function ClientRow({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Empty state
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
   return (
@@ -518,17 +510,14 @@ function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
       </div>
       {hasFilters && (
         <Button variant="outline" size="sm" onClick={onClear}>
-          <X className="h-3.5 w-3.5 mr-2" />
-          Clear filters
+          <X className="h-3.5 w-3.5 mr-2" /> Clear filters
         </Button>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Page
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
   const axios = useAxios();
@@ -563,9 +552,7 @@ export default function ClientsPage() {
     isLoading,
     isValidating,
     mutate: mutateList,
-  } = useSWR<ClientListResponse>(`/clients?${qs()}`, fetcher, {
-    keepPreviousData: true,
-  });
+  } = useSWR<ClientListResponse>(`/clients?${qs()}`, fetcher, { keepPreviousData: true });
 
   const { data: busRes } = useSWR<BUListResponse>('/business-units', fetcher, {
     revalidateOnFocus: false,
@@ -598,7 +585,7 @@ export default function ClientsPage() {
 
   return (
     <div className="flex flex-col gap-0 h-full">
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <div className="flex items-center justify-between gap-4 px-6 py-5 border-b bg-card shrink-0">
         <div>
           <h1 className="text-base font-bold">Clients</h1>
@@ -608,13 +595,12 @@ export default function ClientsPage() {
         </div>
         {permissions?.canAdd && (
           <Button size="sm" className="h-8 gap-1.5" onClick={() => router.push('/clients/new')}>
-            <Plus className="h-3.5 w-3.5" />
-            New client
+            <Plus className="h-3.5 w-3.5" /> New client
           </Button>
         )}
       </div>
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      {/* Toolbar */}
       <div className="flex items-center gap-2 px-6 py-3.5 border-b bg-card shrink-0 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -700,7 +686,7 @@ export default function ClientsPage() {
         )}
       </div>
 
-      {/* ── Column headers ──────────────────────────────────────────────────── */}
+      {/* Column headers */}
       <div className="flex items-center gap-4 px-5 py-2.5 border-b bg-muted/30 shrink-0">
         <div className="w-9 shrink-0" />
         <div className="flex-1">
@@ -721,7 +707,7 @@ export default function ClientsPage() {
             onSort={handleSort}
           />
         </div>
-        <div className="w-[140px] hidden md:block">
+        <div className="w-[160px] hidden md:block">
           <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
             SPOC
           </span>
@@ -734,7 +720,7 @@ export default function ClientsPage() {
         <div className="w-7 shrink-0" />
       </div>
 
-      {/* ── List ────────────────────────────────────────────────────────────── */}
+      {/* List */}
       <div className="flex-1 overflow-y-auto">
         <div className="divide-y divide-border">
           {isLoading ? (
@@ -759,7 +745,7 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {/* ── Pagination ──────────────────────────────────────────────────────── */}
+      {/* Pagination */}
       {meta && meta.pages > 1 && (
         <div className="flex items-center justify-between px-6 py-3.5 border-t bg-card shrink-0">
           <span className="text-xs text-muted-foreground">
@@ -792,7 +778,7 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* ── Delete confirm ───────────────────────────────────────────────────── */}
+      {/* Delete confirm */}
       <AlertDialog open={!!deleteId} onOpenChange={o => !o && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -11,7 +11,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
 import { STATUS_OPTIONS, VALID_TRANSITIONS } from './constants';
-import type { RequirementListItem, RequirementStatus } from './types';
+import type { RequirementStatus } from './types';
+import { RequirementListItem } from '@/types/requirements.types';
 
 interface Props {
   req: RequirementListItem;

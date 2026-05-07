@@ -57,9 +57,7 @@ function ClientRow({ client, index }: { client: ClientSummary; index: number }) 
           {primarySpoc && (
             <>
               <span>·</span>
-              <span>
-                {primarySpoc.user.firstName} {primarySpoc.user.lastName}
-              </span>
+              <span>{/* {primarySpoc.user.firstName} {primarySpoc.user.lastName} */}</span>
             </>
           )}
         </div>

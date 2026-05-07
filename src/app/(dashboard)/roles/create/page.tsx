@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -12,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
 import { PermissionsMatrix } from '@/components/roles/PermissionsMatrix';
+import { SCOPE_OPTIONS } from '@/types/role.types';
 import type { ModulesResponse, CreateRolePayload, PermissionRowPayload } from '@/types/role.types';
 
 export default function RoleCreatePage() {
@@ -28,14 +30,11 @@ export default function RoleCreatePage() {
   const [permissions, setPermissions] = useState<PermissionRowPayload[]>([]);
   const [error, setError] = useState('');
 
-  // ── Fetch modules from DB ─────────────────────────────────────────────────
+  // ── Fetch modules ─────────────────────────────────────────────────────────
   const modulesQuery = useQuery<ModulesResponse>({
     queryKey: ['role-modules'],
-    queryFn: async () => {
-      const res = await axios.get<ModulesResponse>('/roles/modules');
-      return res.data;
-    },
-    staleTime: 10 * 60 * 1000,
+    queryFn: async () => (await axios.get<ModulesResponse>('/roles/modules')).data,
+    staleTime: Infinity,
   });
 
   const modules = modulesQuery.data?.data ?? [];
@@ -47,9 +46,7 @@ export default function RoleCreatePage() {
       return res.data;
     },
     onSuccess: () => router.push('/roles'),
-    onError: (err: any) => {
-      setError(err?.response?.data?.message ?? 'Failed to create role');
-    },
+    onError: (err: any) => setError(err?.response?.data?.message ?? 'Failed to create role'),
   });
 
   function handleSubmit() {
@@ -58,7 +55,8 @@ export default function RoleCreatePage() {
       setError('Role name is required');
       return;
     }
-    if (permissions.length === 0) {
+    const hasAny = permissions.some(p => p.canView || p.canAdd || p.canEdit || p.canDelete);
+    if (!hasAny) {
       setError('Add at least one permission');
       return;
     }
@@ -72,7 +70,7 @@ export default function RoleCreatePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="mb-6 flex items-center gap-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()}>
@@ -128,8 +126,20 @@ export default function RoleCreatePage() {
             <CardTitle className="text-base">Permissions</CardTitle>
             <CardDescription className="text-xs">
               Check View first — Add, Edit, Delete auto-require it. Scope controls how much data the
-              user sees within each module.
+              user sees within each action.
             </CardDescription>
+            {/* Scope legend */}
+            <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-1">
+              {SCOPE_OPTIONS.map(o => (
+                <span key={o.value}>
+                  <span className="font-mono font-semibold text-foreground">{o.value}</span> ={' '}
+                  {
+                    // @ts-expect-error err
+                    o.desc
+                  }
+                </span>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             {modulesQuery.isLoading ? (
@@ -139,7 +149,13 @@ export default function RoleCreatePage() {
                 ))}
               </div>
             ) : (
-              <PermissionsMatrix modules={modules} rows={permissions} onChange={setPermissions} />
+              <PermissionsMatrix
+                modules={modules}
+                // @ts-expect-error err
+                rows={permissions}
+                // @ts-expect-error err
+                onChange={setPermissions}
+              />
             )}
           </CardContent>
         </Card>

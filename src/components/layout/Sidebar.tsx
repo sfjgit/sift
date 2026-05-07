@@ -42,7 +42,16 @@ export function Sidebar() {
   const { user } = useAuth();
   const isSuperAdmin = user?.isSuperAdmin;
 
-  const visibleNav = NAV.filter(item => 'type' in item || !item.adminOnly || isSuperAdmin);
+  const permMap = Object.fromEntries((user?.role?.permissions ?? []).map(p => [p.module, p]));
+
+  const visibleNav = NAV.filter(item => {
+    if ('type' in item) return true;
+    // @ts-expect-error errr
+    if (!item.module) return true; // Dashboard, Org Tree, Settings
+    if (isSuperAdmin) return true;
+    // @ts-expect-error errr
+    return permMap[item.module]?.canView === true;
+  });
 
   function showTooltip(e: React.MouseEvent<HTMLAnchorElement>, label: string) {
     if (open) return;

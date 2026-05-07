@@ -22,7 +22,8 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { STATUS_OPTIONS } from './constants';
-import type { RequirementFilters } from './types';
+import { RequirementFilters } from '@/types/requirements.types';
+// import type { RequirementFilters } from './types';
 
 interface Props {
   filters: RequirementFilters;

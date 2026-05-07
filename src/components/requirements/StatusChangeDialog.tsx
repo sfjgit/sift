@@ -12,7 +12,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { STATUS_OPTIONS } from './constants';
-import type { RequirementStatus, RequirementListItem } from './types';
+import type { RequirementStatus } from './types';
+import { RequirementListItem } from '@/types/requirements.types';
 
 interface Props {
   dialog: { req: RequirementListItem; to: RequirementStatus } | null;

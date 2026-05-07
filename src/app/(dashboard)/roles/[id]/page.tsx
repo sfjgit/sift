@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
+import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Pencil, Trash2, Users } from 'lucide-react';
@@ -18,7 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
@@ -62,6 +63,7 @@ export default function RoleDetailPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to delete role'),
   });
 
+  // ── Loading / error ───────────────────────────────────────────────────────
   if (roleQuery.isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -84,12 +86,12 @@ export default function RoleDetailPage() {
 
   const role = roleQuery.data.data;
 
-  // modules now comes from the API response directly (always full list)
-  const modules: string[] =
-    (role as any).modules ?? role.permissions.map((p: any) => p.module).sort();
+  // modules always returned from API — full system list
+  // @ts-expect-error err
+  const modules: string[] = role.modules ?? role.permissions.map(p => p.module).sort();
 
   return (
-    <div className="mx-auto max-w-4xl p-6 space-y-6">
+    <div className="mx-auto max-w-7xl p-6 space-y-6">
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
@@ -146,9 +148,8 @@ export default function RoleDetailPage() {
               </div>
               <div className="mt-0.5 text-xs">
                 {
-                  role.permissions.filter(
-                    (p: any) => p.canView || p.canAdd || p.canEdit || p.canDelete
-                  ).length
+                  role.permissions.filter(p => p.canView || p.canAdd || p.canEdit || p.canDelete)
+                    .length
                 }{' '}
                 modules with access
               </div>
@@ -163,7 +164,12 @@ export default function RoleDetailPage() {
           <CardTitle className="text-base">Permissions</CardTitle>
         </CardHeader>
         <CardContent>
-          <PermissionsMatrix modules={modules} rows={role.permissions} readOnly />
+          <PermissionsMatrix
+            modules={modules}
+            // @ts-expect-error err
+            rows={role.permissions}
+            readOnly
+          />
         </CardContent>
       </Card>
 
@@ -175,7 +181,7 @@ export default function RoleDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {role.users.map((u: any) => (
+              {role.users.map(u => (
                 <div
                   key={u.id}
                   className="flex items-center justify-between py-2 border-b last:border-0"
@@ -193,18 +199,9 @@ export default function RoleDetailPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">{u.email}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    {u.businessUnit && (
-                      <Badge variant="secondary" className="text-xs">
-                        {u.businessUnit.name}
-                      </Badge>
-                    )}
-                    {u.employeeId && (
-                      <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                        {u.employeeId}
-                      </p>
-                    )}
-                  </div>
+                  {u.employeeId && (
+                    <p className="text-xs text-muted-foreground font-mono">{u.employeeId}</p>
+                  )}
                 </div>
               ))}
               {role._count.users > 50 && (

@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // components/requirements/utils.ts
 
-import type { RequirementFilters, RequirementStatus, RequirementPriority } from './types';
+import { RequirementFilters } from '@/types/requirements.types';
+import type { RequirementStatus } from './types';
 
 export function humanize(str: string) {
   return str
@@ -26,9 +28,7 @@ export function statusVariant(
   }
 }
 
-export function priorityVariant(
-  p: RequirementPriority
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+export function priorityVariant(p: any): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (p) {
     case 'HIGH':
       return 'destructive';

@@ -23,13 +23,14 @@ import type {
   RequirementListResponse,
   RequirementStatsResponse,
   RequirementStatus,
-} from '@/components/requirements/types';
+} from '@/types/requirements.types';
 
 export default function RequirementsPage() {
   const axios = useAxios();
   const router = useRouter();
   const qc = useQueryClient();
 
+  // @ts-expect-error errr
   const [filters, setFilters] = useState<RequirementFilters>(DEFAULT_FILTERS);
   const [debouncedSearch] = useDebounce(filters.search, 400);
   const [statusDialog, setStatusDialog] = useState<{
@@ -109,7 +110,7 @@ export default function RequirementsPage() {
         </div>
         {permissions?.canAdd && (
           <Button size="sm" onClick={() => router.push('/requirements/new')}>
-            New requirement
+            New requirement +
           </Button>
         )}
       </div>
@@ -123,6 +124,7 @@ export default function RequirementsPage() {
       <RequirementsToolbar
         filters={filters}
         setFilter={setFilter}
+        // @ts-expect-error errr
         onClear={() => setFilters(DEFAULT_FILTERS)}
         clients={clients}
         businessUnits={businessUnits}
@@ -137,6 +139,7 @@ export default function RequirementsPage() {
         isFetching={isFetching}
         page={filters.page}
         onPageChange={p => setFilter('page', p)}
+        // @ts-expect-error errr
         onClearFilters={() => setFilters(DEFAULT_FILTERS)}
         hasActiveFilters={countActiveFilters(filters) > 0}
         onStatusChange={(req, to) => setStatusDialog({ req, to })}

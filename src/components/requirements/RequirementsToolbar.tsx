@@ -16,7 +16,8 @@ import { RequirementsFilters } from './RequirementsFilters';
 import { FilterChip } from './FilterChip';
 import { STATUS_OPTIONS } from './constants';
 import { countActiveFilters, humanize } from './utils';
-import type { RequirementFilters } from './types';
+import { RequirementFilters } from '@/types/requirements.types';
+// import type { RequirementFilters } from './types';
 
 interface Props {
   filters: RequirementFilters;

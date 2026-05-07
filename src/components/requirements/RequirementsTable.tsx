@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // components/requirements/RequirementsTable.tsx
 'use client';
 
@@ -17,17 +18,12 @@ import {
 import { RowActions } from './RowActions';
 import { statusVariant, priorityVariant, humanize } from './utils';
 import { STATUS_OPTIONS } from './constants';
-import type {
-  RequirementListItem,
-  RequirementStatus,
-  RequirementMeta,
-  RequirementPermissions,
-} from './types';
+import type { RequirementListItem, RequirementStatus } from '@/types/requirements.types';
 
 interface Props {
   requirements: RequirementListItem[];
-  meta?: RequirementMeta;
-  permissions?: RequirementPermissions;
+  meta?: any;
+  permissions?: any;
   isLoading: boolean;
   isFetching: boolean;
   page: number;

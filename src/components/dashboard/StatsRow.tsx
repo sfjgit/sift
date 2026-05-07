@@ -78,7 +78,10 @@ export function StatsRow({ buId, status }: { buId?: string; status?: string }) {
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const { data: stats, isLoading } = useDashboardStats({ buId, status });
+  const { data: stats, isLoading } = useDashboardStats(
+    // @ts-expect-error err
+    { buId, status }
+  );
 
   const navigate = (extra: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());

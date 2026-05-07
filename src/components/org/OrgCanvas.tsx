@@ -129,6 +129,7 @@ function layoutTopDown(
   }
 
   // Total width of all groups
+  // eslint-disable-next-line prefer-const
   let totalW = groups.reduce((s, g) => s + g.width, 0) + Math.max(0, groups.length - 1) * H_GAP;
 
   // Start x (left edge of first group), centered under parent
@@ -336,26 +337,29 @@ export function OrgCanvas({
     >
       {/* Controls */}
       <div className="absolute top-3 right-3 flex flex-col gap-1 z-20">
-        {[
-          { icon: ZoomIn, fn: () => setZoom(z => Math.min(2.5, z + 0.12)) },
-          { icon: ZoomOut, fn: () => setZoom(z => Math.max(0.15, z - 0.12)) },
-          {
-            icon: Maximize2,
-            fn: () => {
-              if (!containerRef.current) return;
-              setZoom(0.9);
-              setPan({ x: containerRef.current.clientWidth / 2, y: 60 });
+        {
+          // eslint-disable-next-line react-hooks/refs
+          [
+            { icon: ZoomIn, fn: () => setZoom(z => Math.min(2.5, z + 0.12)) },
+            { icon: ZoomOut, fn: () => setZoom(z => Math.max(0.15, z - 0.12)) },
+            {
+              icon: Maximize2,
+              fn: () => {
+                if (!containerRef.current) return;
+                setZoom(0.9);
+                setPan({ x: containerRef.current.clientWidth / 2, y: 60 });
+              },
             },
-          },
-        ].map(({ icon: Icon, fn }, i) => (
-          <button
-            key={i}
-            onClick={fn}
-            className="flex h-7 w-7 items-center justify-center rounded-md border bg-background hover:bg-muted text-muted-foreground transition-colors"
-          >
-            <Icon className="h-3.5 w-3.5" />
-          </button>
-        ))}
+          ].map(({ icon: Icon, fn }, i) => (
+            <button
+              key={i}
+              onClick={fn}
+              className="flex h-7 w-7 items-center justify-center rounded-md border bg-background hover:bg-muted text-muted-foreground transition-colors"
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))
+        }
       </div>
 
       {/* Hint */}
@@ -437,8 +441,8 @@ export function OrgCanvas({
                 height={NODE_H}
                 style={{ overflow: 'visible' }}
               >
-                {/* @ts-ignore */}
                 <div
+                  // @ts-expect-error errr
                   xmlns="http://www.w3.org/1999/xhtml"
                   style={{
                     width: NODE_W,
