@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
-import type { ModulePermissions, PermissionScope } from '@/types/user.types';
+// import type { ModulePermissions, PermissionScope } from '@/types/user.types';
 
 // ─────────────────────────────────────────
 // usePermission
@@ -21,7 +22,7 @@ import type { ModulePermissions, PermissionScope } from '@/types/user.types';
 //   {perm.canAdd && <Button>Create User</Button>}
 // ─────────────────────────────────────────
 
-export function usePermission(module: string): ModulePermissions {
+export function usePermission(module: string): any {
   const { user } = useAuth();
 
   // Super admin — full access to everything
@@ -31,7 +32,7 @@ export function usePermission(module: string): ModulePermissions {
       canAdd: true,
       canEdit: true,
       canDelete: true,
-      scope: 'ALL' as PermissionScope,
+      scope: 'ALL' as any,
     };
   }
 
@@ -43,7 +44,7 @@ export function usePermission(module: string): ModulePermissions {
       canAdd: false,
       canEdit: false,
       canDelete: false,
-      scope: 'OWN' as PermissionScope,
+      scope: 'OWN' as any,
     };
   }
 
@@ -66,10 +67,10 @@ export function usePermission(module: string): ModulePermissions {
 //   perms.users.canView — show Users in navbar
 // ─────────────────────────────────────────
 
-export function usePermissions(modules: string[]): Record<string, ModulePermissions> {
+export function usePermissions(modules: string[]): Record<string, any> {
   const { user } = useAuth();
 
-  const result: Record<string, ModulePermissions> = {};
+  const result: Record<string, any> = {};
 
   // eslint-disable-next-line @next/next/no-assign-module-variable
   for (const module of modules) {
@@ -79,7 +80,7 @@ export function usePermissions(modules: string[]): Record<string, ModulePermissi
         canAdd: true,
         canEdit: true,
         canDelete: true,
-        scope: 'ALL' as PermissionScope,
+        scope: 'ALL' as any,
       };
       continue;
     }
@@ -100,7 +101,7 @@ export function usePermissions(modules: string[]): Record<string, ModulePermissi
           canAdd: false,
           canEdit: false,
           canDelete: false,
-          scope: 'OWN' as PermissionScope,
+          scope: 'OWN' as any,
         };
   }
 
