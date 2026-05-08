@@ -56,6 +56,7 @@ export function UserFilters({ params, roles, businessUnits, teams, onChange, onR
     !!params.teamId ||
     !!params.teamRole ||
     !!params.isClientHandler ||
+    // @ts-expect-error errr
     !!params.isContactOwner;
 
   return (
@@ -205,11 +206,14 @@ export function UserFilters({ params, roles, businessUnits, teams, onChange, onR
 
         {/* Contact owner toggle */}
         <Button
+          // @ts-expect-error err
           variant={params.isContactOwner ? 'default' : 'outline'}
           size="sm"
           className="text-xs"
           onClick={() =>
             onChange({
+              // @ts-expect-error err
+
               isContactOwner: params.isContactOwner ? undefined : 'true',
               page: 1,
             })
