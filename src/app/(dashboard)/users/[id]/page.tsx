@@ -39,6 +39,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
+import AppCredentialsManager from '@/components/users/AppCredentialsManager';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -743,6 +744,7 @@ export default function UserDetailPage() {
                     label: `Requirements (${user._count.requirementsCreated})`,
                   },
                   { value: 'spocs', icon: Contact2, label: `Spocs (${user._count.spocsHandled})` },
+                  { value: 'Apps', icon: Contact2, label: `APPs (${user._count.spocsHandled})` },
                 ].map(t => (
                   <TabsTrigger
                     key={t.value}
@@ -1063,6 +1065,10 @@ export default function UserDetailPage() {
                   </div>
                 ))}
               </div>
+            </TabsContent>
+
+            <TabsContent value="Apps" className="flex-1 p-6 mt-0">
+              <AppCredentialsManager />
             </TabsContent>
           </Tabs>
         </main>

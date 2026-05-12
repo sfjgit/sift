@@ -1,7 +1,11 @@
+// File: AuthContext.tsx
+// Path: src/context/AuthContext.tsx
+
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import env from '@/config/env';
+import { notifyExtensionLogin, notifyExtensionLogout } from '@/utils/talentOS-extension-bridge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,19 +82,14 @@ const API = env.NEXT_PUBLIC_API_URL;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // true on mount — hydrating session
+  const [isLoading, setIsLoading] = useState(true);
 
-  /**
-   * Attempt to restore session via /auth/refresh.
-   * Tokens are httpOnly cookies — browser sends them automatically.
-   * If the cookie is valid, backend returns the full user object.
-   * If not, user stays null (not logged in).
-   */
+  // ── Restore session on mount via refresh cookie
   const hydrateSession = useCallback(async () => {
     try {
       const res = await fetch(`${API}/core/api/auth/refresh`, {
         method: 'POST',
-        credentials: 'include', // send cookies
+        credentials: 'include',
       });
 
       if (!res.ok) {
@@ -100,7 +99,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const json = await res.json();
       if (json.success && json.data) {
-        setUser(json.data as AuthUser);
+        const u = json.data as AuthUser;
+        setUser(u);
+
+        // ✅ Sync extension on page reload / tab reopen
+        // accessToken cookie is already set by backend — extension picks it up
+        // via chrome.cookies.onChanged. But we also send name+email via postMessage
+        // so the popup can show "Connected · John Doe" immediately.
+        notifyExtensionLogin(
+          '', // token not needed here — cookie handles auth, we just need name
+          `${u.firstName} ${u.lastName}`,
+          u.email
+        );
       } else {
         setUser(null);
       }
@@ -111,28 +121,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // On mount — restore session
   useEffect(() => {
     hydrateSession();
   }, [hydrateSession]);
 
+  // ── Login
   async function login(email: string, password: string) {
     const res = await fetch(`${API}/core/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // receive cookies
+      credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
 
     const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.message ?? 'Login failed');
 
-    if (!res.ok || !json.success) {
-      throw new Error(json.message ?? 'Login failed');
-    }
+    const u = json.data as AuthUser;
+    setUser(u);
 
-    setUser(json.data as AuthUser);
+    // ✅ Sync extension — cookie is already set by backend at this point
+    // postMessage tells content-talentOS.js → background.js → storage
+    // so popup shows "Connected · John Doe" without needing a manual re-sync
+    notifyExtensionLogin(
+      '', // token handled via cookie — extension reads it from chrome.cookies
+      `${u.firstName} ${u.lastName}`,
+      u.email
+    );
   }
 
+  // ── Logout
   async function logout() {
     try {
       await fetch(`${API}/core/api/auth/logout`, {
@@ -141,19 +159,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       setUser(null);
+      // ✅ Tell extension to clear its session
+      notifyExtensionLogout();
     }
   }
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

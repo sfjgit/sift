@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
-import { Calendar, ChevronRight, Plus, Trash2, User, Users } from 'lucide-react';
+import { Calendar, ChevronRight, Plus, Trash2, User, Users, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -21,8 +21,24 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
-import { STAGE_LABEL, STAGE_COLOR, daysRemaining, fullName } from './types';
-import type { AssignmentNode, RequirementTree } from './types';
+import { useRouter } from 'next/navigation';
+import { daysRemaining, fullName } from './types';
+import type { RequirementTree } from './types';
+
+// ── Pipeline stage colors (code-based, not enum-based) ───────────────────────
+const STAGE_COLORS: Record<string, string> = {
+  '01': 'bg-slate-100 text-slate-700 border-slate-200',
+  '02': 'bg-blue-50 text-blue-700 border-blue-200',
+  '03': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  '04': 'bg-violet-50 text-violet-700 border-violet-200',
+  '05': 'bg-purple-50 text-purple-700 border-purple-200',
+  '06': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+  '07A': 'bg-pink-50 text-pink-700 border-pink-200',
+  '07B': 'bg-pink-50 text-pink-700 border-pink-200',
+  '08': 'bg-rose-50 text-rose-700 border-rose-200',
+  '09': 'bg-orange-50 text-orange-700 border-orange-200',
+  '10': 'bg-green-50 text-green-700 border-green-200',
+};
 
 interface Props {
   requirementId: string;
@@ -39,9 +55,7 @@ interface SubordinateUser {
   role: { id: string; name: string };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Deadline badge
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Deadline badge ────────────────────────────────────────────────────────────
 
 function DeadlineBadge({
   deadline,
@@ -58,7 +72,7 @@ function DeadlineBadge({
       className={cn(
         'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium',
         breached
-          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+          ? 'bg-red-100 text-red-700'
           : days !== null && days <= 2
             ? 'bg-amber-100 text-amber-700'
             : 'bg-muted text-muted-foreground'
@@ -70,9 +84,7 @@ function DeadlineBadge({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Assignment node card — recursive
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Assignment node — now uses pipelines[] not candidates[] ──────────────────
 
 function AssignmentCard({
   node,
@@ -80,13 +92,14 @@ function AssignmentCard({
   onAssignChild,
   onRemove,
 }: {
-  node: AssignmentNode;
+  node: any;
   canEdit: boolean;
   onAssignChild: (parentId: string) => void;
   onRemove: (assignmentId: string) => void;
 }) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState(true);
-  const hasChildren = node.children.length > 0;
+  const hasChildren = node.children?.length > 0;
 
   const borderColors = [
     'border-l-blue-400',
@@ -95,16 +108,21 @@ function AssignmentCard({
     'border-l-emerald-400',
   ];
 
+  // pipelines from the new schema — each has snapshot + currentStage
+  const pipelines: any[] = node.pipelines ?? [];
+  const activePipelines = pipelines.filter((p: any) => !p.isRejected && !p.isWithdrawn);
+  const rejectedCount = pipelines.filter((p: any) => p.isRejected).length;
+  const withdrawnCount = pipelines.filter((p: any) => p.isWithdrawn).length;
+
   return (
     <div className="flex flex-col gap-2">
-      {/* Card */}
       <div
         className={cn(
           'rounded-lg border border-l-4 bg-card shadow-sm p-4',
           borderColors[node.depth % borderColors.length]
         )}
       >
-        {/* Top row: avatar + name + actions */}
+        {/* Top row */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -118,7 +136,6 @@ function AssignmentCard({
               </p>
             </div>
           </div>
-
           <div className="flex items-center gap-1.5 shrink-0">
             <DeadlineBadge deadline={node.deadline} breachedAt={node.breachedAt} />
             {canEdit && (
@@ -129,8 +146,7 @@ function AssignmentCard({
                   className="h-7 text-xs px-2"
                   onClick={() => onAssignChild(node.id)}
                 >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Sub-assign
+                  <Plus className="h-3 w-3 mr-1" /> Sub-assign
                 </Button>
                 <Button
                   size="sm"
@@ -145,7 +161,7 @@ function AssignmentCard({
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats — using real pipeline counts */}
         <div className="mt-3 grid grid-cols-4 gap-2 text-center">
           {[
             { label: 'Allocated', value: node.allocatedOpenings ?? '—' },
@@ -160,7 +176,7 @@ function AssignmentCard({
           ))}
         </div>
 
-        {/* Deadline row */}
+        {/* Deadline */}
         {node.deadline && (
           <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />
@@ -178,23 +194,62 @@ function AssignmentCard({
           </div>
         )}
 
-        {/* Candidates */}
-        {node.candidates.length > 0 && (
+        {/* Pipeline candidates — new schema shape */}
+        {pipelines.length > 0 && (
           <div className="mt-3 pt-3 border-t space-y-1.5">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              Candidates ({node.candidates.length})
-            </p>
-            {node.candidates.map(c => (
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                Candidates ({activePipelines.length} active
+                {rejectedCount > 0 ? `, ${rejectedCount} rejected` : ''}
+                {withdrawnCount > 0 ? `, ${withdrawnCount} withdrawn` : ''})
+              </p>
+            </div>
+            {activePipelines.slice(0, 5).map((p: any) => (
               <div
-                key={c.id}
-                className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5 text-xs"
+                key={p.id}
+                className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5 text-xs gap-2"
               >
-                <span className="font-medium truncate max-w-[200px]">{c.candidateName}</span>
-                <Badge className={cn('text-[9px]', STAGE_COLOR[c.currentStage])} variant="outline">
-                  {STAGE_LABEL[c.currentStage]}
-                </Badge>
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium truncate block">{p.snapshot?.fullName}</span>
+                  {p.snapshot?.currentTitle && (
+                    <span className="text-muted-foreground text-[10px] truncate block">
+                      {p.snapshot.currentTitle}
+                      {p.snapshot.currentCompany ? ` @ ${p.snapshot.currentCompany}` : ''}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {p.isOnHold && (
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] bg-amber-50 text-amber-700 border-amber-200"
+                    >
+                      Hold
+                    </Badge>
+                  )}
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      'text-[9px] whitespace-nowrap',
+                      STAGE_COLORS[p.currentStage?.code] ?? 'bg-slate-100 text-slate-600'
+                    )}
+                  >
+                    {p.currentStage?.code} {p.currentStage?.label}
+                  </Badge>
+                  <button
+                    onClick={() => router.push(`/pipeline/${p.id}`)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
             ))}
+            {activePipelines.length > 5 && (
+              <p className="text-[10px] text-muted-foreground text-center pt-1">
+                +{activePipelines.length - 5} more
+              </p>
+            )}
           </div>
         )}
 
@@ -208,7 +263,7 @@ function AssignmentCard({
       {/* Children */}
       {hasChildren && expanded && (
         <div className="ml-8 pl-4 space-y-2 border-l-2 border-dashed border-border">
-          {node.children.map(child => (
+          {node.children.map((child: any) => (
             <AssignmentCard
               key={child.id}
               node={child}
@@ -220,7 +275,6 @@ function AssignmentCard({
         </div>
       )}
 
-      {/* Collapse toggle */}
       {hasChildren && (
         <div
           role="button"
@@ -237,9 +291,7 @@ function AssignmentCard({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Assign dialog
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Assign dialog ─────────────────────────────────────────────────────────────
 
 function AssignDialog({
   open,
@@ -297,14 +349,11 @@ function AssignDialog({
         <DialogHeader>
           <DialogTitle>{parentAssignmentId ? 'Sub-Assign' : 'Assign Requirement'}</DialogTitle>
         </DialogHeader>
-
         <div className="space-y-4 py-1">
-          {/* Subordinates */}
           <div className="space-y-1.5">
             <Label>
               Assign To <span className="text-destructive">*</span>
             </Label>
-
             {subsQuery.isLoading && (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => (
@@ -312,13 +361,11 @@ function AssignDialog({
                 ))}
               </div>
             )}
-
             {!subsQuery.isLoading && subs.length === 0 && (
               <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
                 No direct reports found
               </div>
             )}
-
             {!subsQuery.isLoading && subs.length > 0 && (
               <div className="space-y-1.5 max-h-52 overflow-y-auto">
                 {subs.map(u => (
@@ -360,7 +407,6 @@ function AssignDialog({
             )}
           </div>
 
-          {/* Allocated openings */}
           <div className="space-y-1.5">
             <Label>Allocated Openings</Label>
             <Input
@@ -372,7 +418,6 @@ function AssignDialog({
             />
           </div>
 
-          {/* Deadline */}
           <div className="space-y-1.5">
             <Label>Deadline</Label>
             <Popover open={calOpen} onOpenChange={setCalOpen}>
@@ -422,15 +467,11 @@ function AssignDialog({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main tab
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Main tab ──────────────────────────────────────────────────────────────────
 
 export function RequirementAssignmentsTab({ requirementId, canEdit }: Props) {
   const axios = useAxios();
   const queryClient = useQueryClient();
-
-  // undefined = dialog closed | null = top-level assign | string = sub-assign
   const [assignParentId, setAssignParentId] = useState<string | null | undefined>(undefined);
 
   const treeQuery = useQuery<{ success: boolean; data: RequirementTree }>({
@@ -452,7 +493,6 @@ export function RequirementAssignmentsTab({ requirementId, canEdit }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold">Assignment Tree</h3>
@@ -462,13 +502,11 @@ export function RequirementAssignmentsTab({ requirementId, canEdit }: Props) {
         </div>
         {canEdit && (
           <Button size="sm" onClick={() => setAssignParentId(null)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Assign
+            <Plus className="mr-2 h-4 w-4" /> Assign
           </Button>
         )}
       </div>
 
-      {/* Loading */}
       {treeQuery.isLoading && (
         <div className="space-y-3">
           {[1, 2].map(i => (
@@ -477,24 +515,21 @@ export function RequirementAssignmentsTab({ requirementId, canEdit }: Props) {
         </div>
       )}
 
-      {/* Empty */}
       {!treeQuery.isLoading && (tree?.assignmentTree.length ?? 0) === 0 && (
         <div className="rounded-lg border border-dashed p-10 text-center space-y-2">
           <Users className="h-8 w-8 text-muted-foreground mx-auto" />
           <p className="text-sm text-muted-foreground">No assignments yet</p>
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => setAssignParentId(null)}>
-              <Plus className="mr-2 h-3.5 w-3.5" />
-              Make first assignment
+              <Plus className="mr-2 h-3.5 w-3.5" /> Make first assignment
             </Button>
           )}
         </div>
       )}
 
-      {/* Tree */}
       {!treeQuery.isLoading && (tree?.assignmentTree.length ?? 0) > 0 && (
         <div className="space-y-4">
-          {tree!.assignmentTree.map(node => (
+          {tree!.assignmentTree.map((node: any) => (
             <AssignmentCard
               key={node.id}
               node={node}
@@ -506,7 +541,6 @@ export function RequirementAssignmentsTab({ requirementId, canEdit }: Props) {
         </div>
       )}
 
-      {/* Dialog */}
       <AssignDialog
         open={assignParentId !== undefined}
         parentAssignmentId={assignParentId ?? null}

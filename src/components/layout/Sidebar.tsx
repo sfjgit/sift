@@ -20,6 +20,8 @@ import {
 
 const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Pipeline Stages', href: '/pipeline-stages', icon: LayoutDashboard },
+
   { label: 'Requirements', href: '/requirements', icon: FileText },
   { label: 'Clients', href: '/clients', icon: Briefcase },
   { type: 'divider' as const },
