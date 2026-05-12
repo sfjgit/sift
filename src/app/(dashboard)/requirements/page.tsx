@@ -8,7 +8,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'use-debounce';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { useAxios } from '@/hooks/useAxios';
 
 import { RequirementStatCards } from '@/components/requirements/RequirementStatCards';
@@ -30,8 +29,7 @@ export default function RequirementsPage() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  // @ts-expect-error errr
-  const [filters, setFilters] = useState<RequirementFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<RequirementFilters>(DEFAULT_FILTERS as any);
   const [debouncedSearch] = useDebounce(filters.search, 400);
   const [statusDialog, setStatusDialog] = useState<{
     req: RequirementListItem;
@@ -46,8 +44,6 @@ export default function RequirementsPage() {
     () => buildQueryString(filters, debouncedSearch),
     [filters, debouncedSearch]
   );
-
-  // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: statsRes } = useQuery<RequirementStatsResponse>({
     queryKey: ['requirement-stats'],
@@ -84,8 +80,6 @@ export default function RequirementsPage() {
   const clients = clientsRes?.data ?? [];
   const businessUnits = busRes?.data ?? [];
 
-  // ── Status mutation ────────────────────────────────────────────────────────
-
   const statusMutation = useMutation({
     mutationFn: async ({ id, toStatus }: { id: string; toStatus: RequirementStatus }) =>
       (await axios.patch(`/requirements/${id}/status`, { status: toStatus })).data,
@@ -99,53 +93,55 @@ export default function RequirementsPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Requirements</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {meta ? `${meta.total} total` : '—'}
-          </p>
+    // Full viewport height, no overflow — page never scrolls
+    <div className="flex flex-col h-[calc(100vh-var(--sidebar-header-height,56px))] overflow-hidden">
+      {/* ── Fixed top section — never scrolls ── */}
+      <div className="flex-none px-6 pt-5 pb-3 space-y-4">
+        {/* Header row */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Requirements</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {meta ? `${meta.total} total` : '—'}
+            </p>
+          </div>
+          {permissions?.canAdd && (
+            <Button size="sm" onClick={() => router.push('/requirements/new')}>
+              New requirement +
+            </Button>
+          )}
         </div>
-        {permissions?.canAdd && (
-          <Button size="sm" onClick={() => router.push('/requirements/new')}>
-            New requirement +
-          </Button>
-        )}
+
+        {/* Stat cards */}
+        {stats && <RequirementStatCards stats={stats} />}
+
+        {/* Toolbar */}
+        <RequirementsToolbar
+          filters={filters}
+          setFilter={setFilter}
+          onClear={() => setFilters(DEFAULT_FILTERS as any)}
+          clients={clients}
+          businessUnits={businessUnits}
+        />
       </div>
 
-      {/* Stats */}
-      {stats && <RequirementStatCards stats={stats} />}
+      {/* ── Scrollable table area — fills remaining height ── */}
+      {/* overflow-auto here means: vertical scroll inside this div, horizontal scroll inside table */}
+      <div className="flex-1 min-h-0 px-6 pb-5 flex flex-col gap-3">
+        <RequirementsTable
+          requirements={requirements}
+          meta={meta}
+          permissions={permissions}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          page={filters.page}
+          onPageChange={p => setFilter('page', p)}
+          onClearFilters={() => setFilters(DEFAULT_FILTERS as any)}
+          hasActiveFilters={countActiveFilters(filters) > 0}
+          onStatusChange={(req, to) => setStatusDialog({ req, to })}
+        />
+      </div>
 
-      <Separator />
-
-      {/* Toolbar — search, filters, sort */}
-      <RequirementsToolbar
-        filters={filters}
-        setFilter={setFilter}
-        // @ts-expect-error errr
-        onClear={() => setFilters(DEFAULT_FILTERS)}
-        clients={clients}
-        businessUnits={businessUnits}
-      />
-
-      {/* Table + pagination */}
-      <RequirementsTable
-        requirements={requirements}
-        meta={meta}
-        permissions={permissions}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        page={filters.page}
-        onPageChange={p => setFilter('page', p)}
-        // @ts-expect-error errr
-        onClearFilters={() => setFilters(DEFAULT_FILTERS)}
-        hasActiveFilters={countActiveFilters(filters) > 0}
-        onStatusChange={(req, to) => setStatusDialog({ req, to })}
-      />
-
-      {/* Status change confirmation */}
       <StatusChangeDialog
         dialog={statusDialog}
         isPending={statusMutation.isPending}

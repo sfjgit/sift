@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import Link from 'next/link';
@@ -30,7 +31,7 @@ function AssignmentNode({ a, depth = 0 }: { a: AssignmentSummary; depth?: number
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold">
-              {a.assignedTo.firstName} {a.assignedTo.lastName}
+              {/* {a.assignedTo.firstName} {a.assignedTo.lastName} */}
             </span>
 
             {a.allocatedOpenings != null && (
