@@ -23,6 +23,8 @@ const NAV = [
   { label: 'Pipeline Stages', href: '/pipeline-stages', icon: LayoutDashboard },
 
   { label: 'Requirements', href: '/requirements', icon: FileText },
+  { label: 'my-assignments', href: '/my-assignments', icon: FileText },
+
   { label: 'Clients', href: '/clients', icon: Briefcase },
   { type: 'divider' as const },
   { label: 'Users', href: '/users', icon: Users, adminOnly: true },

@@ -174,11 +174,12 @@ export function StageFormDialog({ open, onClose, stage }: Props) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All service lines</SelectItem>
-                {serviceLines.map(sl => (
-                  <SelectItem key={sl.id} value={sl.id}>
-                    {sl.name}
-                  </SelectItem>
-                ))}
+                {serviceLines &&
+                  serviceLines?.map(sl => (
+                    <SelectItem key={sl.id} value={sl.id}>
+                      {sl.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

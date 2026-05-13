@@ -210,188 +210,188 @@ const APP_META: Record<string, { bg: string; short: string; color: string }> = {
 
 // ─── Extension bridge ─────────────────────────────────────────────────────────
 
-function triggerExtension(
-  requirementId: string,
-  requirementCode: string,
-  requirementTitle: string,
-  appName: string
-) {
-  window.postMessage(
-    {
-      type: 'TALENTOX_SOURCE_NAUKRI',
-      requirementId,
-      requirementCode,
-      requirementTitle,
-      appName,
-    },
-    window.location.origin
-  );
-}
+// function triggerExtension(
+//   requirementId: string,
+//   requirementCode: string,
+//   requirementTitle: string,
+//   appName: string
+// ) {
+//   window.postMessage(
+//     {
+//       type: 'TALENTOX_SOURCE_NAUKRI',
+//       requirementId,
+//       requirementCode,
+//       requirementTitle,
+//       appName,
+//     },
+//     window.location.origin
+//   );
+// }
 
-// ─── Add Candidate Modal ──────────────────────────────────────────────────────
+// // ─── Add Candidate Modal ──────────────────────────────────────────────────────
 
-function AddCandidateModal({
-  open,
-  onClose,
-  req,
-}: {
-  open: boolean;
-  onClose: () => void;
-  req: DetailResponse['data'];
-}) {
-  const axios = useAxios();
-  const [portalExpanded, setPortalExpanded] = useState(false);
-  const [launching, setLaunching] = useState<string | null>(null);
+// function AddCandidateModal({
+//   open,
+//   onClose,
+//   req,
+// }: {
+//   open: boolean;
+//   onClose: () => void;
+//   req: DetailResponse['data'];
+// }) {
+//   const axios = useAxios();
+//   const [portalExpanded, setPortalExpanded] = useState(false);
+//   const [launching, setLaunching] = useState<string | null>(null);
 
-  const { data: credsData, isLoading: credsLoading } = useQuery<{
-    success: boolean;
-    data: AppCredential[];
-  }>({
-    queryKey: ['user-app-credentials'],
-    queryFn: async () => (await axios.get('/users/app-credentials')).data,
-    enabled: open && portalExpanded,
-  });
+//   const { data: credsData, isLoading: credsLoading } = useQuery<{
+//     success: boolean;
+//     data: AppCredential[];
+//   }>({
+//     queryKey: ['user-app-credentials'],
+//     queryFn: async () => (await axios.get('/users/app-credentials')).data,
+//     enabled: open && portalExpanded,
+//   });
 
-  const credentials = credsData?.data ?? [];
+//   const credentials = credsData?.data ?? [];
 
-  function handleLaunch(cred: AppCredential) {
-    setLaunching(cred.appName);
-    triggerExtension(req.id, req.reqCode, req.title, cred.appName);
-    setTimeout(() => {
-      setLaunching(null);
-      onClose();
-    }, 800);
-  }
+//   function handleLaunch(cred: AppCredential) {
+//     setLaunching(cred.appName);
+//     triggerExtension(req.id, req.reqCode, req.title, cred.appName);
+//     setTimeout(() => {
+//       setLaunching(null);
+//       onClose();
+//     }, 800);
+//   }
 
-  if (!open) return null;
+//   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-[420px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-100">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <UserPlus className="w-4 h-4 text-primary" />
-            </div>
-            <h2 className="text-sm font-semibold text-slate-900">Add Candidate</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+//   return (
+//     <div className="fixed inset-0 z-50 flex items-center justify-center">
+//       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+//       <div className="relative z-10 w-full max-w-[420px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-100">
+//         {/* Header */}
+//         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
+//           <div className="flex items-center gap-2.5">
+//             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+//               <UserPlus className="w-4 h-4 text-primary" />
+//             </div>
+//             <h2 className="text-sm font-semibold text-slate-900">Add Candidate</h2>
+//           </div>
+//           <button
+//             onClick={onClose}
+//             className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+//           >
+//             <X className="w-4 h-4" />
+//           </button>
+//         </div>
 
-        {/* Body */}
-        <div className="px-3 py-3 space-y-0.5">
-          <ModalRow
-            iconBg="bg-rose-50"
-            icon={<Pencil className="w-4 h-4 text-rose-500" />}
-            title="Enter Details Manually"
-            desc="Create a candidate profile based on the information you already know"
-            onClick={onClose}
-          />
+//         {/* Body */}
+//         <div className="px-3 py-3 space-y-0.5">
+//           <ModalRow
+//             iconBg="bg-rose-50"
+//             icon={<Pencil className="w-4 h-4 text-rose-500" />}
+//             title="Enter Details Manually"
+//             desc="Create a candidate profile based on the information you already know"
+//             onClick={onClose}
+//           />
 
-          <ModalRow
-            iconBg="bg-green-50"
-            icon={<FileText className="w-4 h-4 text-green-600" />}
-            title="Upload Resume"
-            desc="Upload resumes directly from your system"
-            onClick={onClose}
-          />
+//           <ModalRow
+//             iconBg="bg-green-50"
+//             icon={<FileText className="w-4 h-4 text-green-600" />}
+//             title="Upload Resume"
+//             desc="Upload resumes directly from your system"
+//             onClick={onClose}
+//           />
 
-          <ModalRow
-            iconBg="bg-blue-50"
-            icon={<Database className="w-4 h-4 text-blue-500" />}
-            title="Database"
-            desc="Search the candidates from your own database"
-            onClick={onClose}
-          />
+//           <ModalRow
+//             iconBg="bg-blue-50"
+//             icon={<Database className="w-4 h-4 text-blue-500" />}
+//             title="Database"
+//             desc="Search the candidates from your own database"
+//             onClick={onClose}
+//           />
 
-          {/* Portal Recruit — expandable */}
-          <div>
-            <button
-              onClick={() => setPortalExpanded(v => !v)}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 transition-colors group"
-            >
-              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
-                <Globe className="w-4 h-4 text-amber-600" />
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <p className="text-sm font-medium text-slate-800">Portal Recruit</p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Connect to Job Boards to parse resumes
-                </p>
-              </div>
-              <div
-                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all text-[11px] font-bold leading-none ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500 group-hover:border-slate-400'}`}
-              >
-                {portalExpanded ? '−' : '+'}
-              </div>
-            </button>
+//           {/* Portal Recruit — expandable */}
+//           <div>
+//             <button
+//               onClick={() => setPortalExpanded(v => !v)}
+//               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 transition-colors group"
+//             >
+//               <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+//                 <Globe className="w-4 h-4 text-amber-600" />
+//               </div>
+//               <div className="flex-1 text-left min-w-0">
+//                 <p className="text-sm font-medium text-slate-800">Portal Recruit</p>
+//                 <p className="text-xs text-slate-400 mt-0.5">
+//                   Connect to Job Boards to parse resumes
+//                 </p>
+//               </div>
+//               <div
+//                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all text-[11px] font-bold leading-none ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500 group-hover:border-slate-400'}`}
+//               >
+//                 {portalExpanded ? '−' : '+'}
+//               </div>
+//             </button>
 
-            {portalExpanded && (
-              <div className="ml-12 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
-                {credsLoading ? (
-                  <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Loading connected apps...
-                  </div>
-                ) : credentials.length === 0 ? (
-                  <p className="py-3 text-xs text-slate-400 leading-relaxed">
-                    No apps connected yet.{' '}
-                    <span className="text-primary font-medium cursor-pointer hover:underline">
-                      Settings → Connected Apps
-                    </span>
-                  </p>
-                ) : (
-                  credentials.map(cred => {
-                    const meta = APP_META[cred.appName] ?? {
-                      bg: 'bg-slate-100',
-                      short: cred.appName[0],
-                      color: 'text-slate-700',
-                    };
-                    const isLaunching = launching === cred.appName;
-                    const displayName =
-                      cred.appName.charAt(0) + cred.appName.slice(1).toLowerCase();
-                    return (
-                      <button
-                        key={cred.id}
-                        onClick={() => handleLaunch(cred)}
-                        disabled={!!launching}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-left group disabled:opacity-60"
-                      >
-                        <div
-                          className={`w-8 h-8 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}
-                        >
-                          <span className={`text-xs font-bold ${meta.color}`}>{meta.short}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800">{displayName}</p>
-                          <p className="text-[11px] text-slate-400 truncate">
-                            Click here to login to {displayName} to start recruiting
-                          </p>
-                        </div>
-                        {isLaunching ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
-                        ) : (
-                          <ExternalLink className="w-3.5 h-3.5 text-slate-200 group-hover:text-slate-500 shrink-0 transition-colors" />
-                        )}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+//             {portalExpanded && (
+//               <div className="ml-12 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
+//                 {credsLoading ? (
+//                   <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
+//                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
+//                     Loading connected apps...
+//                   </div>
+//                 ) : credentials.length === 0 ? (
+//                   <p className="py-3 text-xs text-slate-400 leading-relaxed">
+//                     No apps connected yet.{' '}
+//                     <span className="text-primary font-medium cursor-pointer hover:underline">
+//                       Settings → Connected Apps
+//                     </span>
+//                   </p>
+//                 ) : (
+//                   credentials.map(cred => {
+//                     const meta = APP_META[cred.appName] ?? {
+//                       bg: 'bg-slate-100',
+//                       short: cred.appName[0],
+//                       color: 'text-slate-700',
+//                     };
+//                     const isLaunching = launching === cred.appName;
+//                     const displayName =
+//                       cred.appName.charAt(0) + cred.appName.slice(1).toLowerCase();
+//                     return (
+//                       <button
+//                         key={cred.id}
+//                         onClick={() => handleLaunch(cred)}
+//                         disabled={!!launching}
+//                         className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-left group disabled:opacity-60"
+//                       >
+//                         <div
+//                           className={`w-8 h-8 rounded-lg ${meta.bg} flex items-center justify-center shrink-0`}
+//                         >
+//                           <span className={`text-xs font-bold ${meta.color}`}>{meta.short}</span>
+//                         </div>
+//                         <div className="flex-1 min-w-0">
+//                           <p className="text-sm font-medium text-slate-800">{displayName}</p>
+//                           <p className="text-[11px] text-slate-400 truncate">
+//                             Click here to login to {displayName} to start recruiting
+//                           </p>
+//                         </div>
+//                         {isLaunching ? (
+//                           <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+//                         ) : (
+//                           <ExternalLink className="w-3.5 h-3.5 text-slate-200 group-hover:text-slate-500 shrink-0 transition-colors" />
+//                         )}
+//                       </button>
+//                     );
+//                   })
+//                 )}
+//               </div>
+//             )}
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
 
 function ModalRow({
   iconBg,
@@ -1132,6 +1132,186 @@ function PageSkeleton() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// File: AddCandidateModal.tsx (drop-in replacement for the modal section in page.tsx)
+// Path: src/app/(dashboard)/requirements/[id]/page.tsx — replace the AddCandidateModal component
+
+// ─── Hardcoded portal apps ─────────────────────────────────────────────────
+// No API call needed — these are fixed portals.
+// Clicking opens the portal URL directly. If recruiter is already logged in
+// on that site, they land on the dashboard. If not, they see login.
+// Extension picks up the requirementId and shows it in the popup.
+
+// File: AddCandidateModal.tsx
+// Path: src/app/(dashboard)/requirements/[id]/_components/AddCandidateModal.tsx
+// Drop this into page.tsx replacing the existing AddCandidateModal + triggerExtension
+
+const PORTAL_APPS = [
+  {
+    appName: 'NAUKRI',
+    displayName: 'Naukri',
+    url: 'https://resdex.naukri.com',
+    bg: 'bg-orange-50',
+    short: 'N',
+    color: 'text-orange-600',
+    desc: 'Source from Naukri Resdex',
+  },
+  {
+    appName: 'LINKEDIN',
+    displayName: 'LinkedIn',
+    url: 'https://www.linkedin.com/talent/home',
+    bg: 'bg-blue-50',
+    short: 'in',
+    color: 'text-blue-700',
+    desc: 'Source from LinkedIn Recruiter',
+  },
+  {
+    appName: 'FOUNDIT',
+    displayName: 'Foundit',
+    url: 'https://www.foundit.in/recruiter',
+    bg: 'bg-purple-50',
+    short: 'F',
+    color: 'text-purple-600',
+    desc: 'Source from Foundit (Monster)',
+  },
+];
+
+function triggerExtension(
+  requirementId: string,
+  requirementCode: string,
+  requirementTitle: string,
+  appName: string
+) {
+  window.postMessage(
+    {
+      type: 'TALENTOX_SOURCE_NAUKRI',
+      requirementId,
+      requirementCode,
+      requirementTitle,
+      appName,
+    },
+    window.location.origin
+  );
+}
+
+function AddCandidateModal({
+  open,
+  onClose,
+  req,
+}: {
+  open: boolean;
+  onClose: () => void;
+  req: DetailResponse['data'];
+}) {
+  const [portalExpanded, setPortalExpanded] = useState(false);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-[420px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-100">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <UserPlus className="w-4 h-4 text-primary" />
+            </div>
+            <h2 className="text-sm font-semibold text-slate-900">Add Candidate</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-3 py-3 space-y-0.5">
+          <ModalRow
+            iconBg="bg-rose-50"
+            icon={<Pencil className="w-4 h-4 text-rose-500" />}
+            title="Enter Details Manually"
+            desc="Create a candidate profile based on the information you already know"
+            onClick={onClose}
+          />
+
+          <ModalRow
+            iconBg="bg-green-50"
+            icon={<FileText className="w-4 h-4 text-green-600" />}
+            title="Upload Resume"
+            desc="Upload resumes directly from your system"
+            onClick={onClose}
+          />
+
+          <ModalRow
+            iconBg="bg-blue-50"
+            icon={<Database className="w-4 h-4 text-blue-500" />}
+            title="Database"
+            desc="Search the candidates from your own database"
+            onClick={onClose}
+          />
+
+          {/* Portal Recruit */}
+          <div>
+            <button
+              onClick={() => setPortalExpanded(v => !v)}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-slate-50 transition-colors group"
+            >
+              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                <Globe className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-slate-800">Portal Recruit</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Connect to Job Boards to parse resumes
+                </p>
+              </div>
+              <div
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all text-[11px] font-bold leading-none ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
+              >
+                {portalExpanded ? '−' : '+'}
+              </div>
+            </button>
+
+            {portalExpanded && (
+              <div className="ml-12 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
+                {PORTAL_APPS.map(app => (
+                  // ✅ Use <a> tag — browser never blocks anchor clicks
+                  // onClick fires postMessage to extension BEFORE navigation
+                  <a
+                    key={app.appName}
+                    href={app.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      // sync requirement to extension first
+                      triggerExtension(req.id, req.reqCode, req.title, app.appName);
+                      onClose();
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors text-left group no-underline"
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
+                    >
+                      <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800">{app.displayName}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{app.desc}</p>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-200 group-hover:text-slate-500 shrink-0 transition-colors" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
