@@ -70,7 +70,7 @@ export default function RoleCreatePage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
+    <div className="w-full bg-blue-50 p-6">
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="mb-6 flex items-center gap-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.back()}>
