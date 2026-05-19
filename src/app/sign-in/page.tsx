@@ -42,7 +42,7 @@ export default function SignInPage() {
       // Hand off to AuthContext — it will store user + tokens
       await login(email, password);
       toast.success('Welcome back!');
-      // router.push('/dashboard');
+      router.push('/dashboard');
     } catch {
       toast.error('Something went wrong. Please try again.');
     } finally {
