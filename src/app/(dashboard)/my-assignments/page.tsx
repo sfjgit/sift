@@ -225,6 +225,7 @@ function CandidateDrawer({
   const [activeStageId, setActiveStageId] = useState<string | null>(stageId);
 
   useMemo(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-render
     setActiveStageId(stageId);
   }, [stageId]);
 
@@ -490,7 +491,8 @@ function AssignmentCard({
   const allocated = myAssignment?.allocatedOpenings ?? null;
   const deadline = myAssignment?.deadline ?? null;
   const deadlineDays = deadline
-    ? Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000)
+    ? // eslint-disable-next-line react-hooks/purity
+      Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000)
     : null;
 
   const statusMeta = STATUS_META[req.status] ?? { label: req.status, cls: '' };

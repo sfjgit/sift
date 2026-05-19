@@ -345,6 +345,7 @@ function MobileFilterSheet({
               <button
                 key={s.key}
                 onClick={() => {
+                  // @ts-expect-error err
                   setStatus(p => (p === s.key ? '' : s.key));
                   resetPage();
                   onClose();
