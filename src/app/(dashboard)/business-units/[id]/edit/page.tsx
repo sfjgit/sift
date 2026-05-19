@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// File: page.tsx
+// Path: src/app/business-units/[id]/edit/page.tsx
+
 'use client';
 
 import { useRouter, useParams } from 'next/navigation';
@@ -31,15 +35,51 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
-import type { BUListResponse, BUDetailResponse, BUMutationResponse } from '@/types/bu.types';
+
+// ── Types matching actual API responses ───────────────────────────────────────
+
+interface BUFlatItem {
+  id: string;
+  name: string;
+  code: string | null;
+  isActive: boolean;
+  parentBUId: string | null;
+  ancestorIds: string[];
+  createdAt: string;
+  _count: {
+    clients: number; // only field returned by listBusinessUnits
+  };
+}
+
+interface BUListResponse {
+  success: boolean;
+  flat: BUFlatItem[];
+  data: any[]; // tree, unused here
+}
+
+interface BUDetailResponse {
+  success: boolean;
+  data: {
+    id: string;
+    name: string;
+    code: string | null;
+    isActive: boolean;
+    parentBU: { id: string; name: string; isActive: boolean } | null;
+  };
+}
+
+// ── Schema ────────────────────────────────────────────────────────────────────
 
 const schema = z.object({
   name: z.string().min(2, 'At least 2 characters').max(100).trim(),
+  code: z.string().max(20).trim().nullable(),
   parentBUId: z.string().nullable(),
   isActive: z.boolean(),
 });
 
 type FormValues = z.infer<typeof schema>;
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function BUEditPage() {
   const router = useRouter();
@@ -59,7 +99,8 @@ export default function BUEditPage() {
     queryFn: async () => (await axios.get('/business-units')).data,
   });
 
-  const allBUs = (listData?.flat ?? []).filter(b => b.id !== id);
+  // exclude self and own descendants from parent options (prevent circular)
+  const allBUs = (listData?.flat ?? []).filter(b => b.id !== id && !b.ancestorIds.includes(id));
 
   const {
     register,
@@ -70,19 +111,24 @@ export default function BUEditPage() {
     formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '', parentBUId: null, isActive: true },
+    defaultValues: { name: '', code: null, parentBUId: null, isActive: true },
   });
 
   useEffect(() => {
     if (detail?.data) {
       const bu = detail.data;
-      reset({ name: bu.name, parentBUId: bu.parentBU?.id ?? null, isActive: bu.isActive });
+      reset({
+        name: bu.name,
+        code: bu.code ?? null,
+        parentBUId: bu.parentBU?.id ?? null,
+        isActive: bu.isActive,
+      });
     }
   }, [detail, reset]);
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) =>
-      (await axios.put<BUMutationResponse>(`/business-units/${id}`, values)).data,
+      (await axios.put(`/business-units/${id}`, values)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['business-units'] });
       queryClient.invalidateQueries({ queryKey: ['business-unit', id] });
@@ -139,6 +185,7 @@ export default function BUEditPage() {
             </div>
           )}
 
+          {/* Name */}
           <div className="space-y-1.5">
             <Label htmlFor="name">
               Name <span className="text-destructive">*</span>
@@ -151,6 +198,19 @@ export default function BUEditPage() {
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
+          {/* Code */}
+          <div className="space-y-1.5">
+            <Label htmlFor="code">Code</Label>
+            <Input
+              id="code"
+              {...register('code')}
+              placeholder="e.g. KAAS, TAAS"
+              className={cn(errors.code && 'border-destructive')}
+            />
+            {errors.code && <p className="text-xs text-destructive">{errors.code.message}</p>}
+          </div>
+
+          {/* Parent BU */}
           <div className="space-y-1.5">
             <Label>Parent Business Unit</Label>
             <Controller
@@ -176,6 +236,11 @@ export default function BUEditPage() {
                             )}
                           />
                           {selectedParent.name}
+                          {selectedParent.code && (
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {selectedParent.code}
+                            </span>
+                          )}
                         </span>
                       ) : (
                         'No parent — root BU'
@@ -185,7 +250,7 @@ export default function BUEditPage() {
                   </PopoverTrigger>
                   <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                     <Command>
-                      <CommandInput placeholder="Search…" />
+                      <CommandInput placeholder="Search BUs…" />
                       <CommandList>
                         <CommandEmpty>No results</CommandEmpty>
                         <CommandGroup>
@@ -232,8 +297,14 @@ export default function BUEditPage() {
                                   )}
                                 />
                                 <span className="flex-1 truncate">{bu.name}</span>
+                                {bu.code && (
+                                  <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                                    {bu.code}
+                                  </span>
+                                )}
+                                {/* _count.clients is the only count returned by listBusinessUnits */}
                                 <span className="ml-2 text-[10px] text-muted-foreground">
-                                  {bu._count.users}u · {bu._count.teams}t
+                                  {bu._count.clients}c
                                 </span>
                               </CommandItem>
                             ))
@@ -247,6 +318,7 @@ export default function BUEditPage() {
             />
           </div>
 
+          {/* Active toggle */}
           <div className="flex items-center justify-between rounded-lg border px-4 py-3">
             <div>
               <p className="text-sm font-medium leading-none">Active</p>

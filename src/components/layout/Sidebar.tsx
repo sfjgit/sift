@@ -23,14 +23,8 @@ import {
   ClipboardList,
 } from 'lucide-react';
 
-/**
- * `module` must exactly match the `module` field from role.permissions[].module
- * Leave `module` undefined for items that are always visible (Dashboard, Settings, Org Tree, My Assignments)
- * `adminOnly` = only super admin sees it regardless of permissions (Org Tree)
- */
 const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  // { label: 'Pipeline Stages', href: '/pipeline-stages', icon: ListOrdered },
   { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
   { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
   { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
@@ -54,34 +48,22 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const isSuperAdmin = user?.isSuperAdmin === true;
-
-  // Build a quick lookup: module -> permission object
   const permMap = Object.fromEntries((user?.role?.permissions ?? []).map(p => [p.module, p]));
 
   const visibleNav = NAV.filter(item => {
-    // Always keep dividers (filtered later if both adjacent items are hidden — good enough for now)
     if ('type' in item) return true;
-
-    // superAdminOnly items — only visible to super admins
     if (item.superAdminOnly) return isSuperAdmin;
-
-    // Super admins see everything else unconditionally
     if (isSuperAdmin) return true;
-
-    // No module key = always visible (Dashboard, Pipeline Stages, My Assignments, Settings)
     if (!item.module) return true;
-
-    // Module-gated: must have canView === true in their role permissions
     return permMap[item.module]?.canView === true;
   });
 
-  // Remove leading/trailing/consecutive dividers
   const cleanedNav = visibleNav.filter((item, i, arr) => {
     if (!('type' in item)) return true;
     const prev = arr[i - 1];
     const next = arr[i + 1];
-    if (!prev || !next) return false; // leading or trailing divider
-    if ('type' in prev) return false; // consecutive dividers
+    if (!prev || !next) return false;
+    if ('type' in prev) return false;
     return true;
   });
 
@@ -96,39 +78,53 @@ export function Sidebar() {
       <aside
         className={cn(
           'shrink-0 flex flex-col border-r border-border bg-muted/40 overflow-visible relative z-20',
-          'transition-[width] duration-[180ms]',
-          open ? 'w-[210px]' : 'w-[52px]'
+          'transition-[width] duration-[200ms] ease-in-out',
+          open ? 'w-[220px]' : 'w-[52px]'
         )}
       >
-        {/* Logo toggle */}
+        {/* Logo / toggle */}
         <button
           onClick={() => {
             setOpen(o => !o);
             setTooltip(null);
           }}
-          className="h-12 flex items-center gap-2.5 px-[13px] border-b border-border shrink-0 overflow-hidden whitespace-nowrap w-full hover:bg-background transition-colors"
+          className="h-14 flex items-center border-b border-border shrink-0 w-full hover:bg-background transition-colors overflow-hidden"
         >
-          <div className="h-[26px] w-[26px] rounded-[7px] bg-foreground flex items-center justify-center shrink-0">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path
-                d="M2 6 L6 2 L10 6 L6 10 Z"
-                fill="currentColor"
-                className="text-background"
-                opacity="0.9"
-              />
-              <circle cx="6" cy="6" r="1.8" fill="currentColor" className="text-background" />
-            </svg>
-          </div>
+          {/* Collapsed: show favicon T mark */}
           <div
             className={cn(
-              'flex flex-col leading-none transition-opacity duration-150',
-              open ? 'opacity-100' : 'opacity-0'
+              'absolute flex items-center justify-center transition-opacity duration-150',
+              open ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            )}
+            style={{ left: 0, width: 52 }}
+          >
+            <svg width="28" height="28" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="7" fill="#0d1b4b" />
+              <rect x="3" y="5" width="26" height="7" rx="2" fill="#4f7cff" />
+              <rect x="12" y="12" width="8" height="15" rx="2" fill="#4f7cff" />
+            </svg>
+          </div>
+
+          {/* Expanded: full logo + wordmark */}
+          <div
+            className={cn(
+              'flex items-center gap-3 pl-3 transition-opacity duration-150',
+              open ? 'opacity-100' : 'opacity-0 pointer-events-none'
             )}
           >
-            <span className="text-[12px] font-medium text-foreground">TalentOS</span>
-            <span className="text-[9px] text-muted-foreground tracking-widest uppercase">
-              Recruit
-            </span>
+            <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="7" fill="#0d1b4b" />
+              <rect x="3" y="5" width="26" height="7" rx="2" fill="#4f7cff" />
+              <rect x="12" y="12" width="8" height="15" rx="2" fill="#4f7cff" />
+            </svg>
+            <div className="flex flex-col leading-none">
+              <span className="text-[14px] font-semibold text-foreground tracking-tight">
+                TalentOS
+              </span>
+              <span className="text-[9px] text-muted-foreground tracking-[0.2em] uppercase mt-0.5">
+                Recruit
+              </span>
+            </div>
           </div>
         </button>
 

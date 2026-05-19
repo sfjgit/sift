@@ -79,6 +79,7 @@ export default function EditUserPage() {
         timezone: values.timezone || null,
         departmentId: values.departmentId || null,
         reportingToId: values.reportingToId || null,
+        // @ts-expect-error err
         teamLeadId: values.teamLeadId || null,
       };
       const res = await axios.put(`/users/${id}`, payload);
@@ -119,6 +120,7 @@ export default function EditUserPage() {
         roleId: user.role.id,
         departmentId: user.department?.id ?? null,
         reportingToId: user.reportingTo?.id ?? null,
+        // @ts-expect-error err
         teamLeadId: user.teamLead?.id ?? null,
         isSuperAdmin: user.isSuperAdmin,
       }
