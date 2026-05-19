@@ -12,11 +12,16 @@ import {
   Briefcase,
   Clock,
   Phone,
-  Mail,
   Star,
   AlertTriangle,
   CheckCircle2,
   Circle,
+  TrendingUp,
+  Users,
+  Target,
+  Filter,
+  ArrowUpRight,
+  Flame,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -110,50 +115,64 @@ interface CandidateInPipeline {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-  DRAFT: 'bg-muted text-muted-foreground border-border',
-  PENDING_APPROVAL: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-  ON_HOLD: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-  CLOSED: 'bg-muted text-muted-foreground border-border',
-  CANCELLED: 'bg-red-500/10 text-red-600 border-red-500/20',
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  ACTIVE: { label: 'Active', cls: 'bg-emerald-500/12 text-emerald-700 ring-1 ring-emerald-500/25' },
+  DRAFT: { label: 'Draft', cls: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200' },
+  PENDING_APPROVAL: {
+    label: 'Pending',
+    cls: 'bg-amber-500/12 text-amber-700 ring-1 ring-amber-500/25',
+  },
+  ON_HOLD: { label: 'On Hold', cls: 'bg-orange-500/12 text-orange-700 ring-1 ring-orange-500/25' },
+  CLOSED: { label: 'Closed', cls: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200' },
+  CANCELLED: { label: 'Cancelled', cls: 'bg-red-500/12 text-red-700 ring-1 ring-red-500/25' },
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  HIGH: 'bg-red-500/10 text-red-600 border-red-500/20',
-  MEDIUM: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-  LOW: 'bg-muted text-muted-foreground border-border',
+const PRIORITY_META: Record<string, { cls: string; dot: string }> = {
+  HIGH: { cls: 'text-red-600 bg-red-50 ring-1 ring-red-200', dot: 'bg-red-500' },
+  MEDIUM: { cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200', dot: 'bg-amber-500' },
+  LOW: { cls: 'text-slate-500 bg-slate-50 ring-1 ring-slate-200', dot: 'bg-slate-400' },
 };
 
-// Big colored numbers — same as requirements page
-const STAGE_NUMBER_COLOR: Record<string, string> = {
-  '01': 'text-orange-500',
-  '02': 'text-violet-600',
-  '03': 'text-rose-500',
-  '04': 'text-pink-500',
-  '05': 'text-cyan-600',
-  '06': 'text-teal-600',
-  '07': 'text-blue-600',
-  '07A': 'text-blue-500',
-  '07B': 'text-blue-700',
-  '08': 'text-indigo-600',
-  '09': 'text-emerald-600',
-  '10': 'text-green-600',
+const STAGE_PALETTE: Record<string, { num: string; bg: string; text: string; bar: string }> = {
+  '01': {
+    num: 'text-orange-500',
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    bar: 'bg-orange-400',
+  },
+  '02': {
+    num: 'text-violet-600',
+    bg: 'bg-violet-50',
+    text: 'text-violet-700',
+    bar: 'bg-violet-500',
+  },
+  '03': { num: 'text-rose-500', bg: 'bg-rose-50', text: 'text-rose-700', bar: 'bg-rose-400' },
+  '04': { num: 'text-pink-500', bg: 'bg-pink-50', text: 'text-pink-700', bar: 'bg-pink-400' },
+  '05': { num: 'text-cyan-600', bg: 'bg-cyan-50', text: 'text-cyan-700', bar: 'bg-cyan-500' },
+  '06': { num: 'text-teal-600', bg: 'bg-teal-50', text: 'text-teal-700', bar: 'bg-teal-500' },
+  '07': { num: 'text-blue-600', bg: 'bg-blue-50', text: 'text-blue-700', bar: 'bg-blue-500' },
+  '07A': { num: 'text-blue-500', bg: 'bg-blue-50', text: 'text-blue-600', bar: 'bg-blue-400' },
+  '07B': { num: 'text-blue-700', bg: 'bg-blue-50', text: 'text-blue-800', bar: 'bg-blue-600' },
+  '08': {
+    num: 'text-indigo-600',
+    bg: 'bg-indigo-50',
+    text: 'text-indigo-700',
+    bar: 'bg-indigo-500',
+  },
+  '09': {
+    num: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    bar: 'bg-emerald-500',
+  },
+  '10': { num: 'text-green-600', bg: 'bg-green-50', text: 'text-green-700', bar: 'bg-green-500' },
 };
 
-const STAGE_BADGE_COLORS: Record<string, string> = {
-  '01': 'bg-orange-100 text-orange-700',
-  '02': 'bg-violet-100 text-violet-700',
-  '03': 'bg-rose-100 text-rose-700',
-  '04': 'bg-pink-100 text-pink-700',
-  '05': 'bg-cyan-100 text-cyan-700',
-  '06': 'bg-teal-100 text-teal-700',
-  '07': 'bg-blue-100 text-blue-700',
-  '07A': 'bg-blue-100 text-blue-600',
-  '07B': 'bg-blue-100 text-blue-800',
-  '08': 'bg-indigo-100 text-indigo-700',
-  '09': 'bg-emerald-100 text-emerald-700',
-  '10': 'bg-green-100 text-green-700',
+const fallbackPalette = {
+  num: 'text-slate-500',
+  bg: 'bg-slate-50',
+  text: 'text-slate-600',
+  bar: 'bg-slate-400',
 };
 
 const ALL_STATUSES = ['ACTIVE', 'DRAFT', 'PENDING_APPROVAL', 'ON_HOLD', 'CLOSED', 'CANCELLED'];
@@ -173,12 +192,12 @@ function initials(name: string) {
 }
 
 const AVATAR_COLORS = [
-  'bg-violet-500',
-  'bg-blue-500',
-  'bg-emerald-500',
-  'bg-amber-500',
-  'bg-rose-500',
-  'bg-cyan-500',
+  'from-violet-500 to-violet-700',
+  'from-blue-500 to-blue-700',
+  'from-emerald-500 to-emerald-700',
+  'from-amber-500 to-amber-600',
+  'from-rose-500 to-rose-700',
+  'from-cyan-500 to-cyan-700',
 ];
 function avatarColor(s: string) {
   return AVATAR_COLORS[s.charCodeAt(0) % AVATAR_COLORS.length];
@@ -206,6 +225,7 @@ function CandidateDrawer({
   const [activeStageId, setActiveStageId] = useState<string | null>(stageId);
 
   useMemo(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-render
     setActiveStageId(stageId);
   }, [stageId]);
 
@@ -236,30 +256,49 @@ function CandidateDrawer({
         if (!o) onClose();
       }}
     >
-      <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0 flex flex-col">
-        <SheetHeader className="px-5 pt-5 pb-0 border-b border-border shrink-0">
-          <SheetTitle className="text-sm font-semibold truncate">{requirementTitle}</SheetTitle>
-          <p className="text-[12px] text-muted-foreground pb-3">
-            {activeStage ? activeStage.label : 'All Stages'} · {total} candidate
-            {total !== 1 ? 's' : ''}
-          </p>
+      <SheetContent
+        side="right"
+        className="w-[520px] sm:max-w-[520px] p-0 flex flex-col bg-background"
+      >
+        {/* Drawer Header */}
+        <SheetHeader className="px-6 pt-6 pb-0 shrink-0 border-b border-border">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex-1 min-w-0">
+              <SheetTitle className="text-[15px] font-bold text-foreground truncate leading-snug">
+                {requirementTitle}
+              </SheetTitle>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
+                {activeStage ? activeStage.label : 'All Stages'} ·{' '}
+                <span className="font-semibold text-primary">{total}</span> candidate
+                {total !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
 
-          {/* Stage tabs */}
-          <div className="flex gap-1 flex-wrap pb-3 -mt-1">
+          {/* Stage tabs — pill style */}
+          <div className="flex gap-1.5 flex-wrap pb-4">
             <button
               onClick={() => setActiveStageId(null)}
-              className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors ${!activeStageId ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted'}`}
+              className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-all ${
+                !activeStageId
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
             >
               All
             </button>
             {allStages.map(stage => {
+              const pal = STAGE_PALETTE[stage.code] ?? fallbackPalette;
               const isActive = activeStageId === stage.id;
-              const badgeCls = STAGE_BADGE_COLORS[stage.code] ?? 'bg-slate-100 text-slate-600';
               return (
                 <button
                   key={stage.id}
                   onClick={() => setActiveStageId(prev => (prev === stage.id ? null : stage.id))}
-                  className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition-colors ${isActive ? `${badgeCls} border-current` : 'border-border text-muted-foreground hover:bg-muted'}`}
+                  className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-all ${
+                    isActive
+                      ? `${pal.bg} ${pal.text} ring-1 ring-current/20`
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }`}
                 >
                   {stage.label}
                 </button>
@@ -268,27 +307,31 @@ function CandidateDrawer({
           </div>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* Candidate list */}
+        <div className="flex-1 overflow-y-auto divide-y divide-border/60">
           {isLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex gap-3 px-5 py-4 border-b border-border/60">
-                <Skeleton className="h-10 w-10 rounded-full shrink-0" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-3 w-56" />
+              <div key={i} className="flex gap-4 px-6 py-5">
+                <Skeleton className="h-11 w-11 rounded-full shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-44" />
+                  <Skeleton className="h-3 w-60" />
+                  <Skeleton className="h-3 w-32" />
                 </div>
               </div>
             ))
           ) : candidates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-              <Circle size={32} className="mb-3 opacity-20" />
-              <p className="text-sm">No candidates in this stage</p>
+            <div className="flex flex-col items-center justify-center h-56 text-muted-foreground">
+              <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
+                <Circle size={28} className="opacity-30" />
+              </div>
+              <p className="text-sm font-medium text-foreground">No candidates here</p>
+              <p className="text-xs text-muted-foreground mt-1">Try selecting a different stage</p>
             </div>
           ) : (
             candidates.map(c => {
               const snap = c.snapshot;
-              const badgeCls =
-                STAGE_BADGE_COLORS[c.currentStage.code] ?? 'bg-slate-100 text-slate-600';
+              const pal = STAGE_PALETTE[c.currentStage.code] ?? fallbackPalette;
               const agingColor =
                 c.aging.minutes > 43200
                   ? 'text-red-500'
@@ -299,84 +342,92 @@ function CandidateDrawer({
               return (
                 <div
                   key={c.id}
-                  className={`flex gap-3 px-5 py-4 border-b border-border/60 hover:bg-muted/30 transition-colors cursor-pointer ${c.isRejected || c.isWithdrawn ? 'opacity-50' : ''}`}
+                  className={`flex gap-4 px-6 py-4 hover:bg-muted/30 transition-colors cursor-pointer group ${c.isRejected || c.isWithdrawn ? 'opacity-50' : ''}`}
                   onClick={() => {
                     onClose();
                     router.push(`/requirements/${requirementId}?pipelineId=${c.id}`);
                   }}
                 >
+                  {/* Avatar */}
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 ${avatarColor(snap.fullName)}`}
+                    className={`w-11 h-11 rounded-full bg-gradient-to-br ${avatarColor(snap.fullName)} flex items-center justify-center text-[12px] font-bold text-white shrink-0 shadow-sm`}
                   >
                     {initials(snap.fullName)}
                   </div>
+
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2 mb-0.5">
-                      <p className="text-[13px] font-semibold truncate">{snap.fullName}</p>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <p className="text-[14px] font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                        {snap.fullName}
+                      </p>
                       <div className="flex items-center gap-1 shrink-0">
                         <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${badgeCls}`}
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${pal.bg} ${pal.text}`}
                         >
                           {c.currentStage.label}
                         </span>
                         {c.isRejected && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">
                             Rejected
                           </span>
                         )}
                         {c.isWithdrawn && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">
                             Withdrawn
                           </span>
                         )}
                         {c.isOnHold && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold">
                             On Hold
                           </span>
                         )}
                       </div>
                     </div>
+
                     {(snap.currentTitle || snap.currentCompany) && (
-                      <p className="text-[11px] text-muted-foreground truncate mb-1">
+                      <p className="text-[12px] text-muted-foreground truncate mb-1.5">
                         {snap.currentTitle}
                         {snap.currentTitle && snap.currentCompany ? ' · ' : ''}
                         {snap.currentCompany}
+                        {snap.totalExpYears != null && (
+                          <span className="ml-2 font-medium text-foreground/70">
+                            {snap.totalExpYears}y exp
+                          </span>
+                        )}
                       </p>
                     )}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                      {snap.phone && (
-                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Phone size={10} />
-                          {snap.phone}
-                        </span>
-                      )}
-                      {snap.totalExpYears != null && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {snap.totalExpYears}y exp
-                        </span>
-                      )}
-                    </div>
+
+                    {snap.phone && (
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground mb-1.5">
+                        <Phone size={10} />
+                        {snap.phone}
+                      </div>
+                    )}
+
                     {snap.topSkills?.length > 0 && (
-                      <div className="flex items-center gap-1 mt-1 flex-wrap">
-                        <Star size={10} className="text-muted-foreground/40 shrink-0" />
+                      <div className="flex items-center gap-1 flex-wrap mb-1.5">
                         {snap.topSkills.slice(0, 3).map(s => (
-                          <span key={s} className="text-[10px] bg-muted px-1.5 py-0.5 rounded">
+                          <span
+                            key={s}
+                            className="text-[10px] bg-primary/8 text-primary px-2 py-0.5 rounded-full font-medium"
+                          >
                             {s}
                           </span>
                         ))}
                         {snap.topSkills.length > 3 && (
                           <span className="text-[10px] text-muted-foreground">
-                            +{snap.topSkills.length - 3}
+                            +{snap.topSkills.length - 3} more
                           </span>
                         )}
                       </div>
                     )}
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[10px] text-muted-foreground">
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-muted-foreground">
                         {c.recruiter.firstName} {c.recruiter.lastName}
                       </span>
                       <span
-                        className={`flex items-center gap-1 text-[10px] font-medium ${agingColor}`}
+                        className={`flex items-center gap-1 text-[11px] font-semibold ${agingColor}`}
                       >
                         <Clock size={10} />
                         {c.aging.label}
@@ -389,17 +440,15 @@ function CandidateDrawer({
           )}
         </div>
 
-        <div className="shrink-0 px-5 py-3 border-t border-border">
+        <div className="shrink-0 px-6 py-4 border-t border-border bg-muted/30">
           <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-xs"
+            className="w-full h-10 text-sm font-semibold"
             onClick={() => {
               onClose();
               router.push(`/requirements/${requirementId}`);
             }}
           >
-            Open Full Requirement →
+            Open Full Requirement <ArrowUpRight size={15} className="ml-1.5" />
           </Button>
         </div>
       </SheetContent>
@@ -429,7 +478,6 @@ function AssignmentCard({
 
   const totalCandidates =
     req._count?.pipelines ?? (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
-
   const countMap = Object.fromEntries(
     (req.pipelineStageCounts ?? []).map(s => [s.stageId, s.count])
   );
@@ -439,145 +487,205 @@ function AssignmentCard({
     s => s.serviceLineId === null || s.serviceLineId === reqServiceLineId
   );
 
-  // My allocation from depth-0 assignment
   const myAssignment = req.assignments?.find(a => (a.depth ?? 99) === 0) ?? req.assignments?.[0];
   const allocated = myAssignment?.allocatedOpenings ?? null;
   const deadline = myAssignment?.deadline ?? null;
   const deadlineDays = deadline
-    ? Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000)
+    ? // eslint-disable-next-line react-hooks/purity
+      Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000)
     : null;
+
+  const statusMeta = STATUS_META[req.status] ?? { label: req.status, cls: '' };
+  const priorityMeta = PRIORITY_META[req.priority] ?? { cls: '', dot: 'bg-slate-400' };
 
   return (
     <div
-      className={`flex flex-col border border-border/60 rounded-xl bg-background hover:border-border hover:shadow-sm transition-all ${isBreached ? 'border-l-2 border-l-red-500' : ''}`}
+      className={`flex flex-col rounded-2xl bg-background border transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 overflow-hidden group ${
+        isBreached
+          ? 'border-red-200 shadow-sm shadow-red-100'
+          : 'border-border/70 hover:border-primary/30'
+      }`}
     >
-      {/* Top — job info */}
+      {/* Breach indicator bar */}
+      {isBreached && <div className="h-1 w-full bg-gradient-to-r from-red-500 to-rose-400" />}
+
+      {/* Card top — clickable to requirement */}
       <div
-        className="flex items-start gap-3 px-4 pt-4 pb-3 cursor-pointer"
+        className="px-5 pt-5 pb-4 cursor-pointer"
         onClick={() => router.push(`/requirements/${idOrSlug}`)}
       >
-        {/* Icon */}
-        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-sm mt-0.5">
-          {req.serviceLine?.name?.[0] ?? req.title[0]}
-        </div>
+        <div className="flex items-start gap-4">
+          {/* Service line icon */}
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-lg border border-primary/15 group-hover:bg-primary/15 transition-colors">
+            {req.serviceLine?.name?.[0] ?? req.title[0]}
+          </div>
 
-        <div className="flex-1 min-w-0">
-          {/* Badges */}
-          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-            <span className="text-[11px] font-mono text-muted-foreground">{req.reqCode}</span>
-            <span
-              className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${STATUS_COLORS[req.status] ?? ''}`}
-            >
-              {req.status.replace(/_/g, ' ')}
-            </span>
-            <span
-              className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[req.priority] ?? ''}`}
-            >
-              {req.priority}
-            </span>
-            {isBreached && (
-              <span className="flex items-center gap-0.5 text-[10px] text-red-500 font-medium">
-                <AlertTriangle size={10} /> Breached
+          <div className="flex-1 min-w-0">
+            {/* Badges row */}
+            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+              <span className="text-[11px] font-mono font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
+                {req.reqCode}
               </span>
-            )}
+              <span
+                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${statusMeta.cls}`}
+              >
+                {statusMeta.label}
+              </span>
+              <span
+                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${priorityMeta.cls}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${priorityMeta.dot}`} />
+                {req.priority}
+              </span>
+              {isBreached && (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full ring-1 ring-red-200">
+                  <Flame size={10} /> Breached
+                </span>
+              )}
+            </div>
+
+            {/* Title */}
+            <h3 className="text-[16px] font-bold text-foreground leading-snug truncate mb-1 group-hover:text-primary transition-colors">
+              {req.title}
+            </h3>
+
+            {/* Meta line */}
+            <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-muted-foreground">
+              {req.client?.name && (
+                <span className="font-medium text-foreground/70">{req.client.name}</span>
+              )}
+              {req.businessUnit?.name && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span>{req.businessUnit.name}</span>
+                </>
+              )}
+              {req.serviceLine?.name && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span>{req.serviceLine.name}</span>
+                </>
+              )}
+              {req.location && (
+                <>
+                  <span className="opacity-30">·</span>
+                  <span>{req.location}</span>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Title */}
-          <p className="text-[14px] font-semibold text-foreground truncate">{req.title}</p>
-
-          {/* Meta */}
-          <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-muted-foreground mt-0.5">
-            {req.client?.name && <span>{req.client.name}</span>}
-            {req.businessUnit?.name && (
-              <>
-                <span className="opacity-30">·</span>
-                <span>{req.businessUnit.name}</span>
-              </>
-            )}
-            {req.location && (
-              <>
-                <span className="opacity-30">·</span>
-                <span>{req.location}</span>
-              </>
-            )}
-          </div>
+          <ChevronRight
+            size={16}
+            className="shrink-0 text-muted-foreground/40 mt-1 group-hover:text-primary transition-colors"
+          />
         </div>
-
-        <ChevronRight size={15} className="shrink-0 text-muted-foreground/30 mt-1" />
       </div>
 
-      {/* Stats row */}
-      <div className="flex items-center gap-4 px-4 pb-3 text-[12px]">
-        {/* Filled progress */}
-        <div className="flex items-center gap-2 min-w-[100px]">
-          <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
+      {/* Stats bar */}
+      <div className="px-5 pb-4 flex items-center gap-3 text-[12px] flex-wrap">
+        {/* Fill progress */}
+        <div className="flex items-center gap-2.5 bg-muted/60 rounded-xl px-3 py-2 min-w-[130px]">
+          <div className="relative flex-1 h-2 rounded-full bg-border overflow-hidden">
             <div
-              className="h-full rounded-full bg-primary/70 transition-all"
-              style={{ width: `${fillPct}%` }}
+              className={`h-full rounded-full transition-all ${fillPct >= 100 ? 'bg-emerald-500' : fillPct > 60 ? 'bg-primary' : 'bg-primary/60'}`}
+              style={{ width: `${Math.min(fillPct, 100)}%` }}
             />
           </div>
-          <span className="font-semibold text-foreground whitespace-nowrap">
+          <span className="font-bold text-foreground whitespace-nowrap">
             {filled}/{openings}
           </span>
-          <span className="text-muted-foreground">filled</span>
+          <span className="text-muted-foreground text-[11px]">filled</span>
         </div>
 
-        <span className="text-border">·</span>
-
-        {/* Pipeline total — clickable */}
+        {/* Pipeline total */}
         <button
-          className="text-primary font-semibold hover:underline"
+          className="flex items-center gap-1.5 bg-primary/8 hover:bg-primary/15 text-primary font-semibold px-3 py-2 rounded-xl transition-colors"
           onClick={() => onStageClick(req, null)}
         >
-          {totalCandidates} in pipeline
+          <Users size={12} />
+          <span>{totalCandidates} in pipeline</span>
         </button>
 
-        <span className="text-border">·</span>
-
         {/* Age */}
-        <span
-          className={`font-medium ${age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-muted-foreground'}`}
+        <div
+          className={`flex items-center gap-1 px-3 py-2 rounded-xl font-semibold ${
+            age > 30
+              ? 'bg-red-50 text-red-600'
+              : age > 14
+                ? 'bg-amber-50 text-amber-600'
+                : 'bg-muted/60 text-muted-foreground'
+          }`}
         >
-          {age}d old
-        </span>
+          <Clock size={11} />
+          <span>{age}d old</span>
+        </div>
 
         {/* Allocated */}
         {allocated != null && (
-          <>
-            <span className="text-border">·</span>
-            <span className="text-muted-foreground">{allocated} allocated</span>
-          </>
+          <div className="flex items-center gap-1 px-3 py-2 rounded-xl bg-muted/60 text-muted-foreground font-medium">
+            <Target size={11} />
+            <span>{allocated} allocated</span>
+          </div>
         )}
 
         {/* Deadline */}
         {deadlineDays != null && (
-          <>
-            <span className="text-border">·</span>
-            <span
-              className={`font-medium ${deadlineDays < 0 ? 'text-red-500' : deadlineDays <= 3 ? 'text-amber-500' : 'text-muted-foreground'}`}
-            >
+          <div
+            className={`flex items-center gap-1 px-3 py-2 rounded-xl font-semibold ${
+              deadlineDays < 0
+                ? 'bg-red-50 text-red-600'
+                : deadlineDays <= 3
+                  ? 'bg-amber-50 text-amber-600'
+                  : 'bg-muted/60 text-muted-foreground'
+            }`}
+          >
+            <AlertTriangle size={11} />
+            <span>
               {deadlineDays < 0 ? `${Math.abs(deadlineDays)}d overdue` : `${deadlineDays}d left`}
             </span>
-          </>
+          </div>
         )}
       </div>
 
-      {/* Pipeline stage numbers */}
+      {/* Pipeline stage strip */}
       {relevantStages.length > 0 && (
-        <div className="border-t border-border/60 flex items-center">
+        <div
+          className="border-t border-border/60 grid"
+          style={{ gridTemplateColumns: `repeat(${relevantStages.length}, 1fr)` }}
+        >
           {relevantStages.map((stage, idx) => {
             const count = countMap[stage.id] ?? 0;
-            const numberColor = STAGE_NUMBER_COLOR[stage.code] ?? 'text-slate-500';
+            const pal = STAGE_PALETTE[stage.code] ?? fallbackPalette;
+            const isFirst = idx === 0;
+            const isLast = idx === relevantStages.length - 1;
+
             return (
               <button
                 key={stage.id}
                 onClick={() => onStageClick(req, stage.id)}
-                className={`flex flex-col items-center justify-center px-4 py-3 flex-1 border-r border-border/60 last:border-r-0 hover:bg-muted/40 transition-colors cursor-pointer ${idx === 0 ? 'rounded-bl-xl' : ''} ${idx === relevantStages.length - 1 ? 'rounded-br-xl' : ''}`}
+                className={`flex flex-col items-center justify-center px-2 py-3.5 border-r border-border/60 last:border-r-0 hover:${pal.bg} transition-colors relative group/stage ${
+                  isFirst ? 'rounded-bl-2xl' : ''
+                } ${isLast ? 'rounded-br-2xl' : ''}`}
               >
-                <span className={`text-[22px] font-bold tabular-nums leading-none ${numberColor}`}>
+                {/* count bubble */}
+                {count > 0 && (
+                  <div
+                    className={`absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full ${pal.bar} flex items-center justify-center`}
+                  >
+                    <span className="text-[9px] font-bold text-white">
+                      {count > 99 ? '99+' : count}
+                    </span>
+                  </div>
+                )}
+                <span
+                  className={`text-[26px] font-black tabular-nums leading-none ${count > 0 ? pal.num : 'text-border'}`}
+                >
                   {count}
                 </span>
-                <span className="text-[9px] mt-1 font-bold tracking-widest text-slate-400 uppercase whitespace-nowrap">
+                <span
+                  className={`text-[8px] mt-1 font-bold tracking-widest uppercase whitespace-nowrap ${count > 0 ? pal.text : 'text-muted-foreground/40'}`}
+                >
                   {stage.label}
                 </span>
               </button>
@@ -593,26 +701,63 @@ function AssignmentCard({
 
 function CardSkeleton() {
   return (
-    <div className="border border-border/60 rounded-xl bg-background p-4 space-y-3">
-      <div className="flex gap-3">
-        <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
-        <div className="flex-1 space-y-1.5">
-          <div className="flex gap-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-16" />
+    <div className="rounded-2xl border border-border/60 bg-background overflow-hidden">
+      <div className="p-5 space-y-4">
+        <div className="flex gap-4">
+          <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
+          <div className="flex-1 space-y-2">
+            <div className="flex gap-2">
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="h-5 w-16" />
+              <Skeleton className="h-5 w-14" />
+            </div>
+            <Skeleton className="h-5 w-56" />
+            <Skeleton className="h-3.5 w-40" />
           </div>
-          <Skeleton className="h-4 w-56" />
-          <Skeleton className="h-3 w-40" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-36 rounded-xl" />
+          <Skeleton className="h-9 w-28 rounded-xl" />
+          <Skeleton className="h-9 w-20 rounded-xl" />
         </div>
       </div>
-      <Skeleton className="h-2 w-full" />
-      <div className="flex border-t border-border/60 pt-3 gap-0">
+      <div className="border-t border-border/60 grid grid-cols-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex-1 flex flex-col items-center gap-1">
-            <Skeleton className="h-6 w-8" />
+          <div key={i} className="flex flex-col items-center gap-1.5 py-4">
+            <Skeleton className="h-7 w-8" />
             <Skeleton className="h-2 w-12" />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Summary Stat ─────────────────────────────────────────────────────────────
+
+function StatChip({
+  icon: Icon,
+  label,
+  value,
+  variant = 'default',
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  variant?: 'default' | 'primary' | 'warning';
+}) {
+  const cls = {
+    default: 'bg-muted text-muted-foreground border-border',
+    primary: 'bg-primary/8 text-primary border-primary/20',
+    warning: 'bg-red-50 text-red-600 border-red-200',
+  }[variant];
+
+  return (
+    <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border ${cls}`}>
+      <Icon size={15} />
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[16px] font-black">{value}</span>
+        <span className="text-[11px] font-medium opacity-80">{label}</span>
       </div>
     </div>
   );
@@ -639,7 +784,6 @@ export default function MyAssignmentsPage() {
     setPage(1);
   }
 
-  // Pipeline stages — fetched once
   const { data: stagesData } = useQuery({
     queryKey: ['pipeline-stages'],
     queryFn: async () => {
@@ -650,7 +794,6 @@ export default function MyAssignmentsPage() {
   });
   const allStages = (stagesData ?? []).sort((a, b) => a.order - b.order);
 
-  // Requirements — backend scopes to current user's assignments automatically
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (search) p.set('search', search);
@@ -678,7 +821,6 @@ export default function MyAssignmentsPage() {
     setDrawer({ open: true, requirementId: req.id, requirementTitle: req.title, stageId });
   }
 
-  // Summary counts from current page
   const totalCandidates = requirements.reduce(
     (s, r) =>
       s + (r._count?.pipelines ?? (r.pipelineStageCounts ?? []).reduce((a, c) => a + c.count, 0)),
@@ -687,120 +829,148 @@ export default function MyAssignmentsPage() {
   const breachedCount = requirements.filter(
     r => r.isRespondByBreached || r.isTurnaroundBreached
   ).length;
+  const activeCount = requirements.filter(r => r.status === 'ACTIVE').length;
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-muted/20">
-      {/* Header */}
-      <div className="shrink-0 bg-background border-b border-border px-6 py-4">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h1 className="text-lg font-bold text-foreground">My Assignments</h1>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
-              {isLoading ? '…' : `${total} requirement${total !== 1 ? 's' : ''} assigned to you`}
-            </p>
+      {/* ── Header ── */}
+      <div className="shrink-0 bg-background border-b border-border">
+        {/* Top section */}
+        <div className="px-7 pt-6 pb-4">
+          <div className="flex items-end justify-between gap-4 mb-5">
+            <div>
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+                  <Briefcase size={16} className="text-primary" />
+                </div>
+                <h1 className="text-[22px] font-black text-foreground tracking-tight">
+                  My Assignments
+                </h1>
+              </div>
+              <p className="text-[13px] text-muted-foreground ml-10">
+                {isLoading
+                  ? 'Loading your assignments…'
+                  : `${total} requirement${total !== 1 ? 's' : ''} assigned to you`}
+              </p>
+            </div>
+
+            {!isLoading && requirements.length > 0 && (
+              <div className="flex items-center gap-2 shrink-0">
+                <StatChip
+                  icon={CheckCircle2}
+                  label="active"
+                  value={activeCount}
+                  variant="primary"
+                />
+                <StatChip
+                  icon={TrendingUp}
+                  label="candidates"
+                  value={totalCandidates}
+                  variant="default"
+                />
+                {breachedCount > 0 && (
+                  <StatChip
+                    icon={AlertTriangle}
+                    label="breached"
+                    value={breachedCount}
+                    variant="warning"
+                  />
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Quick summary pills */}
-          {!isLoading && requirements.length > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/5 border border-primary/10">
-                <CheckCircle2 size={13} className="text-primary" />
-                <span className="text-[12px] font-medium text-primary">
-                  {totalCandidates} candidates
-                </span>
-              </div>
-              {breachedCount > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100">
-                  <AlertTriangle size={13} className="text-red-500" />
-                  <span className="text-[12px] font-medium text-red-600">
-                    {breachedCount} breached
-                  </span>
-                </div>
-              )}
+          {/* Toolbar */}
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex-1 max-w-sm">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={search}
+                onChange={e => {
+                  setSearch(e.target.value);
+                  resetPage();
+                }}
+                placeholder="Search by title or code…"
+                className="pl-9 h-9 text-[13px] rounded-xl border-border/60 focus:border-primary/50"
+              />
             </div>
-          )}
-        </div>
 
-        {/* Toolbar — minimal, no BU/SL/client filters */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-sm">
-            <Search
-              size={13}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              value={search}
-              onChange={e => {
-                setSearch(e.target.value);
+            <div className="flex items-center gap-1 bg-muted/60 rounded-xl p-1">
+              {['ACTIVE', 'ON_HOLD', 'CLOSED', ''].map(s => {
+                const labels: Record<string, string> = {
+                  ACTIVE: 'Active',
+                  ON_HOLD: 'On Hold',
+                  CLOSED: 'Closed',
+                  '': 'All',
+                };
+                return (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setStatus(s);
+                      resetPage();
+                    }}
+                    className={`text-[12px] px-3 py-1.5 rounded-lg font-semibold transition-all ${
+                      status === s
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {labels[s]}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Select
+              value={priority || '_all'}
+              onValueChange={v => {
+                setPriority(v === '_all' ? '' : v);
                 resetPage();
               }}
-              placeholder="Search by title, code…"
-              className="pl-7 h-8 text-sm"
-            />
+            >
+              <SelectTrigger className="h-9 text-[13px] w-36 rounded-xl border-border/60">
+                <Filter size={12} className="mr-1.5 text-muted-foreground" />
+                <SelectValue placeholder="Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All priorities</SelectItem>
+                {ALL_PRIORITIES.map(p => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-
-          <Select
-            value={status || '_all'}
-            onValueChange={v => {
-              setStatus(v === '_all' ? '' : v);
-              resetPage();
-            }}
-          >
-            <SelectTrigger className="h-8 text-sm w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">All statuses</SelectItem>
-              {ALL_STATUSES.map(s => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={priority || '_all'}
-            onValueChange={v => {
-              setPriority(v === '_all' ? '' : v);
-              resetPage();
-            }}
-          >
-            <SelectTrigger className="h-8 text-sm w-32">
-              <SelectValue placeholder="Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_all">All priorities</SelectItem>
-              {ALL_PRIORITIES.map(p => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
       </div>
 
-      {/* Card grid — scrollable */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-6 py-4">
+      {/* ── Card grid ── */}
+      <div className="flex-1 overflow-y-auto min-h-0 px-7 py-5">
         {isLoading ? (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-5">
             {Array.from({ length: 6 }).map((_, i) => (
               <CardSkeleton key={i} />
             ))}
           </div>
         ) : requirements.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <Briefcase size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No assignments found</p>
-            <p className="text-xs mt-1 opacity-60">
+          <div className="flex flex-col items-center justify-center h-64">
+            <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-5 shadow-inner">
+              <Briefcase size={36} className="text-muted-foreground/30" />
+            </div>
+            <p className="text-[15px] font-bold text-foreground mb-1">No assignments found</p>
+            <p className="text-[13px] text-muted-foreground">
               {status === 'ACTIVE'
                 ? 'No active requirements assigned to you'
-                : 'Try changing the filters'}
+                : 'Try adjusting your filters'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-5">
             {requirements.map(req => (
               <AssignmentCard
                 key={req.id}
@@ -814,31 +984,35 @@ export default function MyAssignmentsPage() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+          <div className="flex items-center justify-between mt-6 pt-5 border-t border-border">
             <span className="text-[13px] text-muted-foreground">
-              {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
+              Showing{' '}
+              <span className="font-semibold text-foreground">
+                {(page - 1) * limit + 1}–{Math.min(page * limit, total)}
+              </span>{' '}
+              of <span className="font-semibold text-foreground">{total}</span>
             </span>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs"
+                className="h-8 px-4 text-[12px] rounded-xl"
                 disabled={page === 1}
                 onClick={() => setPage(p => p - 1)}
               >
-                ‹ Prev
+                ← Prev
               </Button>
-              <span className="text-[13px] text-muted-foreground">
+              <span className="text-[13px] text-muted-foreground px-2">
                 {page} / {totalPages}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs"
+                className="h-8 px-4 text-[12px] rounded-xl"
                 disabled={page === totalPages}
                 onClick={() => setPage(p => p + 1)}
               >
-                Next ›
+                Next →
               </Button>
             </div>
           </div>

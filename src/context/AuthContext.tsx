@@ -4,7 +4,6 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import env from '@/config/env';
 import { notifyExtensionLogin, notifyExtensionLogout } from '@/utils/talentOS-extension-bridge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,7 +75,10 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const API = env.NEXT_PUBLIC_API_URL;
+// ✅ All auth fetch calls go through Next.js proxy — same origin, no CORS issues
+// const API = '/api/proxy';
+
+const API = 'https://uat-ats-core-service-test-173405861722.asia-south1.run.app';
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -87,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Restore session on mount via refresh cookie
   const hydrateSession = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/core/api/auth/refresh`, {
+      const res = await fetch(`${API}/api/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -102,15 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u = json.data as AuthUser;
         setUser(u);
 
-        // ✅ Sync extension on page reload / tab reopen
-        // accessToken cookie is already set by backend — extension picks it up
-        // via chrome.cookies.onChanged. But we also send name+email via postMessage
-        // so the popup can show "Connected · John Doe" immediately.
-        notifyExtensionLogin(
-          '', // token not needed here — cookie handles auth, we just need name
-          `${u.firstName} ${u.lastName}`,
-          u.email
-        );
+        notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
       } else {
         setUser(null);
       }
@@ -127,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Login
   async function login(email: string, password: string) {
-    const res = await fetch(`${API}/core/api/auth/login`, {
+    const res = await fetch(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -140,26 +134,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const u = json.data as AuthUser;
     setUser(u);
 
-    // ✅ Sync extension — cookie is already set by backend at this point
-    // postMessage tells content-talentOS.js → background.js → storage
-    // so popup shows "Connected · John Doe" without needing a manual re-sync
-    notifyExtensionLogin(
-      '', // token handled via cookie — extension reads it from chrome.cookies
-      `${u.firstName} ${u.lastName}`,
-      u.email
-    );
+    notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
   }
 
   // ── Logout
   async function logout() {
     try {
-      await fetch(`${API}/core/api/auth/logout`, {
+      await fetch(`${API}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       });
     } finally {
       setUser(null);
-      // ✅ Tell extension to clear its session
       notifyExtensionLogout();
     }
   }

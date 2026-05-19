@@ -1,6 +1,9 @@
+// File: Sidebar.tsx
+// Path: src/components/layout/Sidebar.tsx
+
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -16,23 +19,28 @@ import {
   Layers,
   Network,
   UserSquare2,
+  ListOrdered,
+  ClipboardList,
 } from 'lucide-react';
 
+/**
+ * `module` must exactly match the `module` field from role.permissions[].module
+ * Leave `module` undefined for items that are always visible (Dashboard, Settings, Org Tree, My Assignments)
+ * `adminOnly` = only super admin sees it regardless of permissions (Org Tree)
+ */
 const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Pipeline Stages', href: '/pipeline-stages', icon: LayoutDashboard },
-
-  { label: 'Requirements', href: '/requirements', icon: FileText },
-  { label: 'my-assignments', href: '/my-assignments', icon: FileText },
-
-  { label: 'Clients', href: '/clients', icon: Briefcase },
+  // { label: 'Pipeline Stages', href: '/pipeline-stages', icon: ListOrdered },
+  { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
+  { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
+  { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
   { type: 'divider' as const },
-  { label: 'Users', href: '/users', icon: Users, adminOnly: true },
-  { label: 'Business Units', href: '/business-units', icon: Building2, adminOnly: true },
-  { label: 'Departments', href: '/departments', icon: Layers, adminOnly: true },
-  { label: 'Service Lines', href: '/service-lines', icon: GitBranch, adminOnly: true },
-  { label: 'Org Tree', href: '/org', icon: Network, adminOnly: true },
-  { label: 'Roles', href: '/roles', icon: UserSquare2, adminOnly: true },
+  { label: 'Users', href: '/users', icon: Users, module: 'users' },
+  { label: 'Business Units', href: '/business-units', icon: Building2, module: 'business_units' },
+  { label: 'Departments', href: '/departments', icon: Layers, module: 'departments' },
+  { label: 'Service Lines', href: '/service-lines', icon: GitBranch, module: 'service_lines' },
+  { label: 'Org Tree', href: '/org', icon: Network, superAdminOnly: true },
+  { label: 'Roles', href: '/roles', icon: UserSquare2, superAdminOnly: true },
   { type: 'divider' as const },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -44,17 +52,37 @@ export function Sidebar() {
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const pathname = usePathname();
   const { user } = useAuth();
-  const isSuperAdmin = user?.isSuperAdmin;
 
+  const isSuperAdmin = user?.isSuperAdmin === true;
+
+  // Build a quick lookup: module -> permission object
   const permMap = Object.fromEntries((user?.role?.permissions ?? []).map(p => [p.module, p]));
 
   const visibleNav = NAV.filter(item => {
+    // Always keep dividers (filtered later if both adjacent items are hidden — good enough for now)
     if ('type' in item) return true;
-    // @ts-expect-error errr
-    if (!item.module) return true; // Dashboard, Org Tree, Settings
+
+    // superAdminOnly items — only visible to super admins
+    if (item.superAdminOnly) return isSuperAdmin;
+
+    // Super admins see everything else unconditionally
     if (isSuperAdmin) return true;
-    // @ts-expect-error errr
+
+    // No module key = always visible (Dashboard, Pipeline Stages, My Assignments, Settings)
+    if (!item.module) return true;
+
+    // Module-gated: must have canView === true in their role permissions
     return permMap[item.module]?.canView === true;
+  });
+
+  // Remove leading/trailing/consecutive dividers
+  const cleanedNav = visibleNav.filter((item, i, arr) => {
+    if (!('type' in item)) return true;
+    const prev = arr[i - 1];
+    const next = arr[i + 1];
+    if (!prev || !next) return false; // leading or trailing divider
+    if ('type' in prev) return false; // consecutive dividers
+    return true;
   });
 
   function showTooltip(e: React.MouseEvent<HTMLAnchorElement>, label: string) {
@@ -106,7 +134,7 @@ export function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-hidden py-1.5 px-1.5 flex flex-col gap-px">
-          {visibleNav.map((item, i) => {
+          {cleanedNav.map((item, i) => {
             if ('type' in item) return <div key={i} className="h-px bg-border my-1 shrink-0" />;
 
             const Icon = item.icon;
