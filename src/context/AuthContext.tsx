@@ -76,7 +76,9 @@ interface AuthContextValue extends AuthState {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 // ✅ All auth fetch calls go through Next.js proxy — same origin, no CORS issues
-const API = '/api/proxy';
+// const API = '/api/proxy';
+
+const API = 'https://uat-ats-core-service-test-173405861722.asia-south1.run.app';
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
