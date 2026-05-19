@@ -1,12 +1,14 @@
+// File: UserForm.tsx
+// Path: src/components/users/UserForm.tsx
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { CalendarIcon, Eye, EyeOff } from 'lucide-react';
+import { CalendarIcon, Eye, EyeOff, User, Lock, Phone, Building2, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
@@ -42,7 +44,6 @@ const baseSchema = z.object({
   roleId: z.string().min(1, 'Role is required'),
   departmentId: z.string().optional().nullable(),
   reportingToId: z.string().optional().nullable(),
-  teamLeadId: z.string().optional().nullable(),
   isSuperAdmin: z.boolean().default(false),
 });
 
@@ -69,13 +70,13 @@ export interface UserFormProps {
   defaultValues?: Partial<CreateFormValues>;
   roles: FormOption[];
   departments: FormOption[];
-  users: FormOption[]; // for reportingTo + teamLead dropdowns
+  users: FormOption[];
   isSubmitting: boolean;
   onSubmit: (values: UserFormValues) => void;
   onCancel: () => void;
 }
 
-// ─── Field wrappers ───────────────────────────────────────────────────────────
+// ─── Field wrapper ────────────────────────────────────────────────────────────
 
 function Field({
   label,
@@ -89,23 +90,43 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+    <div className="flex flex-col gap-2">
+      <Label className="text-sm font-medium text-foreground">
         {label}
-        {required && <span className="text-destructive ml-0.5">*</span>}
+        {required && <span className="text-destructive ml-1">*</span>}
       </Label>
       {children}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <span className="inline-block w-1 h-1 rounded-full bg-destructive" />
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
-function SectionHead({ title, sub }: { title: string; sub?: string }) {
+// ─── Section header ───────────────────────────────────────────────────────────
+
+function SectionHead({
+  icon: Icon,
+  title,
+  sub,
+}: {
+  icon: React.ElementType;
+  title: string;
+  sub?: string;
+}) {
   return (
-    <div className="pt-2">
-      <h3 className="text-sm font-semibold">{title}</h3>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-      <Separator className="mt-3" />
+    <div className="flex items-start gap-3 pt-2">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted mt-0.5">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-base font-semibold leading-none">{title}</p>
+        {sub && <p className="text-sm text-muted-foreground mt-1">{sub}</p>}
+        <Separator className="mt-3" />
+      </div>
     </div>
   );
 }
@@ -127,11 +148,11 @@ function DatePicker({
         <Button
           variant="outline"
           className={cn(
-            'w-full justify-start text-left font-normal text-sm h-9',
+            'w-full justify-start text-left font-normal text-sm h-10',
             !value && 'text-muted-foreground'
           )}
         >
-          <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0" />
+          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
           {value ? format(value, 'dd MMM yyyy') : (placeholder ?? 'Pick a date')}
         </Button>
       </PopoverTrigger>
@@ -144,6 +165,46 @@ function DatePicker({
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ─── Select with None option ──────────────────────────────────────────────────
+
+const NONE_VALUE = '__none__';
+const toSelect = (v: string | null | undefined) => v ?? NONE_VALUE;
+const fromSelect = (v: string) => (v === NONE_VALUE ? null : v);
+
+function UserSelect({
+  value,
+  onChange,
+  placeholder,
+  options,
+  withNone = true,
+}: {
+  value: string | null | undefined;
+  onChange: (v: string | null) => void;
+  placeholder: string;
+  options: FormOption[];
+  withNone?: boolean;
+}) {
+  return (
+    <Select value={toSelect(value)} onValueChange={v => onChange(fromSelect(v))}>
+      <SelectTrigger className="h-10 text-sm">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {withNone && (
+          <SelectItem value={NONE_VALUE} className="text-muted-foreground">
+            None
+          </SelectItem>
+        )}
+        {options.map(o => (
+          <SelectItem key={o.id} value={o.id}>
+            {o.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -170,62 +231,56 @@ export function UserForm({
     formState: { errors },
   } = useForm<any>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      isSuperAdmin: false,
-      ...defaultValues,
-    },
+    defaultValues: { isSuperAdmin: false, ...defaultValues },
   });
 
-  const NONE_VALUE = '__none__';
-  const toSelect = (v: string | null | undefined) => v ?? NONE_VALUE;
-  const fromSelect = (v: string) => (v === NONE_VALUE ? null : v);
-
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-      {/* ── Identity ─────────────────────────────────────────────────────── */}
-      <SectionHead title="Identity" sub="Core profile information" />
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
+      {/* ── Identity ───────────────────────────────────────────────────────── */}
+      <SectionHead icon={User} title="Identity" sub="Core profile information" />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
         <Field label="First Name" required error={errors.firstName?.message as string}>
-          <Input {...register('firstName')} placeholder="Rahul" className="h-9 text-sm" />
+          <Input {...register('firstName')} placeholder="Rahul" className="h-10 text-sm" />
         </Field>
 
         <Field label="Last Name" required error={errors.lastName?.message as string}>
-          <Input {...register('lastName')} placeholder="Kumar" className="h-9 text-sm" />
+          <Input {...register('lastName')} placeholder="Kumar" className="h-10 text-sm" />
         </Field>
 
         <Field label="Middle Name" error={errors.middleName?.message as string}>
-          <Input {...register('middleName')} placeholder="Optional" className="h-9 text-sm" />
+          <Input {...register('middleName')} placeholder="Optional" className="h-10 text-sm" />
         </Field>
 
         <Field label="Display Name" error={errors.displayName?.message as string}>
           <Input
             {...register('displayName')}
             placeholder="How they appear in the app"
-            className="h-9 text-sm"
+            className="h-10 text-sm"
           />
         </Field>
 
         <Field label="Nickname" error={errors.nickName?.message as string}>
-          <Input {...register('nickName')} placeholder="Optional" className="h-9 text-sm" />
+          <Input {...register('nickName')} placeholder="Optional" className="h-10 text-sm" />
         </Field>
 
         <Field label="Employee ID" error={errors.employeeId?.message as string}>
-          <Input {...register('employeeId')} placeholder="EMP001" className="h-9 text-sm" />
+          <Input {...register('employeeId')} placeholder="EMP001" className="h-10 text-sm" />
         </Field>
       </div>
 
-      {/* ── Account (create only) ─────────────────────────────────────────── */}
+      {/* ── Account (create only) ──────────────────────────────────────────── */}
       {mode === 'create' && (
         <>
-          <SectionHead title="Account" sub="Login credentials" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SectionHead icon={Lock} title="Account" sub="Login credentials for this user" />
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field label="Email" required error={errors.email?.message as string}>
               <Input
                 {...register('email')}
                 type="email"
                 placeholder="rahul@company.com"
-                className="h-9 text-sm"
+                className="h-10 text-sm"
               />
             </Field>
 
@@ -235,12 +290,13 @@ export function UserForm({
                   {...register('password')}
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Min 8 characters"
-                  className="h-9 text-sm pr-9"
+                  className="h-10 text-sm pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(p => !p)}
-                  className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -250,27 +306,26 @@ export function UserForm({
         </>
       )}
 
-      {/* ── Contact ───────────────────────────────────────────────────────── */}
-      <SectionHead title="Contact & Location" />
+      {/* ── Contact ────────────────────────────────────────────────────────── */}
+      <SectionHead icon={Phone} title="Contact & Location" />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
         <Field label="Phone" error={errors.phone?.message as string}>
-          <Input {...register('phone')} placeholder="+91 98765 43210" className="h-9 text-sm" />
+          <Input {...register('phone')} placeholder="+91 98765 43210" className="h-10 text-sm" />
         </Field>
 
         <Field label="Working Location" error={errors.workingLocation?.message as string}>
-          <Input {...register('workingLocation')} placeholder="Bengaluru" className="h-9 text-sm" />
+          <Input
+            {...register('workingLocation')}
+            placeholder="Bengaluru"
+            className="h-10 text-sm"
+          />
         </Field>
 
         <Field label="Timezone" error={errors.timezone?.message as string}>
-          <Input {...register('timezone')} placeholder="Asia/Kolkata" className="h-9 text-sm" />
+          <Input {...register('timezone')} placeholder="Asia/Kolkata" className="h-10 text-sm" />
         </Field>
-      </div>
 
-      {/* ── Dates ─────────────────────────────────────────────────────────── */}
-      <SectionHead title="Dates" />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Date of Birth" error={errors.dateOfBirth?.message as string}>
           <Controller
             control={control}
@@ -292,139 +347,100 @@ export function UserForm({
         </Field>
       </div>
 
-      {/* ── Organisation ──────────────────────────────────────────────────── */}
-      <SectionHead title="Organisation" sub="Role, department, and reporting structure" />
+      {/* ── Organisation ───────────────────────────────────────────────────── */}
+      <SectionHead
+        icon={Building2}
+        title="Organisation"
+        sub="Role, department, and reporting structure"
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-        {/* Role — required */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
         <Field label="Role" required error={errors.roleId?.message as string}>
           <Controller
             control={control}
             name="roleId"
             render={({ field }) => (
-              <Select
-                value={toSelect(field.value)}
-                onValueChange={v => field.onChange(fromSelect(v))}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map(r => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name.replace(/_/g, ' ')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <UserSelect
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Select role"
+                options={roles.map(r => ({ id: r.id, name: r.name.replace(/_/g, ' ') }))}
+                withNone={false}
+              />
             )}
           />
         </Field>
 
-        {/* Department */}
         <Field label="Department" error={errors.departmentId?.message as string}>
           <Controller
             control={control}
             name="departmentId"
             render={({ field }) => (
-              <Select
-                value={toSelect(field.value)}
-                onValueChange={v => field.onChange(fromSelect(v))}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_VALUE}>None</SelectItem>
-                  {departments.map(d => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <UserSelect
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Select department"
+                options={departments}
+              />
             )}
           />
         </Field>
 
-        {/* Reporting To */}
         <Field label="Reporting To" error={errors.reportingToId?.message as string}>
           <Controller
             control={control}
             name="reportingToId"
             render={({ field }) => (
-              <Select
-                value={toSelect(field.value)}
-                onValueChange={v => field.onChange(fromSelect(v))}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select manager" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_VALUE}>None</SelectItem>
-                  {users.map(u => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          />
-        </Field>
-
-        {/* Team Lead */}
-        <Field label="Team Lead" error={errors.teamLeadId?.message as string}>
-          <Controller
-            control={control}
-            name="teamLeadId"
-            render={({ field }) => (
-              <Select
-                value={toSelect(field.value)}
-                onValueChange={v => field.onChange(fromSelect(v))}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select team lead" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_VALUE}>None</SelectItem>
-                  {users.map(u => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <UserSelect
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Select manager"
+                options={users}
+              />
             )}
           />
         </Field>
       </div>
 
-      {/* ── Access ────────────────────────────────────────────────────────── */}
-      <SectionHead title="Access" />
+      {/* ── Access ─────────────────────────────────────────────────────────── */}
+      <SectionHead icon={ShieldAlert} title="Access" sub="System-level permissions" />
 
       <Controller
         control={control}
         name="isSuperAdmin"
         render={({ field }) => (
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <p className="text-sm font-medium">Super Admin</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Full unrestricted access to all modules and data.
-              </p>
+          <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-5">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold">Super Admin</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Full unrestricted access to all modules and data. Assign with caution.
+                </p>
+              </div>
             </div>
-            <Switch checked={field.value} onCheckedChange={field.onChange} />
+            <Switch
+              checked={field.value}
+              onCheckedChange={field.onChange}
+              className="ml-4 shrink-0"
+            />
           </div>
         )}
       />
 
-      {/* ── Actions ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-3 border-t pt-5">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+      {/* ── Actions ────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-end gap-3 border-t pt-6">
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          className="min-w-24"
+        >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" size="lg" disabled={isSubmitting} className="min-w-32">
           {isSubmitting
             ? mode === 'create'
               ? 'Creating…'
