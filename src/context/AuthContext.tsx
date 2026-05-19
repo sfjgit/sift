@@ -4,6 +4,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import axios from 'axios';
 import { notifyExtensionLogin, notifyExtensionLogout } from '@/utils/talentOS-extension-bridge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -75,10 +76,17 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ✅ All auth fetch calls go through Next.js proxy — same origin, no CORS issues
-// const API = '/api/proxy';
+// const API = 'https://uat-ats-core-service-test-173405861722.asia-south1.run.app';
 
-const API = 'https://uat-ats-core-service-test-173405861722.asia-south1.run.app';
+const API = '/api/proxy';
+
+// ─── Axios instance for auth calls only ───────────────────────────────────────
+
+const authAxios = axios.create({
+  baseURL: `${API}/api/auth`,
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
+});
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -89,21 +97,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Restore session on mount via refresh cookie
   const hydrateSession = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const { data: json } = await authAxios.post('/refresh');
 
-      if (!res.ok) {
-        setUser(null);
-        return;
-      }
-
-      const json = await res.json();
       if (json.success && json.data) {
         const u = json.data as AuthUser;
         setUser(u);
-
         notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
       } else {
         setUser(null);
@@ -121,29 +119,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Login
   async function login(email: string, password: string) {
-    const res = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
+    const { data: json } = await authAxios.post('/login', { email, password });
 
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.message ?? 'Login failed');
+    if (!json.success) throw new Error(json.message ?? 'Login failed');
 
     const u = json.data as AuthUser;
     setUser(u);
-
     notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
   }
 
   // ── Logout
   async function logout() {
     try {
-      await fetch(`${API}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await authAxios.post('/logout');
     } finally {
       setUser(null);
       notifyExtensionLogout();
