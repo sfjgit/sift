@@ -30,7 +30,7 @@ import {
  */
 const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Pipeline Stages', href: '/pipeline-stages', icon: ListOrdered },
+  // { label: 'Pipeline Stages', href: '/pipeline-stages', icon: ListOrdered },
   { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
   { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
   { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
