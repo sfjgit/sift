@@ -89,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Restore session on mount via refresh cookie
   const hydrateSession = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/core/api/auth/refresh`, {
+      const res = await fetch(`${API}/api/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -121,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Login
   async function login(email: string, password: string) {
-    const res = await fetch(`${API}/core/api/auth/login`, {
+    const res = await fetch(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Logout
   async function logout() {
     try {
-      await fetch(`${API}/core/api/auth/logout`, {
+      await fetch(`${API}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       });
