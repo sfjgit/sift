@@ -1,8 +1,10 @@
+// File: useAxios.ts
+// Path: src/hooks/useAxios.ts
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useRef, useMemo, useCallback } from 'react';
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { useRouter } from 'next/navigation';
-import env from '@/config/env';
 
 // ============================================
 // SHARED REFRESH PROMISE (prevents duplicate refresh calls)
@@ -47,8 +49,8 @@ export const useAxios = (): AxiosInstance => {
 
   const api = useMemo(() => {
     const instance = axios.create({
-      baseURL: env.NEXT_PUBLIC_API_URL + '/core/api',
-      withCredentials: true, // cookies sent automatically on every request
+      baseURL: '/api/proxy/core/api', // ✅ Next.js proxy — same origin, no CORS
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -84,7 +86,6 @@ export const useAxios = (): AxiosInstance => {
               return Promise.reject(error);
             }
 
-            // Cookie is already updated by the refresh response
             processQueue(null);
             return instance(originalRequest);
           } catch (refreshError) {
@@ -115,7 +116,7 @@ const performTokenRefresh = async (retries = 2): Promise<boolean> => {
       console.log(`🔄 Refreshing token (attempt ${attempt + 1})...`);
 
       await axios.post(
-        `${env.NEXT_PUBLIC_API_URL}/core/api/auth/refresh`,
+        '/api/proxy/core/api/auth/refresh', // ✅ Next.js proxy — same origin
         {},
         { withCredentials: true, timeout: 10000 }
       );
