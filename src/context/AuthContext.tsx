@@ -4,7 +4,6 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import env from '@/config/env';
 import { notifyExtensionLogin, notifyExtensionLogout } from '@/utils/talentOS-extension-bridge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,7 +75,8 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const API = env.NEXT_PUBLIC_API_URL;
+// ✅ All auth fetch calls go through Next.js proxy — same origin, no CORS issues
+const API = '/api/proxy';
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -102,15 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u = json.data as AuthUser;
         setUser(u);
 
-        // ✅ Sync extension on page reload / tab reopen
-        // accessToken cookie is already set by backend — extension picks it up
-        // via chrome.cookies.onChanged. But we also send name+email via postMessage
-        // so the popup can show "Connected · John Doe" immediately.
-        notifyExtensionLogin(
-          '', // token not needed here — cookie handles auth, we just need name
-          `${u.firstName} ${u.lastName}`,
-          u.email
-        );
+        notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
       } else {
         setUser(null);
       }
@@ -140,14 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const u = json.data as AuthUser;
     setUser(u);
 
-    // ✅ Sync extension — cookie is already set by backend at this point
-    // postMessage tells content-talentOS.js → background.js → storage
-    // so popup shows "Connected · John Doe" without needing a manual re-sync
-    notifyExtensionLogin(
-      '', // token handled via cookie — extension reads it from chrome.cookies
-      `${u.firstName} ${u.lastName}`,
-      u.email
-    );
+    notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
   }
 
   // ── Logout
@@ -159,7 +144,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       setUser(null);
-      // ✅ Tell extension to clear its session
       notifyExtensionLogout();
     }
   }
