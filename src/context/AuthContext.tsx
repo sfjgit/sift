@@ -83,7 +83,7 @@ const API = '/api/proxy';
 // ─── Axios instance for auth calls only ───────────────────────────────────────
 
 const authAxios = axios.create({
-  baseURL: `${API}/api/auth`,
+  baseURL: `${API}/core/api/auth`,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 });
