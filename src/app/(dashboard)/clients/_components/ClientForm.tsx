@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/clients/_components/ClientForm.tsx
+// File: ClientForm.tsx
+// Path: app/clients/_components/ClientForm.tsx
+
 'use client';
 
 import { useEffect } from 'react';
@@ -20,6 +22,10 @@ import {
 } from '@/components/ui/select';
 
 import { useAxios } from '@/hooks/useAxios';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const NONE = '__none__';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -88,7 +94,7 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
     reset,
     formState: { errors },
   } = useForm<CreateClientInput>({
-    // @ts-expect-error errr
+    // @ts-expect-error schema union
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
@@ -99,14 +105,15 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
       state: '',
       city: '',
       address: '',
-      businessUnitId: '',
-      parentClientId: '',
+      businessUnitId: null,
+      parentClientId: null,
       ...defaultValues,
     },
   });
 
   useEffect(() => {
     if (defaultValues) reset(defaultValues as CreateClientInput);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(defaultValues)]);
 
   const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
@@ -115,7 +122,9 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
     staleTime: 60_000,
   });
 
-  const { data: clientsRes } = useQuery<{ data: { id: string; name: string }[] }>({
+  const { data: clientsRes } = useQuery<{
+    data: { id: string; name: string }[];
+  }>({
     queryKey: ['clients-dropdown'],
     queryFn: async () => (await axios.get('/clients?limit=200&sortBy=name&sortDir=asc')).data,
     staleTime: 60_000,
@@ -158,12 +167,15 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
               control={control}
               name="businessUnitId"
               render={({ field }) => (
-                <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+                <Select
+                  value={field.value ?? NONE}
+                  onValueChange={v => field.onChange(v === NONE ? null : v)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select BU" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value={NONE}>None</SelectItem>
                     {businessUnits.map(b => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.name}
@@ -173,6 +185,7 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
                 </Select>
               )}
             />
+            <FieldError message={errors.businessUnitId?.message} />
           </div>
         </div>
       </div>
@@ -213,12 +226,15 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
             control={control}
             name="parentClientId"
             render={({ field }) => (
-              <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+              <Select
+                value={field.value ?? NONE}
+                onValueChange={v => field.onChange(v === NONE ? null : v)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="None" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={NONE}>None</SelectItem>
                   {clients.map(c => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
@@ -228,6 +244,7 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
               </Select>
             )}
           />
+          <FieldError message={errors.parentClientId?.message} />
         </div>
       </div>
 
@@ -264,7 +281,7 @@ export function detailToFormValues(client: any): Partial<CreateClientInput> {
     state: client.state ?? '',
     city: client.city ?? '',
     address: client.address ?? '',
-    businessUnitId: client.businessUnit?.id ?? '',
-    parentClientId: client.parentClient?.id ?? '',
+    businessUnitId: client.businessUnit?.id ?? null,
+    parentClientId: client.parentClient?.id ?? null,
   };
 }
