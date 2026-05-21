@@ -32,8 +32,8 @@ const NAV = [
   { label: 'Business Units', href: '/business-units', icon: Building2, module: 'business-units' },
   { label: 'Departments', href: '/departments', icon: Layers, module: 'departments' },
   { label: 'Service Lines', href: '/service-lines', icon: GitBranch, module: 'service-lines' },
-  { label: 'Org Tree', href: '/org', icon: Network, superAdminOnly: true },
-  { label: 'Roles', href: '/roles', icon: UserSquare2, superAdminOnly: true },
+  { label: 'Org Tree', href: '/org', icon: Network },
+  { label: 'Roles', href: '/roles', icon: UserSquare2, module: 'roles' },
   { type: 'divider' as const },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -50,6 +50,7 @@ export function Sidebar() {
 
   const visibleNav = NAV.filter(item => {
     if ('type' in item) return true;
+    // @ts-expect-error err
     if (item.superAdminOnly) return isSuperAdmin;
     if (isSuperAdmin) return true;
     if (!item.module) return true;
