@@ -184,7 +184,7 @@ export function Sidebar() {
         </div>
       </aside>
 
-      {/* Tooltip portal */}
+      {/* Tooltip */}
       {tooltip && (
         <div
           className="fixed z-50 pointer-events-none"
