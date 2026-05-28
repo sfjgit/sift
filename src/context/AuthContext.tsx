@@ -4,29 +4,32 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import axios from 'axios';
 import { notifyExtensionLogin, notifyExtensionLogout } from '@/utils/talentOS-extension-bridge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type PermissionScope = 'OWN' | 'TEAM' | 'REPORTING' | 'DEPARTMENT' | 'BU' | 'ALL';
+
 export interface Permission {
   id: string;
-  name: string;
-  description?: string;
+  roleId: string;
   module: string;
-  create: boolean;
-  read: boolean;
-  update: boolean;
-  delete: boolean;
-  canView?: boolean;
-  canAdd?: boolean;
-  canEdit?: boolean;
-  canDelete?: boolean;
+  moduleId: string | null;
+  canView: boolean;
+  canAdd: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canViewScope: PermissionScope;
+  canAddScope: PermissionScope;
+  canEditScope: PermissionScope;
+  canDeleteScope: PermissionScope;
 }
 
 export interface Role {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
   isSystem: boolean;
   permissions: Permission[];
 }
@@ -37,9 +40,8 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   middleName: string | null;
-  nickName: string | null;
   displayName: string | null;
-  employeeId: string;
+  employeeId: string | null;
   phone: string | null;
   workingLocation: string | null;
   timezone: string | null;
@@ -49,36 +51,75 @@ export interface AuthUser {
   isActive: boolean;
   roleId: string;
   reportingToId: string | null;
+  teamLeadId: string | null;
+  departmentId: string | null;
   businessUnitId: string | null;
-  createdById: string;
+  createdById: string | null;
   createdAt: string;
   updatedAt: string;
   role: Role;
-  businessUnit: {
-    id: string;
-    name: string;
-  };
+  businessUnit: { id: string; name: string } | null;
+  department: { id: string; name: string } | null;
 }
 
-interface AuthState {
+// ─── Permission helpers ───────────────────────────────────────────────────────
+
+export type PermissionAction = 'canView' | 'canAdd' | 'canEdit' | 'canDelete';
+export type ScopeAction = 'canViewScope' | 'canAddScope' | 'canEditScope' | 'canDeleteScope';
+
+const SUPERADMIN_PERMISSION = (module: string, roleId: string): Permission => ({
+  id: 'superadmin',
+  roleId,
+  module,
+  moduleId: null,
+  canView: true,
+  canAdd: true,
+  canEdit: true,
+  canDelete: true,
+  canViewScope: 'ALL',
+  canAddScope: 'ALL',
+  canEditScope: 'ALL',
+  canDeleteScope: 'ALL',
+});
+
+// ─── Context value ────────────────────────────────────────────────────────────
+
+interface AuthContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-}
-
-interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /**
+   * can('requirements', 'canAdd') → true/false
+   * isSuperAdmin always returns true.
+   */
+  can: (module: string, action: PermissionAction) => boolean;
+  /**
+   * scope('requirements', 'canViewScope') → 'ALL' | 'BU' | 'DEPARTMENT' | ...
+   * isSuperAdmin always returns 'ALL'.
+   * Returns null if no permission row found.
+   */
+  scope: (module: string, action: ScopeAction) => PermissionScope | null;
+  /**
+   * Full permission row for a module.
+   * isSuperAdmin gets a synthetic full-access row.
+   * Returns null if user has no permission for that module.
+   */
+  getModulePermission: (module: string) => Permission | null;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ✅ All auth fetch calls go through Next.js proxy — same origin, no CORS issues
-// const API = '/api/proxy';
+const API = '/api/proxy';
 
-const API = 'https://uat-ats-core-service-test-173405861722.asia-south1.run.app';
+const authAxios = axios.create({
+  baseURL: `${API}/core/api/auth`,
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
+});
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -86,24 +127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ── Restore session on mount via refresh cookie
   const hydrateSession = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!res.ok) {
-        setUser(null);
-        return;
-      }
-
-      const json = await res.json();
+      const { data: json } = await authAxios.post('/refresh');
       if (json.success && json.data) {
+        setUser(json.data as AuthUser);
         const u = json.data as AuthUser;
-        setUser(u);
-
         notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
       } else {
         setUser(null);
@@ -119,39 +148,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     hydrateSession();
   }, [hydrateSession]);
 
-  // ── Login
   async function login(email: string, password: string) {
-    const res = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
-
-    const json = await res.json();
-    if (!res.ok || !json.success) throw new Error(json.message ?? 'Login failed');
-
+    const { data: json } = await authAxios.post('/login', { email, password });
+    if (!json.success) throw new Error(json.message ?? 'Login failed');
     const u = json.data as AuthUser;
     setUser(u);
-
     notifyExtensionLogin('', `${u.firstName} ${u.lastName}`, u.email);
   }
 
-  // ── Logout
   async function logout() {
     try {
-      await fetch(`${API}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await authAxios.post('/logout');
     } finally {
       setUser(null);
       notifyExtensionLogout();
     }
   }
 
+  // ── Permission helpers ──────────────────────────────────────────────────────
+
+  const getModulePermission = useCallback(
+    (module: string): Permission | null => {
+      if (!user) return null;
+      if (user.isSuperAdmin) return SUPERADMIN_PERMISSION(module, user.roleId);
+      return user.role?.permissions?.find(p => p.module === module) ?? null;
+    },
+    [user]
+  );
+
+  const can = useCallback(
+    (module: string, action: PermissionAction): boolean => {
+      if (!user) return false;
+      if (user.isSuperAdmin) return true;
+      const perm = user.role?.permissions?.find(p => p.module === module);
+      return perm?.[action] === true;
+    },
+    [user]
+  );
+
+  const scope = useCallback(
+    (module: string, action: ScopeAction): PermissionScope | null => {
+      if (!user) return null;
+      if (user.isSuperAdmin) return 'ALL';
+      const perm = user.role?.permissions?.find(p => p.module === module);
+      return perm?.[action] ?? null;
+    },
+    [user]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        isAuthenticated: !!user,
+        login,
+        logout,
+        can,
+        scope,
+        getModulePermission,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

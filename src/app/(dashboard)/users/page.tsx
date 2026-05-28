@@ -176,6 +176,7 @@ export default function UsersPage() {
           permissions={effectivePermissions}
           onPageChange={page => handleParamChange({ page })}
           onToggle={effectivePermissions.canEdit ? toggleMutation.mutate : undefined}
+          isSuperAdmin={effectivePermissions?.canEdit}
         />
       )}
     </div>
