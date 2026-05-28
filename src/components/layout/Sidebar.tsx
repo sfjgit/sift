@@ -29,11 +29,11 @@ const NAV = [
   { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
   { type: 'divider' as const },
   { label: 'Users', href: '/users', icon: Users, module: 'users' },
-  { label: 'Business Units', href: '/business-units', icon: Building2, module: 'business_units' },
+  { label: 'Business Units', href: '/business-units', icon: Building2, module: 'business-units' },
   { label: 'Departments', href: '/departments', icon: Layers, module: 'departments' },
-  { label: 'Service Lines', href: '/service-lines', icon: GitBranch, module: 'service_lines' },
-  { label: 'Org Tree', href: '/org', icon: Network, superAdminOnly: true },
-  { label: 'Roles', href: '/roles', icon: UserSquare2, superAdminOnly: true },
+  { label: 'Service Lines', href: '/service-lines', icon: GitBranch, module: 'service-lines' },
+  { label: 'Org Tree', href: '/org', icon: Network },
+  { label: 'Roles', href: '/roles', icon: UserSquare2, module: 'roles' },
   { type: 'divider' as const },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -44,17 +44,17 @@ export function Sidebar() {
   const [open, setOpen] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
 
   const isSuperAdmin = user?.isSuperAdmin === true;
-  const permMap = Object.fromEntries((user?.role?.permissions ?? []).map(p => [p.module, p]));
 
   const visibleNav = NAV.filter(item => {
     if ('type' in item) return true;
+    // @ts-expect-error err
     if (item.superAdminOnly) return isSuperAdmin;
     if (isSuperAdmin) return true;
     if (!item.module) return true;
-    return permMap[item.module]?.canView === true;
+    return can(item.module, 'canView');
   });
 
   const cleanedNav = visibleNav.filter((item, i, arr) => {
@@ -191,6 +191,7 @@ export function Sidebar() {
         </div>
       </aside>
 
+      {/* Tooltip */}
       {/* Tooltip */}
       {tooltip && (
         <div
