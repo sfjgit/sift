@@ -202,10 +202,12 @@ interface CandidateDetail extends CandidatePipeline {
   actualJoiningDate: string | null;
   totalPipelineAging: { minutes: number; label: string };
 }
+// ── Added permissions to CandidatesResponse
 interface CandidatesResponse {
   success: boolean;
   data: CandidatePipeline[];
   meta: { total: number; page: number; limit: number; pages: number };
+  permissions: { canEdit: boolean; canDelete: boolean };
 }
 interface PipelineStage {
   id: string;
@@ -380,6 +382,199 @@ function triggerExtension(rId: string, rCode: string, rTitle: string, app: strin
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// UPLOAD RESUME MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+function UploadResumeModal({
+  open,
+  onClose,
+  req,
+  // assignments,
+}: {
+  open: boolean;
+  onClose: () => void;
+  req: any;
+}) {
+  const axios = useAxios();
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const ALLOWED = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'application/rtf',
+    'text/rtf',
+  ];
+  const ALLOWED_EXT = '.pdf, .docx, .doc, .rtf';
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error('No file selected');
+      const form = new FormData();
+      form.append('file', file, file.name); // ← pass filename as 3rd arg
+      form.append('fileName', file.name);
+      form.append('mimeType', file.type);
+      form.append('requirementId', req.id);
+      form.append('reqCode', req.reqCode);
+      return axios.post(process.env.NEXT_PUBLIC_API_URL + '/candidate/api/resume/ingest', form, {
+        headers: { 'Content-Type': undefined }, // ← let browser set multipart boundary
+        transformRequest: data => data, // ← prevent axios from re-serializing FormData
+      });
+    },
+    onSuccess: () => {
+      toast.success('Resume uploaded and parsed successfully');
+      qc.invalidateQueries({ queryKey: ['requirement-candidates', req.id] });
+      qc.invalidateQueries({ queryKey: ['requirement-detail', req.id] });
+      onClose();
+      setFile(null);
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Upload failed';
+      toast.error(msg);
+    },
+  });
+
+  const handleFile = (f: File) => {
+    if (!ALLOWED.includes(f.type)) {
+      toast.error('Invalid file type. Only PDF, DOCX, DOC, RTF allowed.');
+      return;
+    }
+    if (f.size > 20 * 1024 * 1024) {
+      toast.error('File too large. Max 20MB.');
+      return;
+    }
+    setFile(f);
+  };
+
+  if (!open) return null;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={v => {
+        if (!v) {
+          onClose();
+          setFile(null);
+        }
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-bold">
+            <FileText className="w-4 h-4 text-emerald-600" />
+            Upload Resume
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          {/* Requirement context pill */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-bold text-slate-500 font-mono">{req.reqCode}</span>
+            <span className="text-xs text-slate-400">·</span>
+            <span className="text-xs font-semibold text-slate-700 truncate">{req.title}</span>
+          </div>
+
+          {/* Drop zone */}
+          <div
+            onDragOver={e => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files[0];
+              if (f) handleFile(f);
+            }}
+            className={`relative border-2 border-dashed rounded-xl transition-colors cursor-pointer ${
+              dragOver
+                ? 'border-primary bg-primary/5'
+                : file
+                  ? 'border-emerald-400 bg-emerald-50'
+                  : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+            }`}
+            onClick={() => document.getElementById('resume-file-input')?.click()}
+          >
+            <input
+              id="resume-file-input"
+              type="file"
+              accept=".pdf,.docx,.doc,.rtf"
+              className="hidden"
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) handleFile(f);
+              }}
+            />
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+              {file ? (
+                <>
+                  <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
+                    <FileText className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <p className="text-sm font-bold text-emerald-800 truncate max-w-[240px]">
+                    {file.name}
+                  </p>
+                  <p className="text-xs text-emerald-600 mt-1">
+                    {(file.size / 1024).toFixed(0)} KB · Click to change
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-3">
+                    <FileText className="w-6 h-6 text-slate-400" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    Drop resume here or <span className="text-primary">browse</span>
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">{ALLOWED_EXT} · Max 20 MB</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Upload progress hint */}
+          {mut.isPending && (
+            <div className="flex items-center gap-2 text-sm text-slate-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500 shrink-0" />
+              <span>Uploading and parsing with AI... this may take a moment</span>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              onClose();
+              setFile(null);
+            }}
+            disabled={mut.isPending}
+          >
+            Cancel
+          </Button>
+          <Button disabled={!file || mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+            {mut.isPending ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Parsing...
+              </>
+            ) : (
+              <>
+                <FileText className="w-3.5 h-3.5" />
+                Upload & Parse
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ADD CANDIDATE MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -387,122 +582,129 @@ function AddCandidateModal({
   open,
   onClose,
   req,
+  assignments,
 }: {
   open: boolean;
   onClose: () => void;
   req: any;
+  assignments: Assignment[];
 }) {
   const [portalExpanded, setPortalExpanded] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-[440px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <UserPlus className="w-4.5 h-4.5 text-primary" />
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative z-10 w-full max-w-[440px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <UserPlus className="w-4.5 h-4.5 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Add Candidate</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Choose how to source</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Add Candidate</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Choose how to source</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="px-3 py-3 space-y-1">
-          {[
-            {
-              iconBg: 'bg-rose-100',
-              icon: <Pencil className="w-4 h-4 text-rose-600" />,
-              title: 'Enter Manually',
-              desc: 'Type in candidate details',
-            },
-            {
-              iconBg: 'bg-emerald-100',
-              icon: <FileText className="w-4 h-4 text-emerald-700" />,
-              title: 'Upload Resume',
-              desc: 'PDF parsed with AI instantly',
-            },
-            {
-              iconBg: 'bg-blue-100',
-              icon: <Database className="w-4 h-4 text-blue-600" />,
-              title: 'From Database',
-              desc: 'Search existing candidate pool',
-            },
-          ].map(row => (
             <button
-              key={row.title}
               onClick={onClose}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-left group"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
             >
-              <div
-                className={`w-10 h-10 rounded-xl ${row.iconBg} flex items-center justify-center shrink-0`}
-              >
-                {row.icon}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-slate-900">{row.title}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{row.desc}</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
+              <X className="w-4 h-4" />
             </button>
-          ))}
-          <div>
-            <button
-              onClick={() => setPortalExpanded(v => !v)}
-              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                <Globe className="w-4 h-4 text-amber-700" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-semibold text-slate-900">Portal Recruit</p>
-                <p className="text-xs text-slate-500 mt-0.5">Source directly from job boards</p>
-              </div>
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
+          </div>
+          <div className="px-3 py-3 space-y-1">
+            {[
+              {
+                iconBg: 'bg-rose-100',
+                icon: <Pencil className="w-4 h-4 text-rose-600" />,
+                title: 'Enter Manually',
+                desc: 'Type in candidate details',
+              },
+              {
+                iconBg: 'bg-emerald-100',
+                icon: <FileText className="w-4 h-4 text-emerald-700" />,
+                title: 'Upload Resume',
+                desc: 'PDF parsed with AI instantly',
+                onClickOverride: () => setUploadOpen(true),
+              },
+              {
+                iconBg: 'bg-blue-100',
+                icon: <Database className="w-4 h-4 text-blue-600" />,
+                title: 'From Database',
+                desc: 'Search existing candidate pool',
+              },
+            ].map(row => (
+              <button
+                key={row.title}
+                onClick={(row as any).onClickOverride ?? onClose}
+                className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-left group"
               >
-                {portalExpanded ? '−' : '+'}
-              </div>
-            </button>
-            {portalExpanded && (
-              <div className="ml-14 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
-                {PORTAL_APPS.map(app => (
-                  <a
-                    key={app.appName}
-                    href={app.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => {
-                      triggerExtension(req.id, req.reqCode, req.title, app.appName);
-                      onClose();
-                    }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
+                <div
+                  className={`w-10 h-10 rounded-xl ${row.iconBg} flex items-center justify-center shrink-0`}
+                >
+                  {row.icon}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-900">{row.title}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{row.desc}</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
+              </button>
+            ))}
+            <div>
+              <button
+                onClick={() => setPortalExpanded(v => !v)}
+                className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <Globe className="w-4 h-4 text-amber-700" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-semibold text-slate-900">Portal Recruit</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Source directly from job boards</p>
+                </div>
+                <div
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
+                >
+                  {portalExpanded ? '−' : '+'}
+                </div>
+              </button>
+              {portalExpanded && (
+                <div className="ml-14 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
+                  {PORTAL_APPS.map(app => (
+                    <a
+                      key={app.appName}
+                      href={app.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        triggerExtension(req.id, req.reqCode, req.title, app.appName);
+                        onClose();
+                      }}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
                     >
-                      <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">{app.displayName}</p>
-                      <p className="text-xs text-slate-500">{app.desc}</p>
-                    </div>
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
-                  </a>
-                ))}
-              </div>
-            )}
+                      <div
+                        className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
+                      >
+                        <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-800">{app.displayName}</p>
+                        <p className="text-xs text-slate-500">{app.desc}</p>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      <UploadResumeModal open={uploadOpen} onClose={() => setUploadOpen(false)} req={req} />
+    </>
   );
 }
 
@@ -1259,7 +1461,7 @@ function CandidateCard({
     <div
       className={`relative flex border-b border-slate-100 hover:bg-blue-50/30 transition-colors ${isTerminated ? 'opacity-50' : ''}`}
     >
-      {/* Stage color bar — thicker */}
+      {/* Stage color bar */}
       <div className={`w-1 shrink-0 ${c.bar}`} />
 
       {/* Checkbox */}
@@ -1270,7 +1472,7 @@ function CandidateCard({
         />
       </div>
 
-      {/* MAIN CONTENT — full width, two rows */}
+      {/* MAIN CONTENT */}
       <div className="flex-1 min-w-0 py-4 pr-3">
         {/* ROW 1 — identity + stage badge */}
         <div className="flex items-start gap-3 mb-3">
@@ -1282,7 +1484,6 @@ function CandidateCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-base font-bold text-slate-900 leading-tight">{snap.fullName}</h3>
-              {/* Status flags */}
               {p.isRejected && (
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300">
                   Rejected
@@ -1312,7 +1513,6 @@ function CandidateCard({
               </p>
             )}
           </div>
-          {/* Stage badge — right aligned */}
           <span
             className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border ${c.bg} ${c.text} ${c.border}`}
           >
@@ -1321,7 +1521,7 @@ function CandidateCard({
           </span>
         </div>
 
-        {/* ROW 2 — contact + skills + meta */}
+        {/* ROW 2 — contact + meta */}
         <div className="flex items-center gap-4 flex-wrap ml-14">
           {snap.email && (
             <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
@@ -1361,7 +1561,7 @@ function CandidateCard({
           )}
         </div>
 
-        {/* ROW 3 — skills + footer */}
+        {/* ROW 3 — skills */}
         {snap.topSkills?.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap mt-2.5 ml-14">
             {snap.topSkills.slice(0, 4).map(s => (
@@ -1404,7 +1604,7 @@ function CandidateCard({
         </div>
       </div>
 
-      {/* ACTION BAR — always visible, right side */}
+      {/* ACTION BAR */}
       <div className="flex flex-col items-center justify-center gap-1 px-3 shrink-0 border-l border-slate-100">
         <button
           title="View Detail"
@@ -1413,6 +1613,7 @@ function CandidateCard({
         >
           <Eye className="w-4.5 h-4.5" />
         </button>
+        {/* ── Candidate action buttons gated on candidates API permission ── */}
         {canEdit && !isTerminated && (
           <>
             <button
@@ -1609,7 +1810,11 @@ export default function RequirementDetailPage() {
 
   const req = reqQuery.data.data;
   const perms = reqQuery.data.permissions;
+  // ── Requirement-level permission: gates Edit button, Status dropdown, tab sub-components
   const canEdit = permission.canEdit && perms.canEdit;
+  // ── Candidates-level permission: ONLY from the candidates API response
+  const canEditCandidates = candidatesQuery.data?.permissions?.canEdit ?? false;
+
   const nextStatuses = STATUS_FLOW[req.status] ?? [];
   const summary = (req as any).pipelineSummary as PipelineSummary;
   const stages = summary?.byStage ?? [];
@@ -1767,50 +1972,25 @@ export default function RequirementDetailPage() {
             </div>
           </div>
 
-          {/* RIGHT — stage count tabs */}
-          <div className="flex-1 flex items-stretch overflow-x-auto">
-            {/* ALL */}
-            <button
-              onClick={() => {
-                setTab('candidates');
-                setActiveStageId(null);
-              }}
-              className={`flex flex-col items-center justify-center gap-1.5 px-7 border-b-2 transition-all shrink-0 min-w-[90px] ${tab === 'candidates' && !activeStageId ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-slate-50'}`}
-            >
-              <span className="text-4xl font-black tabular-nums text-slate-800 leading-none">
-                {summary?.total ?? 0}
-              </span>
-              <span className="text-xs font-bold tracking-widest text-slate-500 uppercase">
-                All
-              </span>
-            </button>
-            {stages.map(stage => {
-              const c = SC(stage.code);
-              const isActive = tab === 'candidates' && activeStageId === stage.id;
-              return (
-                <button
-                  key={stage.id}
-                  onClick={() => {
-                    setTab('candidates');
-                    setActiveStageId(prev => (prev === stage.id ? null : stage.id));
-                  }}
-                  className={`flex flex-col items-center justify-center gap-1.5 px-5 border-b-2 transition-all shrink-0 min-w-[90px] ${isActive ? `border-primary ${c.bg}` : 'border-transparent hover:bg-slate-50'}`}
-                >
-                  <div className="flex items-center gap-0.5">
-                    <span className={`text-4xl font-black tabular-nums leading-none ${c.header}`}>
-                      {stage.count}
-                    </span>
-                    {stage.count > 0 && (
-                      <ChevronDown className={`w-4 h-4 ${c.header} opacity-60 mt-1`} />
-                    )}
-                  </div>
-                  <span className="text-xs font-bold tracking-wide text-slate-500 uppercase text-center leading-tight max-w-[80px]">
-                    {stage.label}
-                  </span>
-                </button>
-              );
-            })}
-            <div className="flex items-center gap-3 px-5 ml-auto shrink-0 border-l border-slate-200">
+          {/* RIGHT — pipeline summary stats */}
+          <div className="flex-1 flex items-center px-8 gap-8 border-l border-slate-200">
+            {[
+              { label: 'Total', value: summary?.total ?? 0, color: 'text-slate-800' },
+              { label: 'Active', value: summary?.active ?? 0, color: 'text-emerald-600' },
+              { label: 'On Hold', value: summary?.onHold ?? 0, color: 'text-amber-600' },
+              { label: 'Rejected', value: summary?.rejected ?? 0, color: 'text-rose-600' },
+              { label: 'Withdrawn', value: summary?.withdrawn ?? 0, color: 'text-slate-400' },
+            ].map(s => (
+              <div key={s.label} className="flex flex-col items-center gap-1 shrink-0">
+                <span className={`text-3xl font-black tabular-nums leading-none ${s.color}`}>
+                  {s.value}
+                </span>
+                <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                  {s.label}
+                </span>
+              </div>
+            ))}
+            <div className="flex items-center gap-3 ml-auto pl-6 border-l border-slate-200 shrink-0">
               <span className="text-sm font-semibold text-slate-600 whitespace-nowrap">
                 Active only
               </span>
@@ -1820,7 +2000,7 @@ export default function RequirementDetailPage() {
         </div>
       </div>
 
-      {/* ═══ TABS — Pipeline removed ═══ */}
+      {/* ═══ TABS ═══ */}
       <Tabs value={tab} onValueChange={setTab} className="flex flex-col flex-1 overflow-hidden">
         <div className="border-b border-slate-200 bg-white shrink-0 px-6">
           <TabsList className="h-auto gap-0 bg-transparent p-0">
@@ -1850,103 +2030,163 @@ export default function RequirementDetailPage() {
 
         {/* CANDIDATES TAB */}
         <TabsContent value="candidates" className="flex-1 overflow-hidden mt-0 flex flex-col">
-          {/* Filter bar */}
-          <div className="flex items-center gap-3 px-6 py-3 border-b border-slate-200 bg-white shrink-0">
-            <div className="flex items-center gap-2.5">
-              <input type="checkbox" className="rounded border-slate-400 w-4 h-4" />
-              <span className="text-sm font-bold text-slate-700">
-                {meta?.total ?? 0} candidates
-              </span>
-            </div>
-            {activeStageId && activeStage && (
-              <button
-                onClick={() => setActiveStageId(null)}
-                className={`flex items-center gap-1.5 text-sm font-bold px-3 py-1.5 rounded-full border ${SC(activeStage.code).bg} ${SC(activeStage.code).text} ${SC(activeStage.code).border}`}
-              >
-                {activeStage.label}
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+          {/* filter bar */}
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-white shrink-0">
+            <span className="text-sm font-semibold text-slate-600">
+              {meta?.total ?? 0} candidates
+            </span>
             <div className="flex items-center gap-2 ml-auto">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <Input
                   placeholder="Search candidates..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="pl-10 h-9 text-sm font-medium w-56 border-slate-300 focus-visible:ring-1"
+                  className="pl-9 h-8 text-sm w-52 border-slate-200 focus-visible:ring-1"
                 />
               </div>
               <button
-                className="w-9 h-9 rounded-xl border border-slate-300 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors"
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
                 onClick={() => candidatesQuery.refetch()}
               >
                 <RefreshCw
-                  className={`w-4 h-4 ${candidatesQuery.isFetching ? 'animate-spin' : ''}`}
+                  className={`w-3.5 h-3.5 ${candidatesQuery.isFetching ? 'animate-spin' : ''}`}
                 />
               </button>
-              <button className="w-9 h-9 rounded-xl border border-slate-300 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors">
-                <Filter className="w-4 h-4" />
+              <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors">
+                <Filter className="w-3.5 h-3.5" />
               </button>
-              <button className="w-9 h-9 rounded-xl border border-slate-300 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-colors">
-                <SlidersHorizontal className="w-4 h-4" />
+              <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors">
+                <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          {/* Candidate list */}
-          <div className="flex-1 overflow-y-auto">
-            {candidatesQuery.isLoading ? (
-              <div className="divide-y divide-slate-100">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex gap-4 px-6 py-5">
-                    <Skeleton className="h-11 w-11 rounded-full shrink-0" />
-                    <div className="flex-1 flex flex-col gap-2.5">
-                      <Skeleton className="h-5 w-48" />
-                      <Skeleton className="h-4 w-72" />
-                      <Skeleton className="h-4 w-40" />
+          {/* sidebar + list */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* ── STAGE SIDEBAR ── */}
+            <div className="w-44 shrink-0 border-r border-slate-200 overflow-y-auto bg-white">
+              {/* All */}
+              <button
+                onClick={() => {
+                  setTab('candidates');
+                  setActiveStageId(null);
+                }}
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${
+                  !activeStageId
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-transparent text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span className="text-xs font-bold uppercase tracking-wide">All</span>
+                <span
+                  className={`text-sm font-black tabular-nums ${!activeStageId ? 'text-primary' : 'text-slate-700'}`}
+                >
+                  {summary?.total ?? 0}
+                </span>
+              </button>
+
+              {stages.map((stage, idx) => {
+                const isActive = activeStageId === stage.id;
+                const c = SC(stage.code);
+                return (
+                  <div key={stage.id}>
+                    {/* down arrow between stages */}
+                    <div className="flex justify-center py-0.5">
+                      <ChevronDown className="w-3 h-3 text-slate-300" />
                     </div>
+                    <button
+                      onClick={() => {
+                        setTab('candidates');
+                        setActiveStageId(prev => (prev === stage.id ? null : stage.id));
+                      }}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${
+                        isActive ? `border-primary ${c.bg}` : 'border-transparent hover:bg-slate-50'
+                      }`}
+                    >
+                      <span
+                        className={`text-xs font-semibold leading-tight max-w-[90px] truncate ${
+                          isActive
+                            ? c.text
+                            : stage.count === 0
+                              ? 'text-slate-300'
+                              : 'text-slate-600'
+                        }`}
+                      >
+                        {stage.label}
+                      </span>
+                      <span
+                        className={`text-sm font-black tabular-nums shrink-0 ${
+                          isActive
+                            ? c.text
+                            : stage.count === 0
+                              ? 'text-slate-300'
+                              : 'text-slate-700'
+                        }`}
+                      >
+                        {stage.count}
+                      </span>
+                    </button>
                   </div>
-                ))}
-              </div>
-            ) : candidates.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-72 gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
-                  <Users className="w-8 h-8 text-slate-400" />
+                );
+              })}
+            </div>
+
+            {/* ── CANDIDATE LIST ── */}
+            <div className="flex-1 overflow-y-auto">
+              {candidatesQuery.isLoading ? (
+                <div className="divide-y divide-slate-100">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex gap-4 px-5 py-4">
+                      <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                      <div className="flex-1 flex flex-col gap-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-64" />
+                        <Skeleton className="h-3 w-36" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-center">
-                  <p className="text-base font-bold text-slate-700">
-                    No candidates {activeStageId ? 'in this stage' : 'yet'}
-                  </p>
-                  <p className="text-sm font-medium text-slate-500 mt-1">
-                    {activeStageId
-                      ? 'Try a different stage or clear the filter'
-                      : 'Use "Add Candidate" to get started'}
-                  </p>
+              ) : candidates.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-72 gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                    <Users className="w-7 h-7 text-slate-400" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-slate-700">
+                      No candidates {activeStageId ? 'in this stage' : 'yet'}
+                    </p>
+                    <p className="text-xs font-medium text-slate-500 mt-1">
+                      {activeStageId
+                        ? 'Try a different stage or clear the filter'
+                        : 'Use "Add Candidate" to get started'}
+                    </p>
+                  </div>
+                  {activeStageId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="font-semibold"
+                      onClick={() => setActiveStageId(null)}
+                    >
+                      Clear filter
+                    </Button>
+                  )}
                 </div>
-                {activeStageId && (
-                  <Button
-                    variant="outline"
-                    className="font-semibold"
-                    onClick={() => setActiveStageId(null)}
-                  >
-                    Clear filter
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div>
-                {candidates.map(c => (
-                  <CandidateCard
-                    key={c.id}
-                    p={c}
-                    canEdit={canEdit}
-                    onView={pid => setSelectedPipelineId(pid)}
-                    onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
-                  />
-                ))}
-              </div>
-            )}
+              ) : (
+                <div>
+                  {candidates.map(c => (
+                    <CandidateCard
+                      key={c.id}
+                      p={c}
+                      canEdit={canEditCandidates}
+                      onView={pid => router.push(`/requirements/${id}/candidates/${pid}`)}
+                      onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </TabsContent>
 
@@ -1973,7 +2213,12 @@ export default function RequirementDetailPage() {
       </Tabs>
 
       {/* ═══ MODALS & DRAWER ═══ */}
-      <AddCandidateModal open={addModal} onClose={() => setAddModal(false)} req={req as any} />
+      <AddCandidateModal
+        open={addModal}
+        onClose={() => setAddModal(false)}
+        req={req as any}
+        assignments={assignments}
+      />
 
       {selectedPipelineId && (
         <CandidateDetailDrawer
