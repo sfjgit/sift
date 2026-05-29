@@ -349,9 +349,10 @@ function UserChip({
   onClick?: () => void;
 }) {
   return (
-    <button
+    <div
       onClick={onClick}
-      className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5 text-left transition-colors hover:bg-muted/60"
+      className={`flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1.5 text-left transition-colors
+        ${onClick ? 'cursor-pointer hover:bg-muted/60' : 'cursor-default opacity-70'}`}
     >
       <Avatar className="h-6 w-6 shrink-0">
         <AvatarFallback className={`text-[10px] font-semibold ${avatarColor(user.id)}`}>
@@ -366,7 +367,7 @@ function UserChip({
           {user.role.name.replace(/_/g, ' ')}
         </p>
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -654,8 +655,22 @@ export default function UserDetailPage() {
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Reporting Chain
               </p>
-
               {user.reportingTo ? (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1">Reports to</p>
+                  <UserChip user={user.reportingTo} /> {/* ← no onClick */}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/50">No reporting manager</p>
+              )}
+
+              {user.teamLead && (
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1">Team lead</p>
+                  <UserChip user={user.teamLead} /> {/* ← no onClick */}
+                </div>
+              )}
+              {/* {user.reportingTo ? (
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-1">Reports to</p>
                   <UserChip
@@ -675,7 +690,7 @@ export default function UserDetailPage() {
                     onClick={() => router.push(`/users/${user.teamLead!.id}`)}
                   />
                 </div>
-              )}
+              )} */}
 
               {user.subordinates.length > 0 && (
                 <div>

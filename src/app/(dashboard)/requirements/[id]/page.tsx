@@ -418,7 +418,8 @@ function UploadResumeModal({
       form.append('mimeType', file.type);
       form.append('requirementId', req.id);
       form.append('reqCode', req.reqCode);
-      return axios.post(process.env.NEXT_PUBLIC_API_URL + '/candidate/api/resume/ingest', form, {
+      return axios.post('/api/proxy' + '/candidate/api/resume/ingest', form, {
+        withCredentials: true,
         headers: { 'Content-Type': undefined }, // ← let browser set multipart boundary
         transformRequest: data => data, // ← prevent axios from re-serializing FormData
       });
