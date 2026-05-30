@@ -20,12 +20,14 @@ import {
   Network,
   UserSquare2,
   ClipboardList,
+  UserSearch,
 } from 'lucide-react';
 
 const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
   { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
+  { label: 'Candidates', href: '/candidates', icon: UserSearch, module: 'candidates' },
   { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
   { type: 'divider' as const },
   { label: 'Users', href: '/users', icon: Users, module: 'users' },
