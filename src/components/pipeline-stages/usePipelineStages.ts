@@ -4,13 +4,23 @@
 import { useAxios } from '@/hooks/useAxios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-export type CanonicalStage = 'SOURCED' | 'SCREENING' | 'INTERVIEW' | 'OFFER' | 'JOINED' | 'DROPPED';
+export type CanonicalStage =
+  | 'SOURCED'
+  | 'SCREENING'
+  | 'INTERVIEW'
+  | 'OFFER_IN_PROGRESS'
+  | 'OFFERED'
+  | 'HIRED'
+  | 'JOINED'
+  | 'DROPPED';
 
 export const CANONICAL_STAGES: { value: CanonicalStage; label: string }[] = [
   { value: 'SOURCED', label: 'Sourced' },
   { value: 'SCREENING', label: 'Screening' },
   { value: 'INTERVIEW', label: 'Interview' },
-  { value: 'OFFER', label: 'Offer' },
+  { value: 'OFFER_IN_PROGRESS', label: 'Offer in progress' },
+  { value: 'OFFERED', label: 'Offered' },
+  { value: 'HIRED', label: 'Hired' },
   { value: 'JOINED', label: 'Joined' },
   { value: 'DROPPED', label: 'Dropped' },
 ];
@@ -24,21 +34,17 @@ export type PipelineStage = {
   isTerminal: boolean;
   isActive: boolean;
   canonicalStage: CanonicalStage | null;
-  serviceLineId: string | null;
-  serviceLine: { id: string; name: string } | null;
 };
 
 export type StagePayloadItem = {
   id?: string;
   code: string;
   label: string;
-  order: number;
   isMandatory: boolean;
   isTerminal: boolean;
   isActive: boolean;
   isNew: boolean;
   canonicalStage: CanonicalStage | null;
-  serviceLineId: string | null;
 };
 
 export type SavePayload = {
@@ -53,7 +59,6 @@ export function usePipelineStages() {
   return useQuery<PipelineStage[]>({
     queryKey: QK,
     queryFn: async () => {
-      // fetch all — no serviceLineId filter, includeInactive true
       const res = await axios.get('/pipeline-stages?includeInactive=true');
       return res.data.data;
     },

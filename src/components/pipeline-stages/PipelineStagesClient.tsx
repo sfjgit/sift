@@ -16,8 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { GripVertical, Plus, Trash2, Check, X, RotateCcw, Save, Pencil, Globe } from 'lucide-react';
-import { useServiceLines } from '@/hooks/useServiceLines';
+import { GripVertical, Plus, Trash2, Check, X, RotateCcw, Save, Pencil } from 'lucide-react';
 import {
   usePipelineStages,
   useSaveStages,
@@ -33,30 +32,9 @@ import { cn } from '@/lib/utils';
 
 type LocalStage = PipelineStage & { isNew?: boolean };
 
-// stages grouped by order — each entry is one or more variants
-type OrderGroup = { order: number; stages: LocalStage[] };
-
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-function groupByOrder(stages: LocalStage[]): OrderGroup[] {
-  const map = new Map<number, LocalStage[]>();
-  for (const s of stages) {
-    const existing = map.get(s.order) ?? [];
-    existing.push(s);
-    map.set(s.order, existing);
-  }
-  return Array.from(map.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([order, stages]) => ({ order, stages }));
-}
-
-// rebuild order numbers after any structural change
-// each group keeps its relative position; variants within a group keep same order
-function recomputeOrders(groups: OrderGroup[]): LocalStage[] {
-  return groups.flatMap((g, i) => g.stages.map(s => ({ ...s, order: i + 1 })));
-}
 
 function newTempId() {
   return `__new__${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -76,35 +54,25 @@ const SLOT_COLORS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// insert row — shown between groups or at end
+// insert row
 // ─────────────────────────────────────────────────────────────────────────────
 
-type InsertTarget =
-  | { type: 'between'; afterGroupIdx: number } // new standalone group
-  | { type: 'variant'; groupIdx: number } // new variant in existing group
-  | { type: 'end' }; // append at end
-
 function InsertRow({
-  target,
-  serviceLines,
   onCommit,
   onCancel,
 }: {
-  target: InsertTarget;
-  serviceLines: { id: string; name: string }[];
-  onCommit: (label: string, code: string, serviceLineId: string | null) => void;
+  onCommit: (label: string, code: string) => void;
   onCancel: () => void;
 }) {
   const [label, setLabel] = useState('');
   const [code, setCode] = useState('');
-  const [serviceLineId, setServiceLineId] = useState<string | null>(null);
 
   const commit = () => {
     if (!label.trim()) {
       onCancel();
       return;
     }
-    onCommit(label.trim(), code.trim(), serviceLineId);
+    onCommit(label.trim(), code.trim());
   };
 
   return (
@@ -121,35 +89,15 @@ function InsertRow({
         className="h-7 text-sm flex-1 bg-white min-w-0"
       />
       <Input
-        placeholder="Code"
+        placeholder="Code e.g. 07A"
         value={code}
         onChange={e => setCode(e.target.value)}
         onKeyDown={e => {
           if (e.key === 'Enter') commit();
           if (e.key === 'Escape') onCancel();
         }}
-        className="h-7 text-sm w-20 bg-white font-mono shrink-0"
+        className="h-7 text-sm w-24 bg-white font-mono shrink-0"
       />
-      <Select
-        value={serviceLineId ?? '__universal__'}
-        onValueChange={v => setServiceLineId(v === '__universal__' ? null : v)}
-      >
-        <SelectTrigger className="h-7 text-xs w-32 shrink-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__universal__">
-            <span className="flex items-center gap-1.5">
-              <Globe className="h-3 w-3" /> Universal
-            </span>
-          </SelectItem>
-          {serviceLines.map(sl => (
-            <SelectItem key={sl.id} value={sl.id}>
-              {sl.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
       <button onClick={commit} className="text-green-600 shrink-0">
         <Check className="h-4 w-4" />
       </button>
@@ -161,7 +109,7 @@ function InsertRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// trigger button shown between groups on hover
+// insert trigger
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InsertTrigger({ label, onClick }: { label: string; onClick: () => void }) {
@@ -183,20 +131,16 @@ function InsertTrigger({ label, onClick }: { label: string; onClick: () => void 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// single stage row
+// stage row
 // ─────────────────────────────────────────────────────────────────────────────
 
 function StageRow({
   stage,
-  groupOrder,
-  isVariant,
-  isDirty,
+  idx,
   originalStages,
-  serviceLines,
   onLabelChange,
   onCodeChange,
   onCanonicalChange,
-  onServiceLineChange,
   onToggle,
   onDelete,
   onDragStart,
@@ -206,15 +150,11 @@ function StageRow({
   isDragOver,
 }: {
   stage: LocalStage;
-  groupOrder: number;
-  isVariant: boolean;
-  isDirty: boolean;
+  idx: number;
   originalStages: PipelineStage[];
-  serviceLines: { id: string; name: string }[];
   onLabelChange: (id: string, label: string) => void;
   onCodeChange: (id: string, code: string) => void;
   onCanonicalChange: (id: string, val: CanonicalStage | null) => void;
-  onServiceLineChange: (id: string, val: string | null) => void;
   onToggle: (id: string, val: boolean) => void;
   onDelete: (stage: LocalStage) => void;
   onDragStart: () => void;
@@ -230,7 +170,7 @@ function StageRow({
 
   const orig = originalStages.find(s => s.id === stage.id);
   const isMoved = !stage.isNew && orig !== undefined && orig.order !== stage.order;
-  const col = SLOT_COLORS[(groupOrder - 1) % SLOT_COLORS.length];
+  const col = SLOT_COLORS[idx % SLOT_COLORS.length];
 
   return (
     <div
@@ -240,31 +180,28 @@ function StageRow({
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
       className={cn(
-        'flex items-center gap-3 px-3 py-2.5 transition-all select-none',
-        isVariant && 'border-t border-amber-100',
-        isDragOver && 'bg-primary/5 border-primary',
-        stage.isNew && 'bg-blue-50',
-        isMoved && !stage.isNew && 'bg-amber-50/40',
+        'flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all select-none',
+        !stage.isNew && !isMoved && 'bg-background border-border',
+        stage.isNew && 'bg-blue-50 border-blue-300',
+        isMoved && !stage.isNew && 'bg-amber-50/40 border-amber-200',
+        isDragOver && 'border-primary scale-[1.005] bg-primary/5',
         !stage.isActive && 'opacity-40'
       )}
     >
       <GripVertical className="h-4 w-4 text-muted-foreground/30 cursor-grab shrink-0" />
 
-      {/* Order badge — only on first variant */}
-      {!isVariant && (
-        <span
-          className={cn(
-            'shrink-0 text-xs font-mono font-bold px-1.5 py-0.5 rounded border min-w-[2rem] text-center',
-            col
-          )}
-        >
-          {groupOrder}
-        </span>
-      )}
-      {isVariant && <span className="shrink-0 w-[2.25rem]" />}
+      {/* Order badge */}
+      <span
+        className={cn(
+          'shrink-0 text-xs font-mono font-bold px-1.5 py-0.5 rounded border min-w-[2rem] text-center',
+          col
+        )}
+      >
+        {idx + 1}
+      </span>
 
       {/* Code — inline editable */}
-      <div className="shrink-0 w-16">
+      <div className="shrink-0 w-20">
         {editingCode ? (
           <Input
             autoFocus
@@ -355,32 +292,8 @@ function StageRow({
         )}
       </div>
 
-      {/* Service line */}
-      <div className="shrink-0 w-28">
-        <Select
-          value={stage.serviceLineId ?? '__universal__'}
-          onValueChange={v => onServiceLineChange(stage.id, v === '__universal__' ? null : v)}
-        >
-          <SelectTrigger className="h-7 text-xs px-2 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__universal__">
-              <span className="flex items-center gap-1.5">
-                <Globe className="h-3 w-3" /> Universal
-              </span>
-            </SelectItem>
-            {serviceLines.map(sl => (
-              <SelectItem key={sl.id} value={sl.id}>
-                {sl.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Canonical */}
-      <div className="shrink-0 w-28">
+      <div className="shrink-0 w-36">
         <Select
           value={stage.canonicalStage ?? '__none__'}
           onValueChange={v =>
@@ -404,7 +317,7 @@ function StageRow({
       </div>
 
       {/* Badges */}
-      <div className="shrink-0 flex items-center gap-1">
+      <div className="shrink-0 flex items-center gap-1 w-24">
         {stage.isTerminal && (
           <Badge
             variant="outline"
@@ -455,37 +368,34 @@ function StageRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// main client
+// main
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PipelineStagesClient() {
   const { data: serverStages = [], isLoading } = usePipelineStages();
-  const { data: serviceLines = [] } = useServiceLines();
   const saveStages = useSaveStages();
 
   const [local, setLocal] = useState<LocalStage[] | null>(null);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
-  const [insertTarget, setInsertTarget] = useState<InsertTarget | null>(null);
+
+  // insertAt = index in the flat array to splice before, stages.length = append
+  const [insertAt, setInsertAt] = useState<number | null>(null);
 
   const stages: LocalStage[] = local ?? serverStages;
   const isDirty = local !== null || deletedIds.length > 0;
-  const groups = groupByOrder(stages);
 
-  // drag state — track by stage id
   const dragId = useRef<string | null>(null);
   const dragOverId = useRef<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
 
-  // ── mutators
-  const patchStages = (updater: (prev: LocalStage[]) => LocalStage[]) => {
+  // ── patch helpers
+  const patchStages = (updater: (prev: LocalStage[]) => LocalStage[]) =>
     setLocal(prev => updater(prev ?? serverStages));
-  };
 
-  const patchStage = (id: string, patch: Partial<LocalStage>) => {
+  const patchStage = (id: string, patch: Partial<LocalStage>) =>
     patchStages(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
-  };
 
-  // ── drag — individual stage drag, drop onto another stage
+  // ── drag
   const onDragStart = (id: string) => {
     dragId.current = id;
   };
@@ -494,7 +404,6 @@ export default function PipelineStagesClient() {
     setDragOverStageId(id);
   };
   const onDragOver = (e: React.DragEvent) => e.preventDefault();
-
   const onDragEnd = () => {
     setDragOverStageId(null);
     const fromId = dragId.current;
@@ -502,82 +411,37 @@ export default function PipelineStagesClient() {
     dragId.current = null;
     dragOverId.current = null;
     if (!fromId || !toId || fromId === toId) return;
-
-    const currentStages = local ?? serverStages;
-    const fromStage = currentStages.find(s => s.id === fromId);
-    const toStage = currentStages.find(s => s.id === toId);
-    if (!fromStage || !toStage) return;
-
-    // rebuild groups, move fromStage to toStage's group position
-    const currentGroups = groupByOrder(currentStages);
-
-    // remove fromStage from its current group
-    const withoutFrom = currentGroups
-      .map(g => ({
-        ...g,
-        stages: g.stages.filter(s => s.id !== fromId),
-      }))
-      .filter(g => g.stages.length > 0);
-
-    // find target group index in withoutFrom
-    const targetGroupIdx = withoutFrom.findIndex(g => g.stages.some(s => s.id === toId));
-    if (targetGroupIdx === -1) return;
-
-    // insert fromStage into target group (as variant)
-    const newGroups = withoutFrom.map((g, i) =>
-      i === targetGroupIdx
-        ? { ...g, stages: [...g.stages, { ...fromStage, order: g.stages[0]!.order }] }
-        : g
-    );
-
-    setLocal(recomputeOrders(newGroups));
+    patchStages(prev => {
+      const fromIdx = prev.findIndex(s => s.id === fromId);
+      const toIdx = prev.findIndex(s => s.id === toId);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      return next.map((s, i) => ({ ...s, order: i + 1 }));
+    });
   };
 
   // ── insert
-  const commitInsert = (
-    label: string,
-    code: string,
-    serviceLineId: string | null,
-    target: InsertTarget
-  ) => {
+  const commitInsert = (label: string, code: string) => {
+    const at = insertAt ?? stages.length;
     const newStage: LocalStage = {
       id: newTempId(),
       code,
       label,
-      order: 0, // recomputed below
+      order: at + 1,
       isMandatory: true,
       isTerminal: false,
       isActive: true,
       canonicalStage: null,
-      serviceLineId,
-      serviceLine: serviceLines.find(sl => sl.id === serviceLineId) ?? null,
       isNew: true,
     };
-
-    const currentGroups = groupByOrder(local ?? serverStages);
-
-    let newGroups: OrderGroup[];
-
-    if (target.type === 'between') {
-      // insert new group after afterGroupIdx
-      const insertAfter = target.afterGroupIdx;
-      newGroups = [
-        ...currentGroups.slice(0, insertAfter + 1),
-        { order: 0, stages: [newStage] },
-        ...currentGroups.slice(insertAfter + 1),
-      ];
-    } else if (target.type === 'variant') {
-      // add as variant in existing group
-      newGroups = currentGroups.map((g, i) =>
-        i === target.groupIdx ? { ...g, stages: [...g.stages, newStage] } : g
-      );
-    } else {
-      // append at end
-      newGroups = [...currentGroups, { order: 0, stages: [newStage] }];
-    }
-
-    setLocal(recomputeOrders(newGroups));
-    setInsertTarget(null);
+    patchStages(prev => {
+      const next = [...prev];
+      next.splice(at, 0, newStage);
+      return next.map((s, i) => ({ ...s, order: i + 1 }));
+    });
+    setInsertAt(null);
   };
 
   // ── delete
@@ -585,7 +449,7 @@ export default function PipelineStagesClient() {
     if (!stage.isNew) setDeletedIds(prev => [...prev, stage.id]);
     patchStages(prev => {
       const next = prev.filter(s => s.id !== stage.id);
-      return recomputeOrders(groupByOrder(next));
+      return next.map((s, i) => ({ ...s, order: i + 1 }));
     });
   };
 
@@ -593,7 +457,7 @@ export default function PipelineStagesClient() {
   const handleDiscard = () => {
     setLocal(null);
     setDeletedIds([]);
-    setInsertTarget(null);
+    setInsertAt(null);
   };
 
   // ── save
@@ -605,13 +469,11 @@ export default function PipelineStagesClient() {
         ...(s.isNew ? {} : { id: s.id }),
         code: s.code,
         label: s.label,
-        order: s.order,
         isMandatory: s.isMandatory,
         isTerminal: s.isTerminal,
         isActive: s.isActive,
         isNew: s.isNew ?? false,
-        canonicalStage: s.canonicalStage,
-        serviceLineId: s.serviceLineId,
+        canonicalStage: s.canonicalStage ?? null,
       })),
     });
     setLocal(null);
@@ -638,7 +500,7 @@ export default function PipelineStagesClient() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Pipeline stages</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Drag to reorder · same order = service-line variant · universal applies to all
+              Drag to reorder · recruiter picks whichever stages apply
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -659,12 +521,11 @@ export default function PipelineStagesClient() {
         {/* Column headers */}
         <div className="flex items-center gap-3 px-3 pb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
           <span className="w-4 shrink-0" />
-          <span className="w-[2.25rem] shrink-0">#</span>
-          <span className="w-16 shrink-0">Code</span>
+          <span className="w-8 shrink-0">#</span>
+          <span className="w-20 shrink-0">Code</span>
           <span className="flex-1">Label</span>
-          <span className="w-28 shrink-0">Service line</span>
-          <span className="w-28 shrink-0">Maps to</span>
-          <span className="w-20 shrink-0">Badges</span>
+          <span className="w-36 shrink-0">Maps to</span>
+          <span className="w-24 shrink-0">Badges</span>
           <span className="w-10 shrink-0">Active</span>
           <span className="w-5 shrink-0" />
         </div>
@@ -674,154 +535,55 @@ export default function PipelineStagesClient() {
       {isDirty && (
         <div className="flex-none flex items-center gap-2 px-6 py-1.5 bg-amber-50 border-b border-amber-200 text-xs text-amber-700">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
-          Live preview — <strong>blue</strong> = new · <strong>amber</strong> = moved/variant
-          change. Nothing saved yet.
+          Live preview — <strong>blue</strong> = new · <strong>amber</strong> = moved. Nothing saved
+          yet.
         </div>
       )}
 
       {/* Stage list */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
-        <div className="max-w-5xl space-y-0">
-          {groups.map((group, groupIdx) => {
-            const isVariantGroup = group.stages.length > 1;
-            const col = SLOT_COLORS[(group.order - 1) % SLOT_COLORS.length];
+        <div className="max-w-4xl space-y-0">
+          {stages.map((stage, idx) => (
+            <div key={stage.id}>
+              {/* Insert trigger / row above each stage */}
+              {insertAt === idx ? (
+                <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
+              ) : (
+                <InsertTrigger
+                  label={idx === 0 ? 'insert at start' : 'insert before'}
+                  onClick={() => setInsertAt(idx)}
+                />
+              )}
 
-            return (
-              <div key={`group-${group.order}-${groupIdx}`}>
-                {/* Insert between trigger */}
-                {insertTarget?.type === 'between' && insertTarget.afterGroupIdx === groupIdx - 1 ? (
-                  <InsertRow
-                    target={insertTarget}
-                    serviceLines={serviceLines}
-                    onCommit={(label, code, slId) => commitInsert(label, code, slId, insertTarget)}
-                    onCancel={() => setInsertTarget(null)}
-                  />
-                ) : groupIdx === 0 ? (
-                  <InsertTrigger
-                    label="insert at start"
-                    onClick={() => setInsertTarget({ type: 'between', afterGroupIdx: -1 })}
-                  />
-                ) : (
-                  <InsertTrigger
-                    label="insert between"
-                    onClick={() =>
-                      setInsertTarget({ type: 'between', afterGroupIdx: groupIdx - 1 })
-                    }
-                  />
-                )}
-
-                {/* Group card */}
-                <div
-                  className={cn(
-                    'rounded-lg border overflow-hidden',
-                    isVariantGroup ? 'border-amber-200' : 'border-border'
-                  )}
-                >
-                  {/* Variant header */}
-                  {isVariantGroup && (
-                    <div className="flex items-center justify-between px-4 py-1 bg-amber-50 border-b border-amber-200">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            'text-xs font-mono font-bold px-1.5 py-0.5 rounded border',
-                            col
-                          )}
-                        >
-                          {group.order}
-                        </span>
-                        <span className="text-[10px] text-amber-700 font-medium uppercase tracking-wide">
-                          Order {group.order} — {group.stages.length} service-line variants
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setInsertTarget({ type: 'variant', groupIdx })}
-                        className="text-[10px] text-amber-600 hover:text-amber-800 flex items-center gap-1"
-                      >
-                        <Plus className="h-3 w-3" /> add variant
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Insert variant row */}
-                  {insertTarget?.type === 'variant' && insertTarget.groupIdx === groupIdx && (
-                    <InsertRow
-                      target={insertTarget}
-                      serviceLines={serviceLines}
-                      onCommit={(label, code, slId) =>
-                        commitInsert(label, code, slId, insertTarget)
-                      }
-                      onCancel={() => setInsertTarget(null)}
-                    />
-                  )}
-
-                  {/* Stage rows */}
-                  {group.stages.map((stage, stageIdx) => (
-                    <StageRow
-                      key={stage.id}
-                      stage={stage}
-                      groupOrder={group.order}
-                      isVariant={stageIdx > 0}
-                      isDirty={isDirty}
-                      originalStages={serverStages}
-                      serviceLines={serviceLines}
-                      onLabelChange={(id, label) => patchStage(id, { label })}
-                      onCodeChange={(id, code) => patchStage(id, { code })}
-                      onCanonicalChange={(id, val) => patchStage(id, { canonicalStage: val })}
-                      onServiceLineChange={(id, val) => {
-                        const sl = serviceLines.find(s => s.id === val) ?? null;
-                        patchStage(id, {
-                          serviceLineId: val,
-                          serviceLine: sl,
-                        });
-                      }}
-                      onToggle={(id, val) => patchStage(id, { isActive: val })}
-                      onDelete={handleDelete}
-                      onDragStart={() => onDragStart(stage.id)}
-                      onDragEnter={() => onDragEnter(stage.id)}
-                      onDragOver={onDragOver}
-                      onDragEnd={onDragEnd}
-                      isDragOver={dragOverStageId === stage.id}
-                    />
-                  ))}
-
-                  {/* Add variant button — single stage groups show it on hover */}
-                  {!isVariantGroup && insertTarget?.type !== 'variant' && (
-                    <div className="group/addvariant">
-                      <button
-                        onClick={() => setInsertTarget({ type: 'variant', groupIdx })}
-                        className="w-full flex items-center justify-center gap-1 py-1 text-[10px] text-muted-foreground/0 group-hover/addvariant:text-muted-foreground hover:text-blue-500 transition-colors border-t border-dashed border-transparent group-hover/addvariant:border-border"
-                      >
-                        <Plus className="h-2.5 w-2.5" /> add service-line variant
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+              <StageRow
+                stage={stage}
+                idx={idx}
+                originalStages={serverStages}
+                onLabelChange={(id, label) => patchStage(id, { label })}
+                onCodeChange={(id, code) => patchStage(id, { code })}
+                onCanonicalChange={(id, val) => patchStage(id, { canonicalStage: val })}
+                onToggle={(id, val) => patchStage(id, { isActive: val })}
+                onDelete={handleDelete}
+                onDragStart={() => onDragStart(stage.id)}
+                onDragEnter={() => onDragEnter(stage.id)}
+                onDragOver={onDragOver}
+                onDragEnd={onDragEnd}
+                isDragOver={dragOverStageId === stage.id}
+              />
+            </div>
+          ))}
 
           {/* Trailing insert */}
-          {insertTarget?.type === 'end' ||
-          (insertTarget?.type === 'between' && insertTarget.afterGroupIdx === groups.length - 1) ? (
-            <InsertRow
-              target={{ type: 'end' }}
-              serviceLines={serviceLines}
-              onCommit={(label, code, slId) => commitInsert(label, code, slId, { type: 'end' })}
-              onCancel={() => setInsertTarget(null)}
-            />
+          {insertAt === stages.length ? (
+            <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
           ) : (
-            <InsertTrigger label="append at end" onClick={() => setInsertTarget({ type: 'end' })} />
+            <InsertTrigger label="append at end" onClick={() => setInsertAt(stages.length)} />
           )}
 
-          {groups.length === 0 && !insertTarget && (
+          {stages.length === 0 && insertAt === null && (
             <div className="flex flex-col items-center justify-center py-20 border rounded-lg border-dashed">
               <p className="text-sm text-muted-foreground">No pipeline stages yet</p>
-              <Button
-                variant="link"
-                size="sm"
-                className="mt-1"
-                onClick={() => setInsertTarget({ type: 'end' })}
-              >
+              <Button variant="link" size="sm" className="mt-1" onClick={() => setInsertAt(0)}>
                 Add first stage
               </Button>
             </div>
