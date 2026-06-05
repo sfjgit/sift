@@ -87,12 +87,13 @@ import {
 } from '@/components/requirements/types';
 import type { RequirementDetail } from '@/components/requirements/types';
 import { RequirementOverviewTab } from '@/components/requirements/RequirementOverviewTab';
-import { RequirementAssignmentsTab } from '@/components/requirements/RequirementAssignmentsTab';
+// import { RequirementAssignmentsTab } from '@/components/requirements/RequirementAssignmentsTab';
 import {
   RequirementNotesTab,
   RequirementDocumentsTab,
   RequirementActivityTab,
 } from '@/components/requirements/RequirementNotesDocsActivityTabs';
+import { RequirementAssignmentsTab } from './_components/RequirementAssignmentsTab';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -1881,10 +1882,16 @@ export default function RequirementDetailPage() {
                       · {(req as any).businessUnit.name}
                     </span>
                   )}
-                  {req.location && (
+                  {((req as any).city || (req as any).state) && (
                     <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                       <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                      {req.location}
+                      {[(req as any).city, (req as any).state].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                  {(req as any).respondBy && (
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Fill by {format(new Date((req as any).respondBy), 'dd MMM yyyy')}
                     </span>
                   )}
                   {req.turnaroundDays && (
@@ -1893,12 +1900,12 @@ export default function RequirementDetailPage() {
                       {req.turnaroundDays}d TAT
                     </span>
                   )}
-                  {req.respondBy && (
+                  {/* {req.respondBy && (
                     <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
                       {format(new Date(req.respondBy), 'dd MMM yyyy')}
                     </span>
-                  )}
+                  )} */}
                 </div>
 
                 {assignments.length > 0 && (
@@ -2196,7 +2203,22 @@ export default function RequirementDetailPage() {
           <RequirementOverviewTab requirement={req} />
         </TabsContent>
         <TabsContent value="assignments" className="flex-1 overflow-y-auto mt-0 p-6">
-          <RequirementAssignmentsTab requirementId={id} canEdit={canEdit} />
+          {' '}
+          <TabsContent value="assignments" className="flex-1 overflow-y-auto mt-0 p-6">
+            <RequirementAssignmentsTab
+              requirementId={id}
+              canEdit={canEdit}
+              req={{
+                id: req.id,
+                reqCode: req.reqCode,
+                title: req.title,
+                totalOpenings: req.totalOpenings,
+                deadline: (req as any).respondBy ?? null,
+                client: (req as any).client ?? null,
+                businessUnit: (req as any).businessUnit ?? null,
+              }}
+            />
+          </TabsContent>
         </TabsContent>
         <TabsContent value="notes" className="flex-1 overflow-y-auto mt-0 p-6">
           <RequirementNotesTab

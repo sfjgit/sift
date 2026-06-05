@@ -5,8 +5,8 @@
 
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useMemo, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search,
@@ -75,15 +75,19 @@ interface Requirement {
   title: string;
   status: string;
   priority: string;
+  jobOpenFor?: string;
   totalOpenings: number;
-  filledOpenings: number;
-  location: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
   remoteType?: string;
   jobType: string;
   createdAt: string;
   serviceLineId?: string | null;
   isRespondByBreached?: boolean;
   isTurnaroundBreached?: boolean;
+  closureReason?: string | null;
+  jdParseStatus?: string | null;
   client?: { id: string; name: string } | null;
   businessUnit?: { id: string; name: string } | null;
   serviceLine?: { id: string; name: string } | null;
@@ -253,6 +257,83 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
+// ─── useFilters — single source of truth (URL search params) ─────────────────
+
+function useFilters() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const search = searchParams.get('search') ?? '';
+  const status = searchParams.get('status') ?? '';
+  const priority = searchParams.get('priority') ?? '';
+  const serviceLineId = searchParams.get('serviceLineId') ?? '';
+  const clientId = searchParams.get('clientId') ?? '';
+  const buId = searchParams.get('buId') ?? '';
+  const page = Number(searchParams.get('page') ?? '1');
+  const limit = Number(searchParams.get('limit') ?? '20');
+
+  // Build a new URLSearchParams merging current params with a patch,
+  // then push to router — keeps unrelated params intact.
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === '') {
+          next.delete(k);
+        } else {
+          next.set(k, v);
+        }
+      }
+      router.push(`${pathname}?${next.toString()}`);
+    },
+    [router, pathname, searchParams]
+  );
+
+  const setSearch = (v: string) => setParams({ search: v, page: null });
+  const setStatus = (v: string) => setParams({ status: v, page: null });
+  const setPriority = (v: string) => setParams({ priority: v, page: null });
+  const setServiceLineId = (v: string) => setParams({ serviceLineId: v, page: null });
+  const setClientId = (v: string) => setParams({ clientId: v, page: null });
+  const setBuId = (v: string) => setParams({ buId: v, page: null });
+  const setPage = (v: number) => setParams({ page: String(v) });
+  const setLimit = (v: number) => setParams({ limit: String(v), page: null });
+
+  const clearAll = () =>
+    setParams({
+      search: null,
+      status: null,
+      priority: null,
+      serviceLineId: null,
+      clientId: null,
+      buId: null,
+      page: null,
+    });
+
+  const activeFiltersCount = [status, buId, serviceLineId, clientId].filter(Boolean).length;
+
+  return {
+    search,
+    status,
+    priority,
+    serviceLineId,
+    clientId,
+    buId,
+    page,
+    limit,
+    setSearch,
+    setStatus,
+    setPriority,
+    setServiceLineId,
+    setClientId,
+    setBuId,
+    setPage,
+    setLimit,
+    clearAll,
+    activeFiltersCount,
+  };
+}
+
 // ─── Mobile Filter Sheet ──────────────────────────────────────────────────────
 
 function MobileFilterSheet({
@@ -260,13 +341,13 @@ function MobileFilterSheet({
   onClose,
   status,
   setStatus,
-  selectedBuId,
-  setSelectedBuId,
+  buId,
+  setBuId,
   serviceLineId,
   setServiceLineId,
-  selectedClientId,
-  setSelectedClientId,
-  resetPage,
+  clientId,
+  setClientId,
+  clearAll,
   byStatus,
   busData,
   slData,
@@ -275,18 +356,19 @@ function MobileFilterSheet({
   slLoading,
   clientsLoading,
   totalJobs,
+  activeFiltersCount,
 }: {
   open: boolean;
   onClose: () => void;
   status: string;
   setStatus: (v: string) => void;
-  selectedBuId: string;
-  setSelectedBuId: (v: string) => void;
+  buId: string;
+  setBuId: (v: string) => void;
   serviceLineId: string;
   setServiceLineId: (v: string) => void;
-  selectedClientId: string;
-  setSelectedClientId: (v: string) => void;
-  resetPage: () => void;
+  clientId: string;
+  setClientId: (v: string) => void;
+  clearAll: () => void;
   byStatus: Record<string, number>;
   busData: BusinessUnit[] | null | undefined;
   slData: ServiceLine[] | null | undefined;
@@ -295,11 +377,8 @@ function MobileFilterSheet({
   slLoading: boolean;
   clientsLoading: boolean;
   totalJobs: number;
+  activeFiltersCount: number;
 }) {
-  const activeFiltersCount = [status, selectedBuId, serviceLineId, selectedClientId].filter(
-    Boolean
-  ).length;
-
   return (
     <Sheet
       open={open}
@@ -315,11 +394,8 @@ function MobileFilterSheet({
               {activeFiltersCount > 0 && (
                 <button
                   onClick={() => {
-                    setStatus('');
-                    setSelectedBuId('');
-                    setServiceLineId('');
-                    setSelectedClientId('');
-                    resetPage();
+                    clearAll();
+                    onClose();
                   }}
                   className="text-[11px] text-red-500 font-medium hover:underline"
                 >
@@ -345,9 +421,7 @@ function MobileFilterSheet({
               <button
                 key={s.key}
                 onClick={() => {
-                  // @ts-expect-error err
-                  setStatus(p => (p === s.key ? '' : s.key));
-                  resetPage();
+                  setStatus(isActive ? '' : s.key);
                   onClose();
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'}`}
@@ -375,35 +449,27 @@ function MobileFilterSheet({
               </p>
               <button
                 onClick={() => {
-                  setSelectedBuId('');
-                  resetPage();
+                  setBuId('');
                   onClose();
                 }}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!selectedBuId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!buId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
               >
                 All BUs
               </button>
-              {busLoading ? (
-                <div className="space-y-1">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-7 w-full rounded-lg" />
+              {busLoading
+                ? [1, 2, 3].map(i => <Skeleton key={i} className="h-7 w-full rounded-lg" />)
+                : (busData ?? []).map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setBuId(item.id === buId ? '' : item.id);
+                        onClose();
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${buId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                    >
+                      {item.name}
+                    </button>
                   ))}
-                </div>
-              ) : (
-                (busData ?? []).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedBuId(item.id === selectedBuId ? '' : item.id);
-                      resetPage();
-                      onClose();
-                    }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${selectedBuId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
             </>
           )}
 
@@ -416,34 +482,26 @@ function MobileFilterSheet({
               <button
                 onClick={() => {
                   setServiceLineId('');
-                  resetPage();
                   onClose();
                 }}
                 className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!serviceLineId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
               >
                 All Service Lines
               </button>
-              {slLoading ? (
-                <div className="space-y-1">
-                  {[1, 2].map(i => (
-                    <Skeleton key={i} className="h-7 w-full rounded-lg" />
+              {slLoading
+                ? [1, 2].map(i => <Skeleton key={i} className="h-7 w-full rounded-lg" />)
+                : (slData ?? []).map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setServiceLineId(item.id === serviceLineId ? '' : item.id);
+                        onClose();
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${serviceLineId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                    >
+                      {item.name}
+                    </button>
                   ))}
-                </div>
-              ) : (
-                (slData ?? []).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setServiceLineId(item.id === serviceLineId ? '' : item.id);
-                      resetPage();
-                      onClose();
-                    }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${serviceLineId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
             </>
           )}
 
@@ -455,35 +513,27 @@ function MobileFilterSheet({
               </p>
               <button
                 onClick={() => {
-                  setSelectedClientId('');
-                  resetPage();
+                  setClientId('');
                   onClose();
                 }}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!selectedClientId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!clientId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
               >
                 All Clients
               </button>
-              {clientsLoading ? (
-                <div className="space-y-1">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-7 w-full rounded-lg" />
+              {clientsLoading
+                ? [1, 2, 3].map(i => <Skeleton key={i} className="h-7 w-full rounded-lg" />)
+                : (clientsData ?? []).map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setClientId(item.id === clientId ? '' : item.id);
+                        onClose();
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${clientId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
+                    >
+                      {item.name}
+                    </button>
                   ))}
-                </div>
-              ) : (
-                (clientsData ?? []).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedClientId(item.id === selectedClientId ? '' : item.id);
-                      resetPage();
-                      onClose();
-                    }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${selectedClientId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
             </>
           )}
         </div>
@@ -552,7 +602,6 @@ function CandidateDrawer({
             {activeStage ? activeStage.label : 'All Stages'} · {total} candidate
             {total !== 1 ? 's' : ''}
           </p>
-          {/* Stage tabs — horizontal scroll on mobile */}
           <div className="flex gap-1 flex-nowrap overflow-x-auto pb-3 scrollbar-none -mx-1 px-1">
             <button
               onClick={() => setActiveStageId(null)}
@@ -772,7 +821,7 @@ function SidebarSection({
   );
 }
 
-// ─── Requirement Card — Responsive ───────────────────────────────────────────
+// ─── Requirement Card ─────────────────────────────────────────────────────────
 
 function RequirementCard({
   req,
@@ -813,14 +862,12 @@ function RequirementCard({
     <div
       className={`bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md hover:border-slate-300 ${selected ? 'border-primary/40 bg-primary/[0.02]' : 'border-slate-200'} ${isBreached ? 'border-l-4 border-l-red-500' : ''}`}
     >
-      {/* ── Desktop layout: side-by-side ── */}
+      {/* Desktop */}
       <div className="hidden md:flex">
-        {/* LEFT — job info */}
         <div
           className="flex-1 min-w-0 p-4 cursor-pointer"
           onClick={() => router.push(`/requirements/${idOrSlug}`)}
         >
-          {/* Top row */}
           <div className="flex items-start gap-2 mb-2">
             <div
               onClick={e => {
@@ -868,10 +915,10 @@ function RequirementCard({
                     {req.serviceLine.name}
                   </span>
                 )}
-                {req.location && (
+                {(req.city || req.state) && (
                   <span className="flex items-center gap-1">
                     <MapPin size={11} className="shrink-0" />
-                    {req.location}
+                    {[req.city, req.state].filter(Boolean).join(', ')}
                     {req.remoteType &&
                       ` (${req.remoteType.charAt(0) + req.remoteType.slice(1).toLowerCase()})`}
                   </span>
@@ -928,7 +975,6 @@ function RequirementCard({
           </div>
         </div>
 
-        {/* RIGHT — pipeline stage counts */}
         <div className="flex border-l border-slate-100 w-[55%] shrink-0">
           {relevantStages.length > 0 ? (
             relevantStages.map(stage => {
@@ -954,7 +1000,6 @@ function RequirementCard({
               Loading…
             </div>
           )}
-          {/* Action icons */}
           <div className="flex flex-col items-center justify-center gap-1 px-2 border-l border-slate-100">
             <button
               className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
@@ -1000,9 +1045,8 @@ function RequirementCard({
         </div>
       </div>
 
-      {/* ── Mobile layout: stacked ── */}
+      {/* Mobile */}
       <div className="md:hidden">
-        {/* Mobile top: checkbox + badges + title */}
         <div className="p-3.5">
           <div className="flex items-start gap-2.5 mb-2">
             <div
@@ -1039,7 +1083,6 @@ function RequirementCard({
               >
                 {req.title}
               </h3>
-              {/* Meta row */}
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-slate-500">
                 {req.businessUnit?.name && (
                   <span className="flex items-center gap-1">
@@ -1047,10 +1090,10 @@ function RequirementCard({
                     {req.businessUnit.name}
                   </span>
                 )}
-                {req.location && (
+                {(req.city || req.state) && (
                   <span className="flex items-center gap-1">
                     <MapPin size={10} className="shrink-0" />
-                    {req.location}
+                    {[req.city, req.state].filter(Boolean).join(', ')}
                   </span>
                 )}
                 <span className="flex items-center gap-1">
@@ -1062,32 +1105,27 @@ function RequirementCard({
                 )}
               </div>
             </div>
-            {/* Age + actions */}
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               <span
                 className={`text-[10px] font-medium ${age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'}`}
               >
                 {age}d ago
               </span>
-              <div className="flex items-center gap-0.5">
-                <button
-                  onClick={() => router.push(`/requirements/${idOrSlug}`)}
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"
-                    />
-                  </svg>
-                </button>
-              </div>
+              <button
+                onClick={() => router.push(`/requirements/${idOrSlug}`)}
+                className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"
+                  />
+                </svg>
+              </button>
             </div>
           </div>
-
-          {/* Assignee avatars */}
           {assignees.length > 0 && (
             <div className="flex -space-x-1 ml-6">
               {assignees.map(
@@ -1106,7 +1144,6 @@ function RequirementCard({
           )}
         </div>
 
-        {/* Mobile pipeline stages — horizontal scroll strip */}
         {relevantStages.length > 0 && (
           <div className="border-t border-slate-100">
             <button
@@ -1123,7 +1160,6 @@ function RequirementCard({
               </span>
               {stagesExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
-
             {stagesExpanded && (
               <div className="overflow-x-auto scrollbar-none border-t border-slate-100">
                 <div className="flex min-w-max">
@@ -1186,20 +1222,33 @@ function CardSkeleton() {
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page (inner — needs useSearchParams so wrapped in Suspense) ──────────────
 
-export default function RequirementsPage() {
+function RequirementsPageInner() {
   const axios = useAxios();
   const router = useRouter();
 
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [priority, setPriority] = useState('');
-  const [serviceLineId, setServiceLineId] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedBuId, setSelectedBuId] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const {
+    search,
+    status,
+    priority,
+    serviceLineId,
+    clientId,
+    buId,
+    page,
+    limit,
+    setSearch,
+    setStatus,
+    setPriority,
+    setServiceLineId,
+    setClientId,
+    setBuId,
+    setPage,
+    setLimit,
+    clearAll,
+    activeFiltersCount,
+  } = useFilters();
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -1211,14 +1260,6 @@ export default function RequirementsPage() {
     stageId: string | null;
     stageLabel: string;
   }>({ open: false, requirementId: '', requirementTitle: '', stageId: null, stageLabel: '' });
-
-  function resetPage() {
-    setPage(1);
-  }
-
-  const activeFiltersCount = [status, selectedBuId, serviceLineId, selectedClientId].filter(
-    Boolean
-  ).length;
 
   // ── Pipeline stages
   const { data: stagesData } = useQuery({
@@ -1262,19 +1303,19 @@ export default function RequirementsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Requirements
+  // ── Requirements query — built directly from URL-derived values
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (search) p.set('search', search);
     if (status) p.set('status', status);
     if (priority) p.set('priority', priority);
     if (serviceLineId) p.set('serviceLineId', serviceLineId);
-    if (selectedClientId) p.set('clientId', selectedClientId);
-    if (selectedBuId) p.set('buId', selectedBuId);
+    if (clientId) p.set('clientId', clientId);
+    if (buId) p.set('buId', buId);
     p.set('page', String(page));
     p.set('limit', String(limit));
     return p.toString();
-  }, [search, status, priority, serviceLineId, selectedClientId, selectedBuId, page, limit]);
+  }, [search, status, priority, serviceLineId, clientId, buId, page, limit]);
 
   const { data: reqData, isLoading: reqLoading } = useQuery({
     queryKey: ['requirements', qs],
@@ -1312,7 +1353,7 @@ export default function RequirementsPage() {
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
-      {/* ── Desktop Sidebar ───────────────────────────────────────────────── */}
+      {/* Desktop Sidebar */}
       {hasSidebar && (
         <aside className="hidden md:flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
           <div className="px-4 py-4 border-b border-slate-100 shrink-0">
@@ -1331,10 +1372,7 @@ export default function RequirementsPage() {
               return (
                 <button
                   key={s.key}
-                  onClick={() => {
-                    setStatus(p => (p === s.key ? '' : s.key));
-                    resetPage();
-                  }}
+                  onClick={() => setStatus(isActive ? '' : s.key)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
                   <span className="flex items-center gap-2">
@@ -1357,12 +1395,9 @@ export default function RequirementsPage() {
               icon={Building2}
               loading={busLoading}
               items={busData ?? []}
-              selectedId={selectedBuId}
+              selectedId={buId}
               allLabel="All BUs"
-              onSelect={id => {
-                setSelectedBuId(id);
-                resetPage();
-              }}
+              onSelect={setBuId}
               hidden={busData === null}
             />
 
@@ -1375,10 +1410,7 @@ export default function RequirementsPage() {
               items={slData ?? []}
               selectedId={serviceLineId}
               allLabel="All Service Lines"
-              onSelect={id => {
-                setServiceLineId(id);
-                resetPage();
-              }}
+              onSelect={setServiceLineId}
               hidden={slData === null}
             />
 
@@ -1389,21 +1421,18 @@ export default function RequirementsPage() {
               icon={Briefcase}
               loading={clientsLoading}
               items={clientsData ?? []}
-              selectedId={selectedClientId}
+              selectedId={clientId}
               allLabel="All Clients"
-              onSelect={id => {
-                setSelectedClientId(id);
-                resetPage();
-              }}
+              onSelect={setClientId}
               hidden={clientsData === null}
             />
           </div>
         </aside>
       )}
 
-      {/* ── Main ─────────────────────────────────────────────────────────── */}
+      {/* Main */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* ── Desktop Toolbar ── */}
+        {/* Desktop Toolbar */}
         <div className="hidden md:flex items-center gap-2 px-5 py-3 bg-white border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -1422,26 +1451,20 @@ export default function RequirementsPage() {
               />
               <Input
                 value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  resetPage();
-                }}
+                onChange={e => setSearch(e.target.value)}
                 placeholder="Search requirements…"
                 className="pl-7 h-8 text-sm w-56"
               />
             </div>
             <Select
               value={priority || '_all'}
-              onValueChange={v => {
-                setPriority(v === '_all' ? '' : v);
-                resetPage();
-              }}
+              onValueChange={v => setPriority(v === '_all' ? '' : v)}
             >
               <SelectTrigger className="h-8 text-sm w-32">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_all">All Team</SelectItem>
+                <SelectItem value="_all">All Priority</SelectItem>
                 {ALL_PRIORITIES.map(p => (
                   <SelectItem key={p} value={p}>
                     {p}
@@ -1470,9 +1493,8 @@ export default function RequirementsPage() {
           </div>
         </div>
 
-        {/* ── Mobile Toolbar ── */}
+        {/* Mobile Toolbar */}
         <div className="md:hidden flex items-center gap-2 px-3 py-2.5 bg-white border-b border-slate-200 shrink-0">
-          {/* Filter button */}
           <button
             onClick={() => setMobileFilterOpen(true)}
             className="relative flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors shrink-0"
@@ -1486,7 +1508,6 @@ export default function RequirementsPage() {
             )}
           </button>
 
-          {/* Search */}
           {mobileSearchOpen ? (
             <div className="flex-1 relative flex items-center gap-1">
               <Search
@@ -1496,10 +1517,7 @@ export default function RequirementsPage() {
               <Input
                 autoFocus
                 value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  resetPage();
-                }}
+                onChange={e => setSearch(e.target.value)}
                 placeholder="Search requirements…"
                 className="pl-7 h-8 text-sm flex-1"
               />
@@ -1507,7 +1525,6 @@ export default function RequirementsPage() {
                 onClick={() => {
                   setMobileSearchOpen(false);
                   setSearch('');
-                  resetPage();
                 }}
                 className="p-1 text-slate-400 hover:text-slate-600"
               >
@@ -1523,20 +1540,15 @@ export default function RequirementsPage() {
             </button>
           )}
 
-          {/* Count */}
           {!mobileSearchOpen && (
             <span className="text-[12px] text-slate-500 font-medium ml-auto shrink-0">
               {reqLoading ? '…' : `${total} jobs`}
             </span>
           )}
 
-          {/* Active status chip */}
           {status && !mobileSearchOpen && (
             <button
-              onClick={() => {
-                setStatus('');
-                resetPage();
-              }}
+              onClick={() => setStatus('')}
               className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-[11px] font-medium shrink-0"
             >
               {STATUS_LABEL[status] ?? status}
@@ -1544,7 +1556,6 @@ export default function RequirementsPage() {
             </button>
           )}
 
-          {/* Add button */}
           {canAdd && !mobileSearchOpen && (
             <Button
               size="sm"
@@ -1556,7 +1567,7 @@ export default function RequirementsPage() {
           )}
         </div>
 
-        {/* Cards — scrollable */}
+        {/* Cards */}
         <div className="flex-1 overflow-y-auto min-h-0 px-3 md:px-5 py-3 md:py-4 space-y-2.5 md:space-y-3">
           {reqLoading ? (
             Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
@@ -1579,18 +1590,11 @@ export default function RequirementsPage() {
           )}
         </div>
 
-        {/* ── Pagination bar ── */}
+        {/* Pagination */}
         <div className="shrink-0 flex items-center justify-between px-3 md:px-5 py-2 md:py-2.5 bg-white border-t border-slate-200">
-          {/* Items per page — hidden on small mobile */}
           <div className="hidden sm:flex items-center gap-2 text-[13px] text-slate-500">
             <span>Items per page:</span>
-            <Select
-              value={String(limit)}
-              onValueChange={v => {
-                setLimit(Number(v));
-                resetPage();
-              }}
-            >
+            <Select value={String(limit)} onValueChange={v => setLimit(Number(v))}>
               <SelectTrigger className="h-7 w-20 text-xs border-slate-200">
                 <SelectValue />
               </SelectTrigger>
@@ -1616,14 +1620,14 @@ export default function RequirementsPage() {
               «
             </button>
             <button
-              onClick={() => setPage(p => p - 1)}
+              onClick={() => setPage(page - 1)}
               disabled={page <= 1}
               className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
             >
               ‹
             </button>
             <button
-              onClick={() => setPage(p => p + 1)}
+              onClick={() => setPage(page + 1)}
               disabled={page >= totalPages}
               className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
             >
@@ -1640,19 +1644,19 @@ export default function RequirementsPage() {
         </div>
       </div>
 
-      {/* ── Mobile Filter Sheet ── */}
+      {/* Mobile Filter Sheet */}
       <MobileFilterSheet
         open={mobileFilterOpen}
         onClose={() => setMobileFilterOpen(false)}
         status={status}
         setStatus={setStatus}
-        selectedBuId={selectedBuId}
-        setSelectedBuId={setSelectedBuId}
+        buId={buId}
+        setBuId={setBuId}
         serviceLineId={serviceLineId}
         setServiceLineId={setServiceLineId}
-        selectedClientId={selectedClientId}
-        setSelectedClientId={setSelectedClientId}
-        resetPage={resetPage}
+        clientId={clientId}
+        setClientId={setClientId}
+        clearAll={clearAll}
         byStatus={byStatus}
         busData={busData}
         slData={slData}
@@ -1661,19 +1665,27 @@ export default function RequirementsPage() {
         slLoading={slLoading}
         clientsLoading={clientsLoading}
         totalJobs={totalJobs}
+        activeFiltersCount={activeFiltersCount}
       />
 
-      {/* ── Candidate Drawer ── */}
+      {/* Candidate Drawer */}
       <CandidateDrawer
         open={drawer.open}
         onClose={() => setDrawer(d => ({ ...d, open: false }))}
         requirementId={drawer.requirementId}
         requirementTitle={drawer.requirementTitle}
         stageId={drawer.stageId}
-        // @ts-expect-error err
-        stageLabel={drawer.stageLabel}
         allStages={allStages}
       />
     </div>
+  );
+}
+
+// useSearchParams needs Suspense boundary
+export default function RequirementsPage() {
+  return (
+    <Suspense fallback={null}>
+      <RequirementsPageInner />
+    </Suspense>
   );
 }

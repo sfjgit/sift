@@ -21,10 +21,16 @@ import {
   UserSquare2,
   ClipboardList,
   UserSearch,
+  Kanban,
+  BarChart2,
 } from 'lucide-react';
 
 const NAV = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Pipeline', href: '/pipeline-stages', icon: Kanban, module: 'pipeline-stages' },
+
+  { label: 'Reports', href: '/reports', icon: BarChart2, module: 'reports' },
+
   { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
   { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
   { label: 'Candidates', href: '/candidates', icon: UserSearch, module: 'candidates' },
@@ -43,7 +49,7 @@ const NAV = [
 type TooltipState = { label: string; top: number; left: number } | null;
 
 export function Sidebar() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const pathname = usePathname();
   const { user, can } = useAuth();

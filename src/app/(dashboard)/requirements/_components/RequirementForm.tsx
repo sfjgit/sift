@@ -1,6 +1,6 @@
 /* eslint-disable react/no-unescaped-entities */
 // File: RequirementForm.tsx
-// Path: src/components/requirements/RequirementForm.tsx
+// Path: src/app/(dashboard)/requirements/_components/RequirementForm.tsx
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
@@ -26,8 +26,11 @@ import {
   DollarSign,
   MapPin,
   Tag,
-  Clock,
   CheckCircle,
+  Users,
+  GraduationCap,
+  Target,
+  ChevronDown,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -42,48 +45,76 @@ import {
 } from '@/components/ui/select';
 import { useAxios } from '@/hooks/useAxios';
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
-// FIX: jobType and remoteType must have defaults or be optional so RHF/Zod
-// doesn't fire a required error before the user has touched them.
-// Using .optional() here and validating on submit is the safest pattern.
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHEMA
+// ─────────────────────────────────────────────────────────────────────────────
 
 const schema = z.object({
   clientSpocId: z.string().min(1, 'SPOC is required'),
   title: z.string().min(1, 'Title is required').max(300).trim(),
   description: z.string().max(5000).optional().nullable(),
-  // DB enum: CONTRACT | PERMANENT | CONTRACT_TO_HIRE | FREELANCE
+
   jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
-  // DB enum: ONSITE | REMOTE | HYBRID
   remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
+  jobOpenFor: z.enum(['EXTERNAL', 'INTERNAL', 'BOTH']).default('EXTERNAL'),
+
   totalOpenings: z.number().min(1).default(1),
-  location: z.string().max(200).optional().nullable(),
+
+  // location — split fields
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
   country: z.string().max(100).optional().nullable(),
+
   experienceMin: z.number().min(0).optional().nullable(),
   experienceMax: z.number().min(0).optional().nullable(),
+
   salaryMin: z.number().min(0).optional().nullable(),
   salaryMax: z.number().min(0).optional().nullable(),
-  // DB enum: MONTHLY | ANNUAL | HOURLY | DAILY
   salaryType: z.enum(['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY']).optional().nullable(),
-  skills: z.array(z.string().trim().min(1)).default([]),
+  salaryCurrency: z.string().default('INR'),
+  bonusAmount: z.number().min(0).optional().nullable(),
+  hideSalaryFromCandidate: z.boolean().default(false),
+  showMedianSalary: z.boolean().default(false),
+
+  // skills — split into primary and key
+  primarySkills: z.array(z.string().trim().min(1)).default([]),
+  keySkills: z.array(z.string().trim().min(1)).default([]),
+
+  education: z.string().max(300).optional().nullable(),
+  functionalArea: z.string().max(200).optional().nullable(),
+  shift: z.string().max(100).optional().nullable(),
+
+  targetCompanies: z.array(z.string().trim().min(1)).default([]),
+  noPoachCompanies: z.array(z.string().trim().min(1)).default([]),
+
   startDate: z.string().optional().nullable(),
-  endDate: z.string().optional().nullable(),
+  targetDate: z.string().optional().nullable(),
   respondBy: z.string().optional().nullable(),
   turnaroundDays: z.number().min(1).optional().nullable(),
+
   jdFileKey: z.string().optional().nullable(),
   jdFileName: z.string().optional().nullable(),
   jdFileType: z.string().optional().nullable(),
+
+  // JD parse metadata — set by form after /jd/parse, not user-entered
+  jdParsedAt: z.string().optional().nullable(),
+  jdParseStatus: z.enum(['PARSED', 'FAILED', 'MANUALLY_OVERRIDDEN']).optional().nullable(),
+  jdParsedFields: z.array(z.string()).default([]),
 });
 
 export type RequirementFormValues = z.infer<typeof schema>;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface MyClient {
   id: string;
   name: string;
   vmsName?: string;
 }
+
 interface ClientSpoc {
   id: string;
   isPrimary: boolean;
@@ -92,7 +123,32 @@ interface ClientSpoc {
   businessUnit: { id: string; name: string };
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+interface ParsedJD {
+  title: string | null;
+  description: string | null;
+  primarySkills: string[];
+  keySkills: string[];
+  experienceMin: number | null;
+  experienceMax: number | null;
+  education: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryType: 'MONTHLY' | 'ANNUAL' | 'HOURLY' | 'DAILY' | null;
+  jobType: 'CONTRACT' | 'PERMANENT' | 'CONTRACT_TO_HIRE' | 'FREELANCE' | null;
+  remoteType: 'ONSITE' | 'REMOTE' | 'HYBRID' | null;
+  shift: string | null;
+  functionalArea: string | null;
+  targetCompanies: string[];
+  noPoachCompanies: string[];
+  bonusAmount: number | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 function toDateInput(val?: string | null) {
   if (!val) return '';
@@ -102,6 +158,7 @@ function toDateInput(val?: string | null) {
     return '';
   }
 }
+
 function toISOOrNull(val?: string | null) {
   if (!val) return null;
   try {
@@ -111,7 +168,9 @@ function toISOOrNull(val?: string | null) {
   }
 }
 
-// ─── Shared class strings ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED STYLES
+// ─────────────────────────────────────────────────────────────────────────────
 
 const inputCls =
   'h-10 text-[13.5px] font-medium text-slate-900 border-slate-300 bg-white placeholder:text-slate-400 placeholder:font-normal focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary rounded-lg transition-colors';
@@ -119,7 +178,9 @@ const inputCls =
 const selectTriggerCls =
   'h-10 text-[13.5px] font-medium text-slate-900 border-slate-300 bg-white focus:ring-2 focus:ring-primary/30 focus:border-primary rounded-lg transition-colors data-[placeholder]:text-slate-400 data-[placeholder]:font-normal';
 
-// ─── Field primitives ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// PRIMITIVES
+// ─────────────────────────────────────────────────────────────────────────────
 
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
@@ -152,20 +213,20 @@ function ReadonlyField({ label, value }: { label: string; value?: string }) {
   );
 }
 
-// ─── Section wrapper ──────────────────────────────────────────────────────────
-
 function Section({
   icon: Icon,
   title,
   subtitle,
   accentClass,
   children,
+  badge,
 }: {
   icon: React.ElementType;
   title: string;
   subtitle?: string;
   accentClass: string;
   children: React.ReactNode;
+  badge?: React.ReactNode;
 }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -173,7 +234,7 @@ function Section({
         <div className="w-9 h-9 rounded-xl bg-white/80 flex items-center justify-center shrink-0 shadow-sm border border-white/60">
           <Icon size={17} className="text-slate-700" />
         </div>
-        <div>
+        <div className="flex-1">
           <h3 className="text-[13.5px] font-bold text-slate-900 leading-none tracking-tight">
             {title}
           </h3>
@@ -181,121 +242,220 @@ function Section({
             <p className="text-[11.5px] text-slate-500 mt-0.5 font-normal">{subtitle}</p>
           )}
         </div>
+        {badge}
       </div>
       <div className="px-6 py-5">{children}</div>
     </div>
   );
 }
 
-// ─── JD Section ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SKILL TAG INPUT — reusable for primarySkills, keySkills, targetCompanies, noPoach
+// ─────────────────────────────────────────────────────────────────────────────
 
-function JdSection({
+function TagInput({
+  values,
+  onChange,
+  placeholder,
+  colorClass = 'bg-slate-100 text-slate-700 border-slate-200',
+}: {
+  values: string[];
+  onChange: (v: string[]) => void;
+  placeholder: string;
+  colorClass?: string;
+}) {
+  const [input, setInput] = useState('');
+
+  function add() {
+    const t = input.trim();
+    if (!t || values.includes(t)) return;
+    onChange([...values, t]);
+    setInput('');
+  }
+
+  function remove(s: string) {
+    onChange(values.filter(x => x !== s));
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <Input
+          className={`${inputCls} flex-1`}
+          placeholder={placeholder}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-10 px-4 shrink-0 font-semibold text-[13px]"
+          onClick={add}
+        >
+          <Plus size={13} className="mr-1" /> Add
+        </Button>
+      </div>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {values.map(s => (
+            <span
+              key={s}
+              className={`flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-full border ${colorClass}`}
+            >
+              {s}
+              <button
+                type="button"
+                onClick={() => remove(s)}
+                className="opacity-50 hover:opacity-100 transition-opacity"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JD PARSER SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+function JdParserSection({
+  onParsed,
   onManualUpload,
   jdDisplayName,
   onRemoveJd,
   jdUploading,
   jdInputRef,
   onFileChange,
+  isParsing,
+  parseError,
+  parsedAt,
 }: {
+  onParsed: (parsed: ParsedJD, fileName: string) => void;
   onManualUpload: () => void;
   jdDisplayName: string;
   onRemoveJd: () => void;
   jdUploading: boolean;
   jdInputRef: React.RefObject<HTMLInputElement>;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  isParsing: boolean;
+  parseError: string | null;
+  parsedAt: string | null;
 }) {
   return (
     <div className="space-y-3">
-      {/* AI parse — WIP banner */}
+      {/* AI Parse zone */}
       <div className="relative rounded-xl border-2 border-dashed border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-5 overflow-hidden">
-        <div className="absolute top-3 right-3">
-          <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-            <Clock size={9} /> In Progress
-          </span>
-        </div>
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
-            <Wand2 size={18} className="text-violet-600" />
+            {isParsing ? (
+              <Loader2 size={18} className="text-violet-600 animate-spin" />
+            ) : (
+              <Wand2 size={18} className="text-violet-600" />
+            )}
           </div>
-          <div className="flex-1 min-w-0 pr-16">
+          <div className="flex-1 min-w-0">
             <h4 className="text-[13px] font-bold text-violet-900 mb-0.5 flex items-center gap-1.5">
               <Sparkles size={12} className="text-violet-500" />
               AI-Powered JD Parser
             </h4>
             <p className="text-[12px] text-violet-700/70 leading-relaxed">
-              Upload a JD and we'll auto-extract title, skills, experience, and salary range.
+              {isParsing
+                ? 'Extracting and parsing your JD with AI…'
+                : parsedAt
+                  ? `Parsed on ${new Date(parsedAt).toLocaleString()} — fields auto-filled below. Review and adjust.`
+                  : "Upload a JD and we'll auto-fill title, skills, experience, salary, location and more."}
             </p>
-            <div className="flex flex-wrap gap-1.5 mt-2.5">
-              {['Auto-fills title', 'Extracts skills', 'Detects salary', 'Parses experience'].map(
-                f => (
-                  <span
-                    key={f}
-                    className="text-[10px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-semibold border border-violet-200"
-                  >
-                    {f}
-                  </span>
-                )
-              )}
-            </div>
+            {!isParsing && !parsedAt && (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {['Title', 'Primary skills', 'Experience', 'Salary', 'Location', 'Job type'].map(
+                  f => (
+                    <span
+                      key={f}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 font-semibold border border-violet-200"
+                    >
+                      {f}
+                    </span>
+                  )
+                )}
+              </div>
+            )}
+            {parsedAt && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <CheckCircle size={12} className="text-emerald-500" />
+                <span className="text-[11px] text-emerald-700 font-semibold">
+                  Fields auto-filled — you can still edit everything
+                </span>
+              </div>
+            )}
+            {parseError && (
+              <p className="text-[11px] text-red-500 mt-1.5 flex items-center gap-1">
+                <AlertCircle size={11} /> {parseError}
+              </p>
+            )}
           </div>
         </div>
-        <div className="mt-4 rounded-lg border-2 border-dashed border-violet-200 bg-white/60 py-5 flex flex-col items-center gap-2 opacity-50 cursor-not-allowed select-none">
-          <Upload size={20} className="text-violet-400" />
-          <p className="text-[12px] text-violet-600 font-semibold">Drop JD here to auto-parse</p>
-          <p className="text-[10px] text-violet-400">PDF, DOC, DOCX · Coming soon</p>
-        </div>
-      </div>
 
-      {/* Manual upload */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-        <p className="text-[10.5px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-          <FileText size={11} /> Manual JD Upload
-        </p>
-        <input
-          ref={jdInputRef}
-          type="file"
-          accept=".pdf,.doc,.docx"
-          className="hidden"
-          onChange={onFileChange}
-        />
-        {jdDisplayName ? (
-          <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-            <CheckCircle size={15} className="text-emerald-500 shrink-0" />
-            <span className="text-[13px] text-emerald-800 font-semibold flex-1 truncate">
-              {jdDisplayName}
-            </span>
+        {/* Drop / parse zone */}
+        <div className="mt-4">
+          <input
+            ref={jdInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx"
+            className="hidden"
+            onChange={onFileChange}
+          />
+          {jdDisplayName ? (
+            <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+              <CheckCircle size={15} className="text-emerald-500 shrink-0" />
+              <span className="text-[13px] text-emerald-800 font-semibold flex-1 truncate">
+                {jdDisplayName}
+              </span>
+              <button
+                type="button"
+                onClick={onRemoveJd}
+                className="text-emerald-400 hover:text-red-500 transition-colors shrink-0"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={onRemoveJd}
-              className="text-emerald-400 hover:text-red-500 transition-colors shrink-0"
+              onClick={() => jdInputRef.current?.click()}
+              disabled={isParsing || jdUploading}
+              className="w-full flex items-center justify-center gap-2 h-12 rounded-lg border-2 border-dashed border-violet-200 text-[13px] font-semibold text-violet-500 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <X size={14} />
+              {isParsing || jdUploading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Processing…
+                </>
+              ) : (
+                <>
+                  <Upload size={14} /> Drop JD here to auto-parse · PDF, DOC, DOCX
+                </>
+              )}
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={onManualUpload}
-            disabled={jdUploading}
-            className="w-full flex items-center justify-center gap-2 h-10 rounded-lg border-2 border-dashed border-slate-300 text-[13px] font-semibold text-slate-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all disabled:opacity-50"
-          >
-            {jdUploading ? (
-              <>
-                <Loader2 size={14} className="animate-spin" /> Uploading…
-              </>
-            ) : (
-              <>
-                <Upload size={14} /> Upload JD (PDF / DOC / DOCX)
-              </>
-            )}
-          </button>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// PROPS
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
   mode: 'create' | 'edit';
@@ -305,7 +465,9 @@ interface Props {
   onCancel: () => void;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCancel }: Props) {
   const axios = useAxios();
@@ -317,33 +479,28 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
     setValue,
     reset,
     setError,
+    watch,
     formState: { errors },
   } = useForm<RequirementFormValues>({
-    // @ts-expect-error zod resolver type
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as any,
     defaultValues: {
       title: '',
       description: '',
       clientSpocId: '',
-      // FIX: do NOT set jobType/remoteType to undefined — leave them absent so
-      // the Select starts in true placeholder state. Zod will catch missing on submit.
       priority: 'MEDIUM',
+      jobOpenFor: 'EXTERNAL',
+      salaryCurrency: 'INR',
       totalOpenings: 1,
-      location: '',
+      city: '',
+      state: '',
       country: '',
-      salaryMin: undefined,
-      salaryMax: undefined,
-      salaryType: undefined,
-      experienceMin: undefined,
-      experienceMax: undefined,
-      startDate: '',
-      endDate: '',
-      respondBy: '',
-      turnaroundDays: undefined,
-      skills: [],
-      jdFileKey: null,
-      jdFileName: null,
-      jdFileType: null,
+      primarySkills: [],
+      keySkills: [],
+      targetCompanies: [],
+      noPoachCompanies: [],
+      jdParsedFields: [],
+      hideSalaryFromCandidate: false,
+      showMedianSalary: false,
       ...defaultValues,
     },
   });
@@ -353,17 +510,45 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(defaultValues)]);
 
-  const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedSpoc, setSelectedSpoc] = useState<ClientSpoc | null>(null);
-  const [skillInput, setSkillInput] = useState('');
-  const [skills, setSkills] = useState<string[]>(defaultValues?.skills ?? []);
-  const [jdUploading, setJdUploading] = useState(false);
-  const [jdDisplayName, setJdDisplayName] = useState(defaultValues?.jdFileName ?? '');
-  const jdInputRef = useRef<HTMLInputElement>(null);
+  // controlled array state — kept in sync with RHF via setValue
+  const [primarySkills, setPrimarySkills] = useState<string[]>(defaultValues?.primarySkills ?? []);
+  const [keySkills, setKeySkills] = useState<string[]>(defaultValues?.keySkills ?? []);
+  const [targetCompanies, setTargetCompanies] = useState<string[]>(
+    defaultValues?.targetCompanies ?? []
+  );
+  const [noPoachCompanies, setNoPoachCompanies] = useState<string[]>(
+    defaultValues?.noPoachCompanies ?? []
+  );
 
   useEffect(() => {
-    setValue('skills', skills);
-  }, [skills]);
+    setValue('primarySkills', primarySkills);
+  }, [primarySkills]);
+  useEffect(() => {
+    setValue('keySkills', keySkills);
+  }, [keySkills]);
+  useEffect(() => {
+    setValue('targetCompanies', targetCompanies);
+  }, [targetCompanies]);
+  useEffect(() => {
+    setValue('noPoachCompanies', noPoachCompanies);
+  }, [noPoachCompanies]);
+
+  // client + spoc
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedSpoc, setSelectedSpoc] = useState<ClientSpoc | null>(null);
+
+  // JD
+  const [jdUploading, setJdUploading] = useState(false);
+  const [jdDisplayName, setJdDisplayName] = useState(defaultValues?.jdFileName ?? '');
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [parsedAt, setParsedAt] = useState<string | null>(defaultValues?.jdParsedAt ?? null);
+  const jdInputRef = useRef<HTMLInputElement>(null!);
+
+  const hideSalary = watch('hideSalaryFromCandidate');
+  const showMedian = watch('showMedianSalary');
+
+  // ── queries ────────────────────────────────────────────────────────────────
 
   const { data: clientsRes } = useQuery<{ data: MyClient[] }>({
     queryKey: ['my-clients'],
@@ -386,24 +571,100 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
     setValue('clientSpocId', '');
   }, [selectedClientId]);
 
-  async function handleJdUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  // ── JD parse (upload → extract → GPT → autofill) ──────────────────────────
+
+  async function handleJdFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setJdUploading(true);
+
+    setIsParsing(true);
+    setParseError(null);
+
     try {
+      // 1. parse via /jd/parse — returns ParsedJD + uploads to S3 inside the endpoint
       const fd = new FormData();
-      fd.append('file', file);
-      fd.append('folder', 'requirements/jd');
-      const res = await axios.post('/uploads/single', fd);
-      setValue('jdFileKey', res.data.key);
-      setValue('jdFileName', res.data.originalName);
-      setValue('jdFileType', res.data.mimeType);
-      setJdDisplayName(res.data.originalName);
-      toast.success('JD uploaded');
+      fd.append('jd', file);
+
+      const res = await axios.post<{
+        success: boolean;
+        data: ParsedJD;
+        meta: { fileName: string; fileSizeBytes: number; charCount: number };
+        jdFileKey: string;
+        jdFileName: string;
+        jdFileType: string;
+      }>('/jd/parse', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+
+      const parsed = res.data.data;
+      const fileName = res.data.meta.fileName;
+
+      // 2. store jd file fields (backend returns S3 key after upload)
+      setValue('jdFileKey', res.data.jdFileKey ?? null);
+      setValue('jdFileName', res.data.jdFileName ?? fileName);
+      setValue('jdFileType', res.data.jdFileType ?? file.type);
+      setJdDisplayName(res.data.jdFileName ?? fileName);
+
+      // 3. autofill form fields — track which were filled
+      const filled: string[] = [];
+
+      function fill<K extends keyof RequirementFormValues>(
+        field: K,
+        val: RequirementFormValues[K] | null | undefined
+      ) {
+        if (val === null || val === undefined) return;
+        setValue(field, val);
+        filled.push(field as string);
+      }
+
+      fill('title', parsed.title);
+      fill('description', parsed.description);
+      fill('jobType', parsed.jobType);
+      fill('remoteType', parsed.remoteType);
+      fill('experienceMin', parsed.experienceMin as any);
+      fill('experienceMax', parsed.experienceMax as any);
+      fill('salaryMin', parsed.salaryMin as any);
+      fill('salaryMax', parsed.salaryMax as any);
+      fill('salaryType', parsed.salaryType);
+      fill('education', parsed.education);
+      fill('functionalArea', parsed.functionalArea);
+      fill('shift', parsed.shift);
+      fill('city', parsed.city);
+      fill('state', parsed.state);
+      fill('country', parsed.country);
+      fill('bonusAmount', parsed.bonusAmount as any);
+
+      // arrays
+      if (parsed.primarySkills.length) {
+        setPrimarySkills(parsed.primarySkills);
+        filled.push('primarySkills');
+      }
+      if (parsed.keySkills.length) {
+        setKeySkills(parsed.keySkills);
+        filled.push('keySkills');
+      }
+      if (parsed.targetCompanies.length) {
+        setTargetCompanies(parsed.targetCompanies);
+        filled.push('targetCompanies');
+      }
+      if (parsed.noPoachCompanies.length) {
+        setNoPoachCompanies(parsed.noPoachCompanies);
+        filled.push('noPoachCompanies');
+      }
+
+      // parse metadata
+      const now = new Date().toISOString();
+      setValue('jdParsedAt', now);
+      setValue('jdParseStatus', 'PARSED');
+      setValue('jdParsedFields', filled);
+      setParsedAt(now);
+
+      toast.success(`JD parsed — ${filled.length} fields auto-filled`);
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? 'JD upload failed');
+      const msg = err?.response?.data?.message ?? 'JD parsing failed';
+      setParseError(msg);
+      setValue('jdParseStatus', 'FAILED');
+      toast.error(msg);
     } finally {
-      setJdUploading(false);
+      setIsParsing(false);
       if (jdInputRef.current) jdInputRef.current.value = '';
     }
   }
@@ -412,29 +673,28 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
     setValue('jdFileKey', null);
     setValue('jdFileName', null);
     setValue('jdFileType', null);
+    setValue('jdParsedAt', null);
+    setValue('jdParseStatus', null);
+    setValue('jdParsedFields', []);
     setJdDisplayName('');
+    setParsedAt(null);
+    setParseError(null);
     if (jdInputRef.current) jdInputRef.current.value = '';
   }
 
-  function addSkill() {
-    const t = skillInput.trim();
-    if (!t || skills.includes(t)) return;
-    setSkills(p => [...p, t]);
-    setSkillInput('');
-  }
-
-  function removeSkill(s: string) {
-    setSkills(p => p.filter(x => x !== s));
-  }
+  // ── submit ─────────────────────────────────────────────────────────────────
 
   async function handleFormSubmit(data: RequirementFormValues) {
     try {
       await onSubmit({
         ...data,
         startDate: toISOOrNull(data.startDate),
-        endDate: toISOOrNull(data.endDate),
+        targetDate: toISOOrNull(data.targetDate),
         respondBy: toISOOrNull(data.respondBy),
-        skills,
+        primarySkills,
+        keySkills,
+        targetCompanies,
+        noPoachCompanies,
       });
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? 'Something went wrong';
@@ -451,23 +711,37 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <form onSubmit={handleSubmit(handleFormSubmit as any)} className="space-y-5">
-      {/* ── 1. Job Description / JD Parser ── */}
+      {/* ── 1. JD Parser ── */}
       <Section
         icon={Sparkles}
         title="Job Description"
-        subtitle="Upload JD for AI parsing (coming soon) or attach manually"
+        subtitle="Upload JD — AI will auto-fill the form"
         accentClass="bg-gradient-to-r from-violet-50 to-indigo-50"
+        badge={
+          parsedAt ? (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+              <CheckCircle size={9} /> Parsed
+            </span>
+          ) : null
+        }
       >
-        <JdSection
+        <JdParserSection
+          onParsed={() => {}}
           onManualUpload={() => jdInputRef.current?.click()}
           jdDisplayName={jdDisplayName}
           onRemoveJd={removeJd}
           jdUploading={jdUploading}
-          // @ts-expect-error ref type
           jdInputRef={jdInputRef}
-          onFileChange={handleJdUpload}
+          onFileChange={handleJdFileChange}
+          isParsing={isParsing}
+          parseError={parseError}
+          parsedAt={parsedAt}
         />
       </Section>
 
@@ -528,7 +802,6 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
                 </Select>
               </div>
             )}
-
             <div>
               <FieldLabel required>SPOC</FieldLabel>
               <Controller
@@ -566,7 +839,6 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
               <FieldError message={errors.clientSpocId?.message} />
             </div>
           </div>
-
           {selectedSpoc && (
             <div className="grid grid-cols-2 gap-4">
               <ReadonlyField label="Business Unit" value={selectedSpoc.businessUnit.name} />
@@ -584,15 +856,14 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
         accentClass="bg-emerald-50"
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* jobType — FIX: was using undefined default, causing uncontrolled Select */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <FieldLabel required>Job Type</FieldLabel>
               <Controller
                 control={control}
                 name="jobType"
                 render={({ field }) => (
-                  <Select value={field.value ?? ''} onValueChange={val => field.onChange(val)}>
+                  <Select value={field.value ?? ''} onValueChange={field.onChange}>
                     <SelectTrigger className={selectTriggerCls}>
                       <SelectValue placeholder="Select type…" />
                     </SelectTrigger>
@@ -607,15 +878,13 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
               />
               <FieldError message={errors.jobType?.message} />
             </div>
-
-            {/* remoteType — same fix */}
             <div>
               <FieldLabel required>Remote Type</FieldLabel>
               <Controller
                 control={control}
                 name="remoteType"
                 render={({ field }) => (
-                  <Select value={field.value ?? ''} onValueChange={val => field.onChange(val)}>
+                  <Select value={field.value ?? ''} onValueChange={field.onChange}>
                     <SelectTrigger className={selectTriggerCls}>
                       <SelectValue placeholder="Select mode…" />
                     </SelectTrigger>
@@ -629,7 +898,6 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
               />
               <FieldError message={errors.remoteType?.message} />
             </div>
-
             <div>
               <FieldLabel>Priority</FieldLabel>
               <Controller
@@ -649,9 +917,28 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
                 )}
               />
             </div>
+            <div>
+              <FieldLabel>Open For</FieldLabel>
+              <Controller
+                control={control}
+                name="jobOpenFor"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className={selectTriggerCls}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="EXTERNAL">External</SelectItem>
+                      <SelectItem value="INTERNAL">Internal</SelectItem>
+                      <SelectItem value="BOTH">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div>
               <FieldLabel>Openings</FieldLabel>
               <Input
@@ -663,22 +950,53 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
               <FieldError message={errors.totalOpenings?.message} />
             </div>
             <div>
-              <FieldLabel>Location</FieldLabel>
+              <FieldLabel>City</FieldLabel>
               <div className="relative">
                 <MapPin
-                  size={14}
+                  size={13}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
                 />
                 <Input
                   className={`${inputCls} pl-8`}
                   placeholder="e.g. Bengaluru"
-                  {...register('location')}
+                  {...register('city')}
                 />
               </div>
             </div>
             <div>
+              <FieldLabel>State</FieldLabel>
+              <Input className={inputCls} placeholder="e.g. Karnataka" {...register('state')} />
+            </div>
+            <div>
               <FieldLabel>Country</FieldLabel>
               <Input className={inputCls} placeholder="e.g. India" {...register('country')} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <FieldLabel>Functional Area</FieldLabel>
+              <Input
+                className={inputCls}
+                placeholder="e.g. Engineering"
+                {...register('functionalArea')}
+              />
+            </div>
+            <div>
+              <FieldLabel>Shift</FieldLabel>
+              <Input
+                className={inputCls}
+                placeholder="e.g. Morning / Flexible"
+                {...register('shift')}
+              />
+            </div>
+            <div>
+              <FieldLabel>Education</FieldLabel>
+              <Input
+                className={inputCls}
+                placeholder="e.g. B.Tech / B.E."
+                {...register('education')}
+              />
             </div>
           </div>
         </div>
@@ -694,10 +1012,10 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
         <div className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Exp. Min (yrs)', name: 'experienceMin', placeholder: '0', step: 0.5 },
-              { label: 'Exp. Max (yrs)', name: 'experienceMax', placeholder: '10', step: 0.5 },
-              { label: 'Salary Min', name: 'salaryMin', placeholder: '0', step: 1 },
-              { label: 'Salary Max', name: 'salaryMax', placeholder: '0', step: 1 },
+              { label: 'Exp. Min (yrs)', name: 'experienceMin', step: 0.5 },
+              { label: 'Exp. Max (yrs)', name: 'experienceMax', step: 0.5 },
+              { label: 'Salary Min', name: 'salaryMin', step: 1 },
+              { label: 'Salary Max', name: 'salaryMax', step: 1 },
             ].map(f => (
               <div key={f.name}>
                 <FieldLabel>{f.label}</FieldLabel>
@@ -705,7 +1023,6 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
                   type="number"
                   min={0}
                   step={f.step}
-                  placeholder={f.placeholder}
                   className={inputCls}
                   {...register(f.name as any, { valueAsNumber: true })}
                 />
@@ -714,29 +1031,78 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
             ))}
           </div>
 
-          <div className="w-full sm:w-1/4">
-            <FieldLabel>Salary Type</FieldLabel>
-            <Controller
-              control={control}
-              name="salaryType"
-              render={({ field }) => (
-                <Select
-                  // FIX: field.value can be null — coerce to '' for Select's value prop
-                  value={field.value ?? ''}
-                  onValueChange={v => field.onChange(v || null)}
-                >
-                  <SelectTrigger className={selectTriggerCls}>
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MONTHLY">Monthly</SelectItem>
-                    <SelectItem value="ANNUAL">Annual</SelectItem>
-                    <SelectItem value="HOURLY">Hourly</SelectItem>
-                    <SelectItem value="DAILY">Daily</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div>
+              <FieldLabel>Salary Type</FieldLabel>
+              <Controller
+                control={control}
+                name="salaryType"
+                render={({ field }) => (
+                  <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+                    <SelectTrigger className={selectTriggerCls}>
+                      <SelectValue placeholder="Select…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MONTHLY">Monthly</SelectItem>
+                      <SelectItem value="ANNUAL">Annual</SelectItem>
+                      <SelectItem value="HOURLY">Hourly</SelectItem>
+                      <SelectItem value="DAILY">Daily</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div>
+              <FieldLabel>Currency</FieldLabel>
+              <Controller
+                control={control}
+                name="salaryCurrency"
+                render={({ field }) => (
+                  <Select value={field.value ?? 'INR'} onValueChange={field.onChange}>
+                    <SelectTrigger className={selectTriggerCls}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="INR">₹ INR</SelectItem>
+                      <SelectItem value="USD">$ USD</SelectItem>
+                      <SelectItem value="GBP">£ GBP</SelectItem>
+                      <SelectItem value="AED">AED</SelectItem>
+                      <SelectItem value="SGD">SGD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div>
+              <FieldLabel>Bonus Amount</FieldLabel>
+              <Input
+                type="number"
+                min={0}
+                className={inputCls}
+                placeholder="0"
+                {...register('bonusAmount', { valueAsNumber: true })}
+              />
+            </div>
+            <div className="flex flex-col gap-2 pt-6">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300 text-primary focus:ring-primary/30"
+                  {...register('hideSalaryFromCandidate')}
+                />
+                <span className="text-[12px] text-slate-600 font-medium">
+                  Hide salary from candidate
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300 text-primary focus:ring-primary/30"
+                  {...register('showMedianSalary')}
+                />
+                <span className="text-[12px] text-slate-600 font-medium">Show median salary</span>
+              </label>
+            </div>
           </div>
         </div>
       </Section>
@@ -745,66 +1111,81 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
       <Section
         icon={Tag}
         title="Skills"
-        subtitle="Required skills for this role"
+        subtitle="Primary must-have skills and other key skills"
         accentClass="bg-rose-50"
       >
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <Input
-              className={`${inputCls} flex-1`}
-              placeholder="Type a skill and press Enter…"
-              value={skillInput}
-              onChange={e => setSkillInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addSkill();
-                }
-              }}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <FieldLabel required>
+              Primary Skills{' '}
+              <span className="normal-case font-normal text-[10px] text-slate-400 ml-1">
+                top 3–5 must-have
+              </span>
+            </FieldLabel>
+            <TagInput
+              values={primarySkills}
+              onChange={setPrimarySkills}
+              placeholder="Add primary skill…"
+              colorClass="bg-rose-100 text-rose-800 border-rose-200"
             />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-10 px-4 shrink-0 font-semibold text-[13px]"
-              onClick={addSkill}
-            >
-              <Plus size={14} className="mr-1" /> Add
-            </Button>
           </div>
-          {skills.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {skills.map(s => (
-                <span
-                  key={s}
-                  className="flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200"
-                >
-                  {s}
-                  <button
-                    type="button"
-                    onClick={() => removeSkill(s)}
-                    className="text-rose-400 hover:text-red-600 transition-colors"
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
+          <div>
+            <FieldLabel>
+              Key Skills{' '}
+              <span className="normal-case font-normal text-[10px] text-slate-400 ml-1">
+                all other required skills
+              </span>
+            </FieldLabel>
+            <TagInput
+              values={keySkills}
+              onChange={setKeySkills}
+              placeholder="Add key skill…"
+              colorClass="bg-slate-100 text-slate-700 border-slate-200"
+            />
+          </div>
         </div>
       </Section>
 
-      {/* ── 7. Timeline ── */}
+      {/* ── 7. Sourcing Strategy ── */}
+      <Section
+        icon={Target}
+        title="Sourcing Strategy"
+        subtitle="Target and no-poach companies"
+        accentClass="bg-teal-50"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <FieldLabel>Target Companies</FieldLabel>
+            <TagInput
+              values={targetCompanies}
+              onChange={setTargetCompanies}
+              placeholder="e.g. Infosys, TCS…"
+              colorClass="bg-teal-100 text-teal-800 border-teal-200"
+            />
+          </div>
+          <div>
+            <FieldLabel>No-Poach Companies</FieldLabel>
+            <TagInput
+              values={noPoachCompanies}
+              onChange={setNoPoachCompanies}
+              placeholder="e.g. Client name…"
+              colorClass="bg-orange-100 text-orange-800 border-orange-200"
+            />
+          </div>
+        </div>
+      </Section>
+
+      {/* ── 8. Timeline ── */}
       <Section
         icon={Calendar}
         title="Timeline"
-        subtitle="Start, end date and respond-by deadline"
+        subtitle="Start, target date and respond-by deadline"
         accentClass="bg-cyan-50"
       >
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
             { label: 'Start Date', name: 'startDate' },
-            { label: 'End Date', name: 'endDate' },
+            { label: 'Target Date', name: 'targetDate' },
             { label: 'Respond By', name: 'respondBy' },
           ].map(f => (
             <div key={f.name}>
@@ -857,7 +1238,9 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
   );
 }
 
-// ─── detailToFormValues ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// detailToFormValues
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function detailToFormValues(req: any): Partial<RequirementFormValues> {
   return {
@@ -867,21 +1250,36 @@ export function detailToFormValues(req: any): Partial<RequirementFormValues> {
     jobType: req.jobType,
     remoteType: req.remoteType,
     priority: req.priority,
+    jobOpenFor: req.jobOpenFor ?? 'EXTERNAL',
     totalOpenings: req.totalOpenings,
-    location: req.location ?? '',
+    city: req.city ?? '',
+    state: req.state ?? '',
     country: req.country ?? '',
+    primarySkills: req.primarySkills ?? [],
+    keySkills: req.keySkills ?? [],
+    targetCompanies: req.targetCompanies ?? [],
+    noPoachCompanies: req.noPoachCompanies ?? [],
     salaryMin: req.salaryMin ?? undefined,
     salaryMax: req.salaryMax ?? undefined,
     salaryType: req.salaryType ?? undefined,
+    salaryCurrency: req.salaryCurrency ?? 'INR',
+    bonusAmount: req.bonusAmount ?? undefined,
+    hideSalaryFromCandidate: req.hideSalaryFromCandidate ?? false,
+    showMedianSalary: req.showMedianSalary ?? false,
     experienceMin: req.experienceMin ?? undefined,
     experienceMax: req.experienceMax ?? undefined,
+    education: req.education ?? '',
+    functionalArea: req.functionalArea ?? '',
+    shift: req.shift ?? '',
     startDate: toDateInput(req.startDate),
-    endDate: toDateInput(req.endDate),
+    targetDate: toDateInput(req.targetDate),
     respondBy: toDateInput(req.respondBy),
     turnaroundDays: req.turnaroundDays ?? undefined,
-    skills: req.skills ?? [],
     jdFileKey: req.jdFileKey ?? null,
     jdFileName: req.jdFileName ?? null,
     jdFileType: req.jdFileType ?? null,
+    jdParsedAt: req.jdParsedAt ?? null,
+    jdParseStatus: req.jdParseStatus ?? null,
+    jdParsedFields: req.jdParsedFields ?? [],
   };
 }
