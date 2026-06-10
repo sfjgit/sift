@@ -1,6 +1,6 @@
 // File: page.tsx
-// Path: src/app/(dashboard)/my-assignments/page.tsx
-
+// Path: src/app/(dashboard)/assignments/my/page.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -11,93 +11,108 @@ import {
   ChevronRight,
   Briefcase,
   Clock,
-  Phone,
-  Star,
-  AlertTriangle,
-  CheckCircle2,
-  Circle,
-  TrendingUp,
   Users,
-  Target,
-  Filter,
+  CheckCircle2,
   ArrowUpRight,
   Flame,
+  X,
+  Layers,
+  CalendarClock,
+  GitBranch,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface PipelineStage {
+interface PipelineStageCount {
   id: string;
   code: string;
   label: string;
   order: number;
-  serviceLineId: string | null;
-}
-
-interface PipelineStageCount {
-  stageId: string;
-  code: string;
-  label: string;
-  order: number;
+  canonicalStage: string | null;
   count: number;
 }
-
-interface Assignment {
-  id: string;
-  depth?: number;
-  allocatedOpenings?: number | null;
-  deadline?: string | null;
-  assignedTo?: { id: string; firstName: string; lastName: string };
+interface CandidateStats {
+  total: number;
+  active: number;
+  placed: number;
+  dropped: number;
+  onHold: number;
+  rejected: number;
+  withdrawn: number;
+  submitted: number;
+  offered: number;
+  joined: number;
+  byCanonicalStage: Record<string, number>;
+  byPipelineStage: PipelineStageCount[];
+  agingBuckets: { fresh: number; normal: number; stale: number; critical: number };
+  rates: { submission: number; offer: number; joining: number };
 }
-
-interface Requirement {
+interface ChildAssignment {
   id: string;
-  slug?: string | null;
-  reqCode: string;
-  title: string;
+  depth: number;
   status: string;
-  priority: string;
-  totalOpenings: number;
-  filledOpenings: number;
-  location: string | null;
-  jobType: string;
-  remoteType: string;
-  respondBy: string | null;
-  isRespondByBreached: boolean;
-  isTurnaroundBreached: boolean;
-  createdAt: string;
-  client?: { id: string; name: string } | null;
-  businessUnit?: { id: string; name: string } | null;
-  serviceLine?: { id: string; name: string } | null;
-  assignments?: Assignment[];
-  pipelineStageCounts?: PipelineStageCount[];
-  _count?: { pipelines: number };
+  deadline: string | null;
+  assignedAt: string;
+  assignedTo: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role: { id: string; name: string };
+  };
+  candidateStats: CandidateStats;
+  childAssignments: ChildAssignment[];
 }
-
-interface RequirementsResponse {
-  success: boolean;
-  data: Requirement[];
-  meta: { total: number; page: number; limit: number; pages: number };
+interface MyAssignment {
+  id: string;
+  depth: number;
+  status: string;
+  deadline: string | null;
+  breachedAt: string | null;
+  assignedAt: string;
+  assignedBy: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role: { id: string; name: string };
+  };
+  assignedTo: { id: string; firstName: string; lastName: string };
+  requirement: {
+    id: string;
+    reqCode: string;
+    title: string;
+    status: string;
+    priority: string;
+    totalOpenings: number;
+    isRespondByBreached: boolean;
+    isTurnaroundBreached: boolean;
+    client: { id: string; name: string } | null;
+    serviceLine: { id: string; name: string } | null;
+    businessUnit: { id: string; name: string } | null;
+  };
+  parentAssignment: {
+    id: string;
+    depth: number;
+    assignedTo: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      role: { id: string; name: string };
+    };
+  } | null;
+  childAssignments: ChildAssignment[];
+  candidateStats: CandidateStats;
 }
-
 interface CandidateInPipeline {
   id: string;
   isRejected: boolean;
   isWithdrawn: boolean;
   isOnHold: boolean;
-  stageUpdatedAt: string;
   aging: { minutes: number; label: string };
   currentStage: { id: string; code: string; label: string; order: number };
   snapshot: {
@@ -108,102 +123,135 @@ interface CandidateInPipeline {
     currentCompany: string | null;
     totalExpYears: number | null;
     topSkills: string[];
-    resumeUrl: string | null;
   };
   recruiter: { id: string; firstName: string; lastName: string };
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Canonical stage config ───────────────────────────────────────────────────
 
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  ACTIVE: { label: 'Active', cls: 'bg-emerald-500/12 text-emerald-700 ring-1 ring-emerald-500/25' },
-  DRAFT: { label: 'Draft', cls: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200' },
-  PENDING_APPROVAL: {
-    label: 'Pending',
-    cls: 'bg-amber-500/12 text-amber-700 ring-1 ring-amber-500/25',
-  },
-  ON_HOLD: { label: 'On Hold', cls: 'bg-orange-500/12 text-orange-700 ring-1 ring-orange-500/25' },
-  CLOSED: { label: 'Closed', cls: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200' },
-  CANCELLED: { label: 'Cancelled', cls: 'bg-red-500/12 text-red-700 ring-1 ring-red-500/25' },
+const CANONICAL_STAGES = [
+  { key: 'SOURCED', label: 'Sourced', dot: 'bg-slate-500' },
+  { key: 'SCREENING', label: 'Screening', dot: 'bg-blue-600' },
+  { key: 'INTERVIEW', label: 'Interview', dot: 'bg-violet-600' },
+  { key: 'OFFER_IN_PROGRESS', label: 'Offer WIP', dot: 'bg-amber-600' },
+  { key: 'OFFERED', label: 'Offered', dot: 'bg-orange-600' },
+  { key: 'HIRED', label: 'Hired', dot: 'bg-emerald-700' },
+  { key: 'JOINED', label: 'Joined', dot: 'bg-green-700' },
+  { key: 'DROPPED', label: 'Dropped', dot: 'bg-red-600' },
+] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const REQ_STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Active',
+  DRAFT: 'Draft',
+  PENDING_APPROVAL: 'Pending',
+  ON_HOLD: 'On Hold',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
 };
+const DEPTH_LABEL: Record<number, string> = { 0: 'Direct assign', 1: 'Via DM', 2: 'Via TL' };
 
-const PRIORITY_META: Record<string, { cls: string; dot: string }> = {
-  HIGH: { cls: 'text-red-600 bg-red-50 ring-1 ring-red-200', dot: 'bg-red-500' },
-  MEDIUM: { cls: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200', dot: 'bg-amber-500' },
-  LOW: { cls: 'text-slate-500 bg-slate-50 ring-1 ring-slate-200', dot: 'bg-slate-400' },
-};
-
-const STAGE_PALETTE: Record<string, { num: string; bg: string; text: string; bar: string }> = {
-  '01': {
-    num: 'text-orange-500',
-    bg: 'bg-orange-50',
-    text: 'text-orange-700',
-    bar: 'bg-orange-400',
-  },
-  '02': {
-    num: 'text-violet-600',
-    bg: 'bg-violet-50',
-    text: 'text-violet-700',
-    bar: 'bg-violet-500',
-  },
-  '03': { num: 'text-rose-500', bg: 'bg-rose-50', text: 'text-rose-700', bar: 'bg-rose-400' },
-  '04': { num: 'text-pink-500', bg: 'bg-pink-50', text: 'text-pink-700', bar: 'bg-pink-400' },
-  '05': { num: 'text-cyan-600', bg: 'bg-cyan-50', text: 'text-cyan-700', bar: 'bg-cyan-500' },
-  '06': { num: 'text-teal-600', bg: 'bg-teal-50', text: 'text-teal-700', bar: 'bg-teal-500' },
-  '07': { num: 'text-blue-600', bg: 'bg-blue-50', text: 'text-blue-700', bar: 'bg-blue-500' },
-  '07A': { num: 'text-blue-500', bg: 'bg-blue-50', text: 'text-blue-600', bar: 'bg-blue-400' },
-  '07B': { num: 'text-blue-700', bg: 'bg-blue-50', text: 'text-blue-800', bar: 'bg-blue-600' },
-  '08': {
-    num: 'text-indigo-600',
-    bg: 'bg-indigo-50',
-    text: 'text-indigo-700',
-    bar: 'bg-indigo-500',
-  },
-  '09': {
-    num: 'text-emerald-600',
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    bar: 'bg-emerald-500',
-  },
-  '10': { num: 'text-green-600', bg: 'bg-green-50', text: 'text-green-700', bar: 'bg-green-500' },
-};
-
-const fallbackPalette = {
-  num: 'text-slate-500',
-  bg: 'bg-slate-50',
-  text: 'text-slate-600',
-  bar: 'bg-slate-400',
-};
-
-const ALL_STATUSES = ['ACTIVE', 'DRAFT', 'PENDING_APPROVAL', 'ON_HOLD', 'CLOSED', 'CANCELLED'];
-const ALL_PRIORITIES = ['HIGH', 'MEDIUM', 'LOW'];
-
-function daysSince(d: string) {
-  return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+function avatarColor(seed: string) {
+  const colors = [
+    'bg-blue-100 text-blue-700',
+    'bg-violet-100 text-violet-700',
+    'bg-emerald-100 text-emerald-700',
+    'bg-amber-100 text-amber-700',
+    'bg-rose-100 text-rose-700',
+    'bg-cyan-100 text-cyan-700',
+  ];
+  return colors[seed.charCodeAt(0) % colors.length];
 }
-
-function initials(name: string) {
-  return name
+function initials(n: string) {
+  return n
     .split(' ')
-    .map(w => w[0])
+    .map((w: string) => w[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
 }
-
-const AVATAR_COLORS = [
-  'from-violet-500 to-violet-700',
-  'from-blue-500 to-blue-700',
-  'from-emerald-500 to-emerald-700',
-  'from-amber-500 to-amber-600',
-  'from-rose-500 to-rose-700',
-  'from-cyan-500 to-cyan-700',
-];
-function avatarColor(s: string) {
-  return AVATAR_COLORS[s.charCodeAt(0) % AVATAR_COLORS.length];
+function daysSince(d: string) {
+  return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+}
+function daysLeft(d: string) {
+  return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
 }
 
-// ─── Candidate Drawer ─────────────────────────────────────────────────────────
+// ─── Canonical stage bar ──────────────────────────────────────────────────────
+
+function CanonicalBar({
+  byCanonical,
+  onStageClick,
+}: {
+  byCanonical: Record<string, number>;
+  onStageClick?: () => void;
+}) {
+  return (
+    <div
+      className="border-t-2 border-slate-100"
+      style={{ display: 'grid', gridTemplateColumns: `repeat(${CANONICAL_STAGES.length}, 1fr)` }}
+    >
+      {CANONICAL_STAGES.map(s => {
+        const count = byCanonical[s.key] ?? 0;
+        return (
+          <button
+            key={s.key}
+            onClick={onStageClick}
+            title={`${s.label} — ${count} candidate${count !== 1 ? 's' : ''}`}
+            className="group flex flex-col items-center gap-1.5 px-1 py-4 border-r border-slate-100 last:border-r-0 transition-colors hover:bg-blue-50"
+          >
+            {/* dot */}
+            <span className={cn('w-2 h-2 rounded-full shrink-0', s.dot)} />
+            {/* count — on its own line, large */}
+            <span
+              className={cn(
+                'text-[22px] font-black leading-none tabular-nums transition-colors',
+                count > 0 ? 'text-slate-900 group-hover:text-blue-600' : 'text-slate-200'
+              )}
+            >
+              {count}
+            </span>
+            {/* label — on its own line, small */}
+            <span
+              className={cn(
+                'text-[9px] font-bold tracking-wider uppercase leading-none text-center max-w-[56px] truncate',
+                count > 0 ? 'text-slate-600 group-hover:text-blue-500' : 'text-slate-200'
+              )}
+            >
+              {s.label}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Pipeline stage chips ─────────────────────────────────────────────────────
+
+function PipelineStageChips({ stages }: { stages: PipelineStageCount[] }) {
+  const active = stages.filter(s => s.count > 0);
+  if (!active.length) return null;
+  return (
+    <div className="border-t border-slate-100 bg-slate-50 px-6 py-3 flex items-center gap-2 flex-wrap">
+      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+        Stages
+      </span>
+      {active.map(s => (
+        <span
+          key={s.id}
+          className="inline-flex items-center gap-1.5 text-[11px] border border-slate-200 rounded-lg px-2.5 py-1 bg-white text-slate-700 font-medium"
+        >
+          <span className="text-[13px] font-black text-slate-900">{s.count}</span>
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ─── Candidate drawer ─────────────────────────────────────────────────────────
 
 function CandidateDrawer({
   open,
@@ -218,14 +266,12 @@ function CandidateDrawer({
   requirementId: string;
   requirementTitle: string;
   stageId: string | null;
-  allStages: PipelineStage[];
+  allStages: PipelineStageCount[];
 }) {
   const axios = useAxios();
   const router = useRouter();
   const [activeStageId, setActiveStageId] = useState<string | null>(stageId);
-
   useMemo(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-render
     setActiveStageId(stageId);
   }, [stageId]);
 
@@ -236,17 +282,18 @@ function CandidateDrawer({
     return p.toString();
   }, [activeStageId]);
 
-  const { data: candidatesRes, isLoading } = useQuery({
-    queryKey: ['my-assignment-candidates', requirementId, qs],
-    queryFn: async () => {
-      const res = await axios.get(`/requirements/${requirementId}/candidates?${qs}`);
-      return res.data as { success: boolean; data: CandidateInPipeline[]; meta: { total: number } };
-    },
+  const { data: res, isLoading } = useQuery({
+    queryKey: ['assignment-candidates', requirementId, qs],
+    queryFn: async () =>
+      (await axios.get(`/requirements/${requirementId}/candidates?${qs}`)).data as {
+        data: CandidateInPipeline[];
+        meta: { total: number };
+      },
     enabled: open && !!requirementId,
   });
 
-  const candidates = candidatesRes?.data ?? [];
-  const total = candidatesRes?.meta?.total ?? 0;
+  const candidates = res?.data ?? [];
+  const total = res?.meta?.total ?? 0;
   const activeStage = allStages.find(s => s.id === activeStageId);
 
   return (
@@ -256,180 +303,123 @@ function CandidateDrawer({
         if (!o) onClose();
       }}
     >
-      <SheetContent
-        side="right"
-        className="w-[520px] sm:max-w-[520px] p-0 flex flex-col bg-background"
-      >
-        {/* Drawer Header */}
-        <SheetHeader className="px-6 pt-6 pb-0 shrink-0 border-b border-border">
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex-1 min-w-0">
-              <SheetTitle className="text-[15px] font-bold text-foreground truncate leading-snug">
-                {requirementTitle}
-              </SheetTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
-                {activeStage ? activeStage.label : 'All Stages'} ·{' '}
-                <span className="font-semibold text-primary">{total}</span> candidate
-                {total !== 1 ? 's' : ''}
-              </p>
-            </div>
-          </div>
-
-          {/* Stage tabs — pill style */}
-          <div className="flex gap-1.5 flex-wrap pb-4">
+      <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0 flex flex-col">
+        <SheetHeader className="px-6 pt-6 pb-4 border-b border-slate-100 shrink-0">
+          <SheetTitle className="text-sm font-medium text-slate-900 truncate">
+            {requirementTitle}
+          </SheetTitle>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {activeStage?.label ?? 'All stages'} ·{' '}
+            <span className="font-medium text-slate-900">{total}</span> candidate
+            {total !== 1 ? 's' : ''}
+          </p>
+          <div className="flex gap-1.5 flex-wrap pt-2">
             <button
               onClick={() => setActiveStageId(null)}
-              className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-all ${
+              className={cn(
+                'text-xs px-3 py-1.5 rounded-lg font-medium border transition-all',
                 !activeStageId
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-              }`}
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+              )}
             >
               All
             </button>
-            {allStages.map(stage => {
-              const pal = STAGE_PALETTE[stage.code] ?? fallbackPalette;
-              const isActive = activeStageId === stage.id;
-              return (
+            {allStages
+              .filter(s => s.count > 0)
+              .map(s => (
                 <button
-                  key={stage.id}
-                  onClick={() => setActiveStageId(prev => (prev === stage.id ? null : stage.id))}
-                  className={`text-[11px] px-3 py-1.5 rounded-full font-semibold transition-all ${
-                    isActive
-                      ? `${pal.bg} ${pal.text} ring-1 ring-current/20`
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                  }`}
+                  key={s.id}
+                  onClick={() => setActiveStageId(prev => (prev === s.id ? null : s.id))}
+                  className={cn(
+                    'text-xs px-3 py-1.5 rounded-lg font-medium border transition-all',
+                    activeStageId === s.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                  )}
                 >
-                  {stage.label}
+                  {s.label} <span className="opacity-60">({s.count})</span>
                 </button>
-              );
-            })}
+              ))}
           </div>
         </SheetHeader>
 
-        {/* Candidate list */}
-        <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
           {isLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex gap-4 px-6 py-5">
-                <Skeleton className="h-11 w-11 rounded-full shrink-0" />
+              <div key={i} className="flex gap-3 px-6 py-4">
+                <Skeleton className="h-10 w-10 rounded-full shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-44" />
-                  <Skeleton className="h-3 w-60" />
-                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-56" />
                 </div>
               </div>
             ))
           ) : candidates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-56 text-muted-foreground">
-              <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-                <Circle size={28} className="opacity-30" />
-              </div>
-              <p className="text-sm font-medium text-foreground">No candidates here</p>
-              <p className="text-xs text-muted-foreground mt-1">Try selecting a different stage</p>
+            <div className="flex flex-col items-center justify-center h-48 gap-2">
+              <p className="text-sm font-medium text-slate-600">No candidates here</p>
+              <p className="text-xs text-slate-400">Try a different stage</p>
             </div>
           ) : (
             candidates.map(c => {
-              const snap = c.snapshot;
-              const pal = STAGE_PALETTE[c.currentStage.code] ?? fallbackPalette;
-              const agingColor =
-                c.aging.minutes > 43200
+              const ageCls =
+                c.aging.minutes > 20160
                   ? 'text-red-500'
-                  : c.aging.minutes > 10080
+                  : c.aging.minutes > 7200
                     ? 'text-amber-500'
-                    : 'text-muted-foreground';
-
+                    : 'text-slate-400';
               return (
                 <div
                   key={c.id}
-                  className={`flex gap-4 px-6 py-4 hover:bg-muted/30 transition-colors cursor-pointer group ${c.isRejected || c.isWithdrawn ? 'opacity-50' : ''}`}
                   onClick={() => {
                     onClose();
                     router.push(`/requirements/${requirementId}?pipelineId=${c.id}`);
                   }}
+                  className={cn(
+                    'flex gap-3 px-6 py-4 cursor-pointer hover:bg-blue-50/50 transition-colors group',
+                    (c.isRejected || c.isWithdrawn) && 'opacity-40'
+                  )}
                 >
-                  {/* Avatar */}
                   <div
-                    className={`w-11 h-11 rounded-full bg-gradient-to-br ${avatarColor(snap.fullName)} flex items-center justify-center text-[12px] font-bold text-white shrink-0 shadow-sm`}
+                    className={cn(
+                      'w-10 h-10 rounded-full flex items-center justify-center text-xs font-medium shrink-0',
+                      avatarColor(c.snapshot.fullName)
+                    )}
                   >
-                    {initials(snap.fullName)}
+                    {initials(c.snapshot.fullName)}
                   </div>
-
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <p className="text-[14px] font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-                        {snap.fullName}
+                      <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                        {c.snapshot.fullName}
                       </p>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${pal.bg} ${pal.text}`}
-                        >
-                          {c.currentStage.label}
-                        </span>
-                        {c.isRejected && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-semibold">
-                            Rejected
-                          </span>
-                        )}
-                        {c.isWithdrawn && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">
-                            Withdrawn
-                          </span>
-                        )}
-                        {c.isOnHold && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 font-semibold">
-                            On Hold
-                          </span>
-                        )}
-                      </div>
+                      <span className="text-xs font-medium px-2 py-1 rounded-lg bg-slate-100 text-slate-700 shrink-0 border border-slate-200">
+                        {c.currentStage.label}
+                      </span>
                     </div>
-
-                    {(snap.currentTitle || snap.currentCompany) && (
-                      <p className="text-[12px] text-muted-foreground truncate mb-1.5">
-                        {snap.currentTitle}
-                        {snap.currentTitle && snap.currentCompany ? ' · ' : ''}
-                        {snap.currentCompany}
-                        {snap.totalExpYears != null && (
-                          <span className="ml-2 font-medium text-foreground/70">
-                            {snap.totalExpYears}y exp
-                          </span>
+                    {(c.snapshot.currentTitle || c.snapshot.currentCompany) && (
+                      <p className="text-xs text-slate-500 truncate mb-1">
+                        {c.snapshot.currentTitle}
+                        {c.snapshot.currentTitle && c.snapshot.currentCompany ? ' · ' : ''}
+                        {c.snapshot.currentCompany}
+                        {c.snapshot.totalExpYears != null && (
+                          <span className="ml-1 text-slate-400">{c.snapshot.totalExpYears}y</span>
                         )}
                       </p>
                     )}
-
-                    {snap.phone && (
-                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground mb-1.5">
-                        <Phone size={10} />
-                        {snap.phone}
-                      </div>
-                    )}
-
-                    {snap.topSkills?.length > 0 && (
-                      <div className="flex items-center gap-1 flex-wrap mb-1.5">
-                        {snap.topSkills.slice(0, 3).map(s => (
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-1 flex-wrap">
+                        {c.snapshot.topSkills.slice(0, 3).map(s => (
                           <span
                             key={s}
-                            className="text-[10px] bg-primary/8 text-primary px-2 py-0.5 rounded-full font-medium"
+                            className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-medium border border-blue-100"
                           >
                             {s}
                           </span>
                         ))}
-                        {snap.topSkills.length > 3 && (
-                          <span className="text-[10px] text-muted-foreground">
-                            +{snap.topSkills.length - 3} more
-                          </span>
-                        )}
                       </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground">
-                        {c.recruiter.firstName} {c.recruiter.lastName}
-                      </span>
-                      <span
-                        className={`flex items-center gap-1 text-[11px] font-semibold ${agingColor}`}
-                      >
-                        <Clock size={10} />
+                      <span className={cn('flex items-center gap-1 text-xs font-medium', ageCls)}>
+                        <Clock className="w-3 h-3" />
                         {c.aging.label}
                       </span>
                     </div>
@@ -440,15 +430,15 @@ function CandidateDrawer({
           )}
         </div>
 
-        <div className="shrink-0 px-6 py-4 border-t border-border bg-muted/30">
+        <div className="shrink-0 px-6 py-4 border-t border-slate-100">
           <Button
-            className="w-full h-10 text-sm font-semibold"
+            className="w-full h-10 text-sm font-medium bg-blue-600 hover:bg-blue-700"
             onClick={() => {
               onClose();
               router.push(`/requirements/${requirementId}`);
             }}
           >
-            Open Full Requirement <ArrowUpRight size={15} className="ml-1.5" />
+            Open requirement <ArrowUpRight className="w-4 h-4 ml-1.5" />
           </Button>
         </div>
       </SheetContent>
@@ -456,308 +446,263 @@ function CandidateDrawer({
   );
 }
 
-// ─── Assignment Card ──────────────────────────────────────────────────────────
+// ─── Sub-row ──────────────────────────────────────────────────────────────────
 
-function AssignmentCard({
-  req,
-  allStages,
-  onStageClick,
-}: {
-  req: Requirement;
-  allStages: PipelineStage[];
-  onStageClick: (req: Requirement, stageId: string | null) => void;
-}) {
-  const router = useRouter();
-  const idOrSlug = req.slug ?? req.id;
-
-  const filled = req.filledOpenings ?? 0;
-  const openings = req.totalOpenings ?? 0;
-  const fillPct = openings > 0 ? Math.round((filled / openings) * 100) : 0;
-  const age = daysSince(req.createdAt);
-  const isBreached = req.isRespondByBreached || req.isTurnaroundBreached;
-
-  const totalCandidates =
-    req._count?.pipelines ?? (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
-  const countMap = Object.fromEntries(
-    (req.pipelineStageCounts ?? []).map(s => [s.stageId, s.count])
-  );
-
-  const reqServiceLineId = req.serviceLine?.id ?? null;
-  const relevantStages = allStages.filter(
-    s => s.serviceLineId === null || s.serviceLineId === reqServiceLineId
-  );
-
-  const myAssignment = req.assignments?.find(a => (a.depth ?? 99) === 0) ?? req.assignments?.[0];
-  const allocated = myAssignment?.allocatedOpenings ?? null;
-  const deadline = myAssignment?.deadline ?? null;
-  const deadlineDays = deadline
-    ? // eslint-disable-next-line react-hooks/purity
-      Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000)
-    : null;
-
-  const statusMeta = STATUS_META[req.status] ?? { label: req.status, cls: '' };
-  const priorityMeta = PRIORITY_META[req.priority] ?? { cls: '', dot: 'bg-slate-400' };
-
+function SubRow({ child }: { child: ChildAssignment }) {
+  const dl = child.deadline ? daysLeft(child.deadline) : null;
   return (
-    <div
-      className={`flex flex-col rounded-2xl bg-background border transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 overflow-hidden group ${
-        isBreached
-          ? 'border-red-200 shadow-sm shadow-red-100'
-          : 'border-border/70 hover:border-primary/30'
-      }`}
-    >
-      {/* Breach indicator bar */}
-      {isBreached && <div className="h-1 w-full bg-gradient-to-r from-red-500 to-rose-400" />}
-
-      {/* Card top — clickable to requirement */}
+    <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-white border border-slate-200">
       <div
-        className="px-5 pt-5 pb-4 cursor-pointer"
-        onClick={() => router.push(`/requirements/${idOrSlug}`)}
+        className={cn(
+          'w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium shrink-0',
+          avatarColor(child.assignedTo.firstName)
+        )}
       >
-        <div className="flex items-start gap-4">
-          {/* Service line icon */}
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-lg border border-primary/15 group-hover:bg-primary/15 transition-colors">
-            {req.serviceLine?.name?.[0] ?? req.title[0]}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            {/* Badges row */}
-            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              <span className="text-[11px] font-mono font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md">
-                {req.reqCode}
-              </span>
-              <span
-                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${statusMeta.cls}`}
-              >
-                {statusMeta.label}
-              </span>
-              <span
-                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${priorityMeta.cls}`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${priorityMeta.dot}`} />
-                {req.priority}
-              </span>
-              {isBreached && (
-                <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full ring-1 ring-red-200">
-                  <Flame size={10} /> Breached
-                </span>
-              )}
-            </div>
-
-            {/* Title */}
-            <h3 className="text-[16px] font-bold text-foreground leading-snug truncate mb-1 group-hover:text-primary transition-colors">
-              {req.title}
-            </h3>
-
-            {/* Meta line */}
-            <div className="flex items-center gap-1.5 flex-wrap text-[12px] text-muted-foreground">
-              {req.client?.name && (
-                <span className="font-medium text-foreground/70">{req.client.name}</span>
-              )}
-              {req.businessUnit?.name && (
-                <>
-                  <span className="opacity-30">·</span>
-                  <span>{req.businessUnit.name}</span>
-                </>
-              )}
-              {req.serviceLine?.name && (
-                <>
-                  <span className="opacity-30">·</span>
-                  <span>{req.serviceLine.name}</span>
-                </>
-              )}
-              {req.location && (
-                <>
-                  <span className="opacity-30">·</span>
-                  <span>{req.location}</span>
-                </>
-              )}
-            </div>
-          </div>
-
-          <ChevronRight
-            size={16}
-            className="shrink-0 text-muted-foreground/40 mt-1 group-hover:text-primary transition-colors"
-          />
-        </div>
+        {initials(`${child.assignedTo.firstName} ${child.assignedTo.lastName}`)}
       </div>
-
-      {/* Stats bar */}
-      <div className="px-5 pb-4 flex items-center gap-3 text-[12px] flex-wrap">
-        {/* Fill progress */}
-        <div className="flex items-center gap-2.5 bg-muted/60 rounded-xl px-3 py-2 min-w-[130px]">
-          <div className="relative flex-1 h-2 rounded-full bg-border overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${fillPct >= 100 ? 'bg-emerald-500' : fillPct > 60 ? 'bg-primary' : 'bg-primary/60'}`}
-              style={{ width: `${Math.min(fillPct, 100)}%` }}
-            />
-          </div>
-          <span className="font-bold text-foreground whitespace-nowrap">
-            {filled}/{openings}
-          </span>
-          <span className="text-muted-foreground text-[11px]">filled</span>
-        </div>
-
-        {/* Pipeline total */}
-        <button
-          className="flex items-center gap-1.5 bg-primary/8 hover:bg-primary/15 text-primary font-semibold px-3 py-2 rounded-xl transition-colors"
-          onClick={() => onStageClick(req, null)}
-        >
-          <Users size={12} />
-          <span>{totalCandidates} in pipeline</span>
-        </button>
-
-        {/* Age */}
-        <div
-          className={`flex items-center gap-1 px-3 py-2 rounded-xl font-semibold ${
-            age > 30
-              ? 'bg-red-50 text-red-600'
-              : age > 14
-                ? 'bg-amber-50 text-amber-600'
-                : 'bg-muted/60 text-muted-foreground'
-          }`}
-        >
-          <Clock size={11} />
-          <span>{age}d old</span>
-        </div>
-
-        {/* Allocated */}
-        {allocated != null && (
-          <div className="flex items-center gap-1 px-3 py-2 rounded-xl bg-muted/60 text-muted-foreground font-medium">
-            <Target size={11} />
-            <span>{allocated} allocated</span>
-          </div>
-        )}
-
-        {/* Deadline */}
-        {deadlineDays != null && (
-          <div
-            className={`flex items-center gap-1 px-3 py-2 rounded-xl font-semibold ${
-              deadlineDays < 0
-                ? 'bg-red-50 text-red-600'
-                : deadlineDays <= 3
-                  ? 'bg-amber-50 text-amber-600'
-                  : 'bg-muted/60 text-muted-foreground'
-            }`}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-800">
+          {child.assignedTo.firstName} {child.assignedTo.lastName}
+        </p>
+        <p className="text-xs text-slate-400">{child.assignedTo.role.name}</p>
+      </div>
+      <div className="text-sm text-slate-600 shrink-0">
+        <span className="font-semibold text-slate-900">{child.candidateStats.total}</span> in
+        pipeline
+        {dl != null && (
+          <span
+            className={cn(
+              'ml-2 font-medium',
+              dl < 0 ? 'text-red-500' : dl <= 3 ? 'text-amber-600' : 'text-slate-400'
+            )}
           >
-            <AlertTriangle size={11} />
-            <span>
-              {deadlineDays < 0 ? `${Math.abs(deadlineDays)}d overdue` : `${deadlineDays}d left`}
-            </span>
-          </div>
+            · {dl < 0 ? `${Math.abs(dl)}d over` : `${dl}d left`}
+          </span>
         )}
       </div>
-
-      {/* Pipeline stage strip */}
-      {relevantStages.length > 0 && (
-        <div
-          className="border-t border-border/60 grid"
-          style={{ gridTemplateColumns: `repeat(${relevantStages.length}, 1fr)` }}
-        >
-          {relevantStages.map((stage, idx) => {
-            const count = countMap[stage.id] ?? 0;
-            const pal = STAGE_PALETTE[stage.code] ?? fallbackPalette;
-            const isFirst = idx === 0;
-            const isLast = idx === relevantStages.length - 1;
-
-            return (
-              <button
-                key={stage.id}
-                onClick={() => onStageClick(req, stage.id)}
-                className={`flex flex-col items-center justify-center px-2 py-3.5 border-r border-border/60 last:border-r-0 hover:${pal.bg} transition-colors relative group/stage ${
-                  isFirst ? 'rounded-bl-2xl' : ''
-                } ${isLast ? 'rounded-br-2xl' : ''}`}
-              >
-                {/* count bubble */}
-                {count > 0 && (
-                  <div
-                    className={`absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full ${pal.bar} flex items-center justify-center`}
-                  >
-                    <span className="text-[9px] font-bold text-white">
-                      {count > 99 ? '99+' : count}
-                    </span>
-                  </div>
-                )}
-                <span
-                  className={`text-[26px] font-black tabular-nums leading-none ${count > 0 ? pal.num : 'text-border'}`}
-                >
-                  {count}
-                </span>
-                <span
-                  className={`text-[8px] mt-1 font-bold tracking-widest uppercase whitespace-nowrap ${count > 0 ? pal.text : 'text-muted-foreground/40'}`}
-                >
-                  {stage.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── Skeleton Card ────────────────────────────────────────────────────────────
+// ─── Assignment card ──────────────────────────────────────────────────────────
+
+function AssignmentCard({
+  a,
+  onCanonicalClick,
+}: {
+  a: MyAssignment;
+  onCanonicalClick: (a: MyAssignment, stageId: string | null) => void;
+}) {
+  const router = useRouter();
+  const [showSubs, setShowSubs] = useState(false);
+  const req = a.requirement;
+  const isBreached = !!a.breachedAt || req.isRespondByBreached || req.isTurnaroundBreached;
+  const dl = a.deadline ? daysLeft(a.deadline) : null;
+  const age = daysSince(a.assignedAt);
+  const hasSubs = a.childAssignments.length > 0;
+  const stats = a.candidateStats;
+
+  return (
+    <div
+      className={cn(
+        'rounded-2xl bg-white overflow-hidden transition-shadow hover:shadow-md',
+        isBreached ? 'border-2 border-amber-400' : 'border-2 border-slate-100'
+      )}
+    >
+      {isBreached && <div className="h-1 w-full bg-amber-400" />}
+
+      <div className="px-6 pt-5 pb-4">
+        {/* Header — click to assignment detail */}
+        <div
+          className="flex items-start gap-4 mb-5 cursor-pointer group"
+          onClick={() => router.push(`/assignments/${a.id}`)}
+        >
+          <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 text-lg font-bold text-blue-700">
+            {(req.serviceLine?.name?.[0] ?? req.title[0]).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                {req.reqCode}
+              </span>
+              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                {REQ_STATUS_LABEL[req.status] ?? req.status}
+              </span>
+              {req.priority === 'HIGH' && (
+                <span className="text-xs font-semibold text-red-800 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">
+                  High
+                </span>
+              )}
+              {req.priority === 'MEDIUM' && (
+                <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                  Medium
+                </span>
+              )}
+              <span className="text-xs font-semibold text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1">
+                <GitBranch className="w-3 h-3" />
+                {DEPTH_LABEL[a.depth] ?? `Depth ${a.depth}`}
+              </span>
+              {isBreached && (
+                <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-300 flex items-center gap-1">
+                  <Flame className="w-3 h-3" />
+                  Deadline breached
+                </span>
+              )}
+            </div>
+            <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+              {req.title}
+            </h3>
+            <p className="text-sm text-slate-600 mt-1 truncate">
+              {[req.client?.name, req.businessUnit?.name, req.serviceLine?.name]
+                .filter(Boolean)
+                .join(' · ')}
+              {` · ${req.totalOpenings} opening${req.totalOpenings !== 1 ? 's' : ''}`}
+              {a.assignedBy && ` · by ${a.assignedBy.firstName} ${a.assignedBy.lastName}`}
+            </p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mt-1.5 group-hover:text-slate-600 transition-colors" />
+        </div>
+
+        {/* Stats row */}
+        <div className="flex items-center gap-3 flex-wrap mb-4">
+          <button
+            onClick={() => onCanonicalClick(a, null)}
+            className="flex items-center gap-2.5 border-2 border-slate-200 rounded-xl px-4 py-3 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 transition-colors group/s"
+          >
+            <Users className="w-4 h-4 text-slate-500 group-hover/s:text-blue-500" />
+            <span className="text-2xl font-black text-slate-900 group-hover/s:text-blue-700">
+              {stats.total}
+            </span>
+            <span className="text-sm font-medium text-slate-600 group-hover/s:text-blue-600">
+              in pipeline
+            </span>
+          </button>
+
+          {stats.placed > 0 && (
+            <div className="flex items-center gap-2.5 border-2 border-emerald-300 rounded-xl px-4 py-3 bg-emerald-50">
+              <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+              <span className="text-2xl font-black text-emerald-800">{stats.placed}</span>
+              <span className="text-sm font-medium text-emerald-700">placed</span>
+            </div>
+          )}
+
+          {stats.submitted > 0 && (
+            <div className="flex items-center gap-2.5 border-2 border-slate-200 rounded-xl px-4 py-3 bg-white">
+              <span className="text-2xl font-black text-slate-900">{stats.submitted}</span>
+              <span className="text-sm font-medium text-slate-600">submitted</span>
+            </div>
+          )}
+
+          {stats.offered > 0 && (
+            <div className="flex items-center gap-2.5 border-2 border-slate-200 rounded-xl px-4 py-3 bg-white">
+              <span className="text-2xl font-black text-slate-900">{stats.offered}</span>
+              <span className="text-sm font-medium text-slate-600">offered</span>
+            </div>
+          )}
+
+          {stats.dropped > 0 && (
+            <div className="flex items-center gap-2.5 border-2 border-red-200 rounded-xl px-4 py-3 bg-red-50">
+              <span className="text-2xl font-black text-red-700">{stats.dropped}</span>
+              <span className="text-sm font-medium text-red-600">dropped</span>
+            </div>
+          )}
+
+          {stats.agingBuckets.critical > 0 && (
+            <div className="flex items-center gap-2.5 border-2 border-amber-300 rounded-xl px-4 py-3 bg-amber-50">
+              <Clock className="w-4 h-4 text-amber-700" />
+              <span className="text-2xl font-black text-amber-800">
+                {stats.agingBuckets.critical}
+              </span>
+              <span className="text-sm font-medium text-amber-700">stale &gt;14d</span>
+            </div>
+          )}
+
+          <div className="ml-auto flex items-center gap-3">
+            {dl != null && (
+              <span
+                className={cn(
+                  'flex items-center gap-1.5 text-sm font-semibold',
+                  dl < 0 ? 'text-red-600' : dl <= 3 ? 'text-amber-700' : 'text-slate-500'
+                )}
+              >
+                <CalendarClock className="w-4 h-4" />
+                {dl < 0 ? `${Math.abs(dl)}d overdue` : `${dl}d left`}
+              </span>
+            )}
+            <span className="text-sm font-medium text-slate-500 flex items-center gap-1.5">
+              <Clock className="w-4 h-4" />
+              {age}d old
+            </span>
+            {hasSubs && (
+              <button
+                onClick={() => setShowSubs(v => !v)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-blue-700 border border-blue-200 rounded-lg px-3 py-2 bg-blue-50 hover:bg-blue-100 transition-colors"
+              >
+                <Layers className="w-4 h-4" />
+                {a.childAssignments.length} sub{a.childAssignments.length !== 1 ? 's' : ''}
+                <ChevronRight
+                  className={cn('w-4 h-4 transition-transform', showSubs && 'rotate-90')}
+                />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-assignments */}
+      {showSubs && hasSubs && (
+        <div className="px-6 pb-5 border-t-2 border-slate-50 pt-4 bg-slate-50/50 space-y-2">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+            Sub-assignments
+          </p>
+          {a.childAssignments.map(c => (
+            <SubRow key={c.id} child={c} />
+          ))}
+        </div>
+      )}
+
+      {/* Canonical stage bar */}
+      <CanonicalBar
+        byCanonical={stats.byCanonicalStage}
+        onStageClick={() => onCanonicalClick(a, null)}
+      />
+
+      {/* Pipeline stage chips */}
+      <PipelineStageChips stages={stats.byPipelineStage} />
+    </div>
+  );
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function CardSkeleton() {
   return (
-    <div className="rounded-2xl border border-border/60 bg-background overflow-hidden">
-      <div className="p-5 space-y-4">
+    <div className="rounded-2xl border-2 border-slate-100 bg-white overflow-hidden">
+      <div className="p-6 space-y-4">
         <div className="flex gap-4">
           <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
           <div className="flex-1 space-y-2">
             <div className="flex gap-2">
-              <Skeleton className="h-5 w-20" />
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="h-5 w-14" />
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-6 w-16" />
             </div>
-            <Skeleton className="h-5 w-56" />
-            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className="h-5 w-64" />
+            <Skeleton className="h-4 w-48" />
           </div>
         </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-36 rounded-xl" />
-          <Skeleton className="h-9 w-28 rounded-xl" />
-          <Skeleton className="h-9 w-20 rounded-xl" />
+        <div className="flex gap-3">
+          <Skeleton className="h-14 w-40 rounded-xl" />
+          <Skeleton className="h-14 w-32 rounded-xl" />
         </div>
       </div>
-      <div className="border-t border-border/60 grid grid-cols-6">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="border-t-2 border-slate-100 grid grid-cols-8">
+        {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex flex-col items-center gap-1.5 py-4">
-            <Skeleton className="h-7 w-8" />
+            <Skeleton className="h-2 w-2 rounded-full" />
+            <Skeleton className="h-6 w-7" />
             <Skeleton className="h-2 w-12" />
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Summary Stat ─────────────────────────────────────────────────────────────
-
-function StatChip({
-  icon: Icon,
-  label,
-  value,
-  variant = 'default',
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  variant?: 'default' | 'primary' | 'warning';
-}) {
-  const cls = {
-    default: 'bg-muted text-muted-foreground border-border',
-    primary: 'bg-primary/8 text-primary border-primary/20',
-    warning: 'bg-red-50 text-red-600 border-red-200',
-  }[variant];
-
-  return (
-    <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border ${cls}`}>
-      <Icon size={15} />
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-[16px] font-black">{value}</span>
-        <span className="text-[11px] font-medium opacity-80">{label}</span>
       </div>
     </div>
   );
@@ -769,7 +714,6 @@ export default function MyAssignmentsPage() {
   const axios = useAxios();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ACTIVE');
-  const [priority, setPriority] = useState('');
   const [page, setPage] = useState(1);
   const limit = 20;
 
@@ -778,237 +722,214 @@ export default function MyAssignmentsPage() {
     requirementId: string;
     requirementTitle: string;
     stageId: string | null;
-  }>({ open: false, requirementId: '', requirementTitle: '', stageId: null });
-
-  function resetPage() {
-    setPage(1);
-  }
-
-  const { data: stagesData } = useQuery({
-    queryKey: ['pipeline-stages'],
-    queryFn: async () => {
-      const res = await axios.get('/pipeline-stages');
-      return (res.data?.data ?? res.data) as PipelineStage[];
-    },
-    staleTime: 10 * 60 * 1000,
-  });
-  const allStages = (stagesData ?? []).sort((a, b) => a.order - b.order);
+    allStages: PipelineStageCount[];
+  }>({ open: false, requirementId: '', requirementTitle: '', stageId: null, allStages: [] });
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
-    if (search) p.set('search', search);
     if (status) p.set('status', status);
-    if (priority) p.set('priority', priority);
     p.set('page', String(page));
     p.set('limit', String(limit));
     return p.toString();
-  }, [search, status, priority, page]);
+  }, [status, page]);
 
-  const { data: reqData, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['my-assignments', qs],
-    queryFn: async () => {
-      const res = await axios.get(`/requirements?${qs}`);
-      return res.data as RequirementsResponse;
-    },
+    queryFn: async () =>
+      (await axios.get(`/assignments/my?${qs}`)).data as {
+        success: boolean;
+        data: MyAssignment[];
+        meta: { total: number; page: number; limit: number; pages: number };
+      },
     placeholderData: prev => prev,
   });
 
-  const requirements = reqData?.data ?? [];
-  const total = reqData?.meta?.total ?? 0;
-  const totalPages = reqData?.meta?.pages ?? 0;
+  const assignments = data?.data ?? [];
+  const total = data?.meta?.total ?? 0;
+  const totalPages = data?.meta?.pages ?? 0;
 
-  function openDrawer(req: Requirement, stageId: string | null) {
-    setDrawer({ open: true, requirementId: req.id, requirementTitle: req.title, stageId });
-  }
+  const filtered = useMemo(() => {
+    if (!search) return assignments;
+    const q = search.toLowerCase();
+    return assignments.filter(
+      a =>
+        a.requirement.title.toLowerCase().includes(q) ||
+        a.requirement.reqCode.toLowerCase().includes(q)
+    );
+  }, [assignments, search]);
 
-  const totalCandidates = requirements.reduce(
-    (s, r) =>
-      s + (r._count?.pipelines ?? (r.pipelineStageCounts ?? []).reduce((a, c) => a + c.count, 0)),
-    0
-  );
-  const breachedCount = requirements.filter(
-    r => r.isRespondByBreached || r.isTurnaroundBreached
+  const totalInPipeline = assignments.reduce((s, a) => s + a.candidateStats.total, 0);
+  const totalPlaced = assignments.reduce((s, a) => s + a.candidateStats.placed, 0);
+  const breachedCount = assignments.filter(
+    a => !!a.breachedAt || a.requirement.isRespondByBreached
   ).length;
-  const activeCount = requirements.filter(r => r.status === 'ACTIVE').length;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-muted/20">
-      {/* ── Header ── */}
-      <div className="shrink-0 bg-background border-b border-border">
-        {/* Top section */}
-        <div className="px-7 pt-6 pb-4">
-          <div className="flex items-end justify-between gap-4 mb-5">
-            <div>
-              <div className="flex items-center gap-2.5 mb-1">
-                <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-                  <Briefcase size={16} className="text-primary" />
-                </div>
-                <h1 className="text-[22px] font-black text-foreground tracking-tight">
-                  My Assignments
-                </h1>
+    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-[#EEF2F7]">
+      {/* Header */}
+      <div className="shrink-0 bg-white border-b-2 border-slate-100">
+        <div className="px-8 pt-6 pb-5">
+          <div className="flex items-center justify-between gap-4 mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+                <Briefcase className="w-5 h-5 text-white" />
               </div>
-              <p className="text-[13px] text-muted-foreground ml-10">
-                {isLoading
-                  ? 'Loading your assignments…'
-                  : `${total} requirement${total !== 1 ? 's' : ''} assigned to you`}
-              </p>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">My Assignments</h1>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  {isLoading
+                    ? 'Loading…'
+                    : `${total} requirement${total !== 1 ? 's' : ''} assigned to you`}
+                </p>
+              </div>
             </div>
 
-            {!isLoading && requirements.length > 0 && (
-              <div className="flex items-center gap-2 shrink-0">
-                <StatChip
-                  icon={CheckCircle2}
-                  label="active"
-                  value={activeCount}
-                  variant="primary"
-                />
-                <StatChip
-                  icon={TrendingUp}
-                  label="candidates"
-                  value={totalCandidates}
-                  variant="default"
-                />
+            {!isLoading && assignments.length > 0 && (
+              <div className="flex items-center gap-6">
+                <div className="text-center">
+                  <p className="text-3xl font-black text-blue-600">{total}</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                    Assigned
+                  </p>
+                </div>
+                <div className="w-px h-12 bg-slate-100" />
+                <div className="text-center">
+                  <p className="text-3xl font-black text-slate-900">{totalInPipeline}</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                    In pipeline
+                  </p>
+                </div>
+                {totalPlaced > 0 && (
+                  <>
+                    <div className="w-px h-12 bg-slate-100" />
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-emerald-700">{totalPlaced}</p>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                        Placed
+                      </p>
+                    </div>
+                  </>
+                )}
                 {breachedCount > 0 && (
-                  <StatChip
-                    icon={AlertTriangle}
-                    label="breached"
-                    value={breachedCount}
-                    variant="warning"
-                  />
+                  <>
+                    <div className="w-px h-12 bg-slate-100" />
+                    <div className="text-center">
+                      <p className="text-3xl font-black text-amber-600">{breachedCount}</p>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                        Breached
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
             )}
           </div>
 
-          {/* Toolbar */}
-          <div className="flex items-center gap-2.5">
-            <div className="relative flex-1 max-w-sm">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  resetPage();
-                }}
-                placeholder="Search by title or code…"
-                className="pl-9 h-9 text-[13px] rounded-xl border-border/60 focus:border-primary/50"
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search requirement or code…"
+                className="pl-10 h-10 text-sm border-slate-200 bg-slate-50 focus:bg-white"
               />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-
-            <div className="flex items-center gap-1 bg-muted/60 rounded-xl p-1">
-              {['ACTIVE', 'ON_HOLD', 'CLOSED', ''].map(s => {
-                const labels: Record<string, string> = {
-                  ACTIVE: 'Active',
-                  ON_HOLD: 'On Hold',
-                  CLOSED: 'Closed',
-                  '': 'All',
-                };
-                return (
-                  <button
-                    key={s}
-                    onClick={() => {
-                      setStatus(s);
-                      resetPage();
-                    }}
-                    className={`text-[12px] px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                      status === s
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {labels[s]}
-                  </button>
-                );
-              })}
+            <div className="flex items-center border-2 border-slate-200 rounded-xl overflow-hidden">
+              {[
+                { v: 'ACTIVE', l: 'Active' },
+                { v: 'REMOVED', l: 'Removed' },
+                { v: '', l: 'All' },
+              ].map(({ v, l }) => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    setStatus(v);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    'text-sm font-semibold px-5 py-2.5 transition-all',
+                    status === v
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-600 bg-white hover:bg-slate-50'
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
             </div>
-
-            <Select
-              value={priority || '_all'}
-              onValueChange={v => {
-                setPriority(v === '_all' ? '' : v);
-                resetPage();
-              }}
-            >
-              <SelectTrigger className="h-9 text-[13px] w-36 rounded-xl border-border/60">
-                <Filter size={12} className="mr-1.5 text-muted-foreground" />
-                <SelectValue placeholder="Priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All priorities</SelectItem>
-                {ALL_PRIORITIES.map(p => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
       </div>
 
-      {/* ── Card grid ── */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-7 py-5">
+      {/* Cards */}
+      <div className="flex-1 overflow-y-auto min-h-0 px-8 py-5">
         {isLoading ? (
-          <div className="flex flex-col gap-5">
-            {Array.from({ length: 6 }).map((_, i) => (
+          <div className="flex flex-col gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
               <CardSkeleton key={i} />
             ))}
           </div>
-        ) : requirements.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64">
-            <div className="w-20 h-20 rounded-3xl bg-muted flex items-center justify-center mb-5 shadow-inner">
-              <Briefcase size={36} className="text-muted-foreground/30" />
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-white border-2 border-slate-200 flex items-center justify-center">
+              <Briefcase className="w-7 h-7 text-slate-300" />
             </div>
-            <p className="text-[15px] font-bold text-foreground mb-1">No assignments found</p>
-            <p className="text-[13px] text-muted-foreground">
-              {status === 'ACTIVE'
-                ? 'No active requirements assigned to you'
-                : 'Try adjusting your filters'}
+            <p className="text-base font-bold text-slate-700">No assignments found</p>
+            <p className="text-sm text-slate-500">
+              {search ? 'No matches for your search' : 'No requirements assigned to you right now'}
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-5">
-            {requirements.map(req => (
+          <div className="flex flex-col gap-4">
+            {filtered.map(a => (
               <AssignmentCard
-                key={req.id}
-                req={req}
-                allStages={allStages}
-                onStageClick={openDrawer}
+                key={a.id}
+                a={a}
+                onCanonicalClick={(a, stageId) =>
+                  setDrawer({
+                    open: true,
+                    requirementId: a.requirement.id,
+                    requirementTitle: a.requirement.title,
+                    stageId,
+                    allStages: a.candidateStats.byPipelineStage,
+                  })
+                }
               />
             ))}
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-6 pt-5 border-t border-border">
-            <span className="text-[13px] text-muted-foreground">
-              Showing{' '}
-              <span className="font-semibold text-foreground">
-                {(page - 1) * limit + 1}–{Math.min(page * limit, total)}
-              </span>{' '}
-              of <span className="font-semibold text-foreground">{total}</span>
+        {totalPages > 1 && !search && (
+          <div className="flex items-center justify-between mt-6 pt-5 border-t border-slate-200">
+            <span className="text-sm text-slate-500">
+              {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
             </span>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-4 text-[12px] rounded-xl"
+                className="h-9 px-4 text-sm rounded-xl"
                 disabled={page === 1}
                 onClick={() => setPage(p => p - 1)}
               >
                 ← Prev
               </Button>
-              <span className="text-[13px] text-muted-foreground px-2">
+              <span className="text-sm text-slate-500">
                 {page} / {totalPages}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-4 text-[12px] rounded-xl"
+                className="h-9 px-4 text-sm rounded-xl"
                 disabled={page === totalPages}
                 onClick={() => setPage(p => p + 1)}
               >
@@ -1019,14 +940,13 @@ export default function MyAssignmentsPage() {
         )}
       </div>
 
-      {/* Candidate Drawer */}
       <CandidateDrawer
         open={drawer.open}
         onClose={() => setDrawer(d => ({ ...d, open: false }))}
         requirementId={drawer.requirementId}
         requirementTitle={drawer.requirementTitle}
         stageId={drawer.stageId}
-        allStages={allStages}
+        allStages={drawer.allStages}
       />
     </div>
   );

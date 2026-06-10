@@ -369,18 +369,18 @@ const PORTAL_APPS = [
     desc: 'Source from Foundit (Monster)',
   },
 ];
-function triggerExtension(rId: string, rCode: string, rTitle: string, app: string) {
-  window.postMessage(
-    {
-      type: 'TALENTOX_SOURCE_NAUKRI',
-      requirementId: rId,
-      requirementCode: rCode,
-      requirementTitle: rTitle,
-      appName: app,
-    },
-    window.location.origin
-  );
-}
+// function triggerExtension(rId: string, rCode: string, rTitle: string, app: string) {
+//   window.postMessage(
+//     {
+//       type: 'TALENTOX_SOURCE_NAUKRI',
+//       requirementId: rId,
+//       requirementCode: rCode,
+//       requirementTitle: rTitle,
+//       appName: app,
+//     },
+//     window.location.origin
+//   );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UPLOAD RESUME MODAL
@@ -605,10 +605,10 @@ function AddCandidateModal({
               <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
                 <UserPlus className="w-4.5 h-4.5 text-primary" />
               </div>
-              <div>
+              {/* <div>
                 <h2 className="text-base font-bold text-slate-900">Add Candidate</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Choose how to source</p>
-              </div>
+              </div> */}
             </div>
             <button
               onClick={onClose}
@@ -683,7 +683,7 @@ function AddCandidateModal({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => {
-                        triggerExtension(req.id, req.reqCode, req.title, app.appName);
+                        // triggerExtension(req.id, req.reqCode, req.title, app.appName);
                         onClose();
                       }}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
@@ -1933,14 +1933,14 @@ export default function RequirementDetailPage() {
                 )}
 
                 <div className="flex items-center gap-2 ml-[52px]">
-                  <Button
+                  {/* <Button
                     size="sm"
                     className="gap-2 h-8 text-sm font-semibold px-4"
                     onClick={() => setAddModal(true)}
                   >
                     <UserPlus className="w-4 h-4" />
                     Add Candidate
-                  </Button>
+                  </Button> */}
                   {canEdit && nextStatuses.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -2237,12 +2237,12 @@ export default function RequirementDetailPage() {
       </Tabs>
 
       {/* ═══ MODALS & DRAWER ═══ */}
-      <AddCandidateModal
+      {/* <AddCandidateModal
         open={addModal}
         onClose={() => setAddModal(false)}
         req={req as any}
         assignments={assignments}
-      />
+      /> */}
 
       {selectedPipelineId && (
         <CandidateDetailDrawer

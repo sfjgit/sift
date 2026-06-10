@@ -32,6 +32,8 @@ const NAV = [
   { label: 'Reports', href: '/reports', icon: BarChart2, module: 'reports' },
 
   { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
+  { label: 'Assignments', href: '/assignments', icon: ClipboardList },
+
   { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
   { label: 'Candidates', href: '/candidates', icon: UserSearch, module: 'candidates' },
   { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
