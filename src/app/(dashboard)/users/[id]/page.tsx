@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// File: page.tsx
+// Path: src/app/(dashboard)/users/[id]/page.tsx
+
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -39,9 +42,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useAxios } from '@/hooks/useAxios';
 import { usePermission } from '@/hooks/usePermission';
-import AppCredentialsManager from '@/components/users/AppCredentialsManager';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface UserCardData {
   id: string;
@@ -85,6 +89,7 @@ interface UserCardData {
     employeeId: string | null;
     role: { id: string; name: string };
   }[];
+
   teamMembers: {
     id: string;
     firstName: string;
@@ -175,14 +180,13 @@ interface Assignment {
     status: string;
     priority: string;
     totalOpenings: number;
-    filledOpenings: number;
-    activeApplications: number;
-    interviewsScheduled: number;
-    offersRolledOut: number;
-    location: string | null;
+    // location, skills, filledOpenings, activeApplications removed — use primarySkills + city
+    city: string | null;
+    state: string | null;
+    primarySkills: string[];
+    keySkills: string[];
     jobType: string;
     remoteType: string;
-    skills: string[];
     respondBy: string | null;
     client: { id: string; name: string; industry: string | null };
     businessUnit: { id: string; name: string } | null;
@@ -223,9 +227,7 @@ interface RequirementCreated {
   status: string;
   priority: string;
   totalOpenings: number;
-  filledOpenings: number;
-  activeApplications: number;
-  interviewsScheduled: number;
+  // counters removed — no longer stored on requirement
   createdAt: string;
   client: { id: string; name: string };
   businessUnit: { id: string; name: string } | null;
@@ -255,7 +257,9 @@ interface SpocHandled {
   addedBy: { id: string; firstName: string; lastName: string };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 function initials(firstName: string, lastName: string) {
   return `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
@@ -290,19 +294,6 @@ const STATUS_STYLES: Record<string, string> = {
   CANCELLED: 'bg-rose-50 text-rose-600 border-rose-200',
 };
 
-const STAGE_LABELS: Record<string, string> = {
-  SOURCED: 'Sourced',
-  SCREENING: 'Screening',
-  SUBMITTED: 'Submitted',
-  INTERVIEW_SCHEDULED: 'Interview Scheduled',
-  INTERVIEW_DONE: 'Interview Done',
-  OFFER_ROLLED: 'Offer Rolled',
-  OFFER_ACCEPTED: 'Offer Accepted',
-  JOINED: 'Joined',
-  REJECTED: 'Rejected',
-  WITHDRAWN: 'Withdrawn',
-};
-
 const STAGE_COLORS: Record<string, string> = {
   SOURCED: 'bg-slate-100 text-slate-600',
   SCREENING: 'bg-blue-50 text-blue-700',
@@ -316,7 +307,22 @@ const STAGE_COLORS: Record<string, string> = {
   WITHDRAWN: 'bg-slate-100 text-slate-500',
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+const STAGE_LABELS: Record<string, string> = {
+  SOURCED: 'Sourced',
+  SCREENING: 'Screening',
+  SUBMITTED: 'Submitted',
+  INTERVIEW_SCHEDULED: 'Interview Scheduled',
+  INTERVIEW_DONE: 'Interview Done',
+  OFFER_ROLLED: 'Offer Rolled',
+  OFFER_ACCEPTED: 'Offer Accepted',
+  JOINED: 'Joined',
+  REJECTED: 'Rejected',
+  WITHDRAWN: 'Withdrawn',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
 
 function StatCard({
   icon: Icon,
@@ -374,6 +380,10 @@ function UserChip({
 function AssignmentCard({ a, router }: { a: Assignment; router: any }) {
   const req = a.requirement;
   const isActive = a.status === 'ACTIVE';
+  // combine primarySkills + keySkills for display
+  const allSkills = [...(req.primarySkills ?? []), ...(req.keySkills ?? [])];
+  const location = [req.city, req.state].filter(Boolean).join(', ');
+
   return (
     <div
       className="group cursor-pointer rounded-lg border bg-card p-4 transition-colors hover:border-primary/30 hover:bg-muted/30"
@@ -402,7 +412,16 @@ function AssignmentCard({ a, router }: { a: Assignment; router: any }) {
             )}
           </div>
           <p className="font-medium text-sm leading-snug">{req.title}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{req.client.name}</p>
+          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+            <p className="text-xs text-muted-foreground">{req.client.name}</p>
+            {location && (
+              <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                <MapPin className="h-3 w-3" />
+                {location}
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">{req.remoteType}</span>
+          </div>
         </div>
         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
       </div>
@@ -427,10 +446,10 @@ function AssignmentCard({ a, router }: { a: Assignment; router: any }) {
         )}
       </div>
 
-      {/* Skills */}
-      {req.skills?.length > 0 && (
+      {/* Skills — from primarySkills + keySkills */}
+      {allSkills.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {req.skills.slice(0, 5).map(s => (
+          {allSkills.slice(0, 5).map(s => (
             <span
               key={s}
               className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
@@ -438,13 +457,20 @@ function AssignmentCard({ a, router }: { a: Assignment; router: any }) {
               {s}
             </span>
           ))}
-          {req.skills.length > 5 && (
-            <span className="text-[10px] text-muted-foreground">+{req.skills.length - 5} more</span>
+          {allSkills.length > 5 && (
+            <span className="text-[10px] text-muted-foreground">+{allSkills.length - 5} more</span>
           )}
         </div>
       )}
 
-      {/* Assigned by */}
+      {/* Respond by */}
+      {req.respondBy && (
+        <p className="mt-1.5 text-[11px] text-amber-600 flex items-center gap-1">
+          <Calendar className="h-3 w-3" /> Respond by{' '}
+          {format(new Date(req.respondBy), 'dd MMM yyyy')}
+        </p>
+      )}
+
       <p className="mt-2 text-[11px] text-muted-foreground/60">
         Assigned by {a.assignedBy.firstName} {a.assignedBy.lastName}
         {' · '}
@@ -454,7 +480,54 @@ function AssignmentCard({ a, router }: { a: Assignment; router: any }) {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+function EmptyState({ icon: Icon, label }: { icon: any; label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-center">
+      <Icon className="mb-2 h-8 w-8 text-muted-foreground/30" />
+      <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SKELETON
+// ─────────────────────────────────────────────────────────────────────────────
+
+function UserDetailSkeleton() {
+  return (
+    <div className="flex min-h-screen">
+      <aside className="w-72 shrink-0 border-r p-5">
+        <div className="flex flex-col items-center gap-3 pt-2">
+          <Skeleton className="h-20 w-20 rounded-full" />
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+        <Separator className="my-5" />
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-full" />
+          ))}
+        </div>
+      </aside>
+      <main className="flex-1 p-6">
+        <div className="grid grid-cols-4 gap-3 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-lg" />
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -467,10 +540,7 @@ export default function UserDetailPage() {
 
   const { data, isLoading, isError } = useQuery<{ success: boolean; data: UserCardData }>({
     queryKey: ['user-card', id],
-    queryFn: async () => {
-      const res = await axios.get(`/users/${id}/card`);
-      return res.data;
-    },
+    queryFn: async () => (await axios.get(`/users/${id}/card`)).data,
     enabled: !!id,
   });
 
@@ -485,7 +555,7 @@ export default function UserDetailPage() {
   });
 
   if (isLoading) return <UserDetailSkeleton />;
-  if (isError || !data?.data)
+  if (isError || !data?.data) {
     return (
       <div className="flex flex-col items-center justify-center p-16 text-center">
         <p className="text-sm text-muted-foreground">Failed to load user. Please try again.</p>
@@ -494,6 +564,7 @@ export default function UserDetailPage() {
         </Button>
       </div>
     );
+  }
 
   const user = data.data;
   const stats = user.aggregateStats;
@@ -502,7 +573,7 @@ export default function UserDetailPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* ── Top bar ───────────────────────────────────────────────────────── */}
+      {/* ── Top bar ── */}
       <div className="flex items-center justify-between border-b px-6 py-3">
         <button
           onClick={() => router.back()}
@@ -543,9 +614,8 @@ export default function UserDetailPage() {
         </div>
       </div>
 
-      {/* ── Body ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 gap-0 overflow-hidden">
-        {/* ── LEFT SIDEBAR ──────────────────────────────────────────────── */}
+        {/* ── LEFT SIDEBAR ── */}
         <aside className="w-72 shrink-0 border-r overflow-y-auto">
           <div className="flex flex-col gap-5 p-5">
             {/* Avatar + name */}
@@ -564,11 +634,7 @@ export default function UserDetailPage() {
                 )}
                 <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
                   <Badge
-                    className={`text-xs border ${
-                      user.isActive
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-slate-100 text-slate-500 border-slate-200'
-                    }`}
+                    className={`text-xs border ${user.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
                     variant="outline"
                   >
                     {user.isActive ? 'Active' : 'Inactive'}
@@ -578,8 +644,7 @@ export default function UserDetailPage() {
                       className="text-xs bg-violet-50 text-violet-700 border-violet-200"
                       variant="outline"
                     >
-                      <ShieldAlert className="h-3 w-3 mr-1" />
-                      Super Admin
+                      <ShieldAlert className="h-3 w-3 mr-1" /> Super Admin
                     </Badge>
                   )}
                 </div>
@@ -612,7 +677,7 @@ export default function UserDetailPage() {
 
             <Separator />
 
-            {/* Contact info */}
+            {/* Contact */}
             <div className="flex flex-col gap-2.5">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Contact</p>
               <a
@@ -650,7 +715,7 @@ export default function UserDetailPage() {
 
             <Separator />
 
-            {/* Org chain */}
+            {/* Reporting chain */}
             <div className="flex flex-col gap-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                 Reporting Chain
@@ -658,40 +723,17 @@ export default function UserDetailPage() {
               {user.reportingTo ? (
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-1">Reports to</p>
-                  <UserChip user={user.reportingTo} /> {/* ← no onClick */}
+                  <UserChip user={user.reportingTo} />
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground/50">No reporting manager</p>
               )}
-
               {user.teamLead && (
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-1">Team lead</p>
-                  <UserChip user={user.teamLead} /> {/* ← no onClick */}
+                  <UserChip user={user.teamLead} />
                 </div>
               )}
-              {/* {user.reportingTo ? (
-                <div>
-                  <p className="text-[10px] text-muted-foreground mb-1">Reports to</p>
-                  <UserChip
-                    user={user.reportingTo}
-                    onClick={() => router.push(`/users/${user.reportingTo!.id}`)}
-                  />
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground/50">No reporting manager</p>
-              )}
-
-              {user.teamLead && (
-                <div>
-                  <p className="text-[10px] text-muted-foreground mb-1">Team lead</p>
-                  <UserChip
-                    user={user.teamLead}
-                    onClick={() => router.push(`/users/${user.teamLead!.id}`)}
-                  />
-                </div>
-              )} */}
-
               {user.subordinates.length > 0 && (
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-1.5">
@@ -709,7 +751,6 @@ export default function UserDetailPage() {
                   </div>
                 </div>
               )}
-
               {user.teamMembers.length > 0 && (
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-1.5">
@@ -727,8 +768,6 @@ export default function UserDetailPage() {
                   </div>
                 </div>
               )}
-
-              {/* Org tree link */}
               <button
                 onClick={() => router.push(`/users/${id}/tree`)}
                 className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
@@ -739,7 +778,7 @@ export default function UserDetailPage() {
           </div>
         </aside>
 
-        {/* ── RIGHT CONTENT ─────────────────────────────────────────────── */}
+        {/* ── RIGHT CONTENT ── */}
         <main className="flex-1 overflow-y-auto">
           <Tabs value={tab} onValueChange={setTab} className="flex flex-col h-full">
             {/* Tab bar */}
@@ -759,7 +798,6 @@ export default function UserDetailPage() {
                     label: `Requirements (${user._count.requirementsCreated})`,
                   },
                   { value: 'spocs', icon: Contact2, label: `Spocs (${user._count.spocsHandled})` },
-                  { value: 'Apps', icon: Contact2, label: `APPs (${user._count.spocsHandled})` },
                 ].map(t => (
                   <TabsTrigger
                     key={t.value}
@@ -773,10 +811,9 @@ export default function UserDetailPage() {
               </TabsList>
             </div>
 
-            {/* ── OVERVIEW TAB ────────────────────────────────────────────── */}
+            {/* ── OVERVIEW TAB ── */}
             <TabsContent value="overview" className="flex-1 p-6 mt-0">
               <div className="flex flex-col gap-6 max-w-3xl">
-                {/* Stats strip */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <StatCard icon={Briefcase} label="Active Reqs" value={stats.activeReqs} />
                   <StatCard icon={Send} label="Submissions" value={stats.totalSubmissions} />
@@ -788,7 +825,6 @@ export default function UserDetailPage() {
                     sub={`of ${stats.totalAllocated} allocated`}
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <StatCard
                     icon={FileText}
@@ -821,7 +857,7 @@ export default function UserDetailPage() {
                                 <div
                                   className="h-full rounded-full bg-primary transition-all"
                                   style={{
-                                    width: `${Math.round((count / stats.candidatesSourced) * 100)}%`,
+                                    width: `${Math.round((count / Math.max(stats.candidatesSourced, 1)) * 100)}%`,
                                   }}
                                 />
                               </div>
@@ -855,7 +891,7 @@ export default function UserDetailPage() {
               </div>
             </TabsContent>
 
-            {/* ── ASSIGNMENTS TAB ─────────────────────────────────────────── */}
+            {/* ── ASSIGNMENTS TAB ── */}
             <TabsContent value="assignments" className="flex-1 p-6 mt-0">
               <div className="flex flex-col gap-6 max-w-3xl">
                 {activeAssignments.length > 0 && (
@@ -873,7 +909,6 @@ export default function UserDetailPage() {
                     </div>
                   </div>
                 )}
-
                 {pastAssignments.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold mb-3">
@@ -889,14 +924,13 @@ export default function UserDetailPage() {
                     </div>
                   </div>
                 )}
-
                 {user.assignmentsReceived.length === 0 && (
                   <EmptyState icon={Briefcase} label="No assignments yet" />
                 )}
               </div>
             </TabsContent>
 
-            {/* ── GIVEN TAB ───────────────────────────────────────────────── */}
+            {/* ── GIVEN TAB ── */}
             <TabsContent value="given" className="flex-1 p-6 mt-0">
               <div className="flex flex-col gap-3 max-w-3xl">
                 {user.assignmentsGiven.length === 0 && (
@@ -920,6 +954,12 @@ export default function UserDetailPage() {
                           >
                             {a.requirement.priority}
                           </Badge>
+                          <Badge
+                            className={`text-[10px] px-1.5 py-0 border ${STATUS_STYLES[a.requirement.status] ?? ''}`}
+                            variant="outline"
+                          >
+                            {a.requirement.status.replace(/_/g, ' ')}
+                          </Badge>
                         </div>
                         <p className="font-medium text-sm">{a.requirement.title}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -928,7 +968,6 @@ export default function UserDetailPage() {
                       </div>
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                     </div>
-
                     <div className="mt-3 flex items-center gap-2 border-t pt-3">
                       <Avatar className="h-5 w-5 shrink-0">
                         <AvatarFallback
@@ -953,7 +992,7 @@ export default function UserDetailPage() {
               </div>
             </TabsContent>
 
-            {/* ── REQUIREMENTS TAB ────────────────────────────────────────── */}
+            {/* ── REQUIREMENTS TAB ── */}
             <TabsContent value="requirements" className="flex-1 p-6 mt-0">
               <div className="flex flex-col gap-3 max-w-3xl">
                 {user.requirementsCreated.length === 0 && (
@@ -996,19 +1035,8 @@ export default function UserDetailPage() {
                       </div>
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground border-t pt-3">
-                      <span>
-                        <span className="font-medium text-foreground">{r.filledOpenings}</span> /{' '}
-                        {r.totalOpenings} filled
-                      </span>
-                      <span>
-                        <span className="font-medium text-foreground">{r.activeApplications}</span>{' '}
-                        active
-                      </span>
-                      <span>
-                        <span className="font-medium text-foreground">{r.interviewsScheduled}</span>{' '}
-                        interviews
-                      </span>
+                    <div className="mt-3 flex flex-wrap gap-x-4 text-xs text-muted-foreground border-t pt-3">
+                      <span>{r.totalOpenings} openings</span>
                       <span className="ml-auto">
                         {format(new Date(r.createdAt), 'dd MMM yyyy')}
                       </span>
@@ -1018,7 +1046,7 @@ export default function UserDetailPage() {
               </div>
             </TabsContent>
 
-            {/* ── SPOCS TAB ───────────────────────────────────────────────── */}
+            {/* ── SPOCS TAB ── */}
             <TabsContent value="spocs" className="flex-1 p-6 mt-0">
               <div className="flex flex-col gap-3 max-w-3xl">
                 {user.spocsHandled.length === 0 && (
@@ -1059,7 +1087,6 @@ export default function UserDetailPage() {
                       </div>
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                     </div>
-
                     {(s.email || s.phone) && (
                       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 text-[11px] text-muted-foreground">
                         {s.email && (
@@ -1081,56 +1108,9 @@ export default function UserDetailPage() {
                 ))}
               </div>
             </TabsContent>
-
-            <TabsContent value="Apps" className="flex-1 p-6 mt-0">
-              <AppCredentialsManager />
-            </TabsContent>
           </Tabs>
         </main>
       </div>
-    </div>
-  );
-}
-
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function UserDetailSkeleton() {
-  return (
-    <div className="flex min-h-screen">
-      <aside className="w-72 shrink-0 border-r p-5">
-        <div className="flex flex-col items-center gap-3 pt-2">
-          <Skeleton className="h-20 w-20 rounded-full" />
-          <Skeleton className="h-5 w-36" />
-          <Skeleton className="h-4 w-24" />
-        </div>
-        <Separator className="my-5" />
-        <div className="flex flex-col gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full" />
-          ))}
-        </div>
-      </aside>
-      <main className="flex-1 p-6">
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-lg" />
-          ))}
-        </div>
-        <div className="flex flex-col gap-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 rounded-lg" />
-          ))}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, label }: { icon: any; label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-center">
-      <Icon className="mb-2 h-8 w-8 text-muted-foreground/30" />
-      <p className="text-sm text-muted-foreground">{label}</p>
     </div>
   );
 }

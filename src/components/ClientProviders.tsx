@@ -28,7 +28,7 @@ export default function ClientProviders({ children }: ClientProvidersProps) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider
         attribute="class" // injects .dark on <html>
-        defaultTheme="dark"
+        defaultTheme="light"
         enableSystem
         disableTransitionOnChange
       >

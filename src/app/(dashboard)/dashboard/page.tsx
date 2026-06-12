@@ -27,6 +27,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import {
   Zap,
@@ -43,6 +44,7 @@ import {
   FileText,
   Ban,
   CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
@@ -140,12 +142,12 @@ const PRESETS = [
 ];
 
 const SIDEBAR_STATUSES = [
-  { key: 'ACTIVE', label: 'Active', icon: Zap, color: 'text-emerald-600' },
-  { key: 'ON_HOLD', label: 'On hold', icon: PauseCircle, color: 'text-amber-500' },
-  { key: 'CLOSED', label: 'Closed', icon: X, color: 'text-muted-foreground' },
-  { key: 'PENDING_APPROVAL', label: 'Pending', icon: CheckCircle2, color: 'text-amber-500' },
-  { key: 'DRAFT', label: 'Draft', icon: FileText, color: 'text-muted-foreground' },
-  { key: 'CANCELLED', label: 'Cancelled', icon: Ban, color: 'text-muted-foreground' },
+  { key: 'ACTIVE', label: 'Active', color: '#639922' },
+  { key: 'ON_HOLD', label: 'On hold', color: '#BA7517' },
+  { key: 'PENDING_APPROVAL', label: 'Pending', color: '#378ADD' },
+  { key: 'DRAFT', label: 'Draft', color: '#888780' },
+  { key: 'CLOSED', label: 'Closed', color: '#888780' },
+  { key: 'CANCELLED', label: 'Cancelled', color: '#888780' },
 ];
 
 // ─── Chart configs ────────────────────────────────────────────────────────────
@@ -172,6 +174,12 @@ function greeting() {
 function stageColor(code: string) {
   return STAGE_COLORS[code] ?? '#94a3b8';
 }
+
+const PRIORITY_COLOR: Record<string, string> = {
+  HIGH: '#E24B4A',
+  MEDIUM: '#BA7517',
+  LOW: '#639922',
+};
 
 // ─── Date Range Picker ────────────────────────────────────────────────────────
 
@@ -277,7 +285,6 @@ function StatCard({
   sub,
   icon: Icon,
   accentColor,
-  iconColor,
   loading,
   onClick,
 }: {
@@ -286,7 +293,6 @@ function StatCard({
   sub?: string;
   icon: React.ElementType;
   accentColor: string;
-  iconColor: string;
   loading?: boolean;
   onClick?: () => void;
 }) {
@@ -295,20 +301,41 @@ function StatCard({
       onClick={onClick}
       style={{ borderLeftColor: accentColor, borderLeftWidth: 3 }}
       className={cn(
-        'bg-card border border-border rounded-xl p-4 flex flex-col gap-1.5',
+        'bg-card border border-border rounded-xl p-5 flex flex-col gap-2 relative overflow-hidden',
         onClick && 'cursor-pointer hover:shadow-sm hover:border-border/80 transition-all'
       )}
     >
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <Icon size={15} style={{ color: accentColor }} className="opacity-70" />
+      {/* faint icon watermark */}
+      <div
+        className="absolute right-4 top-4 opacity-[0.07]"
+        style={{ color: accentColor }}
+        aria-hidden
+      >
+        <Icon size={40} />
       </div>
+
+      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        {label}
+      </p>
+
       {loading ? (
-        <Skeleton className="h-8 w-14" />
+        <Skeleton className="h-10 w-16 mt-1" />
       ) : (
-        <p className="text-[28px] font-medium tabular-nums leading-none text-foreground">{value}</p>
+        <p
+          className="text-[42px] font-semibold tabular-nums leading-none"
+          style={{ color: 'hsl(var(--foreground))' }}
+        >
+          {value}
+        </p>
       )}
+
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+
+      {/* bottom accent line */}
+      <div
+        className="absolute bottom-0 left-0 right-0 h-[2px] opacity-60"
+        style={{ background: accentColor }}
+      />
     </div>
   );
 }
@@ -322,7 +349,7 @@ function PipelineFunnelChart({
   stages: PipelineStageOverview[];
   loading: boolean;
 }) {
-  if (loading) return <Skeleton className="h-[200px] w-full" />;
+  if (loading) return <Skeleton className="h-[220px] w-full" />;
 
   const data = stages.map(s => ({
     name: s.label.length > 9 ? s.label.slice(0, 9) + '…' : s.label,
@@ -334,17 +361,22 @@ function PipelineFunnelChart({
   }));
 
   return (
-    <ChartContainer config={funnelChartConfig} className="h-[200px] w-full">
-      <BarChart data={data} barSize={14} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+    <ChartContainer config={funnelChartConfig} className="h-[220px] w-full">
+      <BarChart data={data} barSize={16} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis
           dataKey="name"
-          tick={{ fontSize: 9 }}
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           tickLine={false}
           axisLine={false}
           interval={0}
         />
-        <YAxis tick={{ fontSize: 9 }} tickLine={false} axisLine={false} allowDecimals={false} />
+        <YAxis
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+          tickLine={false}
+          axisLine={false}
+          allowDecimals={false}
+        />
         <ChartTooltip
           content={
             <ChartTooltipContent
@@ -369,26 +401,26 @@ function BUBreakdownChart({
   items: { id: string; name: string; count: number }[];
   loading: boolean;
 }) {
-  if (loading) return <Skeleton className="h-[200px] w-full" />;
+  if (loading) return <Skeleton className="h-[220px] w-full" />;
 
   const data = items.slice(0, 6).map(i => ({
-    name: i.name.length > 16 ? i.name.slice(0, 16) + '…' : i.name,
+    name: i.name.length > 18 ? i.name.slice(0, 18) + '…' : i.name,
     fullName: i.name,
     count: i.count,
   }));
 
   return (
-    <ChartContainer config={buChartConfig} className="h-[200px] w-full">
+    <ChartContainer config={buChartConfig} className="h-[220px] w-full">
       <BarChart
         layout="vertical"
         data={data}
-        barSize={12}
-        margin={{ top: 4, right: 24, left: 4, bottom: 0 }}
+        barSize={14}
+        margin={{ top: 4, right: 28, left: 4, bottom: 0 }}
       >
         <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis
           type="number"
-          tick={{ fontSize: 9 }}
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           tickLine={false}
           axisLine={false}
           allowDecimals={false}
@@ -396,10 +428,10 @@ function BUBreakdownChart({
         <YAxis
           type="category"
           dataKey="name"
-          tick={{ fontSize: 9 }}
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           tickLine={false}
           axisLine={false}
-          width={90}
+          width={100}
         />
         <ChartTooltip
           content={
@@ -410,7 +442,7 @@ function BUBreakdownChart({
         />
         <Bar dataKey="count" fill="var(--color-count)" radius={[0, 4, 4, 0]}>
           {data.map((_, i) => (
-            <Cell key={i} fill="#7F77DD" fillOpacity={1 - i * 0.1} />
+            <Cell key={i} fill="#7F77DD" fillOpacity={1 - i * 0.12} />
           ))}
         </Bar>
       </BarChart>
@@ -443,28 +475,28 @@ function StageCard({
   return (
     <div
       onClick={go}
-      className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:border-border/70 hover:shadow-sm transition-all group"
-      style={{ borderTopColor: color, borderTopWidth: 2.5 }}
+      className="bg-card border border-border rounded-xl p-3.5 cursor-pointer hover:border-border/70 hover:shadow-sm transition-all group"
+      style={{ borderTopColor: color, borderTopWidth: 3 }}
     >
-      <div className="flex items-start justify-between mb-1">
-        <span className="text-[10px] font-mono font-medium" style={{ color }}>
+      <div className="flex items-start justify-between mb-1.5">
+        <span className="text-[10px] font-mono font-semibold tracking-wide" style={{ color }}>
           {stage.code}
         </span>
         <ChevronRight
-          size={11}
-          className="text-muted-foreground/30 group-hover:text-muted-foreground transition-colors"
+          size={12}
+          className="text-muted-foreground/30 group-hover:text-muted-foreground transition-colors mt-px"
         />
       </div>
-      <p className="text-[11px] text-muted-foreground leading-tight mb-2.5 min-h-[28px] line-clamp-2">
+      <p className="text-[11.5px] text-muted-foreground leading-tight mb-3 min-h-[30px] line-clamp-2">
         {stage.label}
       </p>
       <p
-        className="text-[26px] font-medium tabular-nums leading-none mb-2.5"
+        className="text-[32px] font-semibold tabular-nums leading-none mb-3"
         style={{ color: stage.total === 0 ? 'hsl(var(--muted-foreground))' : color }}
       >
         {stage.total}
       </p>
-      <div className="h-[2.5px] rounded-full bg-muted overflow-hidden mb-1.5">
+      <div className="h-[3px] rounded-full bg-muted overflow-hidden mb-2">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -488,43 +520,95 @@ function AssignmentRow({ a }: { a: Assignment }) {
       ? Math.round((a.filledOpenings / a.requirement.totalOpenings) * 100)
       : 0;
 
-  const priorityColor =
-    a.requirement.priority === 'HIGH'
-      ? '#E24B4A'
-      : a.requirement.priority === 'MEDIUM'
-        ? '#BA7517'
-        : '#639922';
+  const priorityColor = PRIORITY_COLOR[a.requirement.priority] ?? '#888780';
 
   return (
     <div
       onClick={() => router.push(`/requirements/${a.requirement.id}`)}
       className={cn(
-        'px-4 py-3 border-b border-border/60 hover:bg-muted/40 cursor-pointer transition-colors',
-        isBreached && 'border-l-2 border-l-destructive'
+        'px-4 py-3.5 border-b border-border/60 hover:bg-muted/40 cursor-pointer transition-colors',
+        isBreached && 'border-l-2 border-l-destructive pl-[14px]'
       )}
     >
-      <p className="text-[10px] font-mono text-muted-foreground mb-0.5">{a.requirement.reqCode}</p>
-      <p className="text-[12.5px] font-medium text-foreground truncate mb-1.5">
+      <div className="flex items-center gap-2 mb-1">
+        <p className="text-[10px] font-mono text-muted-foreground">{a.requirement.reqCode}</p>
+        {isBreached && (
+          <span className="flex items-center gap-1 text-[10px] font-medium text-destructive">
+            <AlertCircle size={10} />
+            breached
+          </span>
+        )}
+      </div>
+
+      <p className="text-[13px] font-semibold text-foreground leading-tight mb-1.5 flex items-center gap-1.5">
         <span
-          className="inline-block w-[5px] h-[5px] rounded-full mr-1.5 mb-px align-middle"
+          className="inline-block w-[6px] h-[6px] rounded-full shrink-0"
           style={{ backgroundColor: priorityColor }}
         />
         {a.requirement.title}
       </p>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground truncate">
-          {a.requirement.client?.name}
-          {a.requirement.serviceLine ? ` · ${a.requirement.serviceLine.name}` : ''}
-        </p>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="w-10 h-[2.5px] bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${fillPct}%` }} />
-          </div>
-          <span className="text-[10px] text-muted-foreground tabular-nums">
-            {a.filledOpenings}/{a.requirement.totalOpenings}
-          </span>
+
+      <p className="text-[11px] text-muted-foreground mb-2 truncate">
+        {a.requirement.client?.name}
+        {a.requirement.serviceLine ? ` · ${a.requirement.serviceLine.name}` : ''}
+      </p>
+
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-[3px] bg-muted rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${fillPct}%` }} />
         </div>
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+          {a.filledOpenings}/{a.requirement.totalOpenings} filled
+        </span>
       </div>
+    </div>
+  );
+}
+
+// ─── Recruiter Hero (shown instead of stat grid for recruiters) ───────────────
+
+function RecruiterHero({ assignments, loading }: { assignments: Assignment[]; loading: boolean }) {
+  const total = assignments.length;
+  const breached = assignments.filter(
+    a => a.requirement.isRespondByBreached || !!a.breachedAt
+  ).length;
+  const submitted = assignments.reduce((s, a) => s + a.submissionsCount, 0);
+  const filled = assignments.reduce((s, a) => s + a.filledOpenings, 0);
+
+  return (
+    <div className="grid grid-cols-4 gap-3 px-5 py-4 shrink-0">
+      <StatCard
+        label="My assignments"
+        value={total}
+        sub="active requirements"
+        icon={Briefcase}
+        accentColor="#378ADD"
+        loading={loading}
+      />
+      <StatCard
+        label="Candidates submitted"
+        value={submitted}
+        sub="total submissions"
+        icon={Users}
+        accentColor="#639922"
+        loading={loading}
+      />
+      <StatCard
+        label="Openings filled"
+        value={filled}
+        sub="across assignments"
+        icon={CheckCircle2}
+        accentColor="#7F77DD"
+        loading={loading}
+      />
+      <StatCard
+        label="Breached"
+        value={breached}
+        sub="deadline passed"
+        icon={AlertTriangle}
+        accentColor="#E24B4A"
+        loading={loading}
+      />
     </div>
   );
 }
@@ -561,16 +645,23 @@ function Sidebar({
       className="bg-card border-r border-border flex flex-col"
       style={{ height: '100%', overflow: 'hidden' }}
     >
-      <div className="px-4 py-4 border-b border-border">
-        <p className="text-[13px] font-medium text-foreground">Jobs</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">{total} requirements total</p>
+      {/* Header */}
+      <div className="px-4 py-5 border-b border-border">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1">
+          Jobs
+        </p>
+        <p className="text-[32px] font-semibold text-foreground leading-none tabular-nums">
+          {total}
+        </p>
+        <p className="text-[11px] text-muted-foreground mt-1">requirements total</p>
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="py-2 px-2">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-1 mt-1">
+        <div className="py-3 px-2">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 mt-1">
             Status
           </p>
+
           {SIDEBAR_STATUSES.map(s => {
             const count = byStatus[s.key] ?? 0;
             const isActive = statusFilter === s.key;
@@ -579,19 +670,24 @@ function Sidebar({
                 key={s.key}
                 onClick={() => onStatusChange(statusFilter === s.key ? '' : s.key)}
                 className={cn(
-                  'w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[12.5px] font-medium transition-colors',
-                  isActive ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'
+                  'w-full flex items-center justify-between px-2.5 py-2.5 rounded-lg text-[13px] font-medium transition-colors',
+                  isActive
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 )}
               >
-                <span className="flex items-center gap-2">
-                  <s.icon size={13} className={isActive ? 'text-foreground' : s.color} />
+                <span className="flex items-center gap-2.5">
+                  <span
+                    className="w-[7px] h-[7px] rounded-full shrink-0"
+                    style={{ backgroundColor: s.color }}
+                  />
                   {s.label}
                 </span>
                 {count > 0 && (
                   <span
                     className={cn(
-                      'text-[11px]',
-                      isActive ? 'text-foreground font-semibold' : 'text-muted-foreground'
+                      'text-[12px] tabular-nums',
+                      isActive ? 'text-foreground font-bold' : 'text-muted-foreground'
                     )}
                   >
                     {count}
@@ -603,19 +699,20 @@ function Sidebar({
 
           {!isRecruiter && busData && busData.length > 0 && (
             <>
-              <div className="h-px bg-border my-2 mx-1" />
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-1 flex items-center gap-1.5">
-                <Building2 size={9} /> Business Units
+              <div className="h-px bg-border my-3 mx-1" />
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 flex items-center gap-1.5">
+                <Building2 size={9} />
+                Business Units
               </p>
               {[{ id: '', name: 'All BUs' }, ...busData].map(b => (
                 <button
                   key={b.id}
                   onClick={() => onBuChange(b.id === buId ? '' : b.id)}
                   className={cn(
-                    'w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] truncate transition-colors',
+                    'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
                     buId === b.id
-                      ? 'bg-muted text-foreground font-medium'
-                      : 'text-muted-foreground hover:bg-muted/60'
+                      ? 'bg-muted text-foreground font-semibold'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}
                 >
                   {b.name}
@@ -626,8 +723,8 @@ function Sidebar({
 
           {!isRecruiter && slData && slData.length > 0 && (
             <>
-              <div className="h-px bg-border my-2 mx-1" />
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-1">
+              <div className="h-px bg-border my-3 mx-1" />
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2">
                 Service Lines
               </p>
               {[{ id: '', name: 'All service lines' }, ...slData].map(s => (
@@ -635,10 +732,10 @@ function Sidebar({
                   key={s.id}
                   onClick={() => onSlChange(s.id === serviceLineId ? '' : s.id)}
                   className={cn(
-                    'w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] truncate transition-colors',
+                    'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
                     serviceLineId === s.id
-                      ? 'bg-muted text-foreground font-medium'
-                      : 'text-muted-foreground hover:bg-muted/60'
+                      ? 'bg-muted text-foreground font-semibold'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}
                 >
                   {s.name}
@@ -665,11 +762,46 @@ function RightPanel({
   assignments: Assignment[];
   loading: boolean;
 }) {
+  const breachedCount = assignments.filter(
+    a => a.requirement.isRespondByBreached || !!a.breachedAt
+  ).length;
+
+  // Sort: breached first, then by assigned date desc
+  const sorted = [...assignments].sort((a, b) => {
+    const aB = a.requirement.isRespondByBreached || !!a.breachedAt ? 1 : 0;
+    const bB = b.requirement.isRespondByBreached || !!b.breachedAt ? 1 : 0;
+    return bB - aB;
+  });
+
   return (
     <div
       className="bg-card border-l border-border flex flex-col"
       style={{ height: '100%', overflow: 'hidden' }}
     >
+      {/* Header */}
+      <div className="px-4 py-5 border-b border-border shrink-0">
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <p className="text-[13px] font-semibold text-foreground">My assignments</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {assignments.length} active
+              {breachedCount > 0 && (
+                <span className="text-destructive font-medium ml-1">
+                  · {breachedCount} breached
+                </span>
+              )}
+            </p>
+          </div>
+          {breachedCount > 0 && (
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-destructive bg-destructive/10 px-2 py-1 rounded-md">
+              <AlertCircle size={11} />
+              {breachedCount}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Mini date range */}
       <div className="px-4 py-3 border-b border-border shrink-0">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-2">
           Date range
@@ -691,7 +823,7 @@ function RightPanel({
                 : 'border-border text-muted-foreground'
             )}
           >
-            {dateRange?.from ? format(dateRange.from, 'dd MMM yy') : 'Start date'}
+            {dateRange?.from ? format(dateRange.from, 'dd MMM yy') : 'Start'}
           </div>
           <div
             className={cn(
@@ -701,7 +833,7 @@ function RightPanel({
                 : 'border-border text-muted-foreground'
             )}
           >
-            {dateRange?.to ? format(dateRange.to, 'dd MMM yy') : 'End date'}
+            {dateRange?.to ? format(dateRange.to, 'dd MMM yy') : 'End'}
           </div>
         </div>
         {dateRange?.from && (
@@ -714,25 +846,21 @@ function RightPanel({
         )}
       </div>
 
-      <div className="px-4 py-2.5 border-b border-border shrink-0">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">
-          My assignments
-        </p>
-      </div>
-
+      {/* Assignment list */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="h-14 w-full rounded-lg" />
+              <Skeleton key={i} className="h-16 w-full rounded-lg" />
             ))}
           </div>
-        ) : assignments.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-[12px] text-muted-foreground">
-            No active assignments
+        ) : sorted.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
+            <Briefcase size={20} className="opacity-40" />
+            <p className="text-[12px]">No active assignments</p>
           </div>
         ) : (
-          assignments.map(a => <AssignmentRow key={a.id} a={a} />)
+          sorted.map(a => <AssignmentRow key={a.id} a={a} />)
         )}
       </div>
     </div>
@@ -748,10 +876,9 @@ function MainContent({
   pipelineLoading,
   dateFrom,
   dateTo,
-  buId,
-  onBuChange,
-  slData,
   isRecruiter,
+  assignments,
+  assignmentsLoading,
   onNavigate,
 }: {
   stats: StatsData | undefined;
@@ -760,16 +887,17 @@ function MainContent({
   pipelineLoading: boolean;
   dateFrom: string | undefined;
   dateTo: string | undefined;
-  buId: string;
-  onBuChange: (v: string) => void;
-  slData: { id: string; name: string }[] | undefined;
   isRecruiter: boolean;
+  assignments: Assignment[];
+  assignmentsLoading: boolean;
   onNavigate: (params: Record<string, string>) => void;
 }) {
   return (
     <div className="flex flex-col overflow-y-auto bg-background" style={{ height: '100%' }}>
-      {/* Stats */}
-      {!isRecruiter && (
+      {/* ── Recruiter hero OR admin stat cards ── */}
+      {isRecruiter ? (
+        <RecruiterHero assignments={assignments} loading={assignmentsLoading} />
+      ) : (
         <div className="grid grid-cols-4 gap-3 px-5 py-4 shrink-0">
           <StatCard
             label="Active requirements"
@@ -777,17 +905,15 @@ function MainContent({
             sub={`of ${stats?.totalRequirements ?? 0} total`}
             icon={Zap}
             accentColor="#639922"
-            iconColor="#639922"
             loading={statsLoading}
             onClick={() => onNavigate({ status: 'ACTIVE' })}
           />
           <StatCard
             label="High priority"
             value={stats?.highPriority ?? 0}
-            sub="active reqs"
+            sub="active requirements"
             icon={TrendingUp}
             accentColor="#E24B4A"
-            iconColor="#E24B4A"
             loading={statsLoading}
             onClick={() => onNavigate({ status: 'ACTIVE', priority: 'HIGH' })}
           />
@@ -797,7 +923,6 @@ function MainContent({
             sub="deadline passed"
             icon={AlertTriangle}
             accentColor="#BA7517"
-            iconColor="#BA7517"
             loading={statsLoading}
             onClick={() => onNavigate({ breached: 'true' })}
           />
@@ -807,29 +932,29 @@ function MainContent({
             sub="across all stages"
             icon={Users}
             accentColor="#378ADD"
-            iconColor="#378ADD"
             loading={statsLoading}
           />
         </div>
       )}
 
-      {/* Charts */}
+      {/* ── Charts (non-recruiter) ── */}
       {!isRecruiter && (
         <div className="grid grid-cols-2 gap-3 px-5 pb-4 shrink-0">
-          <div className="bg-card border border-border rounded-xl p-4">
+          {/* Pipeline funnel */}
+          <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[12px] font-medium text-foreground">Pipeline funnel</p>
-              <p className="text-[10px] text-muted-foreground">candidates by stage</p>
+              <p className="text-[13px] font-semibold text-foreground">Pipeline funnel</p>
+              <p className="text-[11px] text-muted-foreground">candidates by stage</p>
             </div>
-            <div className="flex gap-3 mb-3">
+            <div className="flex gap-4 mb-3">
               {[
-                { key: 'active', color: '#378ADD', label: 'Active' },
-                { key: 'onHold', color: '#EF9F27', label: 'On hold' },
-                { key: 'inactive', color: '#e2e8f0', label: 'Inactive', border: true },
+                { color: '#378ADD', label: 'Active' },
+                { color: '#EF9F27', label: 'On hold' },
+                { color: '#e2e8f0', label: 'Inactive', border: true },
               ].map(l => (
                 <span
-                  key={l.key}
-                  className="flex items-center gap-1 text-[10.5px] text-muted-foreground"
+                  key={l.label}
+                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
                 >
                   <span
                     className="w-2 h-2 rounded-sm shrink-0"
@@ -845,13 +970,14 @@ function MainContent({
             <PipelineFunnelChart stages={stages} loading={pipelineLoading} />
           </div>
 
-          <div className="bg-card border border-border rounded-xl p-4">
+          {/* BU breakdown */}
+          <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-1">
-              <p className="text-[12px] font-medium text-foreground">By business unit</p>
-              <p className="text-[10px] text-muted-foreground">active requirements</p>
+              <p className="text-[13px] font-semibold text-foreground">By business unit</p>
+              <p className="text-[11px] text-muted-foreground">active requirements</p>
             </div>
-            <div className="flex gap-3 mb-3">
-              <span className="flex items-center gap-1 text-[10.5px] text-muted-foreground">
+            <div className="flex gap-4 mb-3">
+              <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                 <span
                   className="w-2 h-2 rounded-sm shrink-0"
                   style={{ backgroundColor: '#7F77DD' }}
@@ -864,16 +990,17 @@ function MainContent({
         </div>
       )}
 
-      {/* Stage cards */}
+      {/* ── Stage cards ── */}
       <div className="px-5 pb-5">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[12px] font-medium text-foreground">Candidate pipeline</p>
+          <p className="text-[13px] font-semibold text-foreground">Candidate pipeline</p>
           <p className="text-[11px] text-muted-foreground">click any stage to view candidates</p>
         </div>
+
         {pipelineLoading ? (
           <div className="grid grid-cols-5 gap-2">
             {Array.from({ length: 10 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 rounded-xl" />
+              <Skeleton key={i} className="h-32 rounded-xl" />
             ))}
           </div>
         ) : stages.length === 0 ? (
@@ -955,8 +1082,8 @@ function DashboardContent() {
   });
 
   const stages = pipelineRes?.stages ?? [];
+  const assignments = assignmentsRes ?? [];
 
-  // byStatus derived from stats for sidebar
   const byStatus: Record<string, number> = {
     ACTIVE: stats?.active ?? 0,
     ON_HOLD: stats?.onHold ?? 0,
@@ -981,12 +1108,13 @@ function DashboardContent() {
         overflow: 'hidden',
       }}
     >
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-background shrink-0">
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-background shrink-0">
         <div>
-          <p className="text-[14px] font-medium text-foreground">
+          <p className="text-[18px] font-semibold text-foreground leading-tight">
             {greeting()}, {user?.firstName ?? ''}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-[12px] text-muted-foreground mt-1">
             {isSuperAdmin
               ? 'Full org view — all requirements, assignments and pipeline.'
               : isRecruiter
@@ -994,6 +1122,7 @@ function DashboardContent() {
                 : "Here's what's happening across your requirements."}
           </p>
         </div>
+
         <div className="flex items-center gap-2">
           <DateRangePicker range={dateRange} onChange={setDateRange} />
           {!isRecruiter && slData && slData.length > 0 && (
@@ -1017,17 +1146,16 @@ function DashboardContent() {
         </div>
       </div>
 
-      {/* 3-column layout — hardcoded, everything visible */}
+      {/* ── 3-column layout ── */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '200px 1fr 240px',
+          gridTemplateColumns: '210px 1fr 256px',
           flex: 1,
           minHeight: 0,
           overflow: 'hidden',
         }}
       >
-        {/* Sidebar */}
         <div style={{ height: '100%', overflow: 'hidden' }}>
           <Sidebar
             statusFilter={statusFilter}
@@ -1043,7 +1171,6 @@ function DashboardContent() {
           />
         </div>
 
-        {/* Main */}
         <div style={{ height: '100%', overflow: 'hidden' }}>
           <MainContent
             stats={stats}
@@ -1052,20 +1179,18 @@ function DashboardContent() {
             pipelineLoading={pipelineLoading}
             dateFrom={dateFrom}
             dateTo={dateTo}
-            buId={buId}
-            onBuChange={setBuId}
-            slData={slData}
             isRecruiter={isRecruiter}
+            assignments={assignments}
+            assignmentsLoading={assignmentsLoading}
             onNavigate={navigate}
           />
         </div>
 
-        {/* Right panel */}
         <div style={{ height: '100%', overflow: 'hidden' }}>
           <RightPanel
             dateRange={dateRange}
             onDateChange={setDateRange}
-            assignments={assignmentsRes ?? []}
+            assignments={assignments}
             loading={assignmentsLoading}
           />
         </div>

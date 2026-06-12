@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// File: types.ts
+// Path: src/components/requirements/types.ts
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ENUMS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -11,22 +14,18 @@ export type RequirementStatus =
   | 'CLOSED'
   | 'CANCELLED';
 
-export type CandidateStageStatus =
-  | 'SOURCED'
-  | 'SCREENING'
-  | 'SUBMITTED'
-  | 'INTERVIEW_SCHEDULED'
-  | 'INTERVIEW_DONE'
-  | 'OFFER_ROLLED'
-  | 'OFFER_ACCEPTED'
-  | 'JOINED'
-  | 'REJECTED'
-  | 'WITHDRAWN';
-
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
 export type JobType = 'CONTRACT' | 'PERMANENT' | 'CONTRACT_TO_HIRE' | 'FREELANCE';
 export type RemoteType = 'ONSITE' | 'REMOTE' | 'HYBRID';
 export type SalaryType = 'MONTHLY' | 'ANNUAL' | 'HOURLY' | 'DAILY';
+export type JobOpenFor = 'EXTERNAL' | 'INTERNAL' | 'BOTH';
+export type ClosureReason =
+  | 'FILLED'
+  | 'CANCELLED'
+  | 'CLIENT_WITHDREW'
+  | 'BUDGET_HOLD'
+  | 'DUPLICATE';
+export type JDParseStatus = 'PARSED' | 'FAILED' | 'MANUALLY_OVERRIDDEN';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED REFS
@@ -37,6 +36,7 @@ export interface UserRef {
   firstName: string;
   lastName: string;
 }
+
 export interface NameRef {
   id: string;
   name: string;
@@ -55,48 +55,107 @@ export interface RequirementDetail {
   priority: Priority;
   jobType: JobType;
   remoteType: RemoteType;
-  location: string | null;
+  jobOpenFor: JobOpenFor;
+
+  // location — split fields (location + skills flat strings REMOVED)
+  city: string | null;
+  state: string | null;
   country: string | null;
-  skills: string[];
+
+  // skills — split
+  primarySkills: string[];
+  keySkills: string[];
+
   experienceMin: number | null;
   experienceMax: number | null;
+
+  // compensation
   salaryMin: number | null;
   salaryMax: number | null;
   salaryType: SalaryType | null;
+  salaryCurrency: string | null;
+  bonusAmount: number | null;
+  hideSalaryFromCandidate: boolean;
+  showMedianSalary: boolean;
+
+  // employment details
+  education: string | null;
+  functionalArea: string | null;
+  shift: string | null;
+
+  // sourcing strategy
+  targetCompanies: string[];
+  noPoachCompanies: string[];
+
   totalOpenings: number;
-  filledOpenings: number;
-  activeApplications: number;
-  interviewsScheduled: number;
-  offersRolledOut: number;
+  // filledOpenings / activeApplications / interviewsScheduled / offersRolledOut
+  // REMOVED — all computed from pipeline rows on demand
+
+  // dates
   startDate: string | null;
-  endDate: string | null;
+  targetDate: string | null; // was endDate — renamed
   respondBy: string | null;
   turnaroundDays: number | null;
   closedAt: string | null;
+  closureReason: ClosureReason | null;
+
   isRespondByBreached: boolean;
   isTurnaroundBreached: boolean;
+
+  // JD file
   jdFileKey: string | null;
   jdFileName: string | null;
   jdFileType: string | null;
   jdUploadedAt: string | null;
+
+  // JD parse metadata
+  jdParsedAt: string | null;
+  jdParseStatus: JDParseStatus | null;
+  jdParsedFields: string[];
+  parsedJDId: string | null;
+
   createdAt: string;
   updatedAt: string;
   approvedAt: string | null;
-  client: NameRef & { industry: string | null };
+
+  client:
+    | (NameRef & {
+        industry: string | null;
+        city: string | null;
+        country: string | null;
+      })
+    | null;
+
   businessUnit: NameRef | null;
-  serviceLine: NameRef | null;
+
+  serviceLine:
+    | (NameRef & {
+        code: string | null;
+      })
+    | null;
+
   clientSpoc: {
     id: string;
+    firstName: string;
+    lastName: string;
+    designation: string | null;
+    email: string | null;
+    phone: string | null;
     isPrimary: boolean;
     handler: UserRef;
-    serviceLine: NameRef;
   } | null;
+
   createdBy: UserRef;
   approvedBy: UserRef | null;
   closedBy: UserRef | null;
+
   statusHistory: StatusHistoryItem[];
   notes: NoteItem[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATUS HISTORY & NOTES
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface StatusHistoryItem {
   id: string;
@@ -112,26 +171,6 @@ export interface NoteItem {
   content: string;
   createdAt: string;
   author: UserRef;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATES
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface CandidateItem {
-  id: string;
-  candidateId: string;
-  candidateName: string;
-  candidateEmail: string | null;
-  currentStage: CandidateStageStatus;
-  rejectionReason: string | null;
-  notes: string | null;
-  stageUpdatedAt: string;
-  createdAt: string;
-  assignment: {
-    id: string;
-    assignedTo: UserRef;
-  } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -154,15 +193,22 @@ export interface AssignmentNode {
   assignedTo: UserRef & { employeeId: string | null; department: NameRef | null };
   assignedBy: UserRef;
   assigneeBU: NameRef | null;
-  candidates: {
+  pipelines: {
     id: string;
-    candidateId: string;
-    candidateName: string;
-    candidateEmail: string | null;
-    currentStage: CandidateStageStatus;
+    isRejected: boolean;
+    isWithdrawn: boolean;
+    isOnHold: boolean;
     stageUpdatedAt: string;
-    rejectionReason: string | null;
-    notes: string | null;
+    currentStage: { id: string; code: string; label: string; order: number };
+    snapshot: {
+      id: string;
+      candidateServiceId: string;
+      fullName: string;
+      email: string;
+      currentTitle: string | null;
+      currentCompany: string | null;
+      topSkills: string[];
+    };
   }[];
   children: AssignmentNode[];
 }
@@ -174,10 +220,7 @@ export interface RequirementTree {
     title: string;
     status: RequirementStatus;
     totalOpenings: number;
-    filledOpenings: number;
-    activeApplications: number;
-    interviewsScheduled: number;
-    offersRolledOut: number;
+    // counters removed — computed from pipeline rows
   };
   assignmentTree: AssignmentNode[];
 }
@@ -236,56 +279,18 @@ export const STATUS_LABEL: Record<RequirementStatus, string> = {
 };
 
 export const STATUS_COLOR: Record<RequirementStatus, string> = {
-  DRAFT: 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
-  PENDING_APPROVAL: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  ACTIVE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400',
-  ON_HOLD: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
-  CLOSED: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-  CANCELLED: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+  DRAFT: 'bg-zinc-100 text-zinc-700',
+  PENDING_APPROVAL: 'bg-amber-100 text-amber-700',
+  ACTIVE: 'bg-emerald-100 text-emerald-700',
+  ON_HOLD: 'bg-blue-100 text-blue-700',
+  CLOSED: 'bg-slate-100 text-slate-600',
+  CANCELLED: 'bg-red-100 text-red-700',
 };
 
 export const PRIORITY_COLOR: Record<Priority, string> = {
   LOW: 'bg-zinc-100 text-zinc-600',
   MEDIUM: 'bg-amber-100 text-amber-700',
   HIGH: 'bg-red-100 text-red-700',
-};
-
-export const STAGE_ORDER: CandidateStageStatus[] = [
-  'SOURCED',
-  'SCREENING',
-  'SUBMITTED',
-  'INTERVIEW_SCHEDULED',
-  'INTERVIEW_DONE',
-  'OFFER_ROLLED',
-  'OFFER_ACCEPTED',
-  'JOINED',
-];
-export const STAGE_TERMINAL: CandidateStageStatus[] = ['REJECTED', 'WITHDRAWN'];
-
-export const STAGE_LABEL: Record<CandidateStageStatus, string> = {
-  SOURCED: 'Sourced',
-  SCREENING: 'Screening',
-  SUBMITTED: 'Submitted',
-  INTERVIEW_SCHEDULED: 'Interview Scheduled',
-  INTERVIEW_DONE: 'Interview Done',
-  OFFER_ROLLED: 'Offer Rolled',
-  OFFER_ACCEPTED: 'Offer Accepted',
-  JOINED: 'Joined',
-  REJECTED: 'Rejected',
-  WITHDRAWN: 'Withdrawn',
-};
-
-export const STAGE_COLOR: Record<CandidateStageStatus, string> = {
-  SOURCED: 'bg-zinc-100 text-zinc-600',
-  SCREENING: 'bg-blue-100 text-blue-700',
-  SUBMITTED: 'bg-violet-100 text-violet-700',
-  INTERVIEW_SCHEDULED: 'bg-amber-100 text-amber-700',
-  INTERVIEW_DONE: 'bg-orange-100 text-orange-700',
-  OFFER_ROLLED: 'bg-cyan-100 text-cyan-700',
-  OFFER_ACCEPTED: 'bg-teal-100 text-teal-700',
-  JOINED: 'bg-emerald-100 text-emerald-700',
-  REJECTED: 'bg-red-100 text-red-700',
-  WITHDRAWN: 'bg-rose-100 text-rose-700',
 };
 
 export function daysRemaining(dateStr: string | null): number | null {

@@ -50,6 +50,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { useAxios } from '@/hooks/useAxios';
+import { ResumeViewButton } from './ResumeViewButton';
+import { ResumeReplaceButton } from './ResumeReplaceButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -733,17 +735,18 @@ export default function CandidateDetailPage() {
                             {r.fileName}
                           </p>
                           <p className="text-[10px] text-slate-400 mt-0.5">
-                            {format(new Date(r.createdAt), 'dd MMM yyyy')} · {r.parseStatus}
+                            {format(new Date(r.createdAt), 'dd MMM yyyy')} · v
+                            {
+                              // @ts-expect-error err
+                              r.version
+                            }{' '}
+                            · {r.parseStatus}
                           </p>
                         </div>
-                        <a
-                          href={`/api/proxy/candidate/api/resume/${r.id}/view`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-semibold text-primary hover:underline"
-                        >
-                          View
-                        </a>
+                        <div className="flex items-center gap-3">
+                          <ResumeViewButton resumeId={r.id} fileName={r.fileName} />
+                          <ResumeReplaceButton candidateId={c.id} />
+                        </div>
                       </div>
                     ))}
                   </div>

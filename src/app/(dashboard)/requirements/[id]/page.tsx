@@ -87,12 +87,13 @@ import {
 } from '@/components/requirements/types';
 import type { RequirementDetail } from '@/components/requirements/types';
 import { RequirementOverviewTab } from '@/components/requirements/RequirementOverviewTab';
-import { RequirementAssignmentsTab } from '@/components/requirements/RequirementAssignmentsTab';
+// import { RequirementAssignmentsTab } from '@/components/requirements/RequirementAssignmentsTab';
 import {
   RequirementNotesTab,
   RequirementDocumentsTab,
   RequirementActivityTab,
 } from '@/components/requirements/RequirementNotesDocsActivityTabs';
+import { RequirementAssignmentsTab } from './_components/RequirementAssignmentsTab';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -368,18 +369,18 @@ const PORTAL_APPS = [
     desc: 'Source from Foundit (Monster)',
   },
 ];
-function triggerExtension(rId: string, rCode: string, rTitle: string, app: string) {
-  window.postMessage(
-    {
-      type: 'TALENTOX_SOURCE_NAUKRI',
-      requirementId: rId,
-      requirementCode: rCode,
-      requirementTitle: rTitle,
-      appName: app,
-    },
-    window.location.origin
-  );
-}
+// function triggerExtension(rId: string, rCode: string, rTitle: string, app: string) {
+//   window.postMessage(
+//     {
+//       type: 'TALENTOX_SOURCE_NAUKRI',
+//       requirementId: rId,
+//       requirementCode: rCode,
+//       requirementTitle: rTitle,
+//       appName: app,
+//     },
+//     window.location.origin
+//   );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UPLOAD RESUME MODAL
@@ -604,10 +605,10 @@ function AddCandidateModal({
               <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
                 <UserPlus className="w-4.5 h-4.5 text-primary" />
               </div>
-              <div>
+              {/* <div>
                 <h2 className="text-base font-bold text-slate-900">Add Candidate</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Choose how to source</p>
-              </div>
+              </div> */}
             </div>
             <button
               onClick={onClose}
@@ -682,7 +683,7 @@ function AddCandidateModal({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() => {
-                        triggerExtension(req.id, req.reqCode, req.title, app.appName);
+                        // triggerExtension(req.id, req.reqCode, req.title, app.appName);
                         onClose();
                       }}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
@@ -1881,10 +1882,16 @@ export default function RequirementDetailPage() {
                       · {(req as any).businessUnit.name}
                     </span>
                   )}
-                  {req.location && (
+                  {((req as any).city || (req as any).state) && (
                     <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                       <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                      {req.location}
+                      {[(req as any).city, (req as any).state].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                  {(req as any).respondBy && (
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Fill by {format(new Date((req as any).respondBy), 'dd MMM yyyy')}
                     </span>
                   )}
                   {req.turnaroundDays && (
@@ -1893,12 +1900,12 @@ export default function RequirementDetailPage() {
                       {req.turnaroundDays}d TAT
                     </span>
                   )}
-                  {req.respondBy && (
+                  {/* {req.respondBy && (
                     <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
                       {format(new Date(req.respondBy), 'dd MMM yyyy')}
                     </span>
-                  )}
+                  )} */}
                 </div>
 
                 {assignments.length > 0 && (
@@ -1926,14 +1933,14 @@ export default function RequirementDetailPage() {
                 )}
 
                 <div className="flex items-center gap-2 ml-[52px]">
-                  <Button
+                  {/* <Button
                     size="sm"
                     className="gap-2 h-8 text-sm font-semibold px-4"
                     onClick={() => setAddModal(true)}
                   >
                     <UserPlus className="w-4 h-4" />
                     Add Candidate
-                  </Button>
+                  </Button> */}
                   {canEdit && nextStatuses.length > 0 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -2196,7 +2203,23 @@ export default function RequirementDetailPage() {
           <RequirementOverviewTab requirement={req} />
         </TabsContent>
         <TabsContent value="assignments" className="flex-1 overflow-y-auto mt-0 p-6">
-          <RequirementAssignmentsTab requirementId={id} canEdit={canEdit} />
+          {' '}
+          <TabsContent value="assignments" className="flex-1 overflow-y-auto mt-0 p-6">
+            <RequirementAssignmentsTab
+              requirementId={id}
+              canEdit={canEdit}
+              req={{
+                id: req.id,
+                reqCode: req.reqCode,
+                title: req.title,
+                totalOpenings: req.totalOpenings,
+                deadline: (req as any).respondBy ?? null,
+                // @ts-expect-error err
+                client: (req as any).client ?? null,
+                businessUnit: (req as any).businessUnit ?? null,
+              }}
+            />
+          </TabsContent>
         </TabsContent>
         <TabsContent value="notes" className="flex-1 overflow-y-auto mt-0 p-6">
           <RequirementNotesTab
@@ -2215,12 +2238,12 @@ export default function RequirementDetailPage() {
       </Tabs>
 
       {/* ═══ MODALS & DRAWER ═══ */}
-      <AddCandidateModal
+      {/* <AddCandidateModal
         open={addModal}
         onClose={() => setAddModal(false)}
         req={req as any}
         assignments={assignments}
-      />
+      /> */}
 
       {selectedPipelineId && (
         <CandidateDetailDrawer
