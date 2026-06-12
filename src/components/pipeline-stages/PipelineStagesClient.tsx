@@ -4,6 +4,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,8 +23,8 @@ import {
   useSaveStages,
   PipelineStage,
   CanonicalStage,
-  CANONICAL_STAGES,
 } from './usePipelineStages';
+import { useAxios } from '@/hooks/useAxios';
 import { cn } from '@/lib/utils';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,12 +33,24 @@ import { cn } from '@/lib/utils';
 
 type LocalStage = PipelineStage & { isNew?: boolean };
 
+interface CanonicalStageMeta {
+  value: string;
+  label: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 function newTempId() {
   return `__new__${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function toCanonicalLabel(key: string): string {
+  return key
+    .split('_')
+    .map((w: string) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
 }
 
 const SLOT_COLORS = [
@@ -138,6 +151,7 @@ function StageRow({
   stage,
   idx,
   originalStages,
+  canonicalStages,
   onLabelChange,
   onCodeChange,
   onCanonicalChange,
@@ -152,6 +166,7 @@ function StageRow({
   stage: LocalStage;
   idx: number;
   originalStages: PipelineStage[];
+  canonicalStages: CanonicalStageMeta[];
   onLabelChange: (id: string, label: string) => void;
   onCodeChange: (id: string, code: string) => void;
   onCanonicalChange: (id: string, val: CanonicalStage | null) => void;
@@ -307,7 +322,7 @@ function StageRow({
             <SelectItem value="__none__">
               <span className="text-muted-foreground">Unmapped</span>
             </SelectItem>
-            {CANONICAL_STAGES.map(cs => (
+            {canonicalStages.map(cs => (
               <SelectItem key={cs.value} value={cs.value}>
                 {cs.label}
               </SelectItem>
@@ -372,13 +387,24 @@ function StageRow({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PipelineStagesClient() {
+  const axios = useAxios();
   const { data: serverStages = [], isLoading } = usePipelineStages();
   const saveStages = useSaveStages();
 
+  const { data: canonicalStages = [] } = useQuery<CanonicalStageMeta[]>({
+    queryKey: ['canonical-stages'],
+    queryFn: async () => {
+      const res = await axios.get('/candidates/canonical-stages');
+      return (res.data.data as string[]).map(v => ({
+        value: v,
+        label: toCanonicalLabel(v),
+      }));
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
   const [local, setLocal] = useState<LocalStage[] | null>(null);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
-
-  // insertAt = index in the flat array to splice before, stages.length = append
   const [insertAt, setInsertAt] = useState<number | null>(null);
 
   const stages: LocalStage[] = local ?? serverStages;
@@ -388,14 +414,12 @@ export default function PipelineStagesClient() {
   const dragOverId = useRef<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
 
-  // ── patch helpers
   const patchStages = (updater: (prev: LocalStage[]) => LocalStage[]) =>
     setLocal(prev => updater(prev ?? serverStages));
 
   const patchStage = (id: string, patch: Partial<LocalStage>) =>
     patchStages(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
 
-  // ── drag
   const onDragStart = (id: string) => {
     dragId.current = id;
   };
@@ -422,7 +446,6 @@ export default function PipelineStagesClient() {
     });
   };
 
-  // ── insert
   const commitInsert = (label: string, code: string) => {
     const at = insertAt ?? stages.length;
     const newStage: LocalStage = {
@@ -434,6 +457,8 @@ export default function PipelineStagesClient() {
       isTerminal: false,
       isActive: true,
       canonicalStage: null,
+      // @ts-expect-error err
+      serviceLineId: null,
       isNew: true,
     };
     patchStages(prev => {
@@ -444,7 +469,6 @@ export default function PipelineStagesClient() {
     setInsertAt(null);
   };
 
-  // ── delete
   const handleDelete = (stage: LocalStage) => {
     if (!stage.isNew) setDeletedIds(prev => [...prev, stage.id]);
     patchStages(prev => {
@@ -453,14 +477,12 @@ export default function PipelineStagesClient() {
     });
   };
 
-  // ── discard
   const handleDiscard = () => {
     setLocal(null);
     setDeletedIds([]);
     setInsertAt(null);
   };
 
-  // ── save
   const handleSave = async () => {
     if (!isDirty) return;
     await saveStages.mutateAsync({
@@ -545,7 +567,6 @@ export default function PipelineStagesClient() {
         <div className="max-w-4xl space-y-0">
           {stages.map((stage, idx) => (
             <div key={stage.id}>
-              {/* Insert trigger / row above each stage */}
               {insertAt === idx ? (
                 <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
               ) : (
@@ -559,6 +580,7 @@ export default function PipelineStagesClient() {
                 stage={stage}
                 idx={idx}
                 originalStages={serverStages}
+                canonicalStages={canonicalStages}
                 onLabelChange={(id, label) => patchStage(id, { label })}
                 onCodeChange={(id, code) => patchStage(id, { code })}
                 onCanonicalChange={(id, val) => patchStage(id, { canonicalStage: val })}
@@ -573,7 +595,6 @@ export default function PipelineStagesClient() {
             </div>
           ))}
 
-          {/* Trailing insert */}
           {insertAt === stages.length ? (
             <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
           ) : (

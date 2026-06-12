@@ -17,14 +17,12 @@ import {
   Layers,
   CalendarClock,
   GitBranch,
-  AlertTriangle,
   ArrowUpRight,
   SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   Select,
   SelectContent,
@@ -34,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
+import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,26 +122,8 @@ interface Assignment {
   childAssignments: ChildAssignment[];
   candidateStats: CandidateStats;
 }
-interface CandidateInPipeline {
-  id: string;
-  isRejected: boolean;
-  isWithdrawn: boolean;
-  isOnHold: boolean;
-  aging: { minutes: number; label: string };
-  currentStage: { id: string; code: string; label: string; order: number };
-  snapshot: {
-    fullName: string;
-    email: string;
-    phone: string | null;
-    currentTitle: string | null;
-    currentCompany: string | null;
-    totalExpYears: number | null;
-    topSkills: string[];
-  };
-  recruiter: { id: string; firstName: string; lastName: string };
-}
 
-// ─── Canonical stage config — identical to my-assignments ─────────────────────
+// ─── Canonical stage config ────────────────────────────────────────────────────
 
 const CANONICAL_STAGES = [
   { key: 'SOURCED', label: 'Sourced', dot: 'bg-slate-500' },
@@ -193,30 +174,41 @@ function daysLeft(d: string) {
   return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
 }
 
-// ─── Shared components — identical to my-assignments ─────────────────────────
+// ─── Canonical bar ────────────────────────────────────────────────────────────
+// Each column now navigates directly to the candidates page filtered by that
+// canonical stage, instead of opening an inline drawer.
 
 function CanonicalBar({
   byCanonical,
-  onStageClick,
+  assignmentId,
 }: {
   byCanonical: Record<string, number>;
-  onStageClick?: () => void;
+  assignmentId: string;
 }) {
+  const router = useRouter();
+  const { data: meta } = useCandidateMeta();
+  const stages = meta?.canonicalStages ?? [];
+
+  if (!stages.length) return null;
+
   return (
     <div
       className="border-t-2 border-slate-100"
-      style={{ display: 'grid', gridTemplateColumns: `repeat(${CANONICAL_STAGES.length}, 1fr)` }}
+      style={{ display: 'grid', gridTemplateColumns: `repeat(${stages.length}, 1fr)` }}
     >
-      {CANONICAL_STAGES.map(s => {
+      {stages.map(s => {
         const count = byCanonical[s.key] ?? 0;
         return (
           <button
             key={s.key}
-            onClick={onStageClick}
-            title={`${s.label} — ${count} candidate${count !== 1 ? 's' : ''}`}
-            className="group flex flex-col items-center gap-1.5 px-1 py-4 border-r border-slate-100 last:border-r-0 transition-colors hover:bg-blue-50"
+            onClick={() =>
+              router.push(`/assignments/${assignmentId}/candidates?canonical=${s.key}`)
+            }
+            disabled={count === 0}
+            title={`${s.key} — ${count} candidate${count !== 1 ? 's' : ''}`}
+            className="group flex flex-col items-center gap-1.5 px-1 py-4 border-r border-slate-100 last:border-r-0 transition-colors hover:bg-blue-50 disabled:pointer-events-none"
           >
-            <span className={cn('w-2 h-2 rounded-full shrink-0', s.dot)} />
+            <span className={cn('w-2 h-2 rounded-full shrink-0', canonicalDot(s.key))} />
             <span
               className={cn(
                 'text-[22px] font-black leading-none tabular-nums transition-colors',
@@ -231,7 +223,7 @@ function CanonicalBar({
                 count > 0 ? 'text-slate-600 group-hover:text-blue-500' : 'text-slate-200'
               )}
             >
-              {s.label}
+              {s.key.replace(/_/g, ' ')}
             </span>
           </button>
         );
@@ -261,202 +253,16 @@ function PipelineStageChips({ stages }: { stages: PipelineStageCount[] }) {
   );
 }
 
-// ─── Candidate drawer ─────────────────────────────────────────────────────────
-
-function CandidateDrawer({
-  open,
-  onClose,
-  requirementId,
-  requirementTitle,
-  stageId,
-  allStages,
-}: {
-  open: boolean;
-  onClose: () => void;
-  requirementId: string;
-  requirementTitle: string;
-  stageId: string | null;
-  allStages: PipelineStageCount[];
-}) {
-  const axios = useAxios();
-  const router = useRouter();
-  const [activeStageId, setActiveStageId] = useState<string | null>(stageId);
-  useMemo(() => {
-    setActiveStageId(stageId);
-  }, [stageId]);
-
-  const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (activeStageId) p.set('stageId', activeStageId);
-    p.set('limit', '50');
-    return p.toString();
-  }, [activeStageId]);
-
-  const { data: res, isLoading } = useQuery({
-    queryKey: ['assignment-candidates', requirementId, qs],
-    queryFn: async () =>
-      (await axios.get(`/requirements/${requirementId}/candidates?${qs}`)).data as {
-        data: CandidateInPipeline[];
-        meta: { total: number };
-      },
-    enabled: open && !!requirementId,
-  });
-
-  const candidates = res?.data ?? [];
-  const total = res?.meta?.total ?? 0;
-
-  return (
-    <Sheet
-      open={open}
-      onOpenChange={o => {
-        if (!o) onClose();
-      }}
-    >
-      <SheetContent side="right" className="w-[500px] sm:max-w-[500px] p-0 flex flex-col">
-        <SheetHeader className="px-6 pt-6 pb-4 border-b border-slate-100 shrink-0">
-          <SheetTitle className="text-sm font-medium text-slate-900 truncate">
-            {requirementTitle}
-          </SheetTitle>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {allStages.find(s => s.id === activeStageId)?.label ?? 'All stages'} ·{' '}
-            <span className="font-medium text-slate-900">{total}</span> candidates
-          </p>
-          <div className="flex gap-1.5 flex-wrap pt-2">
-            <button
-              onClick={() => setActiveStageId(null)}
-              className={cn(
-                'text-xs px-3 py-1.5 rounded-lg font-medium border transition-all',
-                !activeStageId
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-              )}
-            >
-              All
-            </button>
-            {allStages
-              .filter(s => s.count > 0)
-              .map(s => (
-                <button
-                  key={s.id}
-                  onClick={() => setActiveStageId(prev => (prev === s.id ? null : s.id))}
-                  className={cn(
-                    'text-xs px-3 py-1.5 rounded-lg font-medium border transition-all',
-                    activeStageId === s.id
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                  )}
-                >
-                  {s.label} <span className="opacity-60">({s.count})</span>
-                </button>
-              ))}
-          </div>
-        </SheetHeader>
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-          {isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex gap-3 px-6 py-4">
-                <Skeleton className="h-10 w-10 rounded-full shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-40" />
-                  <Skeleton className="h-3 w-56" />
-                </div>
-              </div>
-            ))
-          ) : candidates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-2">
-              <p className="text-sm font-medium text-slate-600">No candidates here</p>
-            </div>
-          ) : (
-            candidates.map(c => {
-              const ageCls =
-                c.aging.minutes > 20160
-                  ? 'text-red-500'
-                  : c.aging.minutes > 7200
-                    ? 'text-amber-500'
-                    : 'text-slate-400';
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => {
-                    onClose();
-                    router.push(`/requirements/${requirementId}?pipelineId=${c.id}`);
-                  }}
-                  className={cn(
-                    'flex gap-3 px-6 py-4 cursor-pointer hover:bg-blue-50/50 transition-colors group',
-                    (c.isRejected || c.isWithdrawn) && 'opacity-40'
-                  )}
-                >
-                  <div
-                    className={cn(
-                      'w-10 h-10 rounded-full flex items-center justify-center text-xs font-medium shrink-0',
-                      avatarColor(c.snapshot.fullName)
-                    )}
-                  >
-                    {initials(c.snapshot.fullName)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <p className="text-sm font-medium text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                        {c.snapshot.fullName}
-                      </p>
-                      <span className="text-xs font-medium px-2 py-1 rounded-lg bg-slate-100 text-slate-700 shrink-0 border border-slate-200">
-                        {c.currentStage.label}
-                      </span>
-                    </div>
-                    {(c.snapshot.currentTitle || c.snapshot.currentCompany) && (
-                      <p className="text-xs text-slate-500 truncate mb-1">
-                        {c.snapshot.currentTitle}
-                        {c.snapshot.currentTitle && c.snapshot.currentCompany ? ' · ' : ''}
-                        {c.snapshot.currentCompany}
-                        {c.snapshot.totalExpYears != null && (
-                          <span className="ml-1 text-slate-400">{c.snapshot.totalExpYears}y</span>
-                        )}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <div className="flex gap-1 flex-wrap">
-                        {c.snapshot.topSkills.slice(0, 3).map(s => (
-                          <span
-                            key={s}
-                            className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md font-medium border border-blue-100"
-                          >
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                      <span className={cn('flex items-center gap-1 text-xs font-medium', ageCls)}>
-                        <Clock className="w-3 h-3" />
-                        {c.aging.label}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-        <div className="shrink-0 px-6 py-4 border-t border-slate-100">
-          <Button
-            className="w-full h-10 text-sm font-medium bg-blue-600 hover:bg-blue-700"
-            onClick={() => {
-              onClose();
-              router.push(`/requirements/${requirementId}`);
-            }}
-          >
-            Open requirement <ArrowUpRight className="w-4 h-4 ml-1.5" />
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 // ─── Sub-row ──────────────────────────────────────────────────────────────────
 
 function SubRow({ child }: { child: ChildAssignment }) {
+  const router = useRouter();
   const dl = child.deadline ? daysLeft(child.deadline) : null;
   return (
-    <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-white border border-slate-200">
+    <div
+      className="flex items-center gap-3 py-3 px-4 rounded-xl bg-white border border-slate-200 cursor-pointer hover:border-blue-200 hover:bg-blue-50/40 transition-colors group"
+      onClick={() => router.push(`/assignments/${child.id}`)}
+    >
       <div
         className={cn(
           'w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium shrink-0',
@@ -466,38 +272,33 @@ function SubRow({ child }: { child: ChildAssignment }) {
         {initials(`${child.assignedTo.firstName} ${child.assignedTo.lastName}`)}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-800">
+        <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">
           {child.assignedTo.firstName} {child.assignedTo.lastName}
         </p>
         <p className="text-xs text-slate-500">{child.assignedTo.role.name}</p>
       </div>
-      <div className="text-sm text-slate-600 shrink-0">
-        <span className="font-semibold text-slate-900">{child.candidateStats.total}</span> in
-        pipeline
+      <div className="text-sm text-slate-600 shrink-0 flex items-center gap-2">
+        <span className="font-semibold text-slate-900">{child.candidateStats.total}</span>
+        <span>in pipeline</span>
         {dl != null && (
           <span
             className={cn(
-              'ml-2 font-semibold',
+              'font-semibold',
               dl < 0 ? 'text-red-500' : dl <= 3 ? 'text-amber-600' : 'text-slate-400'
             )}
           >
             · {dl < 0 ? `${Math.abs(dl)}d over` : `${dl}d left`}
           </span>
         )}
+        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
       </div>
     </div>
   );
 }
 
-// ─── Assignment card — same as my-assignments, assignee shown ─────────────────
+// ─── Assignment card ──────────────────────────────────────────────────────────
 
-function AssignmentCard({
-  a,
-  onCanonicalClick,
-}: {
-  a: Assignment;
-  onCanonicalClick: (a: Assignment, stageId: string | null) => void;
-}) {
+function AssignmentCard({ a }: { a: Assignment }) {
   const router = useRouter();
   const [showSubs, setShowSubs] = useState(false);
   const req = a.requirement;
@@ -506,6 +307,9 @@ function AssignmentCard({
   const age = daysSince(a.assignedAt);
   const hasSubs = a.childAssignments.length > 0;
   const stats = a.candidateStats;
+
+  // Header + stat buttons → assignment detail page (stage controls live there)
+  const toDetail = () => router.push(`/assignments/${a.id}`);
 
   return (
     <div
@@ -517,12 +321,8 @@ function AssignmentCard({
       {isBreached && <div className="h-1 w-full bg-amber-400" />}
 
       <div className="px-6 pt-5 pb-4">
-        {/* Header — assignee avatar shown since admin view */}
-        <div
-          className="flex items-start gap-4 mb-5 cursor-pointer group"
-          onClick={() => router.push(`/assignments/${a.id}`)}
-        >
-          {/* Assignee avatar instead of service line initial */}
+        {/* Header — clicking title area goes to candidates page */}
+        <div className="flex items-start gap-4 mb-5 cursor-pointer group" onClick={toDetail}>
           <div
             className={cn(
               'w-12 h-12 rounded-xl flex items-center justify-center shrink-0 text-base font-bold',
@@ -563,7 +363,6 @@ function AssignmentCard({
             <h3 className="text-base font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
               {req.title}
             </h3>
-            {/* Assignee name prominent — key difference from my-assignments */}
             <p className="text-sm font-semibold text-slate-700 mt-0.5">
               {a.assignedTo.firstName} {a.assignedTo.lastName}
               <span className="font-normal text-slate-500 ml-1.5">({a.assignedTo.role.name})</span>
@@ -579,10 +378,11 @@ function AssignmentCard({
           <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mt-1.5 group-hover:text-slate-600 transition-colors" />
         </div>
 
-        {/* Stats row — identical to my-assignments */}
+        {/* Stats row */}
         <div className="flex items-center gap-3 flex-wrap mb-4">
+          {/* "in pipeline" button → candidates page, all candidates */}
           <button
-            onClick={() => onCanonicalClick(a, null)}
+            onClick={toDetail}
             className="flex items-center gap-2.5 border-2 border-slate-200 rounded-xl px-4 py-3 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 transition-colors group/s"
           >
             <Users className="w-4 h-4 text-slate-500 group-hover/s:text-blue-500" />
@@ -595,11 +395,14 @@ function AssignmentCard({
           </button>
 
           {stats.placed > 0 && (
-            <div className="flex items-center gap-2.5 border-2 border-emerald-300 rounded-xl px-4 py-3 bg-emerald-50">
+            <button
+              onClick={() => router.push(`/assignments/${a.id}`)}
+              className="flex items-center gap-2.5 border-2 border-emerald-300 rounded-xl px-4 py-3 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+            >
               <CheckCircle2 className="w-4 h-4 text-emerald-700" />
               <span className="text-2xl font-black text-emerald-800">{stats.placed}</span>
               <span className="text-sm font-medium text-emerald-700">placed</span>
-            </div>
+            </button>
           )}
           {stats.submitted > 0 && (
             <div className="flex items-center gap-2.5 border-2 border-slate-200 rounded-xl px-4 py-3 bg-white">
@@ -614,10 +417,13 @@ function AssignmentCard({
             </div>
           )}
           {stats.dropped > 0 && (
-            <div className="flex items-center gap-2.5 border-2 border-red-200 rounded-xl px-4 py-3 bg-red-50">
+            <button
+              onClick={() => router.push(`/assignments/${a.id}`)}
+              className="flex items-center gap-2.5 border-2 border-red-200 rounded-xl px-4 py-3 bg-red-50 hover:bg-red-100 transition-colors"
+            >
               <span className="text-2xl font-black text-red-700">{stats.dropped}</span>
               <span className="text-sm font-medium text-red-600">dropped</span>
-            </div>
+            </button>
           )}
           {stats.agingBuckets.critical > 0 && (
             <div className="flex items-center gap-2.5 border-2 border-amber-300 rounded-xl px-4 py-3 bg-amber-50">
@@ -647,7 +453,10 @@ function AssignmentCard({
             </span>
             {hasSubs && (
               <button
-                onClick={() => setShowSubs(v => !v)}
+                onClick={e => {
+                  e.stopPropagation();
+                  setShowSubs(v => !v);
+                }}
                 className="flex items-center gap-1.5 text-sm font-semibold text-blue-700 border border-blue-200 rounded-lg px-3 py-2 bg-blue-50 hover:bg-blue-100 transition-colors"
               >
                 <Layers className="w-4 h-4" />
@@ -672,10 +481,8 @@ function AssignmentCard({
         </div>
       )}
 
-      <CanonicalBar
-        byCanonical={stats.byCanonicalStage}
-        onStageClick={() => onCanonicalClick(a, null)}
-      />
+      {/* Canonical bar — each column navigates to candidates page filtered by that canonical */}
+      <CanonicalBar byCanonical={stats.byCanonicalStage} assignmentId={a.id} />
       <PipelineStageChips stages={stats.byPipelineStage} />
     </div>
   );
@@ -729,14 +536,6 @@ export default function AssignmentsPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const [drawer, setDrawer] = useState<{
-    open: boolean;
-    requirementId: string;
-    requirementTitle: string;
-    stageId: string | null;
-    allStages: PipelineStageCount[];
-  }>({ open: false, requirementId: '', requirementTitle: '', stageId: null, allStages: [] });
-
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (status) p.set('status', status);
@@ -782,7 +581,6 @@ export default function AssignmentsPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-[#EEF2F7]">
-      {/* Header — same structure as my-assignments */}
       <div className="shrink-0 bg-white border-b-2 border-slate-100">
         <div className="px-8 pt-6 pb-5">
           <div className="flex items-center justify-between gap-4 mb-5">
@@ -946,19 +744,7 @@ export default function AssignmentsPage() {
         ) : (
           <div className="flex flex-col gap-4">
             {filtered.map(a => (
-              <AssignmentCard
-                key={a.id}
-                a={a}
-                onCanonicalClick={(a, stageId) =>
-                  setDrawer({
-                    open: true,
-                    requirementId: a.requirement.id,
-                    requirementTitle: a.requirement.title,
-                    stageId,
-                    allStages: a.candidateStats.byPipelineStage,
-                  })
-                }
-              />
+              <AssignmentCard key={a.id} a={a} />
             ))}
           </div>
         )}
@@ -994,15 +780,6 @@ export default function AssignmentsPage() {
           </div>
         )}
       </div>
-
-      <CandidateDrawer
-        open={drawer.open}
-        onClose={() => setDrawer(d => ({ ...d, open: false }))}
-        requirementId={drawer.requirementId}
-        requirementTitle={drawer.requirementTitle}
-        stageId={drawer.stageId}
-        allStages={drawer.allStages}
-      />
     </div>
   );
 }

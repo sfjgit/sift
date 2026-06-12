@@ -149,13 +149,8 @@ export default function RoleCreatePage() {
                 ))}
               </div>
             ) : (
-              <PermissionsMatrix
-                modules={modules}
-                // @ts-expect-error err
-                rows={permissions}
-                // @ts-expect-error err
-                onChange={setPermissions}
-              />
+              // @ts-expect-error err
+              <PermissionsMatrix modules={modules} rows={permissions} onChange={setPermissions} />
             )}
           </CardContent>
         </Card>

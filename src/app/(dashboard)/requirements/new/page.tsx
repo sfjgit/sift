@@ -52,12 +52,8 @@ const schema = z.object({
   clientSpocId: z.string().min(1, 'SPOC is required'),
   title: z.string().min(1, 'Title is required').max(300).trim(),
   description: z.string().max(5000).optional().nullable(),
-  jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE'], {
-    errorMap: () => ({ message: 'Job type is required' }),
-  }),
-  remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID'], {
-    errorMap: () => ({ message: 'Remote type is required' }),
-  }),
+  jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
+  remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
   jobOpenFor: z.enum(['EXTERNAL', 'INTERNAL', 'BOTH']).default('EXTERNAL'),
   totalOpenings: z.number().min(1).default(1),

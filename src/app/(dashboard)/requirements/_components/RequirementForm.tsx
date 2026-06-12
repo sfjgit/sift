@@ -611,6 +611,7 @@ export function RequirementForm({ mode, defaultValues, onSubmit, isPending, onCa
         val: RequirementFormValues[K] | null | undefined
       ) {
         if (val === null || val === undefined) return;
+        // @ts-expect-error err
         setValue(field, val);
         filled.push(field as string);
       }

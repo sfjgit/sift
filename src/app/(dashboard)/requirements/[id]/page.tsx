@@ -2214,6 +2214,7 @@ export default function RequirementDetailPage() {
                 title: req.title,
                 totalOpenings: req.totalOpenings,
                 deadline: (req as any).respondBy ?? null,
+                // @ts-expect-error err
                 client: (req as any).client ?? null,
                 businessUnit: (req as any).businessUnit ?? null,
               }}

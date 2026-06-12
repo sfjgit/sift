@@ -726,6 +726,9 @@ function AddCandidateModal({
 // ACTION DIALOGS — identical to requirement page
 // ─────────────────────────────────────────────────────────────────────────────
 
+// File: page.tsx
+// Path: src/app/(dashboard)/assignments/[id]/page.tsx  (MoveStageDialog — redesigned)
+
 function MoveStageDialog({
   pipeline,
   stages,
@@ -742,99 +745,236 @@ function MoveStageDialog({
   const axios = useAxios();
   const [stageId, setStageId] = useState('');
   const [note, setNote] = useState('');
-  const [skipReason, setSkipReason] = useState('');
-  const available = stages.filter(s => s.order > pipeline.currentStage.order && !s.isTerminal);
-  const selected = stages.find(s => s.id === stageId);
-  const currentIdx = stages.findIndex(s => s.id === pipeline.currentStage.id);
-  const selectedIdx = stages.findIndex(s => s.id === stageId);
-  const skippedMandatory = stages.slice(currentIdx + 1, selectedIdx).filter(s => s.isMandatory);
+
+  const currentOrder = pipeline.currentStage.order;
+
+  // Terminal stages are reached via reject/withdraw/hold, not a move.
+  const selectableStages = useMemo(
+    () => [...stages].filter(s => !s.isTerminal).sort((a, b) => a.order - b.order),
+    [stages]
+  );
+
+  const selected = stages.find(s => s.id === stageId) ?? null;
+  const cc = SC(pipeline.currentStage.code);
+  const tc = selected ? SC(selected.code) : null;
+
+  const reset = () => {
+    setStageId('');
+    setNote('');
+  };
+
   const mut = useMutation({
     mutationFn: async () =>
       axios.patch(`/pipeline/${pipeline.id}/stage`, {
         stageId,
-        note: note || undefined,
-        skipReason: skipReason || undefined,
+        note: note.trim() || undefined,
       }),
     onSuccess: () => {
       toast.success(`Moved to ${selected?.label}`);
       onDone();
       onClose();
-      setStageId('');
-      setNote('');
-      setSkipReason('');
+      reset();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to move stage'),
   });
+
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <ArrowUpDown className="w-4 h-4 text-indigo-600" /> Move Stage
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-1">
-          <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-            <p className="text-xs text-slate-500">Currently at</p>
-            <p className="text-sm font-bold text-slate-900 mt-0.5">{pipeline.currentStage.label}</p>
-          </div>
-          <div>
-            <Label className="text-sm font-semibold text-slate-800 mb-2 block">Move to stage</Label>
-            <Select value={stageId} onValueChange={setStageId}>
-              <SelectTrigger className="h-10 text-sm font-medium">
-                <SelectValue placeholder="Select a stage..." />
-              </SelectTrigger>
-              <SelectContent>
-                {available.map(s => (
-                  <SelectItem key={s.id} value={s.id} className="text-sm">
-                    {s.label}
-                    {!s.isMandatory ? ' (optional)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {skippedMandatory.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-              <p className="text-sm font-semibold text-amber-800 mb-1">Skipping mandatory stages</p>
-              <p className="text-xs text-amber-700 mb-2">
-                {skippedMandatory.map(s => s.label).join(', ')}
+    <Dialog
+      open={open}
+      onOpenChange={v => {
+        if (!v) {
+          onClose();
+          reset();
+        }
+      }}
+    >
+      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
+        {/* ── HEADER ─────────────────────────────────────────────── */}
+        <div className="px-6 pt-5 pb-4 border-b border-slate-100">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-slate-900">
+              <span className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                <ArrowUpDown className="w-4 h-4 text-indigo-600" />
+              </span>
+              Move Stage
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-3 mt-3">
+            <Avatar className="h-9 w-9 shrink-0">
+              <AvatarFallback className={`text-xs font-bold ${avatarColor(pipeline.snapshot.id)}`}>
+                {initials(pipeline.snapshot.fullName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 truncate">
+                {pipeline.snapshot.fullName}
               </p>
-              <Label className="text-xs font-semibold text-amber-800 mb-1 block">
-                Reason (required)
-              </Label>
-              <Input
-                value={skipReason}
-                onChange={e => setSkipReason(e.target.value)}
-                placeholder="Why are you skipping?"
-                className="h-9 text-sm"
-              />
+              {(pipeline.snapshot.currentTitle || pipeline.snapshot.currentCompany) && (
+                <p className="text-xs text-slate-500 truncate">
+                  {pipeline.snapshot.currentTitle}
+                  {pipeline.snapshot.currentTitle && pipeline.snapshot.currentCompany ? ' · ' : ''}
+                  {pipeline.snapshot.currentCompany}
+                </p>
+              )}
             </div>
-          )}
+          </div>
+        </div>
+
+        {/* ── FROM → TO BANNER ──────────────────────────────────────── */}
+        <div className="px-6 py-4 bg-slate-50/70 border-b border-slate-100">
+          <div className="flex items-end gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+                From
+              </p>
+              <span
+                className={`inline-flex items-center gap-2 max-w-full text-sm font-bold px-3 py-1.5 rounded-lg border ${cc.bg} ${cc.text} ${cc.border}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${cc.dot} shrink-0`} />
+                <span className="truncate">{pipeline.currentStage.label}</span>
+              </span>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mb-1.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
+                To
+              </p>
+              {selected && tc ? (
+                <span
+                  className={`inline-flex items-center gap-2 max-w-full text-sm font-bold px-3 py-1.5 rounded-lg border ${tc.bg} ${tc.text} ${tc.border}`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${tc.dot} shrink-0`} />
+                  <span className="truncate">{selected.label}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center text-sm font-medium px-3 py-1.5 rounded-lg border border-dashed border-slate-300 text-slate-400">
+                  Select a stage
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── STAGE PICKER ─────────────────────────────────────────── */}
+        <div className="px-4 py-3 max-h-[44vh] overflow-y-auto">
+          <div className="space-y-1">
+            {selectableStages.map(s => {
+              const c = SC(s.code);
+              const isCurrent = s.id === pipeline.currentStage.id;
+              const isSelected = s.id === stageId;
+              const isPast = s.order < currentOrder;
+              return (
+                <button
+                  key={s.id}
+                  disabled={isCurrent}
+                  onClick={() => setStageId(s.id)}
+                  className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                    isCurrent
+                      ? 'border-slate-200 bg-slate-50 cursor-default'
+                      : isSelected
+                        ? `${c.border} ${c.bg} ring-2 ring-primary/30`
+                        : 'border-transparent hover:bg-slate-50 hover:border-slate-200'
+                  }`}
+                >
+                  {/* order node */}
+                  <span
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 border-2 ${
+                      isCurrent || isSelected
+                        ? `${c.dot} text-white border-transparent`
+                        : isPast
+                          ? 'bg-white text-slate-400 border-slate-200'
+                          : 'bg-white text-slate-500 border-slate-300'
+                    }`}
+                  >
+                    {s.order}
+                  </span>
+                  {/* label + meta tags */}
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`text-sm font-bold leading-tight truncate ${isCurrent ? 'text-slate-500' : 'text-slate-900'}`}
+                    >
+                      {s.label}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.isMandatory ? 'bg-slate-200 text-slate-600' : 'bg-slate-100 text-slate-400'}`}
+                      >
+                        {s.isMandatory ? 'Mandatory' : 'Optional'}
+                      </span>
+                      {s.canonicalStage && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
+                          {s.canonicalStage.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* right indicator */}
+                  <div className="shrink-0">
+                    {isCurrent ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-white border border-slate-200 px-2 py-1 rounded-full">
+                        Current
+                      </span>
+                    ) : isSelected ? (
+                      <span
+                        className={`w-6 h-6 rounded-full flex items-center justify-center ${c.dot} text-white`}
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wide ${isPast ? 'text-amber-500' : 'text-slate-300'}`}
+                      >
+                        {isPast ? 'Back' : 'Ahead'}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── NOTE + FOOTER ────────────────────────────────────────── */}
+        <div className="px-6 py-4 border-t border-slate-100 space-y-3">
           <div>
-            <Label className="text-sm font-semibold text-slate-800 mb-2 block">
-              Note <span className="font-normal text-slate-500">(optional)</span>
+            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
+              Note{' '}
+              <span className="font-normal lowercase tracking-normal text-slate-400">
+                (optional)
+              </span>
             </Label>
             <Textarea
               value={note}
               onChange={e => setNote(e.target.value)}
-              placeholder="Add a note..."
+              placeholder="Add context for this move…"
               rows={2}
               className="resize-none text-sm"
             />
           </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                onClose();
+                reset();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!stageId || mut.isPending}
+              onClick={() => mut.mutate()}
+              className="gap-2 min-w-[130px]"
+            >
+              {mut.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ArrowUpDown className="w-3.5 h-3.5" />
+              )}
+              {mut.isPending ? 'Moving…' : 'Move Stage'}
+            </Button>
+          </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!stageId || mut.isPending || (skippedMandatory.length > 0 && !skipReason)}
-            onClick={() => mut.mutate()}
-          >
-            {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}Move Stage
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

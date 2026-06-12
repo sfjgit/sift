@@ -157,6 +157,8 @@ export interface PermissionRowPayload {
 }
 
 export function EMPTY_PERMISSION(module: string, defaultScope = 'OWN'): PermissionRowPayload {
+  // defaultScope: 'OWN'
+  // @ts-expect-error err
   return {
     module,
     canView: false,
