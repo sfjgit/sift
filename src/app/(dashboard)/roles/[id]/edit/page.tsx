@@ -1,4 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// File: page.tsx
+// Path: src/app/(dashboard)/roles/[id]/edit/page.tsx
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -12,8 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAxios } from '@/hooks/useAxios';
+import { useScopeOptions } from '@/hooks/useScopeOptions'; // ← NEW
 import { PermissionsMatrix } from '@/components/roles/PermissionsMatrix';
-import { SCOPE_OPTIONS } from '@/types/role.types';
 import type { RoleDetailResponse, PermissionRowPayload } from '@/types/role.types';
 
 export default function RoleEditPage() {
@@ -40,11 +43,13 @@ export default function RoleEditPage() {
     staleTime: Infinity,
   });
 
+  // ── Fetch scopes from API — replaces hardcoded SCOPE_OPTIONS ──────────────
+  const { scopeOptions, isLoading: scopeOptionsLoading } = useScopeOptions();
+
   // Populate form once role loads
   useEffect(() => {
     const role = roleQuery.data?.data;
     if (!role) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(role.name.replace(/_/g, ' '));
     setDescription(role.description ?? '');
     setPermissions(role.permissions);
@@ -69,7 +74,7 @@ export default function RoleEditPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update role'),
   });
 
-  // ── Loading / error ───────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (roleQuery.isLoading || modulesQuery.isLoading) {
     return (
       <div className="max-w-7xl mx-auto p-6 space-y-4">
@@ -92,14 +97,13 @@ export default function RoleEditPage() {
   }
 
   const role = roleQuery.data.data;
-  // @ts-expect-error errr
-  const modules: string[] = role.modules ?? modulesQuery.data?.data ?? [];
+  const modules: string[] = (role as any).modules ?? modulesQuery.data?.data ?? [];
   const activeCount = permissions.filter(
     p => p.canView || p.canAdd || p.canEdit || p.canDelete
   ).length;
 
   return (
-    <div className="w-full bg-blue-200 mx-auto p-6 space-y-6">
+    <div className="w-full mx-auto p-6 space-y-6">
       {/* ── Header ───────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
@@ -186,18 +190,18 @@ export default function RoleEditPage() {
             Toggle a module on, then set what actions are allowed and the data scope per action.
             Changes take effect immediately for all users with this role.
           </CardDescription>
-          {/* Scope legend */}
-          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-1">
-            {SCOPE_OPTIONS.map(o => (
-              <span key={o.value}>
-                <span className="font-mono font-semibold text-foreground">{o.value}</span> ={' '}
-                {
-                  // @ts-expect-error errr
-                  o.desc
-                }
-              </span>
-            ))}
-          </div>
+
+          {/* Scope legend — built from API data, always current */}
+          {!scopeOptionsLoading && scopeOptions.length > 0 && (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-1">
+              {scopeOptions.map(o => (
+                <span key={o.value}>
+                  <span className="font-mono font-semibold text-foreground">{o.value}</span> ={' '}
+                  {o.desc}
+                </span>
+              ))}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {modules.length === 0 ? (
@@ -218,9 +222,9 @@ export default function RoleEditPage() {
           ) : (
             <PermissionsMatrix
               modules={modules}
-              // @ts-expect-error errr
               rows={permissions}
-              // @ts-expect-error errr
+              scopeOptions={scopeOptions} // ← from API, never hardcoded
+              scopeOptionsLoading={scopeOptionsLoading}
               onChange={setPermissions}
             />
           )}

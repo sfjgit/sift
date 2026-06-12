@@ -5,8 +5,8 @@
 
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search,
@@ -29,6 +29,14 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  Download,
+  LayoutList,
+  Table2,
+  UserCheck,
+  UsersRound,
+  Network,
+  Filter,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,10 +47,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAxios } from '@/hooks/useAxios';
+import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +69,7 @@ interface PipelineStageCount {
   code: string;
   label: string;
   order: number;
+  canonicalStage: string | null;
   count: number;
 }
 
@@ -75,20 +86,26 @@ interface Requirement {
   title: string;
   status: string;
   priority: string;
+  jobOpenFor?: string;
   totalOpenings: number;
-  filledOpenings: number;
-  location: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
   remoteType?: string;
   jobType: string;
   createdAt: string;
   serviceLineId?: string | null;
   isRespondByBreached?: boolean;
   isTurnaroundBreached?: boolean;
+  closureReason?: string | null;
+  jdParseStatus?: string | null;
   client?: { id: string; name: string } | null;
   businessUnit?: { id: string; name: string } | null;
   serviceLine?: { id: string; name: string } | null;
+  createdBy?: { id: string; firstName: string; lastName: string } | null;
   assignments?: Assignment[];
   pipelineStageCounts?: PipelineStageCount[];
+  canonicalStageCounts?: Record<string, number>;
   _count?: { pipelines: number };
 }
 
@@ -111,6 +128,7 @@ interface RequirementsResponse {
   data: Requirement[];
   meta: { total: number; page: number; limit: number; pages: number };
   permissions?: { canAdd: boolean; canEdit: boolean; canDelete: boolean };
+  scope?: { createdByScope: string; canViewScope: string; isSuperAdmin?: boolean };
 }
 
 interface StatsResponse {
@@ -200,6 +218,10 @@ const STAGE_DRAWER_COLORS: Record<string, string> = {
   '10': 'bg-green-100 text-green-700 border-green-200',
 };
 
+// Canonical stage display config is loaded from /candidates/meta (useCandidateMeta).
+// NEVER hardcode canonical stage keys here — they come from the DB via that hook.
+// canonicalDot(key) → Tailwind bg class for the color dot (from useCandidateMeta hook)
+
 const AVATAR_COLORS = [
   'bg-violet-500',
   'bg-blue-500',
@@ -212,25 +234,26 @@ const AVATAR_COLORS = [
 
 const ALL_PRIORITIES = ['HIGH', 'MEDIUM', 'LOW'];
 
-const SIDEBAR_STATUSES = [
-  { key: 'ACTIVE', label: 'Active', icon: Zap, color: 'text-emerald-500' },
-  { key: 'ON_HOLD', label: 'Hold', icon: PauseCircle, color: 'text-orange-500' },
-  { key: 'CLOSED', label: 'Closed', icon: XCircle, color: 'text-red-400' },
-  {
-    key: 'PENDING_APPROVAL',
-    label: 'Pending for Approval',
-    icon: CheckCircle2,
-    color: 'text-amber-500',
-  },
-  { key: 'DRAFT', label: 'Draft', icon: FileText, color: 'text-slate-400' },
-  { key: 'CANCELLED', label: 'Cancelled', icon: AlertCircle, color: 'text-gray-400' },
-  { key: 'CLOSED_BY_OTHERS', label: 'Closed by Others', icon: UserX, color: 'text-slate-400' },
+const ALL_STATUSES = [
+  { key: 'ACTIVE', label: 'Active', icon: Zap, dot: 'bg-emerald-500' },
+  { key: 'ON_HOLD', label: 'On Hold', icon: PauseCircle, dot: 'bg-orange-500' },
+  { key: 'PENDING_APPROVAL', label: 'Pending Approval', icon: CheckCircle2, dot: 'bg-amber-500' },
+  { key: 'DRAFT', label: 'Draft', icon: FileText, dot: 'bg-slate-400' },
+  { key: 'CLOSED', label: 'Closed', icon: XCircle, dot: 'bg-red-400' },
+  { key: 'CANCELLED', label: 'Cancelled', icon: AlertCircle, dot: 'bg-gray-400' },
 ];
+
+const SCOPE_OPTIONS = [
+  { value: 'OWN', label: 'Mine', icon: UserCheck },
+  { value: 'TEAM', label: 'My Team', icon: UsersRound },
+  { value: 'REPORTING', label: 'Reporting Line', icon: Network },
+] as const;
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
 
 function daysSince(d: string) {
   return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
 }
-
 function initials(name: string) {
   return name
     .split(' ')
@@ -239,11 +262,9 @@ function initials(name: string) {
     .toUpperCase()
     .slice(0, 2);
 }
-
 function avatarColor(s: string) {
   return AVATAR_COLORS[s.charCodeAt(0) % AVATAR_COLORS.length];
 }
-
 async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
@@ -253,246 +274,851 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-// ─── Mobile Filter Sheet ──────────────────────────────────────────────────────
+// ─── useFilters ───────────────────────────────────────────────────────────────
 
-function MobileFilterSheet({
-  open,
-  onClose,
-  status,
-  setStatus,
-  selectedBuId,
-  setSelectedBuId,
-  serviceLineId,
-  setServiceLineId,
-  selectedClientId,
-  setSelectedClientId,
-  resetPage,
-  byStatus,
-  busData,
-  slData,
-  clientsData,
-  busLoading,
-  slLoading,
-  clientsLoading,
-  totalJobs,
-}: {
-  open: boolean;
-  onClose: () => void;
-  status: string;
-  setStatus: (v: string) => void;
-  selectedBuId: string;
-  setSelectedBuId: (v: string) => void;
-  serviceLineId: string;
-  setServiceLineId: (v: string) => void;
-  selectedClientId: string;
-  setSelectedClientId: (v: string) => void;
-  resetPage: () => void;
-  byStatus: Record<string, number>;
-  busData: BusinessUnit[] | null | undefined;
-  slData: ServiceLine[] | null | undefined;
-  clientsData: Client[] | null | undefined;
-  busLoading: boolean;
-  slLoading: boolean;
-  clientsLoading: boolean;
-  totalJobs: number;
-}) {
-  const activeFiltersCount = [status, selectedBuId, serviceLineId, selectedClientId].filter(
+function useFilters() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const search = searchParams.get('search') ?? '';
+  const status = searchParams.get('status') ?? '';
+  const priority = searchParams.get('priority') ?? '';
+  const serviceLineId = searchParams.get('serviceLineId') ?? '';
+  const clientId = searchParams.get('clientId') ?? '';
+  const buId = searchParams.get('buId') ?? '';
+  const createdByScope = searchParams.get('createdByScope') ?? 'OWN';
+  // Default is now 'table'
+  const viewMode = (searchParams.get('view') ?? 'table') as 'cards' | 'table';
+  const page = Number(searchParams.get('page') ?? '1');
+  const limit = Number(searchParams.get('limit') ?? '25');
+
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === '') next.delete(k);
+        else next.set(k, v);
+      }
+      router.push(`${pathname}?${next.toString()}`);
+    },
+    [router, pathname, searchParams]
+  );
+
+  const setSearch = (v: string) => setParams({ search: v, page: null });
+  const setStatus = (v: string) => setParams({ status: v, page: null });
+  const setPriority = (v: string) => setParams({ priority: v, page: null });
+  const setServiceLineId = (v: string) => setParams({ serviceLineId: v, page: null });
+  const setClientId = (v: string) => setParams({ clientId: v, page: null });
+  const setBuId = (v: string) => setParams({ buId: v, page: null });
+  const setCreatedByScope = (v: string) => setParams({ createdByScope: v, page: null });
+  const setViewMode = (v: 'cards' | 'table') => setParams({ view: v });
+  const setPage = (v: number) => setParams({ page: String(v) });
+  const setLimit = (v: number) => setParams({ limit: String(v), page: null });
+
+  const clearAll = () =>
+    setParams({
+      search: null,
+      status: null,
+      priority: null,
+      serviceLineId: null,
+      clientId: null,
+      buId: null,
+      page: null,
+    });
+
+  const activeFiltersCount = [status, priority, buId, serviceLineId, clientId].filter(
     Boolean
   ).length;
 
+  return {
+    search,
+    status,
+    priority,
+    serviceLineId,
+    clientId,
+    buId,
+    createdByScope,
+    viewMode,
+    page,
+    limit,
+    setSearch,
+    setStatus,
+    setPriority,
+    setServiceLineId,
+    setClientId,
+    setBuId,
+    setCreatedByScope,
+    setViewMode,
+    setPage,
+    setLimit,
+    clearAll,
+    activeFiltersCount,
+  };
+}
+
+// ─── ScopeSwitcher ────────────────────────────────────────────────────────────
+
+function ScopeSwitcher({
+  value,
+  onChange,
+  isSuperAdmin,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  isSuperAdmin?: boolean;
+}) {
+  const options = isSuperAdmin
+    ? [...SCOPE_OPTIONS, { value: 'ALL', label: 'All', icon: Network } as const]
+    : SCOPE_OPTIONS;
   return (
-    <Sheet
-      open={open}
-      onOpenChange={o => {
-        if (!o) onClose();
-      }}
-    >
-      <SheetContent side="left" className="w-[85vw] max-w-[320px] p-0 flex flex-col">
-        <SheetHeader className="px-4 pt-4 pb-3 border-b border-border shrink-0">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-base font-bold">Filters</SheetTitle>
-            <div className="flex items-center gap-2">
-              {activeFiltersCount > 0 && (
-                <button
-                  onClick={() => {
-                    setStatus('');
-                    setSelectedBuId('');
-                    setServiceLineId('');
-                    setSelectedClientId('');
-                    resetPage();
-                  }}
-                  className="text-[11px] text-red-500 font-medium hover:underline"
-                >
-                  Clear all
-                </button>
-              )}
-              <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                {totalJobs}
-              </span>
-            </div>
-          </div>
-        </SheetHeader>
-
-        <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
-          {/* Status */}
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 px-1">
-            Status
-          </p>
-          {SIDEBAR_STATUSES.map(s => {
-            const count = byStatus[s.key] ?? 0;
-            const isActive = status === s.key;
-            return (
-              <button
-                key={s.key}
-                onClick={() => {
-                  // @ts-expect-error err
-                  setStatus(p => (p === s.key ? '' : s.key));
-                  resetPage();
-                  onClose();
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'}`}
-              >
-                <span className="flex items-center gap-2">
-                  <s.icon size={14} className={isActive ? 'text-primary' : s.color} />
-                  {s.label}
-                </span>
-                {count > 0 && (
-                  <span
-                    className={`text-[12px] font-bold ${isActive ? 'text-primary' : 'text-slate-400'}`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          {busData && busData.length > 0 && (
-            <>
-              <div className="h-px bg-slate-100 my-2" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 px-1 flex items-center gap-1.5">
-                <Building2 size={10} /> Business Units
-              </p>
-              <button
-                onClick={() => {
-                  setSelectedBuId('');
-                  resetPage();
-                  onClose();
-                }}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!selectedBuId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
-              >
-                All BUs
-              </button>
-              {busLoading ? (
-                <div className="space-y-1">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-7 w-full rounded-lg" />
-                  ))}
-                </div>
-              ) : (
-                (busData ?? []).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedBuId(item.id === selectedBuId ? '' : item.id);
-                      resetPage();
-                      onClose();
-                    }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${selectedBuId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
-            </>
-          )}
-
-          {slData && slData.length > 0 && (
-            <>
-              <div className="h-px bg-slate-100 my-2" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 px-1 flex items-center gap-1.5">
-                <Briefcase size={10} /> Service Lines
-              </p>
-              <button
-                onClick={() => {
-                  setServiceLineId('');
-                  resetPage();
-                  onClose();
-                }}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!serviceLineId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
-              >
-                All Service Lines
-              </button>
-              {slLoading ? (
-                <div className="space-y-1">
-                  {[1, 2].map(i => (
-                    <Skeleton key={i} className="h-7 w-full rounded-lg" />
-                  ))}
-                </div>
-              ) : (
-                (slData ?? []).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setServiceLineId(item.id === serviceLineId ? '' : item.id);
-                      resetPage();
-                      onClose();
-                    }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${serviceLineId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
-            </>
-          )}
-
-          {clientsData && clientsData.length > 0 && (
-            <>
-              <div className="h-px bg-slate-100 my-2" />
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-2 px-1 flex items-center gap-1.5">
-                <Briefcase size={10} /> Clients
-              </p>
-              <button
-                onClick={() => {
-                  setSelectedClientId('');
-                  resetPage();
-                  onClose();
-                }}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors ${!selectedClientId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
-              >
-                All Clients
-              </button>
-              {clientsLoading ? (
-                <div className="space-y-1">
-                  {[1, 2, 3].map(i => (
-                    <Skeleton key={i} className="h-7 w-full rounded-lg" />
-                  ))}
-                </div>
-              ) : (
-                (clientsData ?? []).map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedClientId(item.id === selectedClientId ? '' : item.id);
-                      resetPage();
-                      onClose();
-                    }}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-[13px] transition-colors truncate ${selectedClientId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-                  >
-                    {item.name}
-                  </button>
-                ))
-              )}
-            </>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
+    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+      {options.map(opt => {
+        const Icon = opt.icon;
+        const isActive = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${
+              isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Icon size={12} />
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-// ─── Candidate Drawer ─────────────────────────────────────────────────────────
+// ─── ViewToggle ───────────────────────────────────────────────────────────────
+
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: 'cards' | 'table';
+  onChange: (v: 'cards' | 'table') => void;
+}) {
+  return (
+    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+      <button
+        onClick={() => onChange('cards')}
+        title="Card view"
+        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${
+          value === 'cards'
+            ? 'bg-white shadow-sm text-slate-900'
+            : 'text-slate-400 hover:text-slate-600'
+        }`}
+      >
+        <LayoutList size={14} />
+      </button>
+      <button
+        onClick={() => onChange('table')}
+        title="Table view"
+        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${
+          value === 'table'
+            ? 'bg-white shadow-sm text-slate-900'
+            : 'text-slate-400 hover:text-slate-600'
+        }`}
+      >
+        <Table2 size={14} />
+      </button>
+    </div>
+  );
+}
+
+// ─── ExportButton ─────────────────────────────────────────────────────────────
+
+function ExportButton({
+  filters,
+}: {
+  filters: {
+    search: string;
+    status: string;
+    priority: string;
+    serviceLineId: string;
+    clientId: string;
+    buId: string;
+    createdByScope: string;
+  };
+}) {
+  const axios = useAxios();
+  const [loading, setLoading] = useState(false);
+
+  const handleExport = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filters.search) params.set('search', filters.search);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.priority) params.set('priority', filters.priority);
+      if (filters.serviceLineId) params.set('serviceLineId', filters.serviceLineId);
+      if (filters.clientId) params.set('clientId', filters.clientId);
+      if (filters.buId) params.set('buId', filters.buId);
+      params.set('createdByScope', filters.createdByScope);
+
+      const response = await axios.get(`/requirements/export?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `requirements-${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={loading}
+      title="Export to Excel"
+      className="flex items-center gap-1.5 px-2.5 h-8 border border-slate-200 rounded-lg text-[12px] font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors disabled:opacity-50 shrink-0"
+    >
+      {loading ? (
+        <span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+      ) : (
+        <Download size={13} />
+      )}
+      <span className="hidden sm:inline">{loading ? 'Exporting…' : 'Export'}</span>
+    </button>
+  );
+}
+
+// ─── FilterBar ────────────────────────────────────────────────────────────────
+// The full filter bar that lives in the navbar area.
+// Status tabs sit at top. Dropdowns for BU / SL / Client / Priority below.
+
+function FilterBar({
+  status,
+  setStatus,
+  priority,
+  setPriority,
+  buId,
+  setBuId,
+  serviceLineId,
+  setServiceLineId,
+  clientId,
+  setClientId,
+  byStatus,
+  busData,
+  busLoading,
+  slData,
+  slLoading,
+  clientsData,
+  clientsLoading,
+  activeFiltersCount,
+  clearAll,
+}: {
+  status: string;
+  setStatus: (v: string) => void;
+  priority: string;
+  setPriority: (v: string) => void;
+  buId: string;
+  setBuId: (v: string) => void;
+  serviceLineId: string;
+  setServiceLineId: (v: string) => void;
+  clientId: string;
+  setClientId: (v: string) => void;
+  byStatus: Record<string, number>;
+  busData: BusinessUnit[] | null | undefined;
+  busLoading: boolean;
+  slData: ServiceLine[] | null | undefined;
+  slLoading: boolean;
+  clientsData: Client[] | null | undefined;
+  clientsLoading: boolean;
+  activeFiltersCount: number;
+  clearAll: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {/* ── Status tabs ── */}
+      <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5 shrink-0">
+        <button
+          onClick={() => setStatus('')}
+          className={`px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${
+            !status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          All
+          <span
+            className={`ml-1.5 text-[11px] font-bold ${!status ? 'text-slate-600' : 'text-slate-400'}`}
+          >
+            {Object.values(byStatus).reduce((s, n) => s + n, 0)}
+          </span>
+        </button>
+        {ALL_STATUSES.map(s => {
+          const count = byStatus[s.key] ?? 0;
+          if (count === 0 && status !== s.key) return null;
+          const isActive = status === s.key;
+          return (
+            <button
+              key={s.key}
+              onClick={() => setStatus(isActive ? '' : s.key)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${
+                isActive
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+              {s.label}
+              {count > 0 && (
+                <span
+                  className={`text-[11px] font-bold ${isActive ? 'text-slate-600' : 'text-slate-400'}`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Divider ── */}
+      <div className="h-5 w-px bg-slate-200 shrink-0" />
+
+      {/* ── BU dropdown ── */}
+      {busData && busData.length > 0 && (
+        <DropdownFilter
+          label="Business Unit"
+          icon={<Building2 size={12} />}
+          value={buId}
+          items={busData}
+          onSelect={setBuId}
+          loading={busLoading}
+          allLabel="All BUs"
+        />
+      )}
+
+      {/* ── Service Line dropdown ── */}
+      {slData && slData.length > 0 && (
+        <DropdownFilter
+          label="Service Line"
+          icon={<Briefcase size={12} />}
+          value={serviceLineId}
+          items={slData}
+          onSelect={setServiceLineId}
+          loading={slLoading}
+          allLabel="All Service Lines"
+        />
+      )}
+
+      {/* ── Client dropdown ── */}
+      {clientsData && clientsData.length > 0 && (
+        <DropdownFilter
+          label="Client"
+          icon={<Users size={12} />}
+          value={clientId}
+          items={clientsData}
+          onSelect={setClientId}
+          loading={clientsLoading}
+          allLabel="All Clients"
+        />
+      )}
+
+      {/* ── Priority dropdown ── */}
+      <DropdownFilter
+        label="Priority"
+        icon={<Zap size={12} />}
+        value={priority}
+        items={ALL_PRIORITIES.map(p => ({ id: p, name: p }))}
+        onSelect={setPriority}
+        allLabel="All Priorities"
+      />
+
+      {/* ── Clear all active filters ── */}
+      {activeFiltersCount > 0 && (
+        <button
+          onClick={clearAll}
+          className="flex items-center gap-1 px-2 py-1 text-[12px] text-red-500 hover:text-red-700 font-medium transition-colors shrink-0"
+        >
+          <X size={12} />
+          Clear ({activeFiltersCount})
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── DropdownFilter — generic reusable dropdown filter pill ──────────────────
+
+function DropdownFilter({
+  label,
+  icon,
+  value,
+  items,
+  onSelect,
+  loading,
+  allLabel,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  value: string;
+  items: { id: string; name: string }[];
+  onSelect: (id: string) => void;
+  loading?: boolean;
+  allLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = items.find(i => i.id === value);
+  const isActive = !!value;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${
+            isActive
+              ? 'bg-primary/10 border-primary/30 text-primary'
+              : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+          }`}
+        >
+          {icon}
+          <span className="max-w-[100px] truncate">{selected ? selected.name : label}</span>
+          <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-52 p-1 shadow-lg border border-slate-200 rounded-xl"
+      >
+        {loading ? (
+          <div className="space-y-1 p-1">
+            {[1, 2, 3].map(i => (
+              <Skeleton key={i} className="h-7 w-full rounded-md" />
+            ))}
+          </div>
+        ) : (
+          <div className="max-h-64 overflow-y-auto">
+            <button
+              onClick={() => {
+                onSelect('');
+                setOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 rounded-md text-[13px] transition-colors ${
+                !value
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {allLabel}
+            </button>
+            {items.map(item => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onSelect(item.id === value ? '' : item.id);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 rounded-md text-[13px] transition-colors truncate ${
+                  value === item.id
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── ActiveFilterChips — compact chips row showing active filters ─────────────
+
+function ActiveFilterChips({
+  status,
+  setStatus,
+  priority,
+  setPriority,
+  buId,
+  setBuId,
+  busData,
+  serviceLineId,
+  setServiceLineId,
+  slData,
+  clientId,
+  setClientId,
+  clientsData,
+}: {
+  status: string;
+  setStatus: (v: string) => void;
+  priority: string;
+  setPriority: (v: string) => void;
+  buId: string;
+  setBuId: (v: string) => void;
+  busData: BusinessUnit[] | null | undefined;
+  serviceLineId: string;
+  setServiceLineId: (v: string) => void;
+  slData: ServiceLine[] | null | undefined;
+  clientId: string;
+  setClientId: (v: string) => void;
+  clientsData: Client[] | null | undefined;
+}) {
+  const chips = [
+    status && { label: STATUS_LABEL[status] ?? status, clear: () => setStatus('') },
+    priority && { label: priority, clear: () => setPriority('') },
+    buId &&
+      busData && {
+        label: busData.find(b => b.id === buId)?.name ?? buId,
+        clear: () => setBuId(''),
+      },
+    serviceLineId &&
+      slData && {
+        label: slData.find(s => s.id === serviceLineId)?.name ?? serviceLineId,
+        clear: () => setServiceLineId(''),
+      },
+    clientId &&
+      clientsData && {
+        label: clientsData.find(c => c.id === clientId)?.name ?? clientId,
+        clear: () => setClientId(''),
+      },
+  ].filter(Boolean) as { label: string; clear: () => void }[];
+
+  if (!chips.length) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-50 border-b border-slate-100 flex-wrap">
+      <span className="text-[11px] text-slate-400 font-medium shrink-0">Filtered by:</span>
+      {chips.map((chip, i) => (
+        <button
+          key={i}
+          onClick={chip.clear}
+          className="flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded-full text-[11px] text-slate-600 font-medium hover:border-red-300 hover:text-red-500 transition-colors"
+        >
+          {chip.label}
+          <X size={9} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── RequirementsTable ────────────────────────────────────────────────────────
+
+function RequirementsTable({
+  requirements,
+  selectedIds,
+  onSelect,
+  onSelectAll,
+  allSelected,
+  canonicalKeys,
+  canonicalMeta,
+  onStageClick,
+  allStages,
+}: {
+  requirements: Requirement[];
+  selectedIds: Set<string>;
+  onSelect: (id: string) => void;
+  onSelectAll: () => void;
+  allSelected: boolean;
+  canonicalKeys: string[];
+  canonicalMeta: { key: string; label: string; pillCls: string }[];
+  onStageClick: (req: Requirement, stageId: string) => void;
+  allStages: PipelineStage[];
+}) {
+  const router = useRouter();
+
+  return (
+    <div className="overflow-x-auto h-full">
+      <table
+        className="w-full text-[12px] border-collapse"
+        style={{ minWidth: `${820 + canonicalKeys.length * 80}px` }}
+      >
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-slate-50 border-b-2 border-slate-200">
+            <th className="w-9 px-3 py-3">
+              <Checkbox checked={allSelected} onCheckedChange={onSelectAll} />
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
+              Code
+            </th>
+            <th
+              className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400"
+              style={{ minWidth: 240 }}
+            >
+              Job Title
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
+              Status
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-20">
+              Priority
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
+              Client
+            </th>
+            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16">
+              Open
+            </th>
+            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-20">
+              Age
+            </th>
+            {/* Dynamic canonical stage columns */}
+            {canonicalKeys.map(key => (
+              <th
+                key={key}
+                className="text-center px-2 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16"
+                title={key}
+              >
+                {canonicalMeta.find(s => s.key === key)?.label ?? key.replace(/_/g, ' ')}
+              </th>
+            ))}
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36">
+              Assigned To
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
+              Created By
+            </th>
+            <th className="w-8 px-2 py-3" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {requirements.map(req => {
+            const age = daysSince(req.createdAt);
+            const isBreached = req.isRespondByBreached || req.isTurnaroundBreached;
+            const isSelected = selectedIds.has(req.id);
+            const idOrSlug = req.slug ?? req.id;
+            const firstAssignee = req.assignments?.find(a => a.depth === 0)?.assignedTo;
+            const totalPipeline =
+              req._count?.pipelines ??
+              (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
+
+            return (
+              <tr
+                key={req.id}
+                className={`group transition-colors cursor-pointer ${
+                  isSelected
+                    ? 'bg-primary/[0.04] hover:bg-primary/[0.06]'
+                    : 'bg-white hover:bg-slate-50/80'
+                } ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
+                onClick={() => router.push(`/requirements/${idOrSlug}`)}
+              >
+                {/* Checkbox */}
+                <td
+                  className="px-3 py-3"
+                  onClick={e => {
+                    e.stopPropagation();
+                    onSelect(req.id);
+                  }}
+                >
+                  <Checkbox checked={isSelected} />
+                </td>
+
+                {/* Code */}
+                <td className="px-3 py-3">
+                  <span className="font-mono text-[11px] text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">
+                    {req.reqCode}
+                  </span>
+                </td>
+
+                {/* Title */}
+                <td className="px-3 py-3">
+                  <p
+                    className="font-semibold text-slate-900 text-[13px] leading-snug truncate"
+                    style={{ maxWidth: 280 }}
+                  >
+                    {req.title}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {req.businessUnit?.name && (
+                      <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-blue-300 inline-block" />
+                        {req.businessUnit.name}
+                      </span>
+                    )}
+                    {req.serviceLine?.name && (
+                      <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-violet-300 inline-block" />
+                        {req.serviceLine.name}
+                      </span>
+                    )}
+                    {req.city && (
+                      <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                        <MapPin size={9} />
+                        {req.city}
+                      </span>
+                    )}
+                    {totalPipeline > 0 && (
+                      <span className="text-[11px] text-emerald-600 font-medium">
+                        {totalPipeline} applicants
+                      </span>
+                    )}
+                  </div>
+                </td>
+
+                {/* Status */}
+                <td className="px-3 py-3">
+                  <span
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${STATUS_BADGE[req.status] ?? 'bg-slate-400 text-white'}`}
+                  >
+                    {STATUS_LABEL[req.status] ?? req.status}
+                  </span>
+                  {isBreached && (
+                    <p className="text-[10px] text-red-500 font-medium mt-0.5">⚠ Breached</p>
+                  )}
+                </td>
+
+                {/* Priority */}
+                <td className="px-3 py-3">
+                  <span
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PRIORITY_BADGE[req.priority] ?? ''}`}
+                  >
+                    {req.priority}
+                  </span>
+                </td>
+
+                {/* Client */}
+                <td className="px-3 py-3">
+                  <span
+                    className="text-slate-700 text-[12px] truncate block"
+                    style={{ maxWidth: 120 }}
+                  >
+                    {req.client?.name ?? <span className="text-slate-300">—</span>}
+                  </span>
+                </td>
+
+                {/* Openings */}
+                <td className="px-3 py-3 text-center">
+                  <span className="font-semibold text-slate-700">{req.totalOpenings}</span>
+                </td>
+
+                {/* Age */}
+                <td className="px-3 py-3 text-center">
+                  <span
+                    className={`font-semibold text-[12px] tabular-nums ${
+                      age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'
+                    }`}
+                  >
+                    {age}d
+                  </span>
+                </td>
+
+                {/* Canonical stage counts — dynamic, never hardcoded */}
+                {canonicalKeys.map(key => {
+                  const count = req.canonicalStageCounts?.[key] ?? 0;
+                  const stageId = req.pipelineStageCounts?.find(
+                    s => s.canonicalStage === key
+                  )?.stageId;
+                  return (
+                    <td
+                      key={key}
+                      className="px-2 py-3 text-center"
+                      onClick={e => {
+                        if (count > 0 && stageId) {
+                          e.stopPropagation();
+                          onStageClick(req, stageId);
+                        }
+                      }}
+                    >
+                      {count > 0 ? (
+                        <span
+                          className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-md cursor-pointer hover:opacity-80 transition-opacity ${canonicalMeta.find(s => s.key === key)?.pillCls ?? 'bg-slate-100 text-slate-600'}`}
+                        >
+                          {count}
+                        </span>
+                      ) : (
+                        <span className="text-slate-200 text-[11px]">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+
+                {/* Assigned to */}
+                <td className="px-3 py-3">
+                  {firstAssignee ? (
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(firstAssignee.id)}`}
+                      >
+                        {initials(`${firstAssignee.firstName} ${firstAssignee.lastName}`)}
+                      </span>
+                      <span
+                        className="text-[12px] text-slate-600 truncate"
+                        style={{ maxWidth: 100 }}
+                      >
+                        {firstAssignee.firstName} {firstAssignee.lastName}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-300">Unassigned</span>
+                  )}
+                </td>
+
+                {/* Created by */}
+                <td className="px-3 py-3">
+                  {req.createdBy ? (
+                    <span
+                      className="text-[12px] text-slate-500 truncate block"
+                      style={{ maxWidth: 110 }}
+                    >
+                      {req.createdBy.firstName} {req.createdBy.lastName}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+
+                {/* Arrow */}
+                <td className="px-2 py-3">
+                  <ChevronRight
+                    size={14}
+                    className="text-slate-200 group-hover:text-slate-400 transition-colors"
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TableSkeleton({ cols }: { cols: number }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[12px] border-collapse" style={{ minWidth: 900 }}>
+        <thead>
+          <tr className="bg-slate-50 border-b-2 border-slate-200">
+            {Array.from({ length: cols }).map((_, i) => (
+              <th key={i} className="px-3 py-3">
+                <Skeleton className="h-3 w-16" />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <tr key={i} className="bg-white">
+              {Array.from({ length: cols }).map((_, j) => (
+                <td key={j} className="px-3 py-3.5">
+                  <Skeleton className="h-4 w-full" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── CandidateDrawer ──────────────────────────────────────────────────────────
 
 function CandidateDrawer({
   open,
@@ -512,6 +1138,7 @@ function CandidateDrawer({
   const axios = useAxios();
   const router = useRouter();
   const [activeStageId, setActiveStageId] = useState<string | null>(stageId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useMemo(() => {
     setActiveStageId(stageId);
   }, [stageId]);
@@ -552,7 +1179,6 @@ function CandidateDrawer({
             {activeStage ? activeStage.label : 'All Stages'} · {total} candidate
             {total !== 1 ? 's' : ''}
           </p>
-          {/* Stage tabs — horizontal scroll on mobile */}
           <div className="flex gap-1 flex-nowrap overflow-x-auto pb-3 scrollbar-none -mx-1 px-1">
             <button
               onClick={() => setActiveStageId(null)}
@@ -715,64 +1341,7 @@ function CandidateDrawer({
   );
 }
 
-// ─── Sidebar Section ──────────────────────────────────────────────────────────
-
-function SidebarSection({
-  label,
-  icon: Icon,
-  loading,
-  items,
-  selectedId,
-  onSelect,
-  allLabel,
-  hidden,
-}: {
-  label: string;
-  icon: React.ElementType;
-  loading: boolean;
-  items: { id: string; name: string }[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  allLabel: string;
-  hidden?: boolean;
-}) {
-  if (hidden) return null;
-  return (
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1.5 px-2 flex items-center gap-1.5">
-        <Icon size={10} /> {label}
-      </p>
-      {loading ? (
-        <div className="space-y-1">
-          {[1, 2, 3].map(i => (
-            <Skeleton key={i} className="h-7 w-full rounded-lg" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-0.5">
-          <button
-            onClick={() => onSelect('')}
-            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${!selectedId ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-muted'}`}
-          >
-            {allLabel}
-          </button>
-          {items?.map(item => (
-            <button
-              key={item.id}
-              onClick={() => onSelect(item.id === selectedId ? '' : item.id)}
-              title={item.name}
-              className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[13px] transition-colors truncate ${selectedId === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-muted'}`}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Requirement Card — Responsive ───────────────────────────────────────────
+// ─── RequirementCard (card view — unchanged logic) ────────────────────────────
 
 function RequirementCard({
   req,
@@ -793,18 +1362,37 @@ function RequirementCard({
   const age = daysSince(req.createdAt);
   const isBreached = req.isRespondByBreached || req.isTurnaroundBreached;
 
+  const reqServiceLineId = req.serviceLine?.id ?? req.serviceLineId ?? null;
+
+  // Primary source: pipelineStageCounts from the API — already filtered,
+  // ordered, and correct. Used even when counts are zero for display.
+  // Fallback to global allStages only when pipelineStageCounts is absent
+  // (fresh requirement, no candidates yet).
+  const stagesToRender: {
+    id: string;
+    code: string;
+    label: string;
+    order: number;
+    count: number;
+  }[] =
+    (req.pipelineStageCounts ?? []).length > 0
+      ? (req.pipelineStageCounts ?? []).map(s => ({
+          id: s.stageId,
+          code: s.code,
+          label: s.label,
+          order: s.order,
+          count: s.count,
+        }))
+      : allStages
+          .filter(s => s.serviceLineId === null || s.serviceLineId === reqServiceLineId)
+          .map(s => ({ id: s.id, code: s.code, label: s.label, order: s.order, count: 0 }));
+
   const countMap = Object.fromEntries(
     (req.pipelineStageCounts ?? []).map(s => [s.stageId, s.count])
   );
-  const reqServiceLineId = req.serviceLine?.id ?? req.serviceLineId ?? null;
-  const relevantStages = allStages.filter(
-    s => s.serviceLineId === null || s.serviceLineId === reqServiceLineId
-  );
-
   const totalPipeline =
     req._count?.pipelines ?? (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
   const openings = req.totalOpenings ?? 0;
-
   const assignees = (req.assignments ?? [])
     .filter((a, i, arr) => arr.findIndex(x => x.assignedTo?.id === a.assignedTo?.id) === i)
     .slice(0, 5);
@@ -813,14 +1401,11 @@ function RequirementCard({
     <div
       className={`bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md hover:border-slate-300 ${selected ? 'border-primary/40 bg-primary/[0.02]' : 'border-slate-200'} ${isBreached ? 'border-l-4 border-l-red-500' : ''}`}
     >
-      {/* ── Desktop layout: side-by-side ── */}
       <div className="hidden md:flex">
-        {/* LEFT — job info */}
         <div
           className="flex-1 min-w-0 p-4 cursor-pointer"
           onClick={() => router.push(`/requirements/${idOrSlug}`)}
         >
-          {/* Top row */}
           <div className="flex items-start gap-2 mb-2">
             <div
               onClick={e => {
@@ -847,9 +1432,7 @@ function RequirementCard({
                   </span>
                 )}
                 {isBreached && (
-                  <span className="text-[10px] font-semibold text-red-500 flex items-center gap-0.5">
-                    ⚠ Breached
-                  </span>
+                  <span className="text-[10px] font-semibold text-red-500">⚠ Breached</span>
                 )}
               </div>
               <h3 className="text-[15px] font-bold text-slate-900 leading-tight mb-1 truncate">
@@ -868,12 +1451,10 @@ function RequirementCard({
                     {req.serviceLine.name}
                   </span>
                 )}
-                {req.location && (
+                {(req.city || req.state) && (
                   <span className="flex items-center gap-1">
                     <MapPin size={11} className="shrink-0" />
-                    {req.location}
-                    {req.remoteType &&
-                      ` (${req.remoteType.charAt(0) + req.remoteType.slice(1).toLowerCase()})`}
+                    {[req.city, req.state].filter(Boolean).join(', ')}
                   </span>
                 )}
                 <span className="flex items-center gap-1">
@@ -884,23 +1465,9 @@ function RequirementCard({
                   <span className="text-emerald-600 font-medium">{totalPipeline} applicants</span>
                 )}
               </div>
-              {req.assignments?.slice(0, 2).map(
-                (a, i) =>
-                  a.assignedTo && (
-                    <div
-                      key={a.id}
-                      className={`flex items-center gap-1.5 text-[11px] mb-0.5 ${i === 0 ? 'text-amber-600' : 'text-slate-400'}`}
-                    >
-                      <span>{i === 0 ? '●' : '◎'}</span>
-                      <span>
-                        SFJ-{req.reqCode}|{a.assignedTo.firstName} {a.assignedTo.lastName}
-                      </span>
-                    </div>
-                  )
-              )}
             </div>
           </div>
-          <div className="flex items-center justify-between mt-2 ml-6">
+          <div className="flex items-center justify-between ml-6">
             <div className="flex -space-x-1.5">
               {assignees.map(
                 a =>
@@ -927,82 +1494,38 @@ function RequirementCard({
             </span>
           </div>
         </div>
-
-        {/* RIGHT — pipeline stage counts */}
         <div className="flex border-l border-slate-100 w-[55%] shrink-0">
-          {relevantStages.length > 0 ? (
-            relevantStages.map(stage => {
-              const count = countMap[stage.id] ?? 0;
-              const color = STAGE_NUMBER_COLOR[stage.code] ?? 'text-slate-400';
-              return (
-                <button
-                  key={stage.id}
-                  onClick={() => onStageClick(req, stage.id, stage.label)}
-                  className="flex flex-col items-center justify-center flex-1 py-4 border-r border-slate-100 last:border-r-0 hover:bg-slate-50 transition-colors min-w-0"
-                >
-                  <span className={`text-[28px] font-bold tabular-nums leading-none ${color}`}>
-                    {count}
-                  </span>
-                  <span className="text-[9px] mt-1.5 font-bold tracking-wider text-slate-400 uppercase text-center leading-tight px-1 line-clamp-2">
-                    {stage.label}
-                  </span>
-                </button>
-              );
-            })
-          ) : (
-            <div className="flex flex-col items-center justify-center px-8 py-4 text-slate-300 text-sm">
-              Loading…
-            </div>
-          )}
-          {/* Action icons */}
+          {stagesToRender.map(stage => {
+            const color = STAGE_NUMBER_COLOR[stage.code] ?? 'text-slate-400';
+            return (
+              <button
+                key={stage.id}
+                onClick={() => onStageClick(req, stage.id, stage.label)}
+                className="flex flex-col items-center justify-center flex-1 py-4 border-r border-slate-100 last:border-r-0 hover:bg-slate-50 transition-colors min-w-0"
+              >
+                <span className={`text-[28px] font-bold tabular-nums leading-none ${color}`}>
+                  {stage.count}
+                </span>
+                <span className="text-[9px] mt-1.5 font-bold tracking-wider text-slate-400 uppercase text-center leading-tight px-1 line-clamp-2">
+                  {stage.label}
+                </span>
+              </button>
+            );
+          })}
           <div className="flex flex-col items-center justify-center gap-1 px-2 border-l border-slate-100">
-            <button
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-              title="Edit"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                />
-              </svg>
-            </button>
-            <button
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-              title="Share"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                />
-              </svg>
-            </button>
             <button
               onClick={() => router.push(`/requirements/${idOrSlug}`)}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-              title="More"
+              title="Open"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"
-                />
-              </svg>
+              <ChevronRight size={14} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Mobile layout: stacked ── */}
+      {/* Mobile */}
       <div className="md:hidden">
-        {/* Mobile top: checkbox + badges + title */}
         <div className="p-3.5">
           <div className="flex items-start gap-2.5 mb-2">
             <div
@@ -1022,13 +1545,6 @@ function RequirementCard({
                 >
                   {STATUS_LABEL[req.status] ?? req.status}
                 </span>
-                {req.priority && (
-                  <span
-                    className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${PRIORITY_BADGE[req.priority] ?? ''}`}
-                  >
-                    {req.priority}
-                  </span>
-                )}
                 {isBreached && (
                   <span className="text-[9px] font-semibold text-red-500">⚠ Breached</span>
                 )}
@@ -1039,75 +1555,36 @@ function RequirementCard({
               >
                 {req.title}
               </h3>
-              {/* Meta row */}
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-slate-500">
-                {req.businessUnit?.name && (
+                {req.businessUnit?.name && <span>{req.businessUnit.name}</span>}
+                {req.city && (
                   <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-sm bg-blue-400 inline-block shrink-0" />
-                    {req.businessUnit.name}
+                    <MapPin size={10} />
+                    {req.city}
                   </span>
                 )}
-                {req.location && (
-                  <span className="flex items-center gap-1">
-                    <MapPin size={10} className="shrink-0" />
-                    {req.location}
-                  </span>
-                )}
-                <span className="flex items-center gap-1">
-                  <Users size={10} className="shrink-0" />
-                  {openings} pos
-                </span>
+                <span>{openings} pos</span>
                 {totalPipeline > 0 && (
                   <span className="text-emerald-600 font-medium">{totalPipeline} applicants</span>
                 )}
               </div>
             </div>
-            {/* Age + actions */}
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               <span
                 className={`text-[10px] font-medium ${age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'}`}
               >
                 {age}d ago
               </span>
-              <div className="flex items-center gap-0.5">
-                <button
-                  onClick={() => router.push(`/requirements/${idOrSlug}`)}
-                  className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"
-                    />
-                  </svg>
-                </button>
-              </div>
+              <button
+                onClick={() => router.push(`/requirements/${idOrSlug}`)}
+                className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <ChevronRight size={13} />
+              </button>
             </div>
           </div>
-
-          {/* Assignee avatars */}
-          {assignees.length > 0 && (
-            <div className="flex -space-x-1 ml-6">
-              {assignees.map(
-                a =>
-                  a.assignedTo && (
-                    <div
-                      key={a.id}
-                      className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white ${avatarColor(a.assignedTo.id)}`}
-                      title={`${a.assignedTo.firstName} ${a.assignedTo.lastName}`}
-                    >
-                      {initials(`${a.assignedTo.firstName} ${a.assignedTo.lastName}`)}
-                    </div>
-                  )
-              )}
-            </div>
-          )}
         </div>
-
-        {/* Mobile pipeline stages — horizontal scroll strip */}
-        {relevantStages.length > 0 && (
+        {stagesToRender.length > 0 && (
           <div className="border-t border-slate-100">
             <button
               onClick={() => setStagesExpanded(p => !p)}
@@ -1123,12 +1600,10 @@ function RequirementCard({
               </span>
               {stagesExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
-
             {stagesExpanded && (
               <div className="overflow-x-auto scrollbar-none border-t border-slate-100">
                 <div className="flex min-w-max">
-                  {relevantStages.map(stage => {
-                    const count = countMap[stage.id] ?? 0;
+                  {stagesToRender.map(stage => {
                     const color = STAGE_NUMBER_COLOR[stage.code] ?? 'text-slate-400';
                     return (
                       <button
@@ -1139,7 +1614,7 @@ function RequirementCard({
                         <span
                           className={`text-[22px] font-bold tabular-nums leading-none ${color}`}
                         >
-                          {count}
+                          {stage.count}
                         </span>
                         <span className="text-[8px] mt-1 font-bold tracking-wider text-slate-400 uppercase text-center leading-tight w-16 line-clamp-2">
                           {stage.label}
@@ -1157,8 +1632,6 @@ function RequirementCard({
   );
 }
 
-// ─── Card Skeleton ────────────────────────────────────────────────────────────
-
 function CardSkeleton() {
   return (
     <div className="flex bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -1169,7 +1642,6 @@ function CardSkeleton() {
         </div>
         <Skeleton className="h-5 w-64 max-w-full" />
         <Skeleton className="h-3 w-48 max-w-full" />
-        <Skeleton className="h-3 w-40 max-w-full" />
       </div>
       <div className="hidden md:flex border-l border-slate-100 w-[55%] shrink-0">
         {Array.from({ length: 6 }).map((_, i) => (
@@ -1186,24 +1658,60 @@ function CardSkeleton() {
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── canonicalPillFromDot ─────────────────────────────────────────────────────
+// Converts the dot bg class (e.g. "bg-blue-500") to a light pill class.
+// All colors are pre-listed so Tailwind includes them in the bundle.
+function canonicalPillFromDot(dotCls: string): string {
+  const map: Record<string, string> = {
+    'bg-slate-500': 'bg-slate-100 text-slate-700',
+    'bg-blue-600': 'bg-blue-50 text-blue-700',
+    'bg-violet-600': 'bg-violet-50 text-violet-700',
+    'bg-amber-600': 'bg-amber-50 text-amber-700',
+    'bg-orange-600': 'bg-orange-50 text-orange-700',
+    'bg-emerald-700': 'bg-emerald-50 text-emerald-700',
+    'bg-green-700': 'bg-green-50 text-green-700',
+    'bg-red-600': 'bg-red-50 text-red-600',
+    'bg-pink-500': 'bg-pink-50 text-pink-700',
+    'bg-cyan-500': 'bg-cyan-50 text-cyan-700',
+    'bg-indigo-600': 'bg-indigo-50 text-indigo-700',
+    'bg-teal-500': 'bg-teal-50 text-teal-700',
+    'bg-rose-600': 'bg-rose-50 text-rose-600',
+  };
+  return map[dotCls] ?? 'bg-slate-100 text-slate-600';
+}
 
-export default function RequirementsPage() {
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+function RequirementsPageInner() {
   const axios = useAxios();
   const router = useRouter();
 
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [priority, setPriority] = useState('');
-  const [serviceLineId, setServiceLineId] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedBuId, setSelectedBuId] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const {
+    search,
+    status,
+    priority,
+    serviceLineId,
+    clientId,
+    buId,
+    createdByScope,
+    viewMode,
+    page,
+    limit,
+    setSearch,
+    setStatus,
+    setPriority,
+    setServiceLineId,
+    setClientId,
+    setBuId,
+    setCreatedByScope,
+    setViewMode,
+    setPage,
+    setLimit,
+    clearAll,
+    activeFiltersCount,
+  } = useFilters();
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<{
     open: boolean;
     requirementId: string;
@@ -1212,15 +1720,7 @@ export default function RequirementsPage() {
     stageLabel: string;
   }>({ open: false, requirementId: '', requirementTitle: '', stageId: null, stageLabel: '' });
 
-  function resetPage() {
-    setPage(1);
-  }
-
-  const activeFiltersCount = [status, selectedBuId, serviceLineId, selectedClientId].filter(
-    Boolean
-  ).length;
-
-  // ── Pipeline stages
+  // Pipeline stages (for card view + candidate drawer)
   const { data: stagesData } = useQuery({
     queryKey: ['pipeline-stages'],
     queryFn: async () =>
@@ -1229,16 +1729,32 @@ export default function RequirementsPage() {
   });
   const allStages = ((stagesData as PipelineStage[]) ?? []).sort((a, b) => a.order - b.order);
 
-  // ── Stats
+  // Canonical stage meta — from /candidates/meta, never hardcoded.
+  // Provides ordered keys, human labels, and pill/dot color classes.
+  const { data: candidateMeta } = useCandidateMeta();
+  const canonicalMeta: { key: string; label: string; pillCls: string }[] = useMemo(() => {
+    if (!candidateMeta?.canonicalStages) return [];
+    return candidateMeta.canonicalStages.map(s => ({
+      key: s.key,
+      // Human label: convert OFFER_IN_PROGRESS → "Offer In Progress"
+      label: s.key
+        .split('_')
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' '),
+      // Pill background+text derived from the dot color class from the hook
+      pillCls: canonicalPillFromDot(canonicalDot(s.key)),
+    }));
+  }, [candidateMeta]);
+
+  // Stats
   const { data: statsData } = useQuery<StatsResponse>({
     queryKey: ['requirement-stats'],
     queryFn: async () => (await axios.get('/requirements/stats')).data,
     staleTime: 30_000,
   });
   const byStatus = statsData?.data?.byStatus ?? {};
-  const totalJobs = Object.values(byStatus).reduce((s, n) => s + n, 0);
 
-  // ── Sidebar data
+  // Sidebar / filter dropdown data
   const { data: busData, isLoading: busLoading } = useQuery({
     queryKey: ['business-units'],
     queryFn: () =>
@@ -1262,19 +1778,20 @@ export default function RequirementsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Requirements
+  // Requirements query
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (search) p.set('search', search);
     if (status) p.set('status', status);
     if (priority) p.set('priority', priority);
     if (serviceLineId) p.set('serviceLineId', serviceLineId);
-    if (selectedClientId) p.set('clientId', selectedClientId);
-    if (selectedBuId) p.set('buId', selectedBuId);
+    if (clientId) p.set('clientId', clientId);
+    if (buId) p.set('buId', buId);
+    p.set('createdByScope', createdByScope);
     p.set('page', String(page));
     p.set('limit', String(limit));
     return p.toString();
-  }, [search, status, priority, serviceLineId, selectedClientId, selectedBuId, page, limit]);
+  }, [search, status, priority, serviceLineId, clientId, buId, createdByScope, page, limit]);
 
   const { data: reqData, isLoading: reqLoading } = useQuery({
     queryKey: ['requirements', qs],
@@ -1286,6 +1803,14 @@ export default function RequirementsPage() {
   const total = reqData?.meta?.total ?? 0;
   const totalPages = reqData?.meta?.pages ?? 0;
   const canAdd = reqData?.permissions?.canAdd ?? false;
+  const isSuperAdmin = reqData?.scope?.isSuperAdmin ?? false;
+
+  // Canonical stage keys — ordered from /candidates/meta, never hardcoded.
+  // Use all keys from meta so columns are always consistent regardless of
+  // whether the current page has any candidates in a given stage.
+  const canonicalKeys = useMemo(() => {
+    return canonicalMeta.map(s => s.key);
+  }, [canonicalMeta]);
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -1298,7 +1823,7 @@ export default function RequirementsPage() {
     if (selectedIds.size === requirements.length) setSelectedIds(new Set());
     else setSelectedIds(new Set(requirements.map(r => r.id)));
   }
-  function openDrawer(req: Requirement, stageId: string, stageLabel: string) {
+  function openDrawer(req: Requirement, stageId: string, stageLabel = '') {
     setDrawer({
       open: true,
       requirementId: req.id,
@@ -1308,372 +1833,253 @@ export default function RequirementsPage() {
     });
   }
 
-  const hasSidebar = busData !== null || slData !== null || clientsData !== null;
+  const exportFilters = { search, status, priority, serviceLineId, clientId, buId, createdByScope };
+  const hasActiveFilters = activeFiltersCount > 0;
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
-      {/* ── Desktop Sidebar ───────────────────────────────────────────────── */}
-      {hasSidebar && (
-        <aside className="hidden md:flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
-          <div className="px-4 py-4 border-b border-slate-100 shrink-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-900">Jobs</h2>
-              <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                {totalJobs}
-              </span>
-            </div>
+    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
+      {/* ── Top navbar strip — filter bar ── */}
+      <div className="bg-white border-b border-slate-200 shrink-0">
+        {/* Row 1: scope + search + actions */}
+        <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap">
+          {/* Scope switcher */}
+          <ScopeSwitcher
+            value={createdByScope}
+            onChange={setCreatedByScope}
+            isSuperAdmin={isSuperAdmin}
+          />
+
+          {/* Divider */}
+          <div className="h-5 w-px bg-slate-200 shrink-0 hidden sm:block" />
+
+          {/* Search */}
+          <div className="relative">
+            <Search
+              size={13}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by title, code, skill…"
+              className="pl-7 h-8 text-sm w-56 bg-slate-50 border-slate-200 focus:bg-white"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
 
-          <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
-            {SIDEBAR_STATUSES.map(s => {
-              const count = byStatus[s.key] ?? 0;
-              const isActive = status === s.key;
-              return (
-                <button
-                  key={s.key}
-                  onClick={() => {
-                    setStatus(p => (p === s.key ? '' : s.key));
-                    resetPage();
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-100'}`}
-                >
-                  <span className="flex items-center gap-2">
-                    <s.icon size={14} className={isActive ? 'text-primary' : s.color} />
-                    {s.label}
-                  </span>
-                  <span
-                    className={`text-[12px] font-bold ${isActive ? 'text-primary' : 'text-slate-400'}`}
-                  >
-                    {count > 0 ? `${count}` : ''}
-                  </span>
-                </button>
-              );
-            })}
+          {/* Spacer */}
+          <div className="flex-1" />
 
-            <div className="h-px bg-slate-100 my-2" />
-
-            <SidebarSection
-              label="Business Units"
-              icon={Building2}
-              loading={busLoading}
-              items={busData ?? []}
-              selectedId={selectedBuId}
-              allLabel="All BUs"
-              onSelect={id => {
-                setSelectedBuId(id);
-                resetPage();
-              }}
-              hidden={busData === null}
-            />
-
-            {busData !== null && slData !== null && <div className="h-px bg-slate-100 my-2" />}
-
-            <SidebarSection
-              label="Service Lines"
-              icon={Briefcase}
-              loading={slLoading}
-              items={slData ?? []}
-              selectedId={serviceLineId}
-              allLabel="All Service Lines"
-              onSelect={id => {
-                setServiceLineId(id);
-                resetPage();
-              }}
-              hidden={slData === null}
-            />
-
-            {slData !== null && clientsData !== null && <div className="h-px bg-slate-100 my-2" />}
-
-            <SidebarSection
-              label="Clients"
-              icon={Briefcase}
-              loading={clientsLoading}
-              items={clientsData ?? []}
-              selectedId={selectedClientId}
-              allLabel="All Clients"
-              onSelect={id => {
-                setSelectedClientId(id);
-                resetPage();
-              }}
-              hidden={clientsData === null}
-            />
-          </div>
-        </aside>
-      )}
-
-      {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* ── Desktop Toolbar ── */}
-        <div className="hidden md:flex items-center gap-2 px-5 py-3 bg-white border-b border-slate-200 shrink-0">
-          <div className="flex items-center gap-2">
+          {/* Select all + count */}
+          <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               checked={requirements.length > 0 && selectedIds.size === requirements.length}
               onCheckedChange={toggleAll}
             />
-            <span className="text-[13px] text-slate-500 font-medium">
-              {reqLoading ? '…' : `Total ${total} Found`}
+            <span className="text-[13px] text-slate-500 font-medium whitespace-nowrap">
+              {reqLoading ? '…' : `${total} found`}
             </span>
           </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <div className="relative">
-              <Search
-                size={13}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <Input
-                value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  resetPage();
-                }}
-                placeholder="Search requirements…"
-                className="pl-7 h-8 text-sm w-56"
-              />
-            </div>
-            <Select
-              value={priority || '_all'}
-              onValueChange={v => {
-                setPriority(v === '_all' ? '' : v);
-                resetPage();
-              }}
-            >
-              <SelectTrigger className="h-8 text-sm w-32">
-                <SelectValue placeholder="Priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all">All Team</SelectItem>
-                {ALL_PRIORITIES.map(p => (
-                  <SelectItem key={p} value={p}>
-                    {p}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={`${page}:recent`} onValueChange={() => {}}>
-              <SelectTrigger className="h-8 text-sm w-44">
-                <span className="text-slate-600">Sort By : Recent Activity</span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1:recent">Recent Activity</SelectItem>
-                <SelectItem value="1:created">Date Created</SelectItem>
-              </SelectContent>
-            </Select>
-            {canAdd && (
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700"
-                onClick={() => router.push('/requirements/new')}
-              >
-                <Plus size={14} /> Add New Job
-              </Button>
-            )}
-          </div>
-        </div>
 
-        {/* ── Mobile Toolbar ── */}
-        <div className="md:hidden flex items-center gap-2 px-3 py-2.5 bg-white border-b border-slate-200 shrink-0">
-          {/* Filter button */}
-          <button
-            onClick={() => setMobileFilterOpen(true)}
-            className="relative flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors shrink-0"
-          >
-            <SlidersHorizontal size={13} />
-            Filters
-            {activeFiltersCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center">
-                {activeFiltersCount}
-              </span>
-            )}
-          </button>
+          {/* View toggle */}
+          <ViewToggle value={viewMode} onChange={setViewMode} />
 
-          {/* Search */}
-          {mobileSearchOpen ? (
-            <div className="flex-1 relative flex items-center gap-1">
-              <Search
-                size={13}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <Input
-                autoFocus
-                value={search}
-                onChange={e => {
-                  setSearch(e.target.value);
-                  resetPage();
-                }}
-                placeholder="Search requirements…"
-                className="pl-7 h-8 text-sm flex-1"
-              />
-              <button
-                onClick={() => {
-                  setMobileSearchOpen(false);
-                  setSearch('');
-                  resetPage();
-                }}
-                className="p-1 text-slate-400 hover:text-slate-600"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setMobileSearchOpen(true)}
-              className="w-8 h-8 flex items-center justify-center border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors"
-            >
-              <Search size={14} />
-            </button>
-          )}
+          {/* Export */}
+          <ExportButton filters={exportFilters} />
 
-          {/* Count */}
-          {!mobileSearchOpen && (
-            <span className="text-[12px] text-slate-500 font-medium ml-auto shrink-0">
-              {reqLoading ? '…' : `${total} jobs`}
-            </span>
-          )}
-
-          {/* Active status chip */}
-          {status && !mobileSearchOpen && (
-            <button
-              onClick={() => {
-                setStatus('');
-                resetPage();
-              }}
-              className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-[11px] font-medium shrink-0"
-            >
-              {STATUS_LABEL[status] ?? status}
-              <X size={10} />
-            </button>
-          )}
-
-          {/* Add button */}
-          {canAdd && !mobileSearchOpen && (
+          {/* Add new */}
+          {canAdd && (
             <Button
               size="sm"
-              className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 shrink-0"
+              className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
               onClick={() => router.push('/requirements/new')}
             >
-              <Plus size={14} />
+              <Plus size={14} /> Add New Job
             </Button>
           )}
         </div>
 
-        {/* Cards — scrollable */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-3 md:px-5 py-3 md:py-4 space-y-2.5 md:space-y-3">
-          {reqLoading ? (
-            Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
-          ) : requirements.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-              <Briefcase size={40} className="mb-3 opacity-20" />
-              <p className="text-sm">No requirements found</p>
-            </div>
-          ) : (
-            requirements.map(req => (
-              <RequirementCard
-                key={req.id}
-                req={req}
-                selected={selectedIds.has(req.id)}
-                onSelect={toggleSelect}
-                allStages={allStages}
-                onStageClick={openDrawer}
-              />
-            ))
-          )}
-        </div>
-
-        {/* ── Pagination bar ── */}
-        <div className="shrink-0 flex items-center justify-between px-3 md:px-5 py-2 md:py-2.5 bg-white border-t border-slate-200">
-          {/* Items per page — hidden on small mobile */}
-          <div className="hidden sm:flex items-center gap-2 text-[13px] text-slate-500">
-            <span>Items per page:</span>
-            <Select
-              value={String(limit)}
-              onValueChange={v => {
-                setLimit(Number(v));
-                resetPage();
-              }}
-            >
-              <SelectTrigger className="h-7 w-20 text-xs border-slate-200">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[20, 50, 100].map(n => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-1 text-[12px] md:text-[13px] text-slate-500 ml-auto">
-            <span className="mr-1.5">
-              {(page - 1) * limit + 1}–{Math.min(page * limit, total)} / {total}
-            </span>
-            <button
-              onClick={() => setPage(1)}
-              disabled={page <= 1}
-              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
-            >
-              «
-            </button>
-            <button
-              onClick={() => setPage(p => p - 1)}
-              disabled={page <= 1}
-              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
-            >
-              ‹
-            </button>
-            <button
-              onClick={() => setPage(p => p + 1)}
-              disabled={page >= totalPages}
-              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
-            >
-              ›
-            </button>
-            <button
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages}
-              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
-            >
-              »
-            </button>
-          </div>
+        {/* Row 2: filter bar — status tabs + dropdown filters */}
+        <div className="px-4 pb-2.5 overflow-x-auto scrollbar-none">
+          <FilterBar
+            status={status}
+            setStatus={setStatus}
+            priority={priority}
+            setPriority={setPriority}
+            buId={buId}
+            setBuId={setBuId}
+            serviceLineId={serviceLineId}
+            setServiceLineId={setServiceLineId}
+            clientId={clientId}
+            setClientId={setClientId}
+            byStatus={byStatus}
+            busData={busData}
+            busLoading={busLoading}
+            slData={slData}
+            slLoading={slLoading}
+            clientsData={clientsData}
+            clientsLoading={clientsLoading}
+            activeFiltersCount={activeFiltersCount}
+            clearAll={clearAll}
+          />
         </div>
       </div>
 
-      {/* ── Mobile Filter Sheet ── */}
-      <MobileFilterSheet
-        open={mobileFilterOpen}
-        onClose={() => setMobileFilterOpen(false)}
-        status={status}
-        setStatus={setStatus}
-        selectedBuId={selectedBuId}
-        setSelectedBuId={setSelectedBuId}
-        serviceLineId={serviceLineId}
-        setServiceLineId={setServiceLineId}
-        selectedClientId={selectedClientId}
-        setSelectedClientId={setSelectedClientId}
-        resetPage={resetPage}
-        byStatus={byStatus}
-        busData={busData}
-        slData={slData}
-        clientsData={clientsData}
-        busLoading={busLoading}
-        slLoading={slLoading}
-        clientsLoading={clientsLoading}
-        totalJobs={totalJobs}
-      />
+      {/* Active filter chips — shown only when filters are set */}
+      {hasActiveFilters && (
+        <ActiveFilterChips
+          status={status}
+          setStatus={setStatus}
+          priority={priority}
+          setPriority={setPriority}
+          buId={buId}
+          setBuId={setBuId}
+          busData={busData}
+          serviceLineId={serviceLineId}
+          setServiceLineId={setServiceLineId}
+          slData={slData}
+          clientId={clientId}
+          setClientId={setClientId}
+          clientsData={clientsData}
+        />
+      )}
 
-      {/* ── Candidate Drawer ── */}
+      {/* ── Content ── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {viewMode === 'table' ? (
+          <div className="bg-white h-full">
+            {reqLoading ? (
+              <TableSkeleton cols={9 + canonicalKeys.length} />
+            ) : requirements.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                <Briefcase size={40} className="mb-3 opacity-20" />
+                <p className="text-sm font-medium">No requirements found</p>
+                {hasActiveFilters && (
+                  <button onClick={clearAll} className="mt-2 text-sm text-primary hover:underline">
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              <RequirementsTable
+                requirements={requirements}
+                selectedIds={selectedIds}
+                onSelect={toggleSelect}
+                onSelectAll={toggleAll}
+                allSelected={selectedIds.size === requirements.length && requirements.length > 0}
+                canonicalKeys={canonicalKeys}
+                canonicalMeta={canonicalMeta}
+                onStageClick={(req, stageId) => openDrawer(req, stageId)}
+                allStages={allStages}
+              />
+            )}
+          </div>
+        ) : (
+          <div className="px-3 md:px-5 py-3 md:py-4 space-y-2.5 md:space-y-3">
+            {reqLoading ? (
+              Array.from({ length: 5 }).map((_, i) => <CardSkeleton key={i} />)
+            ) : requirements.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                <Briefcase size={40} className="mb-3 opacity-20" />
+                <p className="text-sm font-medium">No requirements found</p>
+                {hasActiveFilters && (
+                  <button onClick={clearAll} className="mt-2 text-sm text-primary hover:underline">
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              requirements.map(req => (
+                <RequirementCard
+                  key={req.id}
+                  req={req}
+                  selected={selectedIds.has(req.id)}
+                  onSelect={toggleSelect}
+                  allStages={allStages}
+                  onStageClick={openDrawer}
+                />
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Pagination ── */}
+      <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-white border-t border-slate-200">
+        <div className="hidden sm:flex items-center gap-2 text-[13px] text-slate-500">
+          <span>Per page:</span>
+          <Select value={String(limit)} onValueChange={v => setLimit(Number(v))}>
+            <SelectTrigger className="h-7 w-20 text-xs border-slate-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[25, 50, 100].map(n => (
+                <SelectItem key={n} value={String(n)}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1 text-[12px] md:text-[13px] text-slate-500 ml-auto">
+          <span className="mr-2 text-slate-400">
+            {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
+          </span>
+          <button
+            onClick={() => setPage(1)}
+            disabled={page <= 1}
+            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
+          >
+            «
+          </button>
+          <button
+            onClick={() => setPage(page - 1)}
+            disabled={page <= 1}
+            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
+          >
+            ‹
+          </button>
+          <button
+            onClick={() => setPage(page + 1)}
+            disabled={page >= totalPages}
+            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
+          >
+            ›
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={page >= totalPages}
+            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30 text-xs"
+          >
+            »
+          </button>
+        </div>
+      </div>
+
+      {/* Candidate Drawer */}
       <CandidateDrawer
         open={drawer.open}
         onClose={() => setDrawer(d => ({ ...d, open: false }))}
         requirementId={drawer.requirementId}
         requirementTitle={drawer.requirementTitle}
         stageId={drawer.stageId}
-        // @ts-expect-error err
-        stageLabel={drawer.stageLabel}
         allStages={allStages}
       />
     </div>
+  );
+}
+
+export default function RequirementsPage() {
+  return (
+    <Suspense fallback={null}>
+      <RequirementsPageInner />
+    </Suspense>
   );
 }
