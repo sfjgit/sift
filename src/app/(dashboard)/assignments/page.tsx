@@ -17,8 +17,13 @@ import {
   Layers,
   CalendarClock,
   GitBranch,
-  ArrowUpRight,
   SlidersHorizontal,
+  Building2,
+  LayoutList,
+  TableProperties,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -123,20 +128,7 @@ interface Assignment {
   candidateStats: CandidateStats;
 }
 
-// ─── Canonical stage config ────────────────────────────────────────────────────
-
-const CANONICAL_STAGES = [
-  { key: 'SOURCED', label: 'Sourced', dot: 'bg-slate-500' },
-  { key: 'SCREENING', label: 'Screening', dot: 'bg-blue-600' },
-  { key: 'INTERVIEW', label: 'Interview', dot: 'bg-violet-600' },
-  { key: 'OFFER_IN_PROGRESS', label: 'Offer WIP', dot: 'bg-amber-600' },
-  { key: 'OFFERED', label: 'Offered', dot: 'bg-orange-600' },
-  { key: 'HIRED', label: 'Hired', dot: 'bg-emerald-700' },
-  { key: 'JOINED', label: 'Joined', dot: 'bg-green-700' },
-  { key: 'DROPPED', label: 'Dropped', dot: 'bg-red-600' },
-] as const;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const REQ_STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Active',
@@ -146,10 +138,32 @@ const REQ_STATUS_LABEL: Record<string, string> = {
   CLOSED: 'Closed',
   CANCELLED: 'Cancelled',
 };
+const REQ_STATUS_STYLE: Record<string, string> = {
+  ACTIVE: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  DRAFT: 'text-slate-500 bg-slate-100 border-slate-200',
+  PENDING_APPROVAL: 'text-blue-700 bg-blue-50 border-blue-200',
+  ON_HOLD: 'text-amber-700 bg-amber-50 border-amber-200',
+  CLOSED: 'text-slate-500 bg-slate-100 border-slate-200',
+  CANCELLED: 'text-red-700 bg-red-50 border-red-200',
+};
+const PRIORITY_STYLE: Record<string, string> = {
+  HIGH: 'text-red-700 bg-red-50 border-red-200',
+  MEDIUM: 'text-amber-700 bg-amber-50 border-amber-200',
+  LOW: 'text-slate-500 bg-slate-100 border-slate-200',
+};
 const DEPTH_LABEL: Record<number, string> = { 0: 'DM', 1: 'TL', 2: 'Recruiter' };
+const LIVE_REQ_STATUSES = ['ACTIVE', 'PENDING_APPROVAL', 'DRAFT'];
+const REQ_FILTER_TABS = [
+  { v: '', l: 'Active' },
+  { v: 'ON_HOLD', l: 'On Hold' },
+  { v: 'CLOSED', l: 'Closed' },
+  { v: 'CANCELLED', l: 'Cancelled' },
+] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function avatarColor(seed: string) {
-  const colors = [
+  const c = [
     'bg-blue-100 text-blue-700',
     'bg-violet-100 text-violet-700',
     'bg-emerald-100 text-emerald-700',
@@ -157,7 +171,7 @@ function avatarColor(seed: string) {
     'bg-rose-100 text-rose-700',
     'bg-cyan-100 text-cyan-700',
   ];
-  return colors[seed.charCodeAt(0) % colors.length];
+  return c[seed.charCodeAt(0) % c.length];
 }
 function initials(n: string) {
   return n
@@ -173,10 +187,15 @@ function daysSince(d: string) {
 function daysLeft(d: string) {
   return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
 }
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
+  });
+}
 
-// ─── Canonical bar ────────────────────────────────────────────────────────────
-// Each column now navigates directly to the candidates page filtered by that
-// canonical stage, instead of opening an inline drawer.
+// ─── Canonical bar (card view) ────────────────────────────────────────────────
 
 function CanonicalBar({
   byCanonical,
@@ -188,9 +207,7 @@ function CanonicalBar({
   const router = useRouter();
   const { data: meta } = useCandidateMeta();
   const stages = meta?.canonicalStages ?? [];
-
   if (!stages.length) return null;
-
   return (
     <div
       className="border-t-2 border-slate-100"
@@ -205,13 +222,13 @@ function CanonicalBar({
               router.push(`/assignments/${assignmentId}/candidates?canonical=${s.key}`)
             }
             disabled={count === 0}
-            title={`${s.key} — ${count} candidate${count !== 1 ? 's' : ''}`}
-            className="group flex flex-col items-center gap-1.5 px-1 py-4 border-r border-slate-100 last:border-r-0 transition-colors hover:bg-blue-50 disabled:pointer-events-none"
+            title={`${s.key} — ${count}`}
+            className="group flex flex-col items-center gap-1.5 px-1 py-4 border-r border-slate-100 last:border-r-0 hover:bg-blue-50 disabled:pointer-events-none transition-colors"
           >
             <span className={cn('w-2 h-2 rounded-full shrink-0', canonicalDot(s.key))} />
             <span
               className={cn(
-                'text-[22px] font-black leading-none tabular-nums transition-colors',
+                'text-[22px] font-black leading-none tabular-nums',
                 count > 0 ? 'text-slate-900 group-hover:text-blue-600' : 'text-slate-200'
               )}
             >
@@ -253,8 +270,6 @@ function PipelineStageChips({ stages }: { stages: PipelineStageCount[] }) {
   );
 }
 
-// ─── Sub-row ──────────────────────────────────────────────────────────────────
-
 function SubRow({ child }: { child: ChildAssignment }) {
   const router = useRouter();
   const dl = child.deadline ? daysLeft(child.deadline) : null;
@@ -272,7 +287,7 @@ function SubRow({ child }: { child: ChildAssignment }) {
         {initials(`${child.assignedTo.firstName} ${child.assignedTo.lastName}`)}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">
+        <p className="text-sm font-semibold text-slate-800 group-hover:text-blue-700">
           {child.assignedTo.firstName} {child.assignedTo.lastName}
         </p>
         <p className="text-xs text-slate-500">{child.assignedTo.role.name}</p>
@@ -290,13 +305,13 @@ function SubRow({ child }: { child: ChildAssignment }) {
             · {dl < 0 ? `${Math.abs(dl)}d over` : `${dl}d left`}
           </span>
         )}
-        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400" />
       </div>
     </div>
   );
 }
 
-// ─── Assignment card ──────────────────────────────────────────────────────────
+// ─── Card view ────────────────────────────────────────────────────────────────
 
 function AssignmentCard({ a }: { a: Assignment }) {
   const router = useRouter();
@@ -307,8 +322,6 @@ function AssignmentCard({ a }: { a: Assignment }) {
   const age = daysSince(a.assignedAt);
   const hasSubs = a.childAssignments.length > 0;
   const stats = a.candidateStats;
-
-  // Header + stat buttons → assignment detail page (stage controls live there)
   const toDetail = () => router.push(`/assignments/${a.id}`);
 
   return (
@@ -319,9 +332,7 @@ function AssignmentCard({ a }: { a: Assignment }) {
       )}
     >
       {isBreached && <div className="h-1 w-full bg-amber-400" />}
-
       <div className="px-6 pt-5 pb-4">
-        {/* Header — clicking title area goes to candidates page */}
         <div className="flex items-start gap-4 mb-5 cursor-pointer group" onClick={toDetail}>
           <div
             className={cn(
@@ -336,17 +347,22 @@ function AssignmentCard({ a }: { a: Assignment }) {
               <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                 {req.reqCode}
               </span>
-              <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <span
+                className={cn(
+                  'text-xs font-semibold px-2.5 py-1 rounded-lg border',
+                  REQ_STATUS_STYLE[req.status] ?? 'text-slate-600 bg-slate-100 border-slate-200'
+                )}
+              >
                 {REQ_STATUS_LABEL[req.status] ?? req.status}
               </span>
-              {req.priority === 'HIGH' && (
-                <span className="text-xs font-semibold text-red-800 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">
-                  High
-                </span>
-              )}
-              {req.priority === 'MEDIUM' && (
-                <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-                  Medium
+              {req.priority !== 'LOW' && (
+                <span
+                  className={cn(
+                    'text-xs font-semibold px-2.5 py-1 rounded-lg border',
+                    PRIORITY_STYLE[req.priority]
+                  )}
+                >
+                  {req.priority === 'HIGH' ? 'High' : 'Medium'}
                 </span>
               )}
               <span className="text-xs font-semibold text-blue-800 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100 flex items-center gap-1">
@@ -364,8 +380,8 @@ function AssignmentCard({ a }: { a: Assignment }) {
               {req.title}
             </h3>
             <p className="text-sm font-semibold text-slate-700 mt-0.5">
-              {a.assignedTo.firstName} {a.assignedTo.lastName}
-              <span className="font-normal text-slate-500 ml-1.5">({a.assignedTo.role.name})</span>
+              {a.assignedTo.firstName} {a.assignedTo.lastName}{' '}
+              <span className="font-normal text-slate-500">({a.assignedTo.role.name})</span>
             </p>
             <p className="text-sm text-slate-500 mt-0.5 truncate">
               {[req.client?.name, req.businessUnit?.name, req.serviceLine?.name]
@@ -375,12 +391,9 @@ function AssignmentCard({ a }: { a: Assignment }) {
               {a.assignedBy && ` · from ${a.assignedBy.firstName}`}
             </p>
           </div>
-          <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mt-1.5 group-hover:text-slate-600 transition-colors" />
+          <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mt-1.5 group-hover:text-slate-600" />
         </div>
-
-        {/* Stats row */}
         <div className="flex items-center gap-3 flex-wrap mb-4">
-          {/* "in pipeline" button → candidates page, all candidates */}
           <button
             onClick={toDetail}
             className="flex items-center gap-2.5 border-2 border-slate-200 rounded-xl px-4 py-3 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 transition-colors group/s"
@@ -393,10 +406,9 @@ function AssignmentCard({ a }: { a: Assignment }) {
               in pipeline
             </span>
           </button>
-
           {stats.placed > 0 && (
             <button
-              onClick={() => router.push(`/assignments/${a.id}`)}
+              onClick={toDetail}
               className="flex items-center gap-2.5 border-2 border-emerald-300 rounded-xl px-4 py-3 bg-emerald-50 hover:bg-emerald-100 transition-colors"
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-700" />
@@ -418,7 +430,7 @@ function AssignmentCard({ a }: { a: Assignment }) {
           )}
           {stats.dropped > 0 && (
             <button
-              onClick={() => router.push(`/assignments/${a.id}`)}
+              onClick={toDetail}
               className="flex items-center gap-2.5 border-2 border-red-200 rounded-xl px-4 py-3 bg-red-50 hover:bg-red-100 transition-colors"
             >
               <span className="text-2xl font-black text-red-700">{stats.dropped}</span>
@@ -434,7 +446,6 @@ function AssignmentCard({ a }: { a: Assignment }) {
               <span className="text-sm font-medium text-amber-700">stale &gt;14d</span>
             </div>
           )}
-
           <div className="ml-auto flex items-center gap-3">
             {dl != null && (
               <span
@@ -469,7 +480,6 @@ function AssignmentCard({ a }: { a: Assignment }) {
           </div>
         </div>
       </div>
-
       {showSubs && hasSubs && (
         <div className="px-6 pb-5 border-t-2 border-slate-50 pt-4 bg-slate-50/50 space-y-2">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
@@ -480,10 +490,368 @@ function AssignmentCard({ a }: { a: Assignment }) {
           ))}
         </div>
       )}
-
-      {/* Canonical bar — each column navigates to candidates page filtered by that canonical */}
       <CanonicalBar byCanonical={stats.byCanonicalStage} assignmentId={a.id} />
       <PipelineStageChips stages={stats.byPipelineStage} />
+    </div>
+  );
+}
+
+// ─── Table view ───────────────────────────────────────────────────────────────
+
+type SortCol = 'assignedAt' | 'deadline' | 'title' | 'assignedTo' | 'total' | 'placed';
+
+function SortIcon({ col, active, dir }: { col: SortCol; active: SortCol; dir: 'asc' | 'desc' }) {
+  if (col !== active) return <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />;
+  return dir === 'asc' ? (
+    <ChevronUp className="w-3.5 h-3.5 text-blue-500" />
+  ) : (
+    <ChevronDown className="w-3.5 h-3.5 text-blue-500" />
+  );
+}
+
+// Th must be defined at module level — never inside a render function
+function Th({
+  col,
+  label,
+  className,
+  sortCol,
+  sortDir,
+  onSort,
+}: {
+  col: SortCol;
+  label: string;
+  className?: string;
+  sortCol: SortCol;
+  sortDir: 'asc' | 'desc';
+  onSort: (col: SortCol) => void;
+}) {
+  return (
+    <th className={cn('px-4 py-3 text-left', className)}>
+      <button
+        onClick={() => onSort(col)}
+        className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-800 transition-colors"
+      >
+        {label}
+        <SortIcon col={col} active={sortCol} dir={sortDir} />
+      </button>
+    </th>
+  );
+}
+
+function TableView({ assignments }: { assignments: Assignment[] }) {
+  const router = useRouter();
+  const { data: meta } = useCandidateMeta();
+  const canonicalStages = meta?.canonicalStages ?? [];
+
+  const [sortCol, setSortCol] = useState<SortCol>('assignedAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  function handleSort(col: SortCol) {
+    if (sortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortCol(col);
+      setSortDir('desc');
+    }
+  }
+
+  const sorted = useMemo(() => {
+    return [...assignments].sort((a, b) => {
+      let va: any, vb: any;
+      if (sortCol === 'assignedAt') {
+        va = new Date(a.assignedAt).getTime();
+        vb = new Date(b.assignedAt).getTime();
+      } else if (sortCol === 'deadline') {
+        va = a.deadline ? new Date(a.deadline).getTime() : Infinity;
+        vb = b.deadline ? new Date(b.deadline).getTime() : Infinity;
+      } else if (sortCol === 'title') {
+        va = a.requirement.title;
+        vb = b.requirement.title;
+      } else if (sortCol === 'assignedTo') {
+        va = `${a.assignedTo.firstName} ${a.assignedTo.lastName}`;
+        vb = `${b.assignedTo.firstName} ${b.assignedTo.lastName}`;
+      } else if (sortCol === 'total') {
+        va = a.candidateStats.total;
+        vb = b.candidateStats.total;
+      } else if (sortCol === 'placed') {
+        va = a.candidateStats.placed;
+        vb = b.candidateStats.placed;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [assignments, sortCol, sortDir]);
+
+  if (!sorted.length) return null;
+
+  return (
+    <div className="rounded-2xl border-2 border-slate-100 bg-white overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-slate-50 border-b-2 border-slate-100">
+              <th className="px-4 py-3 text-left w-8"></th>
+              <Th
+                col="title"
+                label="Requirement"
+                className="min-w-[260px]"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+              <Th
+                col="assignedTo"
+                label="Assignee"
+                className="min-w-[160px]"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+              <th className="px-4 py-3 text-left">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Level
+                </span>
+              </th>
+              <th className="px-4 py-3 text-left">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Req status
+                </span>
+              </th>
+              <Th
+                col="total"
+                label="Pipeline"
+                className="min-w-[80px]"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+              <Th
+                col="placed"
+                label="Placed"
+                className="min-w-[70px]"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+              {/* canonical stage mini-cols */}
+              {canonicalStages.slice(0, 5).map(s => (
+                <th key={s.key} className="px-2 py-3 text-center min-w-[52px]">
+                  <span className="flex flex-col items-center gap-1">
+                    <span className={cn('w-2 h-2 rounded-full', canonicalDot(s.key))} />
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">
+                      {s.key.replace(/_/g, ' ').slice(0, 6)}
+                    </span>
+                  </span>
+                </th>
+              ))}
+              <Th
+                col="deadline"
+                label="Deadline"
+                className="min-w-[100px]"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+              <Th
+                col="assignedAt"
+                label="Age"
+                className="min-w-[70px]"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={handleSort}
+              />
+              <th className="px-4 py-3 w-10"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {sorted.map(a => {
+              const req = a.requirement;
+              const isBreached =
+                !!a.breachedAt || req.isRespondByBreached || req.isTurnaroundBreached;
+              const dl = a.deadline ? daysLeft(a.deadline) : null;
+              const age = daysSince(a.assignedAt);
+              const stats = a.candidateStats;
+
+              return (
+                <tr
+                  key={a.id}
+                  onClick={() => router.push(`/assignments/${a.id}`)}
+                  className={cn(
+                    'cursor-pointer transition-colors group',
+                    isBreached ? 'bg-amber-50/40 hover:bg-amber-50' : 'hover:bg-blue-50/40'
+                  )}
+                >
+                  {/* breach indicator */}
+                  <td className="px-4 py-3.5">
+                    {isBreached && <Flame className="w-4 h-4 text-amber-500" />}
+                  </td>
+
+                  {/* Requirement */}
+                  <td className="px-4 py-3.5">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono font-semibold text-slate-500">
+                          {req.reqCode}
+                        </span>
+                        {req.priority === 'HIGH' && (
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold px-1.5 py-0.5 rounded border',
+                              PRIORITY_STYLE.HIGH
+                            )}
+                          >
+                            High
+                          </span>
+                        )}
+                        {req.priority === 'MEDIUM' && (
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold px-1.5 py-0.5 rounded border',
+                              PRIORITY_STYLE.MEDIUM
+                            )}
+                          >
+                            Med
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors truncate max-w-[240px]">
+                        {req.title}
+                      </span>
+                      <span className="text-[11px] text-slate-400 truncate max-w-[240px]">
+                        {[req.client?.name, req.businessUnit?.name].filter(Boolean).join(' · ')}
+                        {req.totalOpenings > 1 && ` · ${req.totalOpenings} openings`}
+                      </span>
+                    </div>
+                  </td>
+
+                  {/* Assignee */}
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={cn(
+                          'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+                          avatarColor(a.assignedTo.firstName)
+                        )}
+                      >
+                        {initials(`${a.assignedTo.firstName} ${a.assignedTo.lastName}`)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">
+                          {a.assignedTo.firstName} {a.assignedTo.lastName}
+                        </p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {a.assignedTo.role.name}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Level */}
+                  <td className="px-4 py-3.5">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg">
+                      <GitBranch className="w-3 h-3" />
+                      {DEPTH_LABEL[a.depth] ?? `D${a.depth}`}
+                    </span>
+                  </td>
+
+                  {/* Req status */}
+                  <td className="px-4 py-3.5">
+                    <span
+                      className={cn(
+                        'text-[11px] font-semibold px-2 py-1 rounded-lg border',
+                        REQ_STATUS_STYLE[req.status] ??
+                          'text-slate-500 bg-slate-100 border-slate-200'
+                      )}
+                    >
+                      {REQ_STATUS_LABEL[req.status] ?? req.status}
+                    </span>
+                  </td>
+
+                  {/* Pipeline total */}
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-lg font-black text-slate-900">{stats.total}</span>
+                      {stats.agingBuckets.critical > 0 && (
+                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          {stats.agingBuckets.critical} stale
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Placed */}
+                  <td className="px-4 py-3.5">
+                    <span
+                      className={cn(
+                        'text-lg font-black',
+                        stats.placed > 0 ? 'text-emerald-700' : 'text-slate-200'
+                      )}
+                    >
+                      {stats.placed}
+                    </span>
+                  </td>
+
+                  {/* Canonical stage mini-counts */}
+                  {canonicalStages.slice(0, 5).map(s => {
+                    const cnt = stats.byCanonicalStage[s.key] ?? 0;
+                    return (
+                      <td
+                        key={s.key}
+                        className="px-2 py-3.5 text-center"
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (cnt > 0)
+                            router.push(`/assignments/${a.id}/candidates?canonical=${s.key}`);
+                        }}
+                      >
+                        <span
+                          className={cn(
+                            'text-sm font-black tabular-nums',
+                            cnt > 0
+                              ? 'text-slate-800 hover:text-blue-600 cursor-pointer'
+                              : 'text-slate-200'
+                          )}
+                        >
+                          {cnt}
+                        </span>
+                      </td>
+                    );
+                  })}
+
+                  {/* Deadline */}
+                  <td className="px-4 py-3.5">
+                    {dl != null ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={cn(
+                            'text-sm font-bold',
+                            dl < 0 ? 'text-red-600' : dl <= 3 ? 'text-amber-600' : 'text-slate-700'
+                          )}
+                        >
+                          {dl < 0 ? `${Math.abs(dl)}d over` : `${dl}d left`}
+                        </span>
+                        <span className="text-[10px] text-slate-400">{fmtDate(a.deadline!)}</span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-300 text-sm">—</span>
+                    )}
+                  </td>
+
+                  {/* Age */}
+                  <td className="px-4 py-3.5">
+                    <span className="text-sm font-semibold text-slate-500">{age}d</span>
+                  </td>
+
+                  {/* Arrow */}
+                  <td className="px-4 py-3.5">
+                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -524,28 +892,72 @@ function CardSkeleton() {
   );
 }
 
+function TableSkeleton() {
+  return (
+    <div className="rounded-2xl border-2 border-slate-100 bg-white overflow-hidden">
+      <div className="bg-slate-50 border-b-2 border-slate-100 px-4 py-3 flex gap-6">
+        {[140, 120, 80, 80, 70, 70, 90, 60].map((w, i) => (
+          <Skeleton key={i} className="h-4 rounded" style={{ width: w }} />
+        ))}
+      </div>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="px-4 py-4 border-b border-slate-100 flex items-center gap-6">
+          <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-6 w-12 rounded-lg" />
+          <Skeleton className="h-5 w-8" />
+          <Skeleton className="h-5 w-8" />
+          {Array.from({ length: 3 }).map((_, j) => (
+            <Skeleton key={j} className="h-5 w-6" />
+          ))}
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-8" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+type ViewMode = 'table' | 'card';
 
 export default function AssignmentsPage() {
   const axios = useAxios();
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('ACTIVE');
+  const [reqStatusFilter, setReqStatusFilter] = useState('');
   const [depth, setDepth] = useState('');
+  const [buId, setBuId] = useState('');
   const [sortBy, setSortBy] = useState('assignedAt');
   const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(1);
   const limit = 20;
 
+  const { data: buData } = useQuery({
+    queryKey: ['business-units'],
+    queryFn: async () =>
+      (await axios.get('/business-units?isActive=true')).data as {
+        data: { id: string; name: string }[];
+      },
+  });
+  const businessUnits = buData?.data ?? [];
+
   const qs = useMemo(() => {
     const p = new URLSearchParams();
-    if (status) p.set('status', status);
+    p.set('status', 'ACTIVE');
     if (depth) p.set('depth', depth);
+    if (buId) p.set('buId', buId);
     p.set('sortBy', sortBy);
     p.set('sortDir', sortDir);
     p.set('page', String(page));
     p.set('limit', String(limit));
     return p.toString();
-  }, [status, depth, sortBy, sortDir, page]);
+  }, [depth, buId, sortBy, sortDir, page]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['assignments', qs],
@@ -563,24 +975,32 @@ export default function AssignmentsPage() {
   const totalPages = data?.meta?.pages ?? 0;
 
   const filtered = useMemo(() => {
-    if (!search) return assignments;
-    const q = search.toLowerCase();
-    return assignments.filter(
-      a =>
-        a.requirement.title.toLowerCase().includes(q) ||
-        a.requirement.reqCode.toLowerCase().includes(q) ||
-        `${a.assignedTo.firstName} ${a.assignedTo.lastName}`.toLowerCase().includes(q)
-    );
-  }, [assignments, search]);
+    let list = assignments;
+    if (reqStatusFilter === '')
+      list = list.filter(a => LIVE_REQ_STATUSES.includes(a.requirement.status));
+    else list = list.filter(a => a.requirement.status === reqStatusFilter);
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        a =>
+          a.requirement.title.toLowerCase().includes(q) ||
+          a.requirement.reqCode.toLowerCase().includes(q) ||
+          `${a.assignedTo.firstName} ${a.assignedTo.lastName}`.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [assignments, reqStatusFilter, search]);
 
   const totalInPipeline = assignments.reduce((s, a) => s + a.candidateStats.total, 0);
   const totalPlaced = assignments.reduce((s, a) => s + a.candidateStats.placed, 0);
   const breachedCount = assignments.filter(
     a => !!a.breachedAt || a.requirement.isRespondByBreached
   ).length;
+  const hasFilters = !!depth || !!buId;
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-[#EEF2F7]">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="shrink-0 bg-white border-b-2 border-slate-100">
         <div className="px-8 pt-6 pb-5">
           <div className="flex items-center justify-between gap-4 mb-5">
@@ -591,52 +1011,85 @@ export default function AssignmentsPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Assignments</h1>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  {isLoading ? 'Loading…' : `${total} assignment${total !== 1 ? 's' : ''} in scope`}
+                  {isLoading
+                    ? 'Loading…'
+                    : `${filtered.length} assignment${filtered.length !== 1 ? 's' : ''} shown`}
                 </p>
               </div>
             </div>
 
-            {!isLoading && assignments.length > 0 && (
-              <div className="flex items-center gap-6">
-                <div className="text-center">
-                  <p className="text-3xl font-black text-slate-900">{total}</p>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
-                    Assignments
-                  </p>
-                </div>
-                <div className="w-px h-12 bg-slate-100" />
-                <div className="text-center">
-                  <p className="text-3xl font-black text-blue-600">{totalInPipeline}</p>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
-                    In pipeline
-                  </p>
-                </div>
-                {totalPlaced > 0 && (
-                  <>
-                    <div className="w-px h-12 bg-slate-100" />
-                    <div className="text-center">
-                      <p className="text-3xl font-black text-emerald-700">{totalPlaced}</p>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
-                        Placed
-                      </p>
-                    </div>
-                  </>
-                )}
-                {breachedCount > 0 && (
-                  <>
-                    <div className="w-px h-12 bg-slate-100" />
-                    <div className="text-center">
-                      <p className="text-3xl font-black text-amber-600">{breachedCount}</p>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
-                        Breached
-                      </p>
-                    </div>
-                  </>
-                )}
+            <div className="flex items-center gap-6">
+              {!isLoading && assignments.length > 0 && (
+                <>
+                  <div className="text-center">
+                    <p className="text-3xl font-black text-slate-900">{total}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                      Assignments
+                    </p>
+                  </div>
+                  <div className="w-px h-12 bg-slate-100" />
+                  <div className="text-center">
+                    <p className="text-3xl font-black text-blue-600">{totalInPipeline}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                      In pipeline
+                    </p>
+                  </div>
+                  {totalPlaced > 0 && (
+                    <>
+                      <div className="w-px h-12 bg-slate-100" />
+                      <div className="text-center">
+                        <p className="text-3xl font-black text-emerald-700">{totalPlaced}</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                          Placed
+                        </p>
+                      </div>
+                    </>
+                  )}
+                  {breachedCount > 0 && (
+                    <>
+                      <div className="w-px h-12 bg-slate-100" />
+                      <div className="text-center">
+                        <p className="text-3xl font-black text-amber-600">{breachedCount}</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                          Breached
+                        </p>
+                      </div>
+                    </>
+                  )}
+                  <div className="w-px h-12 bg-slate-100" />
+                </>
+              )}
+              {/* View toggle */}
+              <div className="flex items-center border-2 border-slate-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-semibold transition-all',
+                    viewMode === 'table'
+                      ? 'bg-slate-800 text-white'
+                      : 'text-slate-500 bg-white hover:bg-slate-50'
+                  )}
+                >
+                  <TableProperties className="w-4 h-4" />
+                  Table
+                </button>
+                <button
+                  onClick={() => setViewMode('card')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-semibold transition-all border-l-2 border-slate-200',
+                    viewMode === 'card'
+                      ? 'bg-slate-800 text-white border-slate-800'
+                      : 'text-slate-500 bg-white hover:bg-slate-50'
+                  )}
+                >
+                  <LayoutList className="w-4 h-4" />
+                  Cards
+                </button>
               </div>
-            )}
+            </div>
           </div>
 
+          {/* ── Filters ────────────────────────────────────────────────────── */}
           <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -656,23 +1109,19 @@ export default function AssignmentsPage() {
               )}
             </div>
 
+            {/* Req status tabs */}
             <div className="flex items-center border-2 border-slate-200 rounded-xl overflow-hidden">
-              {[
-                { v: 'ACTIVE', l: 'Active' },
-                { v: 'FILLED', l: 'Filled' },
-                { v: 'REMOVED', l: 'Removed' },
-                { v: '', l: 'All' },
-              ].map(({ v, l }) => (
+              {REQ_FILTER_TABS.map(({ v, l }) => (
                 <button
                   key={v}
                   onClick={() => {
-                    setStatus(v);
+                    setReqStatusFilter(v);
                     setPage(1);
                   }}
                   className={cn(
-                    'text-sm font-semibold px-4 py-2.5 transition-all',
-                    status === v
-                      ? 'bg-blue-600 text-white'
+                    'text-sm font-semibold px-4 py-2.5 transition-all border-r border-slate-200 last:border-r-0',
+                    reqStatusFilter === v
+                      ? 'bg-blue-600 text-white border-blue-600'
                       : 'text-slate-600 bg-white hover:bg-slate-50'
                   )}
                 >
@@ -681,6 +1130,7 @@ export default function AssignmentsPage() {
               ))}
             </div>
 
+            {/* Depth */}
             <Select
               value={depth || '_all'}
               onValueChange={v => {
@@ -699,6 +1149,29 @@ export default function AssignmentsPage() {
               </SelectContent>
             </Select>
 
+            {/* BU */}
+            <Select
+              value={buId || '_all'}
+              onValueChange={v => {
+                setBuId(v === '_all' ? '' : v);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-10 text-sm w-44 border-2 border-slate-200 rounded-xl bg-white">
+                <Building2 className="w-4 h-4 mr-1.5 text-slate-400 shrink-0" />
+                <SelectValue placeholder="All BUs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_all">All BUs</SelectItem>
+                {businessUnits.map(bu => (
+                  <SelectItem key={bu.id} value={bu.id}>
+                    {bu.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Sort */}
             <Select
               value={`${sortBy}_${sortDir}`}
               onValueChange={v => {
@@ -709,8 +1182,8 @@ export default function AssignmentsPage() {
                 setPage(1);
               }}
             >
-              <SelectTrigger className="h-10 text-sm w-40 border-2 border-slate-200 rounded-xl bg-white">
-                <SlidersHorizontal className="w-4 h-4 mr-1.5 text-slate-400" />
+              <SelectTrigger className="h-10 text-sm w-44 border-2 border-slate-200 rounded-xl bg-white">
+                <SlidersHorizontal className="w-4 h-4 mr-1.5 text-slate-400 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -719,18 +1192,36 @@ export default function AssignmentsPage() {
                 <SelectItem value="deadline_asc">Deadline soonest</SelectItem>
               </SelectContent>
             </Select>
+
+            {hasFilters && (
+              <button
+                onClick={() => {
+                  setDepth('');
+                  setBuId('');
+                  setPage(1);
+                }}
+                className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 border-2 border-slate-200 rounded-xl px-3 h-10 bg-white hover:bg-slate-50 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                Clear
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Cards */}
+      {/* ── Content (scrollable) ────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto min-h-0 px-8 py-5">
         {isLoading ? (
-          <div className="flex flex-col gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <CardSkeleton key={i} />
-            ))}
-          </div>
+          viewMode === 'table' ? (
+            <TableSkeleton />
+          ) : (
+            <div className="flex flex-col gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <CardSkeleton key={i} />
+              ))}
+            </div>
+          )
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <div className="w-16 h-16 rounded-2xl bg-white border-2 border-slate-200 flex items-center justify-center">
@@ -741,6 +1232,8 @@ export default function AssignmentsPage() {
               {search ? 'No matches for your search' : 'Try adjusting filters'}
             </p>
           </div>
+        ) : viewMode === 'table' ? (
+          <TableView assignments={filtered} />
         ) : (
           <div className="flex flex-col gap-4">
             {filtered.map(a => (
@@ -748,38 +1241,39 @@ export default function AssignmentsPage() {
             ))}
           </div>
         )}
-
-        {totalPages > 1 && !search && (
-          <div className="flex items-center justify-between mt-6 pt-5 border-t border-slate-200">
-            <span className="text-sm text-slate-500">
-              {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-4 text-sm rounded-xl"
-                disabled={page === 1}
-                onClick={() => setPage(p => p - 1)}
-              >
-                ← Prev
-              </Button>
-              <span className="text-sm text-slate-500">
-                {page} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-4 text-sm rounded-xl"
-                disabled={page === totalPages}
-                onClick={() => setPage(p => p + 1)}
-              >
-                Next →
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ── Pagination ──────────────────────────────────────────────────────── */}
+      {totalPages > 1 && !search && (
+        <div className="shrink-0 bg-white border-t-2 border-slate-100 px-8 py-3 flex items-center justify-between">
+          <span className="text-sm text-slate-500">
+            {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-4 text-sm rounded-xl"
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+            >
+              ← Prev
+            </Button>
+            <span className="text-sm text-slate-500">
+              {page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 px-4 text-sm rounded-xl"
+              disabled={page === totalPages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next →
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
