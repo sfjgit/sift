@@ -21,6 +21,7 @@ import {
   Eye as EyeIcon,
   EyeOff,
   Loader2,
+  Network,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ import {
 import type { UserListItem, UsersListPermissions } from '@/types/user.types';
 import { toast } from 'sonner';
 import { useAxios } from '@/hooks/useAxios';
+import { ManageAssignableDMs } from './ManageAssignableDMs';
 
 interface Props {
   users: UserListItem[];
@@ -118,17 +120,21 @@ export function UserTable({
   const [reset, setReset] = useState<ResetState>(RESET_INIT);
   const axios = useAxios();
 
-  // ── validation ────────────────────────────────────────────────────────────
+  // ── Manage DMs dialog state ───────────────────────────────────────────────
+  const [dmDialog, setDmDialog] = useState<{
+    open: boolean;
+    userId: string;
+    userName: string;
+  }>({ open: false, userId: '', userName: '' });
+
+  // ── Password reset validation ─────────────────────────────────────────────
   const passwordError =
     reset.password.length > 0 && reset.password.length < 8 ? 'Minimum 8 characters' : '';
-
   const confirmError =
     reset.confirm.length > 0 && reset.confirm !== reset.password ? 'Passwords do not match' : '';
-
   const canSubmit =
     reset.password.length >= 8 && reset.confirm === reset.password && !reset.loading;
 
-  // ── open dialog ───────────────────────────────────────────────────────────
   function openReset(user: UserListItem) {
     setReset({ ...RESET_INIT, open: true, user });
   }
@@ -138,24 +144,13 @@ export function UserTable({
     setReset(RESET_INIT);
   }
 
-  // ── submit ────────────────────────────────────────────────────────────────
   async function handleResetSubmit() {
     if (!canSubmit || !reset.user) return;
     setReset(s => ({ ...s, loading: true }));
-
     try {
-      const res = await axios.patch(`/users/${reset.user.id}/reset-password`, {
+      await axios.patch(`/users/${reset.user.id}/reset-password`, {
         newPassword: reset.password,
       });
-
-      await res.data;
-
-      // if (!res.ok) {
-      //   toast.error(data.message ?? 'Failed to reset password');
-      //   setReset(s => ({ ...s, loading: false }));
-      //   return;
-      // }
-
       toast.success(
         `Password reset for ${reset.user.firstName} ${reset.user.lastName}. All sessions invalidated.`
       );
@@ -179,7 +174,7 @@ export function UserTable({
   return (
     <>
       <div className="flex flex-col gap-3">
-        {/* ── Table ─────────────────────────────────────────────────────── */}
+        {/* ── Table ── */}
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader>
@@ -291,7 +286,7 @@ export function UserTable({
                   {/* Spocs handled */}
                   <TableCell className="text-center">
                     {user._count.spocsHandled > 0 ? (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                         {user._count.spocsHandled}
                       </span>
                     ) : (
@@ -312,7 +307,7 @@ export function UserTable({
                       variant={user.isActive ? 'default' : 'secondary'}
                       className={`text-xs ${
                         user.isActive
-                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300'
+                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border-emerald-200'
                           : 'bg-muted text-muted-foreground'
                       }`}
                     >
@@ -333,7 +328,7 @@ export function UserTable({
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuContent align="end" className="w-52">
                           <DropdownMenuItem
                             onClick={() => router.push(`/users/${user.id}`)}
                             className="gap-2 text-xs"
@@ -350,11 +345,27 @@ export function UserTable({
                             </DropdownMenuItem>
                           )}
 
-                          {/* ── Reset password — superAdmin only ─────────── */}
+                          {/* ── Manage extended assignable DMs ── */}
+                          {permissions.canEdit && (
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setDmDialog({
+                                  open: true,
+                                  userId: user.id,
+                                  userName: `${user.firstName} ${user.lastName}`,
+                                })
+                              }
+                              className="gap-2 text-xs text-blue-600 focus:text-blue-600 focus:bg-blue-50"
+                            >
+                              <Network className="h-3.5 w-3.5" /> Manage assignable DMs
+                            </DropdownMenuItem>
+                          )}
+
+                          {/* ── Reset password — superAdmin only ── */}
                           {isSuperAdmin && permissions.canEdit && (
                             <DropdownMenuItem
                               onClick={() => openReset(user)}
-                              className="gap-2 text-xs text-amber-600 focus:text-amber-600 focus:bg-amber-50 dark:focus:bg-amber-950/40"
+                              className="gap-2 text-xs text-amber-600 focus:text-amber-600 focus:bg-amber-50"
                             >
                               <KeyRound className="h-3.5 w-3.5" /> Reset password
                             </DropdownMenuItem>
@@ -393,7 +404,7 @@ export function UserTable({
           </Table>
         </div>
 
-        {/* ── Pagination ────────────────────────────────────────────────── */}
+        {/* ── Pagination ── */}
         {pagination.pages > 1 && (
           <div className="flex items-center justify-between px-1">
             <p className="text-xs text-muted-foreground">
@@ -404,7 +415,6 @@ export function UserTable({
               </span>{' '}
               of <span className="font-medium text-foreground">{pagination.total}</span>
             </p>
-
             <div className="flex items-center gap-1">
               <Button
                 variant="outline"
@@ -415,18 +425,12 @@ export function UserTable({
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
               </Button>
-
               {Array.from({ length: Math.min(pagination.pages, 5) }, (_, i) => {
                 let p: number;
-                if (pagination.pages <= 5) {
-                  p = i + 1;
-                } else if (pagination.page <= 3) {
-                  p = i + 1;
-                } else if (pagination.page >= pagination.pages - 2) {
-                  p = pagination.pages - 4 + i;
-                } else {
-                  p = pagination.page - 2 + i;
-                }
+                if (pagination.pages <= 5) p = i + 1;
+                else if (pagination.page <= 3) p = i + 1;
+                else if (pagination.page >= pagination.pages - 2) p = pagination.pages - 4 + i;
+                else p = pagination.page - 2 + i;
                 return (
                   <Button
                     key={p}
@@ -439,7 +443,6 @@ export function UserTable({
                   </Button>
                 );
               })}
-
               <Button
                 variant="outline"
                 size="icon"
@@ -454,7 +457,15 @@ export function UserTable({
         )}
       </div>
 
-      {/* ── Reset Password Dialog ──────────────────────────────────────────── */}
+      {/* ── Manage Assignable DMs Dialog ── */}
+      <ManageAssignableDMs
+        open={dmDialog.open}
+        userId={dmDialog.userId}
+        userName={dmDialog.userName}
+        onClose={() => setDmDialog({ open: false, userId: '', userName: '' })}
+      />
+
+      {/* ── Reset Password Dialog ── */}
       <Dialog open={reset.open} onOpenChange={closeReset}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
@@ -472,7 +483,6 @@ export function UserTable({
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-2">
-            {/* New password */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rp-new" className="text-xs font-medium">
                 New password
@@ -484,16 +494,15 @@ export function UserTable({
                   placeholder="Min. 8 characters"
                   value={reset.password}
                   onChange={e => setReset(s => ({ ...s, password: e.target.value }))}
-                  className={`pr-9 text-sm ${passwordError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  className={`pr-9 text-sm ${passwordError ? 'border-destructive' : ''}`}
                   disabled={reset.loading}
                   autoComplete="new-password"
                 />
                 <button
                   type="button"
                   onClick={() => setReset(s => ({ ...s, show: !s.show }))}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   tabIndex={-1}
-                  aria-label={reset.show ? 'Hide password' : 'Show password'}
                 >
                   {reset.show ? (
                     <EyeOff className="h-3.5 w-3.5" />
@@ -505,7 +514,6 @@ export function UserTable({
               {passwordError && <p className="text-xs text-destructive">{passwordError}</p>}
             </div>
 
-            {/* Confirm password */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="rp-confirm" className="text-xs font-medium">
                 Confirm password
@@ -517,7 +525,7 @@ export function UserTable({
                   placeholder="Re-enter password"
                   value={reset.confirm}
                   onChange={e => setReset(s => ({ ...s, confirm: e.target.value }))}
-                  className={`pr-9 text-sm ${confirmError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                  className={`pr-9 text-sm ${confirmError ? 'border-destructive' : ''}`}
                   disabled={reset.loading}
                   autoComplete="new-password"
                   onKeyDown={e => {
@@ -527,9 +535,8 @@ export function UserTable({
                 <button
                   type="button"
                   onClick={() => setReset(s => ({ ...s, showConfirm: !s.showConfirm }))}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   tabIndex={-1}
-                  aria-label={reset.showConfirm ? 'Hide password' : 'Show password'}
                 >
                   {reset.showConfirm ? (
                     <EyeOff className="h-3.5 w-3.5" />
@@ -541,16 +548,15 @@ export function UserTable({
               {confirmError && <p className="text-xs text-destructive">{confirmError}</p>}
             </div>
 
-            {/* Warning note */}
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/30">
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-xs text-amber-700">
                 The user will be logged out of all devices and must sign in again with the new
                 password.
               </p>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter className="gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -568,13 +574,11 @@ export function UserTable({
             >
               {reset.loading ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Resetting…
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Resetting…
                 </>
               ) : (
                 <>
-                  <KeyRound className="h-3.5 w-3.5" />
-                  Reset password
+                  <KeyRound className="h-3.5 w-3.5" /> Reset password
                 </>
               )}
             </Button>
