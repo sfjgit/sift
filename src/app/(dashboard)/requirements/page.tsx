@@ -37,6 +37,7 @@ import {
   Network,
   Filter,
   ChevronRight,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,7 +77,10 @@ interface PipelineStageCount {
 interface Assignment {
   id: string;
   depth?: number;
-  assignedTo?: { id: string; firstName: string; lastName: string };
+  status?: string;
+  allocatedOpenings?: number | null;
+  assignedTo?: { id: string; firstName: string; lastName: string; role?: { name: string } };
+  assignedBy?: { id: string; firstName: string; lastName: string };
 }
 
 interface Requirement {
@@ -218,10 +222,6 @@ const STAGE_DRAWER_COLORS: Record<string, string> = {
   '10': 'bg-green-100 text-green-700 border-green-200',
 };
 
-// Canonical stage display config is loaded from /candidates/meta (useCandidateMeta).
-// NEVER hardcode canonical stage keys here — they come from the DB via that hook.
-// canonicalDot(key) → Tailwind bg class for the color dot (from useCandidateMeta hook)
-
 const AVATAR_COLORS = [
   'bg-violet-500',
   'bg-blue-500',
@@ -249,6 +249,13 @@ const SCOPE_OPTIONS = [
   { value: 'REPORTING', label: 'Reporting Line', icon: Network },
 ] as const;
 
+// depth label — 0 = DM level, 1 = TL level, 2 = Recruiter level
+const DEPTH_LABEL: Record<number, { label: string; cls: string }> = {
+  0: { label: 'DM', cls: 'bg-blue-100 text-blue-700' },
+  1: { label: 'TL', cls: 'bg-violet-100 text-violet-700' },
+  2: { label: 'Rec', cls: 'bg-emerald-100 text-emerald-700' },
+};
+
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function daysSince(d: string) {
@@ -274,6 +281,145 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
+// ─── AssigneesPopover ─────────────────────────────────────────────────────────
+// Shows the full assignment chain for a requirement in a clean popover.
+// Click the stacked avatars or the assign button to open.
+
+function AssigneesPopover({
+  req,
+  canAdd,
+  onAssign,
+}: {
+  req: Requirement;
+  canAdd: boolean;
+  onAssign: (req: Requirement) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const assignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
+  const hasAssignees = assignments.length > 0;
+
+  // Show stacked avatars for the first 3 depth-0 assignees
+  const topLevel = assignments.filter(a => (a.depth ?? 0) === 0).slice(0, 3);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          onClick={e => e.stopPropagation()}
+          className="flex items-center gap-1 group/ap"
+          title={hasAssignees ? 'View assignees' : 'Assign'}
+        >
+          {hasAssignees ? (
+            // stacked avatars
+            <div className="flex -space-x-1.5">
+              {topLevel.map(a =>
+                a.assignedTo ? (
+                  <div
+                    key={a.id}
+                    className={`w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[9px] font-bold text-white ${avatarColor(a.assignedTo.id)}`}
+                  >
+                    {initials(`${a.assignedTo.firstName} ${a.assignedTo.lastName}`)}
+                  </div>
+                ) : null
+              )}
+              {assignments.filter(a => (a.depth ?? 0) === 0).length > 3 && (
+                <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-600">
+                  +{assignments.filter(a => (a.depth ?? 0) === 0).length - 3}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300 group-hover/ap:text-slate-400 transition-colors">
+              Unassigned
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        align="end"
+        sideOffset={6}
+        onClick={e => e.stopPropagation()}
+        className="w-64 p-0 shadow-xl border border-slate-200 rounded-xl overflow-hidden"
+      >
+        {/* Header */}
+        <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            Assignees
+          </span>
+          <span className="text-[11px] text-slate-400">{assignments.length} active</span>
+        </div>
+
+        {/* Assignment list */}
+        <div className="max-h-56 overflow-y-auto">
+          {assignments.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[12px] text-slate-400">
+              No one assigned yet
+            </div>
+          ) : (
+            // Group by depth visually
+            assignments
+              .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
+              .map(a => {
+                const user = a.assignedTo;
+                if (!user) return null;
+                const depth = a.depth ?? 0;
+                const tag = DEPTH_LABEL[depth] ?? DEPTH_LABEL[0];
+                return (
+                  <div
+                    key={a.id}
+                    className="flex items-center gap-2.5 px-3 py-2 border-b border-slate-50 last:border-b-0 hover:bg-slate-50 transition-colors"
+                    style={{ paddingLeft: `${12 + depth * 10}px` }}
+                  >
+                    {/* Depth indent line */}
+                    {depth > 0 && <span className="w-px h-4 bg-slate-200 shrink-0 -ml-2" />}
+                    {/* Avatar */}
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(user.id)}`}
+                    >
+                      {initials(`${user.firstName} ${user.lastName}`)}
+                    </div>
+                    {/* Name + role */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-slate-800 truncate">
+                        {user.firstName} {user.lastName}
+                      </p>
+                      {user.role?.name && (
+                        <p className="text-[10px] text-slate-400 truncate">{user.role.name}</p>
+                      )}
+                    </div>
+                    {/* Depth badge */}
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${tag.cls}`}
+                    >
+                      {tag.label}
+                    </span>
+                  </div>
+                );
+              })
+          )}
+        </div>
+
+        {/* Assign CTA */}
+        {canAdd && (
+          <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
+            <button
+              onClick={() => {
+                setOpen(false);
+                onAssign(req);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-semibold rounded-lg transition-colors"
+            >
+              <UserPlus size={12} />
+              Assign
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── useFilters ───────────────────────────────────────────────────────────────
 
 function useFilters() {
@@ -288,7 +434,6 @@ function useFilters() {
   const clientId = searchParams.get('clientId') ?? '';
   const buId = searchParams.get('buId') ?? '';
   const createdByScope = searchParams.get('createdByScope') ?? 'OWN';
-  // Default is now 'table'
   const viewMode = (searchParams.get('view') ?? 'table') as 'cards' | 'table';
   const page = Number(searchParams.get('page') ?? '1');
   const limit = Number(searchParams.get('limit') ?? '25');
@@ -497,8 +642,6 @@ function ExportButton({
 }
 
 // ─── FilterBar ────────────────────────────────────────────────────────────────
-// The full filter bar that lives in the navbar area.
-// Status tabs sit at top. Dropdowns for BU / SL / Client / Priority below.
 
 function FilterBar({
   status,
@@ -543,7 +686,6 @@ function FilterBar({
 }) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      {/* ── Status tabs ── */}
       <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5 shrink-0">
         <button
           onClick={() => setStatus('')}
@@ -586,10 +728,8 @@ function FilterBar({
         })}
       </div>
 
-      {/* ── Divider ── */}
       <div className="h-5 w-px bg-slate-200 shrink-0" />
 
-      {/* ── BU dropdown ── */}
       {busData && busData.length > 0 && (
         <DropdownFilter
           label="Business Unit"
@@ -602,7 +742,6 @@ function FilterBar({
         />
       )}
 
-      {/* ── Service Line dropdown ── */}
       {slData && slData.length > 0 && (
         <DropdownFilter
           label="Service Line"
@@ -615,7 +754,6 @@ function FilterBar({
         />
       )}
 
-      {/* ── Client dropdown ── */}
       {clientsData && clientsData.length > 0 && (
         <DropdownFilter
           label="Client"
@@ -628,7 +766,6 @@ function FilterBar({
         />
       )}
 
-      {/* ── Priority dropdown ── */}
       <DropdownFilter
         label="Priority"
         icon={<Zap size={12} />}
@@ -638,7 +775,6 @@ function FilterBar({
         allLabel="All Priorities"
       />
 
-      {/* ── Clear all active filters ── */}
       {activeFiltersCount > 0 && (
         <button
           onClick={clearAll}
@@ -652,7 +788,7 @@ function FilterBar({
   );
 }
 
-// ─── DropdownFilter — generic reusable dropdown filter pill ──────────────────
+// ─── DropdownFilter ───────────────────────────────────────────────────────────
 
 function DropdownFilter({
   label,
@@ -738,7 +874,7 @@ function DropdownFilter({
   );
 }
 
-// ─── ActiveFilterChips — compact chips row showing active filters ─────────────
+// ─── ActiveFilterChips ────────────────────────────────────────────────────────
 
 function ActiveFilterChips({
   status,
@@ -820,6 +956,8 @@ function RequirementsTable({
   canonicalMeta,
   onStageClick,
   allStages,
+  canAdd,
+  onAssign,
 }: {
   requirements: Requirement[];
   selectedIds: Set<string>;
@@ -830,6 +968,8 @@ function RequirementsTable({
   canonicalMeta: { key: string; label: string; pillCls: string }[];
   onStageClick: (req: Requirement, stageId: string) => void;
   allStages: PipelineStage[];
+  canAdd: boolean;
+  onAssign: (req: Requirement) => void;
 }) {
   const router = useRouter();
 
@@ -868,7 +1008,6 @@ function RequirementsTable({
             <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-20">
               Age
             </th>
-            {/* Dynamic canonical stage columns */}
             {canonicalKeys.map(key => (
               <th
                 key={key}
@@ -878,6 +1017,7 @@ function RequirementsTable({
                 {canonicalMeta.find(s => s.key === key)?.label ?? key.replace(/_/g, ' ')}
               </th>
             ))}
+            {/* Assignees column */}
             <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36">
               Assigned To
             </th>
@@ -893,7 +1033,6 @@ function RequirementsTable({
             const isBreached = req.isRespondByBreached || req.isTurnaroundBreached;
             const isSelected = selectedIds.has(req.id);
             const idOrSlug = req.slug ?? req.id;
-            const firstAssignee = req.assignments?.find(a => a.depth === 0)?.assignedTo;
             const totalPipeline =
               req._count?.pipelines ??
               (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
@@ -1008,7 +1147,7 @@ function RequirementsTable({
                   </span>
                 </td>
 
-                {/* Canonical stage counts — dynamic, never hardcoded */}
+                {/* Canonical stage counts */}
                 {canonicalKeys.map(key => {
                   const count = req.canonicalStageCounts?.[key] ?? 0;
                   const stageId = req.pipelineStageCounts?.find(
@@ -1038,25 +1177,9 @@ function RequirementsTable({
                   );
                 })}
 
-                {/* Assigned to */}
-                <td className="px-3 py-3">
-                  {firstAssignee ? (
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 ${avatarColor(firstAssignee.id)}`}
-                      >
-                        {initials(`${firstAssignee.firstName} ${firstAssignee.lastName}`)}
-                      </span>
-                      <span
-                        className="text-[12px] text-slate-600 truncate"
-                        style={{ maxWidth: 100 }}
-                      >
-                        {firstAssignee.firstName} {firstAssignee.lastName}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-300">Unassigned</span>
-                  )}
+                {/* Assigned to — popover */}
+                <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                  <AssigneesPopover req={req} canAdd={canAdd} onAssign={onAssign} />
                 </td>
 
                 {/* Created by */}
@@ -1341,7 +1464,7 @@ function CandidateDrawer({
   );
 }
 
-// ─── RequirementCard (card view — unchanged logic) ────────────────────────────
+// ─── RequirementCard ──────────────────────────────────────────────────────────
 
 function RequirementCard({
   req,
@@ -1349,12 +1472,16 @@ function RequirementCard({
   onSelect,
   allStages,
   onStageClick,
+  canAdd,
+  onAssign,
 }: {
   req: Requirement;
   selected: boolean;
   onSelect: (id: string) => void;
   allStages: PipelineStage[];
   onStageClick: (req: Requirement, stageId: string, stageLabel: string) => void;
+  canAdd: boolean;
+  onAssign: (req: Requirement) => void;
 }) {
   const router = useRouter();
   const [stagesExpanded, setStagesExpanded] = useState(false);
@@ -1364,10 +1491,6 @@ function RequirementCard({
 
   const reqServiceLineId = req.serviceLine?.id ?? req.serviceLineId ?? null;
 
-  // Primary source: pipelineStageCounts from the API — already filtered,
-  // ordered, and correct. Used even when counts are zero for display.
-  // Fallback to global allStages only when pipelineStageCounts is absent
-  // (fresh requirement, no candidates yet).
   const stagesToRender: {
     id: string;
     code: string;
@@ -1387,15 +1510,13 @@ function RequirementCard({
           .filter(s => s.serviceLineId === null || s.serviceLineId === reqServiceLineId)
           .map(s => ({ id: s.id, code: s.code, label: s.label, order: s.order, count: 0 }));
 
-  const countMap = Object.fromEntries(
-    (req.pipelineStageCounts ?? []).map(s => [s.stageId, s.count])
-  );
   const totalPipeline =
     req._count?.pipelines ?? (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
   const openings = req.totalOpenings ?? 0;
-  const assignees = (req.assignments ?? [])
-    .filter((a, i, arr) => arr.findIndex(x => x.assignedTo?.id === a.assignedTo?.id) === i)
-    .slice(0, 5);
+
+  // For card view: show stacked avatars + assign button in the bottom strip
+  const activeAssignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
+  const topLevelAssignees = activeAssignments.filter(a => (a.depth ?? 0) === 0);
 
   return (
     <div
@@ -1467,33 +1588,36 @@ function RequirementCard({
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between ml-6">
-            <div className="flex -space-x-1.5">
-              {assignees.map(
-                a =>
-                  a.assignedTo && (
-                    <div
-                      key={a.id}
-                      className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white ${avatarColor(a.assignedTo.id)}`}
-                      title={`${a.assignedTo.firstName} ${a.assignedTo.lastName}`}
-                    >
-                      {initials(`${a.assignedTo.firstName} ${a.assignedTo.lastName}`)}
-                    </div>
-                  )
+
+          {/* Bottom strip: assignees + assign button */}
+          <div
+            className="flex items-center justify-between ml-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <AssigneesPopover req={req} canAdd={canAdd} onAssign={onAssign} />
+            <div className="flex items-center gap-2">
+              {canAdd && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onAssign(req);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 border border-blue-200 hover:border-blue-300 rounded-lg transition-colors"
+                >
+                  <UserPlus size={11} />
+                  Assign
+                </button>
               )}
-              {(req.assignments?.length ?? 0) > 5 && (
-                <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-[10px] text-slate-600 font-bold">
-                  +{(req.assignments?.length ?? 0) - 5}
-                </div>
-              )}
+              <span
+                className={`text-[11px] font-medium ${age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'}`}
+              >
+                {age}d ago
+              </span>
             </div>
-            <span
-              className={`text-[11px] font-medium ${age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'}`}
-            >
-              {age}d ago
-            </span>
           </div>
         </div>
+
+        {/* Stage counts panel */}
         <div className="flex border-l border-slate-100 w-[55%] shrink-0">
           {stagesToRender.map(stage => {
             const color = STAGE_NUMBER_COLOR[stage.code] ?? 'text-slate-400';
@@ -1575,15 +1699,34 @@ function RequirementCard({
               >
                 {age}d ago
               </span>
-              <button
-                onClick={() => router.push(`/requirements/${idOrSlug}`)}
-                className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100"
-              >
-                <ChevronRight size={13} />
-              </button>
+              <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                {canAdd && (
+                  <button
+                    onClick={() => onAssign(req)}
+                    className="flex items-center gap-1 px-1.5 py-1 text-[10px] font-semibold text-blue-600 hover:bg-blue-50 border border-blue-200 rounded-md transition-colors"
+                  >
+                    <UserPlus size={10} />
+                    Assign
+                  </button>
+                )}
+                <button
+                  onClick={() => router.push(`/requirements/${idOrSlug}`)}
+                  className="w-6 h-6 rounded-md flex items-center justify-center text-slate-300 hover:text-slate-600 hover:bg-slate-100"
+                >
+                  <ChevronRight size={13} />
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Mobile assignees strip */}
+          {activeAssignments.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-1 ml-7" onClick={e => e.stopPropagation()}>
+              <AssigneesPopover req={req} canAdd={false} onAssign={onAssign} />
+            </div>
+          )}
         </div>
+
         {stagesToRender.length > 0 && (
           <div className="border-t border-slate-100">
             <button
@@ -1658,9 +1801,6 @@ function CardSkeleton() {
   );
 }
 
-// ─── canonicalPillFromDot ─────────────────────────────────────────────────────
-// Converts the dot bg class (e.g. "bg-blue-500") to a light pill class.
-// All colors are pre-listed so Tailwind includes them in the bundle.
 function canonicalPillFromDot(dotCls: string): string {
   const map: Record<string, string> = {
     'bg-slate-500': 'bg-slate-100 text-slate-700',
@@ -1720,7 +1860,16 @@ function RequirementsPageInner() {
     stageLabel: string;
   }>({ open: false, requirementId: '', requirementTitle: '', stageId: null, stageLabel: '' });
 
-  // Pipeline stages (for card view + candidate drawer)
+  // Assign handler — navigate to the requirement detail page's assign tab
+  // You can swap this for a modal/sheet if you build one later
+  const handleAssign = useCallback(
+    (req: Requirement) => {
+      const idOrSlug = req.slug ?? req.id;
+      router.push(`/requirements/${idOrSlug}?tab=assignments`);
+    },
+    [router]
+  );
+
   const { data: stagesData } = useQuery({
     queryKey: ['pipeline-stages'],
     queryFn: async () =>
@@ -1729,24 +1878,19 @@ function RequirementsPageInner() {
   });
   const allStages = ((stagesData as PipelineStage[]) ?? []).sort((a, b) => a.order - b.order);
 
-  // Canonical stage meta — from /candidates/meta, never hardcoded.
-  // Provides ordered keys, human labels, and pill/dot color classes.
   const { data: candidateMeta } = useCandidateMeta();
   const canonicalMeta: { key: string; label: string; pillCls: string }[] = useMemo(() => {
     if (!candidateMeta?.canonicalStages) return [];
     return candidateMeta.canonicalStages.map(s => ({
       key: s.key,
-      // Human label: convert OFFER_IN_PROGRESS → "Offer In Progress"
       label: s.key
         .split('_')
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' '),
-      // Pill background+text derived from the dot color class from the hook
       pillCls: canonicalPillFromDot(canonicalDot(s.key)),
     }));
   }, [candidateMeta]);
 
-  // Stats
   const { data: statsData } = useQuery<StatsResponse>({
     queryKey: ['requirement-stats'],
     queryFn: async () => (await axios.get('/requirements/stats')).data,
@@ -1754,7 +1898,6 @@ function RequirementsPageInner() {
   });
   const byStatus = statsData?.data?.byStatus ?? {};
 
-  // Sidebar / filter dropdown data
   const { data: busData, isLoading: busLoading } = useQuery({
     queryKey: ['business-units'],
     queryFn: () =>
@@ -1778,7 +1921,6 @@ function RequirementsPageInner() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Requirements query
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (search) p.set('search', search);
@@ -1805,12 +1947,7 @@ function RequirementsPageInner() {
   const canAdd = reqData?.permissions?.canAdd ?? false;
   const isSuperAdmin = reqData?.scope?.isSuperAdmin ?? false;
 
-  // Canonical stage keys — ordered from /candidates/meta, never hardcoded.
-  // Use all keys from meta so columns are always consistent regardless of
-  // whether the current page has any candidates in a given stage.
-  const canonicalKeys = useMemo(() => {
-    return canonicalMeta.map(s => s.key);
-  }, [canonicalMeta]);
+  const canonicalKeys = useMemo(() => canonicalMeta.map(s => s.key), [canonicalMeta]);
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -1838,21 +1975,15 @@ function RequirementsPageInner() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
-      {/* ── Top navbar strip — filter bar ── */}
+      {/* ── Top navbar strip ── */}
       <div className="bg-white border-b border-slate-200 shrink-0">
-        {/* Row 1: scope + search + actions */}
         <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap">
-          {/* Scope switcher */}
           <ScopeSwitcher
             value={createdByScope}
             onChange={setCreatedByScope}
             isSuperAdmin={isSuperAdmin}
           />
-
-          {/* Divider */}
           <div className="h-5 w-px bg-slate-200 shrink-0 hidden sm:block" />
-
-          {/* Search */}
           <div className="relative">
             <Search
               size={13}
@@ -1873,11 +2004,7 @@ function RequirementsPageInner() {
               </button>
             )}
           </div>
-
-          {/* Spacer */}
           <div className="flex-1" />
-
-          {/* Select all + count */}
           <div className="flex items-center gap-2 shrink-0">
             <Checkbox
               checked={requirements.length > 0 && selectedIds.size === requirements.length}
@@ -1887,14 +2014,8 @@ function RequirementsPageInner() {
               {reqLoading ? '…' : `${total} found`}
             </span>
           </div>
-
-          {/* View toggle */}
           <ViewToggle value={viewMode} onChange={setViewMode} />
-
-          {/* Export */}
           <ExportButton filters={exportFilters} />
-
-          {/* Add new */}
           {canAdd && (
             <Button
               size="sm"
@@ -1905,8 +2026,6 @@ function RequirementsPageInner() {
             </Button>
           )}
         </div>
-
-        {/* Row 2: filter bar — status tabs + dropdown filters */}
         <div className="px-4 pb-2.5 overflow-x-auto scrollbar-none">
           <FilterBar
             status={status}
@@ -1932,7 +2051,6 @@ function RequirementsPageInner() {
         </div>
       </div>
 
-      {/* Active filter chips — shown only when filters are set */}
       {hasActiveFilters && (
         <ActiveFilterChips
           status={status}
@@ -1978,6 +2096,8 @@ function RequirementsPageInner() {
                 canonicalMeta={canonicalMeta}
                 onStageClick={(req, stageId) => openDrawer(req, stageId)}
                 allStages={allStages}
+                canAdd={canAdd}
+                onAssign={handleAssign}
               />
             )}
           </div>
@@ -2004,6 +2124,8 @@ function RequirementsPageInner() {
                   onSelect={toggleSelect}
                   allStages={allStages}
                   onStageClick={openDrawer}
+                  canAdd={canAdd}
+                  onAssign={handleAssign}
                 />
               ))
             )}
@@ -2063,7 +2185,6 @@ function RequirementsPageInner() {
         </div>
       </div>
 
-      {/* Candidate Drawer */}
       <CandidateDrawer
         open={drawer.open}
         onClose={() => setDrawer(d => ({ ...d, open: false }))}

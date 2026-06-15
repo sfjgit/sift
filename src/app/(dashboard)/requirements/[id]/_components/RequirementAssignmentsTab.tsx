@@ -1,3 +1,4 @@
+/* eslint-disable react/no-unescaped-entities */
 // File: RequirementAssignmentsTab.tsx
 // Path: src/components/requirements/RequirementAssignmentsTab.tsx
 
@@ -10,11 +11,11 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import {
   Calendar,
+  ChevronDown,
   ChevronRight,
   Plus,
   Trash2,
   Users,
-  ExternalLink,
   Search,
   Check,
   Loader2,
@@ -22,6 +23,8 @@ import {
   UserPlus,
   TreePine,
   Clock,
+  Briefcase,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,44 +35,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
-import { useRouter } from 'next/navigation';
 import { daysRemaining, fullName } from './types';
 import type { RequirementTree } from './types';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const STAGE_COLORS: Record<string, string> = {
-  '01': 'bg-slate-100 text-slate-700 border-slate-200',
-  '02': 'bg-blue-50 text-blue-700 border-blue-200',
-  '03': 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  '04': 'bg-violet-50 text-violet-700 border-violet-200',
-  '05': 'bg-purple-50 text-purple-700 border-purple-200',
-  '06': 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
-  '07A': 'bg-pink-50 text-pink-700 border-pink-200',
-  '07B': 'bg-pink-50 text-pink-700 border-pink-200',
-  '08': 'bg-rose-50 text-rose-700 border-rose-200',
-  '09': 'bg-orange-50 text-orange-700 border-orange-200',
-  '10': 'bg-green-50 text-green-700 border-green-200',
-};
-
-const BORDER_COLORS = [
-  'border-l-blue-400',
-  'border-l-violet-400',
-  'border-l-amber-400',
-  'border-l-emerald-400',
-];
-
-const AVATAR_PALETTE = [
-  'bg-blue-100 text-blue-700',
-  'bg-violet-100 text-violet-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-amber-100 text-amber-700',
-  'bg-rose-100 text-rose-700',
-  'bg-cyan-100 text-cyan-700',
-  'bg-indigo-100 text-indigo-700',
-  'bg-orange-100 text-orange-700',
-];
-const avatarColor = (seed: string) => AVATAR_PALETTE[seed.charCodeAt(0) % AVATAR_PALETTE.length];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,11 +58,67 @@ interface SubordinateUser {
   lastName: string;
   email: string;
   employeeId: string | null;
+  _source?: 'chain' | 'extra';
   department: { id: string; name: string } | null;
   role: { id: string; name: string };
 }
 
-// ─── Deadline Badge ───────────────────────────────────────────────────────────
+// ─── Avatar palette ───────────────────────────────────────────────────────────
+
+const AVATAR_PALETTE = [
+  'bg-blue-100 text-blue-700',
+  'bg-violet-100 text-violet-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-orange-100 text-orange-700',
+];
+const avatarColor = (seed: string) => AVATAR_PALETTE[seed.charCodeAt(0) % AVATAR_PALETTE.length];
+
+const initials = (first = '', last = '') => `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
+
+// ─── Stage pill colors ────────────────────────────────────────────────────────
+
+const STAGE_PILL: Record<string, string> = {
+  '01': 'bg-slate-100 text-slate-600',
+  '02': 'bg-blue-50 text-blue-700',
+  '03': 'bg-indigo-50 text-indigo-700',
+  '04': 'bg-violet-50 text-violet-700',
+  '05': 'bg-purple-50 text-purple-700',
+  '06': 'bg-fuchsia-50 text-fuchsia-700',
+  '07A': 'bg-pink-50 text-pink-700',
+  '07B': 'bg-pink-50 text-pink-700',
+  '08': 'bg-rose-50 text-rose-700',
+  '09': 'bg-orange-50 text-orange-700',
+  '10': 'bg-green-50 text-green-700',
+};
+
+// Depth → connector + card accent colors
+const DEPTH_COLORS = [
+  {
+    connector: 'border-blue-300',
+    accent: 'border-l-blue-400',
+    dot: 'bg-blue-400',
+    badge: 'bg-blue-50 text-blue-700',
+  },
+  {
+    connector: 'border-violet-300',
+    accent: 'border-l-violet-400',
+    dot: 'bg-violet-400',
+    badge: 'bg-violet-50 text-violet-700',
+  },
+  {
+    connector: 'border-amber-300',
+    accent: 'border-l-amber-400',
+    dot: 'bg-amber-400',
+    badge: 'bg-amber-50 text-amber-700',
+  },
+];
+const depthColor = (depth: number) => DEPTH_COLORS[depth % DEPTH_COLORS.length];
+
+// ─── Deadline badge ───────────────────────────────────────────────────────────
 
 function DeadlineBadge({
   deadline,
@@ -110,17 +133,273 @@ function DeadlineBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold border',
+        'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold border',
         breached
-          ? 'bg-red-50 text-red-700 border-red-200'
-          : days !== null && days <= 2
-            ? 'bg-amber-50 text-amber-700 border-amber-200'
-            : 'bg-slate-50 text-slate-600 border-slate-200'
+          ? 'bg-red-50 text-red-600 border-red-200'
+          : days !== null && days <= 3
+            ? 'bg-amber-50 text-amber-600 border-amber-200'
+            : 'bg-slate-50 text-slate-500 border-slate-200'
       )}
     >
-      <Calendar className="h-3 w-3" />
+      <Calendar className="h-2.5 w-2.5" />
       {breached ? `${Math.abs(days ?? 0)}d overdue` : `${days}d left`}
     </span>
+  );
+}
+
+// ─── Candidate mini-row ───────────────────────────────────────────────────────
+
+function CandidateRow({ p }: { p: any }) {
+  const stageCls = STAGE_PILL[p.currentStage?.code] ?? 'bg-slate-100 text-slate-600';
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+      <div
+        className={cn(
+          'w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0',
+          avatarColor(p.snapshot?.fullName ?? p.id)
+        )}
+      >
+        {(p.snapshot?.fullName ?? '?')[0]}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-semibold text-slate-800 truncate">
+          {p.snapshot?.fullName ?? '—'}
+        </p>
+        {(p.snapshot?.currentTitle || p.snapshot?.currentCompany) && (
+          <p className="text-[10px] text-slate-400 truncate">
+            {[p.snapshot.currentTitle, p.snapshot.currentCompany].filter(Boolean).join(' @ ')}
+          </p>
+        )}
+      </div>
+      <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0', stageCls)}>
+        {p.currentStage?.label ?? '—'}
+      </span>
+    </div>
+  );
+}
+
+// ─── Assignment Node Card ─────────────────────────────────────────────────────
+// Compact card — name, dept, stats, candidates (collapsed), actions
+
+function AssignmentNode({
+  node,
+  canEdit,
+  onSubAssign,
+  onRemove,
+  isLast,
+}: {
+  node: any;
+  canEdit: boolean;
+  onSubAssign: (parentId: string) => void;
+  onRemove: (assignmentId: string) => void;
+  isLast: boolean;
+}) {
+  const [showCandidates, setShowCandidates] = useState(false);
+  const [childrenExpanded, setChildrenExpanded] = useState(true);
+
+  const depth = node.depth ?? 0;
+  const dc = depthColor(depth);
+  const hasChildren = (node.children ?? []).length > 0;
+  const pipelines: any[] = node.pipelines ?? [];
+  const activePipelines = pipelines.filter((p: any) => !p.isRejected && !p.isWithdrawn);
+  const ac = avatarColor(node.assignedTo?.id ?? '');
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* ── Card ── */}
+      <div
+        className={cn(
+          'w-64 rounded-xl border border-l-[3px] bg-white shadow-sm transition-shadow hover:shadow-md',
+          dc.accent
+        )}
+      >
+        {/* Header */}
+        <div className="flex items-start gap-2.5 px-3.5 py-3">
+          <div
+            className={cn(
+              'w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
+              ac
+            )}
+          >
+            {initials(node.assignedTo?.firstName, node.assignedTo?.lastName)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-bold text-slate-900 leading-tight truncate">
+              {node.assignedTo?.firstName} {node.assignedTo?.lastName}
+            </p>
+            <p className="text-[10px] text-slate-400 truncate mt-0.5">
+              {node.assignedTo?.department?.name ?? 'No department'}
+            </p>
+            {node.assignedTo?.employeeId && (
+              <p className="text-[10px] font-mono text-slate-300 truncate">
+                {node.assignedTo.employeeId}
+              </p>
+            )}
+          </div>
+          {canEdit && (
+            <button
+              onClick={() => onRemove(node.id)}
+              className="text-slate-200 hover:text-red-400 transition-colors shrink-0 mt-0.5"
+              title="Remove assignment"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100">
+          {[
+            { label: 'Sourced', value: pipelines.length, color: 'text-blue-600' },
+            { label: 'Submitted', value: node.submissionsCount ?? 0, color: 'text-violet-600' },
+            { label: 'Interviews', value: node.interviewsCount ?? 0, color: 'text-emerald-600' },
+          ].map(s => (
+            <div key={s.label} className="flex flex-col items-center py-2.5">
+              <p className={cn('text-[18px] font-black tabular-nums leading-none', s.color)}>
+                {s.value}
+              </p>
+              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mt-1">
+                {s.label}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer: deadline + meta + actions */}
+        <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <DeadlineBadge deadline={node.deadline} breachedAt={node.breachedAt} />
+          </div>
+          <div className="flex items-center gap-1">
+            {/* Candidates toggle */}
+            {pipelines.length > 0 && (
+              <button
+                onClick={() => setShowCandidates(v => !v)}
+                className={cn(
+                  'flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors',
+                  showCandidates
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                )}
+                title={showCandidates ? 'Hide candidates' : 'Show candidates'}
+              >
+                <Users className="w-3 h-3" />
+                {activePipelines.length}
+              </button>
+            )}
+            {/* Sub-assign */}
+            {canEdit && depth < 2 && (
+              <button
+                onClick={() => onSubAssign(node.id)}
+                className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition-colors"
+                title="Sub-assign"
+              >
+                <Plus className="w-3 h-3" />
+                Sub
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Assigned by */}
+        <div className="px-3.5 pb-2.5">
+          <p className="text-[10px] text-slate-300">
+            by {node.assignedBy?.firstName} {node.assignedBy?.lastName}
+            {' · '}
+            {formatDistanceToNow(new Date(node.assignedAt), { addSuffix: true })}
+          </p>
+        </div>
+
+        {/* Candidates list — collapsible */}
+        {showCandidates && pipelines.length > 0 && (
+          <div className="border-t border-slate-100 px-3 py-2.5 space-y-1.5 max-h-48 overflow-y-auto">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              Candidates ({activePipelines.length} active)
+            </p>
+            {activePipelines.slice(0, 8).map((p: any) => (
+              <CandidateRow key={p.id} p={p} />
+            ))}
+            {activePipelines.length > 8 && (
+              <p className="text-[10px] text-slate-400 text-center pt-1">
+                +{activePipelines.length - 8} more
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Connector down + children ── */}
+      {hasChildren && (
+        <>
+          {/* Vertical line down from card to children row */}
+          <div className={cn('w-px h-6 border-l-2 border-dashed', dc.connector)} />
+
+          {/* Collapse toggle */}
+          <button
+            onClick={() => setChildrenExpanded(e => !e)}
+            className={cn(
+              'flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors mb-1',
+              dc.badge,
+              'border-transparent hover:border-current'
+            )}
+          >
+            {childrenExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            {node.children.length} sub-assignment{node.children.length !== 1 ? 's' : ''}
+          </button>
+
+          {childrenExpanded && (
+            <>
+              {/* Horizontal rail connecting children */}
+              <div className="flex items-start gap-0">
+                {node.children.map((child: any, ci: number) => {
+                  const isFirstChild = ci === 0;
+                  const isLastChild = ci === node.children.length - 1;
+                  const isOnlyChild = node.children.length === 1;
+                  return (
+                    <div key={child.id} className="flex flex-col items-center">
+                      {/* Top connector per child */}
+                      <div className="flex items-center w-full justify-center">
+                        {/* Left arm */}
+                        {!isOnlyChild && !isFirstChild && (
+                          <div
+                            className={cn('flex-1 h-px border-t-2 border-dashed', dc.connector)}
+                          />
+                        )}
+                        {isOnlyChild && <div className="w-8" />}
+                        {/* Down stub */}
+                        <div className={cn('w-px h-4 border-l-2 border-dashed', dc.connector)} />
+                        {/* Right arm */}
+                        {!isOnlyChild && !isLastChild && (
+                          <div
+                            className={cn('flex-1 h-px border-t-2 border-dashed', dc.connector)}
+                          />
+                        )}
+                        {isOnlyChild && <div className="w-8" />}
+                      </div>
+
+                      {/* Recursive child node */}
+                      <div className={cn(ci !== node.children.length - 1 ? 'mr-6' : '')}>
+                        <AssignmentNode
+                          node={child}
+                          canEdit={canEdit}
+                          onSubAssign={onSubAssign}
+                          onRemove={onRemove}
+                          isLast={isLastChild}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -158,11 +437,11 @@ function PersonPicker({
     return (
       <div className="space-y-3 py-2">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="flex items-center gap-4">
-            <div className="h-11 w-11 rounded-full bg-slate-100 animate-pulse shrink-0" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-36 bg-slate-100 animate-pulse rounded" />
-              <div className="h-3 w-24 bg-slate-100 animate-pulse rounded" />
+          <div key={i} className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-slate-100 animate-pulse shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3.5 w-32 bg-slate-100 animate-pulse rounded" />
+              <div className="h-3 w-20 bg-slate-100 animate-pulse rounded" />
             </div>
           </div>
         ))}
@@ -171,22 +450,21 @@ function PersonPicker({
 
   if (subs.length === 0)
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-        <Users className="w-12 h-12 opacity-20" />
-        <p className="text-sm font-medium">No direct reports found</p>
+      <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
+        <Users className="w-10 h-10 opacity-20" />
+        <p className="text-sm">No people in your reporting tree</p>
       </div>
     );
 
   return (
     <div className="flex flex-col gap-3 h-full">
-      {/* Search */}
       <div className="relative shrink-0">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, role, employee ID…"
-          className="pl-10 h-10 text-sm"
+          className="pl-9 h-9 text-sm"
           autoFocus
         />
         {search && (
@@ -194,15 +472,14 @@ function PersonPicker({
             onClick={() => setSearch('')}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
-      {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white min-h-0">
+      <div className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white min-h-0 divide-y divide-slate-100">
         {filtered.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-sm text-slate-400">
+          <div className="flex items-center justify-center py-10 text-sm text-slate-400">
             No match for "{search}"
           </div>
         ) : (
@@ -216,7 +493,7 @@ function PersonPicker({
                 disabled={isAssigned}
                 onClick={() => !isAssigned && onToggle(u.id)}
                 className={cn(
-                  'w-full flex items-center gap-4 px-5 py-4 border-b border-slate-100 last:border-0 text-left transition-colors',
+                  'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors',
                   isAssigned
                     ? 'opacity-40 cursor-not-allowed bg-slate-50'
                     : isSelected
@@ -227,22 +504,21 @@ function PersonPicker({
                 {/* Checkbox */}
                 <div
                   className={cn(
-                    'w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-all',
+                    'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all',
                     isSelected ? 'bg-primary border-primary' : 'border-slate-300'
                   )}
                 >
-                  {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                  {isSelected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
                 </div>
 
                 {/* Avatar */}
                 <div
                   className={cn(
-                    'h-10 w-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold',
+                    'h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold',
                     isSelected ? 'bg-primary/15 text-primary' : ac
                   )}
                 >
-                  {u.firstName[0]}
-                  {u.lastName[0]}
+                  {initials(u.firstName, u.lastName)}
                 </div>
 
                 {/* Info */}
@@ -254,23 +530,26 @@ function PersonPicker({
                     )}
                   >
                     {u.firstName} {u.lastName}
+                    {u._source === 'extra' && (
+                      <span className="ml-1.5 text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                        Extended
+                      </span>
+                    )}
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">
+                  <p className="text-[11px] text-slate-400 truncate">
                     {u.role.name}
                     {u.department ? ` · ${u.department.name}` : ''}
-                    {u.employeeId && (
-                      <span className="ml-2 font-mono text-slate-400">{u.employeeId}</span>
-                    )}
+                    {u.employeeId && <span className="ml-1.5 font-mono">{u.employeeId}</span>}
                   </p>
                 </div>
 
                 {isAssigned ? (
-                  <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 shrink-0">
+                  <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">
                     Assigned
                   </span>
                 ) : isSelected ? (
-                  <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2.5 py-1 rounded-full shrink-0">
-                    ✓ Selected
+                  <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full shrink-0">
+                    ✓
                   </span>
                 ) : null}
               </button>
@@ -279,12 +558,9 @@ function PersonPicker({
         )}
       </div>
 
-      {/* Count */}
       {multi && selectedIds.size > 0 && (
         <div className="flex items-center justify-between shrink-0">
-          <p className="text-sm font-semibold text-primary">
-            {selectedIds.size} recruiter{selectedIds.size !== 1 ? 's' : ''} selected
-          </p>
+          <p className="text-sm font-semibold text-primary">{selectedIds.size} selected</p>
           <button
             onClick={() => Array.from(selectedIds).forEach(id => onToggle(id))}
             className="text-xs text-slate-400 hover:text-slate-600 underline"
@@ -367,8 +643,7 @@ function AssignDialog({
         const { created = [], skipped = [] } = res.data?.data ?? {};
         if (created.length > 0)
           toast.success(`${created.length} assignment${created.length !== 1 ? 's' : ''} created`);
-        if (skipped.length > 0)
-          toast.warning(`${skipped.length} skipped — ${skipped[0]?.reason ?? 'already assigned'}`);
+        if (skipped.length > 0) toast.warning(`${skipped.length} skipped — already assigned`);
       } else {
         const [assignedToId] = Array.from(selectedIds);
         await axios.post(`/requirements/${requirementId}/assignments`, {
@@ -389,82 +664,53 @@ function AssignDialog({
 
   return (
     <Dialog open={open} onOpenChange={o => !o && handleClose()}>
-      {/*
-        p-0 gap-0: kill DialogContent's default padding/gap so we control every zone.
-        max-w-5xl w-[90vw]: genuinely large — ~1024px cap, 90vw on smaller screens.
-        h-[85vh]: tall enough to show the full list without tiny scrollboxes.
-        showCloseButton=false: we render our own X in the header.
-      */}
       <DialogContent
         showCloseButton={false}
-        className="p-0 gap-0 max-w-5xl w-[90vw] h-[85vh] flex flex-col overflow-hidden"
+        className="p-0 gap-0 max-w-3xl w-[90vw] h-[80vh] flex flex-col overflow-hidden"
       >
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div
-          className={cn(
-            'flex items-center justify-between px-8 py-6 border-b border-slate-100 shrink-0',
-            isTopLevel
-              ? 'bg-gradient-to-r from-primary/5 via-transparent to-violet-500/5'
-              : 'bg-slate-50'
-          )}
-        >
-          <div className="flex items-center gap-4 min-w-0">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 shrink-0 bg-slate-50">
+          <div className="flex items-center gap-3 min-w-0">
             <div
               className={cn(
-                'w-12 h-12 rounded-2xl flex items-center justify-center shrink-0',
+                'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
                 isTopLevel ? 'bg-primary/10' : 'bg-violet-100'
               )}
             >
               {isTopLevel ? (
-                <UserPlus className="w-6 h-6 text-primary" />
+                <UserPlus className="w-5 h-5 text-primary" />
               ) : (
-                <TreePine className="w-6 h-6 text-violet-600" />
+                <TreePine className="w-5 h-5 text-violet-600" />
               )}
             </div>
             <div className="min-w-0">
-              <h2 className="text-xl font-bold text-slate-900">
-                {isTopLevel ? 'Assign Recruiters' : 'Sub-Assign Recruiter'}
+              <h2 className="text-base font-bold text-slate-900">
+                {isTopLevel ? 'Assign Recruiters' : 'Sub-Assign'}
               </h2>
-              {isTopLevel && req ? (
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-xs font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                    {req.reqCode}
-                  </span>
-                  <span className="text-sm text-slate-600 truncate">{req.title}</span>
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                    {req.totalOpenings} openings
-                  </span>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500 mt-1">
-                  Select one person to sub-assign under this recruiter
+              {req && (
+                <p className="text-xs text-slate-500 truncate mt-0.5">
+                  {req.reqCode} · {req.title}
                 </p>
               )}
             </div>
           </div>
           <button
             onClick={handleClose}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* ── Body ───────────────────────────────────────────────────────── */}
-        <div
-          className={cn('flex-1 min-h-0 p-8', isTopLevel ? 'grid gap-8' : 'flex flex-col gap-6')}
-          style={isTopLevel ? { gridTemplateColumns: '1fr 320px' } : undefined}
-        >
-          {/* Left — person picker (fills all height) */}
-          <div className="flex flex-col gap-3 min-h-0">
+        {/* Body */}
+        <div className="flex-1 min-h-0 flex gap-0 overflow-hidden">
+          {/* Left — person list */}
+          <div className="flex-1 min-w-0 p-5 flex flex-col gap-3 border-r border-slate-100">
             <div className="flex items-center justify-between shrink-0">
-              <Label className="text-sm font-semibold text-slate-800">
-                {isTopLevel ? 'Select recruiters' : 'Select person'}
-                <span className="text-destructive ml-0.5">*</span>
+              <Label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                {isTopLevel ? 'Select people' : 'Select one person'}
               </Label>
-              <span className="text-xs text-slate-400">
-                {subs.length} people in your reporting tree
-              </span>
+              <span className="text-[11px] text-slate-400">{subs.length} available</span>
             </div>
             <PersonPicker
               subs={subs}
@@ -476,13 +722,12 @@ function AssignDialog({
             />
           </div>
 
-          {/* Right — deadline + selected summary */}
-          <div className="flex flex-col gap-5 min-h-0">
+          {/* Right — deadline + selected */}
+          <div className="w-60 shrink-0 p-5 flex flex-col gap-5">
             {/* Deadline */}
             <div className="space-y-2">
-              <Label className="text-sm font-semibold text-slate-800">
-                Deadline
-                <span className="font-normal text-slate-400 ml-1">(optional)</span>
+              <Label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                Deadline <span className="font-normal text-slate-400 normal-case">(optional)</span>
               </Label>
               <Popover open={calOpen} onOpenChange={setCalOpen}>
                 <PopoverTrigger asChild>
@@ -490,11 +735,11 @@ function AssignDialog({
                     variant="outline"
                     type="button"
                     className={cn(
-                      'w-full justify-start text-sm font-normal h-11',
+                      'w-full justify-start text-xs font-normal h-9',
                       !deadline && 'text-slate-400'
                     )}
                   >
-                    <Calendar className="mr-2.5 h-4 w-4 shrink-0" />
+                    <Calendar className="mr-2 h-3.5 w-3.5 shrink-0" />
                     {deadline ? format(deadline, 'dd MMM yyyy') : 'Pick a date'}
                   </Button>
                 </PopoverTrigger>
@@ -514,54 +759,37 @@ function AssignDialog({
               {deadline && (
                 <button
                   onClick={() => setDeadline(undefined)}
-                  className="text-xs text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1"
+                  className="text-[11px] text-slate-400 hover:text-rose-500 flex items-center gap-1"
                 >
-                  <X className="w-3 h-3" /> Clear deadline
+                  <X className="w-3 h-3" /> Clear date
                 </button>
-              )}
-              {isTopLevel && req?.deadline && (
-                <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                  <Clock className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-blue-700 leading-snug">
-                    Pre-filled from requirement's respond-by date
-                  </p>
-                </div>
               )}
             </div>
 
-            {/* Selected summary — only top-level */}
+            {/* Selected summary — top level only */}
             {isTopLevel && (
-              <div className="flex-1 min-h-0 flex flex-col gap-2">
+              <div className="flex-1 flex flex-col gap-2 min-h-0">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-700">
+                  <Label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
                     Selected
                     {selectedIds.size > 0 && (
-                      <span className="ml-2 text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                      <span className="ml-1.5 bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                         {selectedIds.size}
                       </span>
                     )}
-                  </p>
-                  {selectedIds.size > 0 && (
-                    <button
-                      onClick={() => Array.from(selectedIds).forEach(id => toggle(id))}
-                      className="text-xs text-slate-400 hover:text-rose-500 transition-colors"
-                    >
-                      Clear all
-                    </button>
-                  )}
+                  </Label>
                 </div>
-
                 <div
                   className={cn(
                     'flex-1 rounded-xl border-2 border-dashed min-h-0 overflow-y-auto',
                     selectedIds.size === 0
-                      ? 'border-slate-200 flex items-center justify-center'
-                      : 'border-primary/20 bg-primary/5 p-3 space-y-2'
+                      ? 'border-slate-100 flex items-center justify-center'
+                      : 'border-primary/10 bg-primary/[0.02] p-2 space-y-1.5'
                   )}
                 >
                   {selectedIds.size === 0 ? (
-                    <p className="text-sm text-slate-400 text-center px-4">
-                      Selected recruiters will appear here
+                    <p className="text-xs text-slate-300 text-center px-3">
+                      Selected people appear here
                     </p>
                   ) : (
                     Array.from(selectedIds).map(id => {
@@ -570,28 +798,26 @@ function AssignDialog({
                       return (
                         <div
                           key={id}
-                          className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-primary/10 shadow-sm"
+                          className="flex items-center gap-2 bg-white rounded-lg px-2.5 py-2 border border-primary/10 shadow-sm"
                         >
                           <div
                             className={cn(
-                              'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
+                              'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
                               avatarColor(id)
                             )}
                           >
-                            {u.firstName[0]}
-                            {u.lastName[0]}
+                            {initials(u.firstName, u.lastName)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800 truncate">
+                            <p className="text-xs font-semibold text-slate-800 truncate">
                               {u.firstName} {u.lastName}
                             </p>
-                            <p className="text-[11px] text-slate-400 truncate">{u.role.name}</p>
                           </div>
                           <button
                             onClick={() => toggle(id)}
-                            className="text-slate-300 hover:text-rose-500 transition-colors shrink-0"
+                            className="text-slate-200 hover:text-rose-400 shrink-0"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       );
@@ -603,271 +829,39 @@ function AssignDialog({
           </div>
         </div>
 
-        {/* ── Footer ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-8 py-5 border-t border-slate-100 bg-slate-50/80 shrink-0">
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/80 shrink-0">
           <Button
             variant="ghost"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="text-slate-500 h-11 px-6"
+            className="text-slate-500 h-9 px-5 text-sm"
           >
             Cancel
           </Button>
           <Button
             disabled={selectedIds.size === 0 || isSubmitting}
             onClick={handleSubmit}
-            className="min-w-[180px] h-11 gap-2 text-sm"
+            className="min-w-[140px] h-9 gap-1.5 text-sm"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Assigning…
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Assigning…
               </>
             ) : isTopLevel ? (
               <>
-                <UserPlus className="w-4 h-4" />
-                Assign
-                {selectedIds.size > 0
-                  ? ` ${selectedIds.size} Recruiter${selectedIds.size !== 1 ? 's' : ''}`
-                  : ''}
+                <UserPlus className="w-3.5 h-3.5" /> Assign{' '}
+                {selectedIds.size > 0 ? selectedIds.size : ''}
               </>
             ) : (
               <>
-                <TreePine className="w-4 h-4" />
-                Sub-Assign
+                <TreePine className="w-3.5 h-3.5" /> Sub-Assign
               </>
             )}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ─── Assignment Card ──────────────────────────────────────────────────────────
-
-function AssignmentCard({
-  node,
-  canEdit,
-  onAssignChild,
-  onRemove,
-}: {
-  node: any;
-  canEdit: boolean;
-  onAssignChild: (parentId: string) => void;
-  onRemove: (assignmentId: string) => void;
-}) {
-  const router = useRouter();
-  const [expanded, setExpanded] = useState(true);
-  const hasChildren = node.children?.length > 0;
-
-  const pipelines: any[] = node.pipelines ?? [];
-  const activePipelines = pipelines.filter((p: any) => !p.isRejected && !p.isWithdrawn);
-  const rejectedCount = pipelines.filter((p: any) => p.isRejected).length;
-  const withdrawnCount = pipelines.filter((p: any) => p.isWithdrawn).length;
-  const ac = avatarColor(node.assignedTo?.id ?? '');
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div
-        className={cn(
-          'rounded-xl border border-l-4 bg-white shadow-sm',
-          BORDER_COLORS[node.depth % BORDER_COLORS.length]
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100">
-          <div className="flex items-center gap-4 min-w-0">
-            <div
-              className={cn(
-                'h-12 w-12 rounded-full flex items-center justify-center shrink-0 text-sm font-bold',
-                ac
-              )}
-            >
-              {node.assignedTo?.firstName?.[0]}
-              {node.assignedTo?.lastName?.[0]}
-            </div>
-            <div className="min-w-0">
-              <p className="text-base font-bold text-slate-900">{fullName(node.assignedTo)}</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {node.assignedTo?.role?.name}
-                {node.assignedTo?.department?.name ? ` · ${node.assignedTo.department.name}` : ''}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-            <DeadlineBadge deadline={node.deadline} breachedAt={node.breachedAt} />
-            {canEdit && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs px-3 gap-1.5"
-                  onClick={() => onAssignChild(node.id)}
-                >
-                  <Plus className="h-3.5 w-3.5" /> Sub-assign
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 w-8 p-0 text-slate-400 hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => onRemove(node.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
-          {[
-            { label: 'Candidates', value: pipelines.length, color: 'text-blue-600' },
-            { label: 'Submitted', value: node.submissionsCount, color: 'text-violet-600' },
-            { label: 'Interviews', value: node.interviewsCount, color: 'text-emerald-600' },
-          ].map(s => (
-            <div key={s.label} className="flex flex-col items-center py-4">
-              <p className={cn('text-2xl font-black tabular-nums leading-none', s.color)}>
-                {s.value}
-              </p>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mt-1.5">
-                {s.label}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* Deadline row */}
-        {node.deadline && (
-          <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100 bg-slate-50/60 text-xs text-slate-500">
-            <Calendar className="h-3.5 w-3.5 shrink-0" />
-            Deadline:{' '}
-            <span className="font-semibold text-slate-700">
-              {format(new Date(node.deadline), 'dd MMM yyyy')}
-            </span>
-            {node.deadlineMet === true && (
-              <Badge
-                variant="outline"
-                className="text-[10px] border-emerald-300 text-emerald-600 ml-1"
-              >
-                Met
-              </Badge>
-            )}
-            {node.deadlineMet === false && (
-              <Badge variant="outline" className="text-[10px] border-red-300 text-red-600 ml-1">
-                Missed
-              </Badge>
-            )}
-          </div>
-        )}
-
-        {/* Candidates */}
-        {pipelines.length > 0 && (
-          <div className="px-6 py-5 space-y-2.5">
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-              Candidates · {activePipelines.length} active
-              {rejectedCount > 0 ? ` · ${rejectedCount} rejected` : ''}
-              {withdrawnCount > 0 ? ` · ${withdrawnCount} withdrawn` : ''}
-            </p>
-            {activePipelines.slice(0, 5).map((p: any) => (
-              <div
-                key={p.id}
-                className="flex items-center gap-3 rounded-lg bg-slate-50 border border-slate-100 px-4 py-3"
-              >
-                <div
-                  className={cn(
-                    'h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0',
-                    avatarColor(p.snapshot?.candidateServiceId ?? p.id)
-                  )}
-                >
-                  {p.snapshot?.fullName?.[0] ?? '?'}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-800 truncate">
-                    {p.snapshot?.fullName}
-                  </p>
-                  {p.snapshot?.currentTitle && (
-                    <p className="text-xs text-slate-400 truncate">
-                      {p.snapshot.currentTitle}
-                      {p.snapshot.currentCompany ? ` @ ${p.snapshot.currentCompany}` : ''}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {p.isOnHold && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] bg-amber-50 text-amber-700 border-amber-200"
-                    >
-                      Hold
-                    </Badge>
-                  )}
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'text-[10px] whitespace-nowrap',
-                      STAGE_COLORS[p.currentStage?.code] ?? 'bg-slate-100 text-slate-600'
-                    )}
-                  >
-                    {p.currentStage?.code} · {p.currentStage?.label}
-                  </Badge>
-                  <button
-                    onClick={() => router.push(`/pipeline/${p.id}`)}
-                    className="text-slate-300 hover:text-slate-600 transition-colors ml-1"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-            {activePipelines.length > 5 && (
-              <p className="text-xs text-slate-400 text-center pt-1">
-                +{activePipelines.length - 5} more candidates
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/40">
-          <p className="text-xs text-slate-400">
-            Assigned by{' '}
-            <span className="font-semibold text-slate-600">{fullName(node.assignedBy)}</span>
-            {' · '}
-            {formatDistanceToNow(new Date(node.assignedAt), { addSuffix: true })}
-          </p>
-        </div>
-      </div>
-
-      {/* Children */}
-      {hasChildren && expanded && (
-        <div className="ml-10 pl-5 space-y-3 border-l-2 border-dashed border-slate-200">
-          {node.children.map((child: any) => (
-            <AssignmentCard
-              key={child.id}
-              node={child}
-              canEdit={canEdit}
-              onAssignChild={onAssignChild}
-              onRemove={onRemove}
-            />
-          ))}
-        </div>
-      )}
-      {hasChildren && (
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="ml-6 flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-700 transition-colors select-none"
-        >
-          <ChevronRight
-            className={cn('h-3.5 w-3.5 transition-transform', expanded && 'rotate-90')}
-          />
-          {expanded
-            ? 'Collapse sub-assignments'
-            : `Show ${node.children.length} sub-assignment${node.children.length !== 1 ? 's' : ''}`}
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -878,11 +872,13 @@ export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props
   const queryClient = useQueryClient();
   const [assignParentId, setAssignParentId] = useState<string | null | undefined>(undefined);
 
+  // GET /requirements/:id/tree
   const treeQuery = useQuery<{ success: boolean; data: RequirementTree }>({
     queryKey: ['requirement-tree', requirementId],
     queryFn: async () => (await axios.get(`/requirements/${requirementId}/tree`)).data,
   });
 
+  // DELETE /requirements/:id/assignments/:assignmentId
   const removeMutation = useMutation({
     mutationFn: async (assignmentId: string) =>
       (await axios.delete(`/requirements/${requirementId}/assignments/${assignmentId}`)).data,
@@ -894,11 +890,12 @@ export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props
   });
 
   const tree = treeQuery.data?.data;
+  const nodes: any[] = tree?.assignmentTree ?? [];
 
-  const activeTopLevelIds = useMemo<Set<string>>(() => {
-    const nodes: any[] = tree?.assignmentTree ?? [];
-    return new Set(nodes.map((n: any) => n.assignedTo?.id).filter(Boolean));
-  }, [tree]);
+  const activeTopLevelIds = useMemo<Set<string>>(
+    () => new Set(nodes.map((n: any) => n.assignedTo?.id).filter(Boolean)),
+    [nodes]
+  );
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['requirement-tree', requirementId] });
@@ -906,49 +903,53 @@ export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props
     queryClient.invalidateQueries({ queryKey: ['requirements'] });
   }
 
+  const totalCandidates = nodes.reduce(
+    (sum: number, n: any) => sum + (n.pipelines?.length ?? 0),
+    0
+  );
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold text-slate-900">Assignment Tree</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Each recruiter can sub-assign to their own direct reports
+            {nodes.length} recruiter{nodes.length !== 1 ? 's' : ''} assigned
+            {totalCandidates > 0 && ` · ${totalCandidates} candidates sourced`}
           </p>
         </div>
         {canEdit && (
-          <Button size="sm" className="gap-2 h-9" onClick={() => setAssignParentId(null)}>
-            <UserPlus className="h-4 w-4" /> Assign Recruiters
+          <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setAssignParentId(null)}>
+            <UserPlus className="h-3.5 w-3.5" /> Assign
           </Button>
         )}
       </div>
 
       {/* Loading */}
       {treeQuery.isLoading && (
-        <div className="space-y-4">
-          {[1, 2].map(i => (
-            <div key={i} className="h-40 rounded-xl bg-slate-100 animate-pulse" />
+        <div className="flex items-center justify-center gap-6 py-12">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="w-56 h-36 rounded-xl bg-slate-100 animate-pulse" />
           ))}
         </div>
       )}
 
       {/* Empty */}
-      {!treeQuery.isLoading && (tree?.assignmentTree.length ?? 0) === 0 && (
-        <div className="rounded-xl border-2 border-dashed border-slate-200 p-14 text-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto">
-            <Users className="h-7 w-7 text-slate-400" />
+      {!treeQuery.isLoading && nodes.length === 0 && (
+        <div className="rounded-xl border-2 border-dashed border-slate-200 p-12 text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto">
+            <Users className="h-6 w-6 text-slate-400" />
           </div>
           <div>
             <p className="text-sm font-bold text-slate-600">No assignments yet</p>
-            <p className="text-xs text-slate-400 mt-1">
-              Assign recruiters to start sourcing candidates
-            </p>
+            <p className="text-xs text-slate-400 mt-1">Assign recruiters to start sourcing</p>
           </div>
           {canEdit && (
             <Button
               size="sm"
               variant="outline"
-              className="gap-2"
+              className="gap-1.5 text-xs"
               onClick={() => setAssignParentId(null)}
             >
               <UserPlus className="h-3.5 w-3.5" /> Make first assignment
@@ -957,21 +958,76 @@ export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props
         </div>
       )}
 
-      {/* Tree */}
-      {!treeQuery.isLoading && (tree?.assignmentTree.length ?? 0) > 0 && (
-        <div className="space-y-5">
-          {tree!.assignmentTree.map((node: any) => (
-            <AssignmentCard
-              key={node.id}
-              node={node}
-              canEdit={canEdit}
-              onAssignChild={id => setAssignParentId(id)}
-              onRemove={id => removeMutation.mutate(id)}
-            />
-          ))}
+      {/* ── Tree canvas ── */}
+      {!treeQuery.isLoading && nodes.length > 0 && (
+        <div className="w-full overflow-x-auto pb-4">
+          {/* Root node — the requirement itself */}
+          <div className="flex flex-col items-center">
+            {/* Requirement root pill */}
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl shadow-md mb-0">
+              <Briefcase className="w-4 h-4 opacity-70 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold truncate">{req?.title ?? 'Requirement'}</p>
+                {req?.reqCode && <p className="text-[10px] font-mono opacity-50">{req.reqCode}</p>}
+              </div>
+              <span className="text-[10px] font-bold bg-white/10 px-1.5 py-0.5 rounded-full shrink-0">
+                {req?.totalOpenings ?? 0} open
+              </span>
+            </div>
+
+            {/* Vertical line from root to children row */}
+            <div className="w-px h-6 bg-slate-300" />
+
+            {/* Children rail */}
+            {nodes.length === 1 ? (
+              // Single node — just drop straight down
+              <AssignmentNode
+                node={nodes[0]}
+                canEdit={canEdit}
+                onSubAssign={id => setAssignParentId(id)}
+                onRemove={id => removeMutation.mutate(id)}
+                isLast
+              />
+            ) : (
+              // Multiple nodes — horizontal spread with connectors
+              <div className="flex items-start">
+                {nodes.map((node: any, i: number) => {
+                  const isFirst = i === 0;
+                  const isLast = i === nodes.length - 1;
+                  return (
+                    <div key={node.id} className="flex flex-col items-center">
+                      {/* T-connector top */}
+                      <div className="flex items-center w-full">
+                        {/* Left arm: invisible for first, line for rest */}
+                        <div
+                          className={cn('flex-1 h-px', isFirst ? 'invisible' : 'bg-slate-300')}
+                        />
+                        {/* Down stub */}
+                        <div className="w-px h-6 bg-slate-300" />
+                        {/* Right arm: invisible for last, line for rest */}
+                        <div className={cn('flex-1 h-px', isLast ? 'invisible' : 'bg-slate-300')} />
+                      </div>
+
+                      {/* Node */}
+                      <div className={cn(i !== nodes.length - 1 ? 'mr-5' : '')}>
+                        <AssignmentNode
+                          node={node}
+                          canEdit={canEdit}
+                          onSubAssign={id => setAssignParentId(id)}
+                          onRemove={id => removeMutation.mutate(id)}
+                          isLast={isLast}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
+      {/* Assign dialog */}
       <AssignDialog
         open={assignParentId !== undefined}
         parentAssignmentId={assignParentId ?? null}
