@@ -421,10 +421,12 @@ function UploadResumeModal({
   open,
   onClose,
   req,
+  assignmentId,
 }: {
   open: boolean;
   onClose: () => void;
   req: any;
+  assignmentId: string;
 }) {
   const axios = useAxios();
   const qc = useQueryClient();
@@ -448,6 +450,10 @@ function UploadResumeModal({
       form.append('mimeType', file.type);
       form.append('requirementId', req.id);
       form.append('reqCode', req.reqCode);
+
+      // form.append('requirementId', req.id);
+      // form.append('reqCode', req.reqCode);
+      form.append('assignmentId', assignmentId);
       return axios.post('/candidate/api/resume/ingest', form, {
         baseURL: '/api/proxy',
         withCredentials: true,
@@ -717,7 +723,12 @@ function AddCandidateModal({
           </div>
         </div>
       </div>
-      <UploadResumeModal open={uploadOpen} onClose={() => setUploadOpen(false)} req={req} />
+      <UploadResumeModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        req={req}
+        assignmentId={assignmentId}
+      />
     </>
   );
 }
