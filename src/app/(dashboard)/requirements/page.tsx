@@ -433,7 +433,7 @@ function useFilters() {
   const serviceLineId = searchParams.get('serviceLineId') ?? '';
   const clientId = searchParams.get('clientId') ?? '';
   const buId = searchParams.get('buId') ?? '';
-  const createdByScope = searchParams.get('createdByScope') ?? 'OWN';
+  const createdByScope = searchParams.get('createdByScope') ?? 'ALL';
   const viewMode = (searchParams.get('view') ?? 'table') as 'cards' | 'table';
   const page = Number(searchParams.get('page') ?? '1');
   const limit = Number(searchParams.get('limit') ?? '25');

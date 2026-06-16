@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: page.tsx
 // Path: app/clients/[id]/page.tsx
 
@@ -16,7 +17,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 // ─── Zod ─────────────────────────────────────────────────────────────────────
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 
 // ─── ShadCN / UI ─────────────────────────────────────────────────────────────
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -60,8 +62,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 // ─── Lucide icons ─────────────────────────────────────────────────────────────
 import {
   ArrowLeft,
+  Briefcase,
   Building2,
+  CheckCircle2,
   ChevronRight,
+  Clock3,
   Edit2,
   ExternalLink,
   Globe,
@@ -71,18 +76,17 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Sparkles,
+  Star,
   StickyNote,
+  Tag,
   Trash2,
   UserCircle2,
+  UserPlus,
   Users,
   X,
-  UserPlus,
-  CheckCircle2,
+  XCircle,
   AlertCircle,
-  Clock3,
-  Star,
-  Briefcase,
-  Tag,
 } from 'lucide-react';
 
 // ─── Local hooks ──────────────────────────────────────────────────────────────
@@ -177,18 +181,35 @@ interface ClientDetailPermissions {
   canDelete: boolean;
 }
 
+// User shape returned by /users dropdown endpoint
+// Your backend should include defaultServiceLineId + defaultBUId
+// (the user's department BU / primary service line they operate in)
+interface UserDropdown {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeId?: string;
+  role: { id: string; name: string };
+  department?: { id: string; name: string } | null;
+  // These two should be included by your /users endpoint
+  // so the handler auto-fill can work. If not yet present,
+  // add them to the serializer on the backend.
+  defaultServiceLineId?: string | null;
+  defaultBUId?: string | null;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SCHEMAS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const addSpocSchema = z.object({
+  handlerId: z.string().min(1, 'Select a handler'),
   firstName: z.string().min(1, 'Required').max(100).trim(),
   lastName: z.string().min(1, 'Required').max(100).trim(),
   email: z.string().email('Invalid email').optional().or(z.literal('')),
   phone: z.string().max(20).optional(),
   designation: z.string().max(100).optional(),
   department: z.string().max(100).optional(),
-  handlerId: z.string().min(1, 'Required'),
   serviceLineId: z.string().min(1, 'Required'),
   businessUnitId: z.string().min(1, 'Required'),
   isPrimary: z.boolean().default(false),
@@ -211,14 +232,9 @@ const addNoteSchema = z.object({
   content: z.string().min(1, 'Required').max(2000).trim(),
 });
 
-const addSpocDMSchema = z.object({
-  dmId: z.string().min(1, 'Select a DM'),
-});
-
 type AddSpocValues = z.infer<typeof addSpocSchema>;
 type EditSpocValues = z.infer<typeof editSpocSchema>;
 type AddNoteValues = z.infer<typeof addNoteSchema>;
-type AddSpocDMValues = z.infer<typeof addSpocDMSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SMALL HELPERS
@@ -239,41 +255,51 @@ function statusConfig(s: ClientStatus) {
   if (s === 'ACTIVE')
     return {
       label: 'Active',
-      color: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+      className:
+        'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800',
       dot: 'bg-emerald-500',
     };
   if (s === 'PENDING')
     return {
       label: 'Pending',
-      color: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20',
+      className:
+        'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800',
       dot: 'bg-amber-500',
     };
   return {
     label: 'Inactive',
-    color: 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/20',
+    className:
+      'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800/60 dark:text-zinc-400 dark:border-zinc-700',
     dot: 'bg-zinc-400',
   };
 }
 
 function reqStatusConfig(s: string) {
   const m: Record<string, string> = {
-    ACTIVE: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20',
-    DRAFT: 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/20',
-    CLOSED: 'bg-zinc-500/10 text-zinc-500 border-zinc-400/20',
-    CANCELLED: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20',
-    ON_HOLD: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20',
-    PENDING_APPROVAL: 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/20',
+    ACTIVE:
+      'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800',
+    DRAFT:
+      'bg-zinc-100 text-zinc-500 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700',
+    CLOSED:
+      'bg-zinc-50 text-zinc-400 border-zinc-200 dark:bg-zinc-900 dark:text-zinc-500 dark:border-zinc-800',
+    CANCELLED:
+      'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800',
+    ON_HOLD:
+      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800',
+    PENDING_APPROVAL:
+      'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800',
   };
-  return m[s] ?? 'bg-zinc-500/10 text-zinc-500 border-zinc-400/20';
+  return m[s] ?? 'bg-zinc-50 text-zinc-400 border-zinc-200';
 }
 
-function priorityDot(p: string) {
-  if (p === 'HIGH') return 'text-red-500';
-  if (p === 'MEDIUM') return 'text-amber-500';
-  return 'text-zinc-400';
+function priorityDotColor(p: string) {
+  if (p === 'HIGH') return 'bg-red-500';
+  if (p === 'MEDIUM') return 'bg-amber-400';
+  return 'bg-zinc-300 dark:bg-zinc-600';
 }
 
 // ─── Tiny form helpers ────────────────────────────────────────────────────────
+
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
     <label className="text-xs font-medium text-foreground/70">
@@ -282,26 +308,37 @@ function Label({ children, required }: { children: React.ReactNode; required?: b
     </label>
   );
 }
+
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
   return <p className="text-[11px] text-red-500 mt-0.5">{message}</p>;
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
+
 function Avatar({
   first,
   last,
   size = 'md',
+  colorClass,
 }: {
   first: string;
   last: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
+  colorClass?: string;
 }) {
-  const sz =
-    size === 'sm' ? 'w-6 h-6 text-[10px]' : size === 'lg' ? 'w-10 h-10 text-sm' : 'w-8 h-8 text-xs';
+  const sz = {
+    xs: 'w-5 h-5 text-[9px]',
+    sm: 'w-7 h-7 text-[10px]',
+    md: 'w-9 h-9 text-xs',
+    lg: 'w-11 h-11 text-sm',
+  }[size];
+
   return (
     <div
-      className={`${sz} rounded-full bg-primary/10 text-primary font-semibold flex items-center justify-center shrink-0 ring-1 ring-primary/20`}
+      className={`${sz} rounded-full font-semibold flex items-center justify-center shrink-0 ring-1 ${
+        colorClass ?? 'bg-primary/10 text-primary ring-primary/20'
+      }`}
     >
       {initials(first, last)}
     </div>
@@ -309,7 +346,7 @@ function Avatar({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DM TAG PILL — inline chip on a SPOC card
+// DM CHIP
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function DmChip({
@@ -321,21 +358,15 @@ function DmChip({
   onRemove: (id: string) => void;
   canEdit: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-[11px] font-medium text-violet-700 dark:text-violet-400 cursor-default select-none"
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-          >
-            <span className="w-4 h-4 rounded-full bg-violet-500/20 flex items-center justify-center text-[9px] font-bold shrink-0">
+          <div className="group/chip inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-[11px] font-medium text-violet-700 dark:bg-violet-950/40 dark:border-violet-800 dark:text-violet-400 cursor-default select-none">
+            <span className="w-4 h-4 rounded-full bg-violet-100 dark:bg-violet-900 flex items-center justify-center text-[9px] font-bold shrink-0 text-violet-700 dark:text-violet-300">
               {initials(dm.dm.firstName, dm.dm.lastName)}
             </span>
-            <span className="max-w-[90px] truncate">
+            <span className="max-w-[88px] truncate">
               {dm.dm.firstName} {dm.dm.lastName}
             </span>
             {canEdit && (
@@ -345,9 +376,9 @@ function DmChip({
                   e.stopPropagation();
                   onRemove(dm.id);
                 }}
-                className={`ml-0.5 rounded-full transition-all shrink-0 flex items-center justify-center w-3.5 h-3.5 ${hovered ? 'opacity-100 hover:bg-red-500/20 hover:text-red-500' : 'opacity-0'}`}
+                className="ml-0.5 w-3 h-3 rounded-full flex items-center justify-center opacity-0 group-hover/chip:opacity-100 hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-950 transition-all shrink-0"
               >
-                <X className="w-2.5 h-2.5" />
+                <X className="w-2 h-2" />
               </button>
             )}
           </div>
@@ -366,7 +397,7 @@ function DmChip({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ADD DM POPOVER — inline picker to tag a DM to a SPOC
+// ADD DM INLINE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function AddDmInline({
@@ -385,9 +416,7 @@ function AddDmInline({
   const [selectedDmId, setSelectedDmId] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
-  const { data: usersRes } = useQuery<{
-    data: { id: string; firstName: string; lastName: string; role: { name: string } }[];
-  }>({
+  const { data: usersRes } = useQuery<{ data: UserDropdown[] }>({
     queryKey: ['users-dm-dropdown'],
     queryFn: async () => (await axios.get('/users?limit=200&isActive=true')).data,
     staleTime: 60_000,
@@ -396,7 +425,6 @@ function AddDmInline({
 
   const available = (usersRes?.data ?? []).filter(u => !existingDmIds.includes(u.id));
 
-  // close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -419,12 +447,11 @@ function AddDmInline({
   });
 
   return (
-    // overflow-visible so the popover isn't clipped by parent card
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen(p => !p)}
-        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-dashed border-border/60 text-[11px] text-muted-foreground hover:border-violet-400/60 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-500/5 transition-colors"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-border/60 text-[11px] text-muted-foreground hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
       >
         <UserPlus className="w-2.5 h-2.5" />
         Tag DM
@@ -432,21 +459,20 @@ function AddDmInline({
 
       {open && (
         <div
-          className="absolute top-full left-0 mt-2 w-64 z-[200] rounded-xl border border-border bg-popover shadow-xl"
+          className="absolute top-full left-0 mt-1.5 w-60 z-[200] rounded-xl border border-border bg-popover shadow-lg"
           onMouseDown={e => e.stopPropagation()}
         >
-          <div className="p-3 flex flex-col gap-3">
+          <div className="p-3 flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-foreground">Tag delivery manager</p>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-
             <Select value={selectedDmId} onValueChange={setSelectedDmId}>
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue
@@ -454,7 +480,7 @@ function AddDmInline({
                     !usersRes
                       ? 'Loading…'
                       : available.length === 0
-                        ? 'All DMs already tagged'
+                        ? 'All DMs tagged'
                         : 'Select a DM…'
                   }
                 />
@@ -476,7 +502,6 @@ function AddDmInline({
                 )}
               </SelectContent>
             </Select>
-
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -509,6 +534,8 @@ function AddDmInline({
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ADD SPOC DIALOG
+// Handler is first. Selecting a handler auto-fills serviceLineId + businessUnitId
+// from that user's profile. Fields remain editable after auto-fill.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function AddSpocDialog({
@@ -523,23 +550,25 @@ function AddSpocDialog({
   onAdded: () => void;
 }) {
   const axios = useAxios();
+
   const {
     register,
     handleSubmit,
     control,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<AddSpocValues>({
-    // @ts-expect-error zod compat
+    // @ts-expect-error err
     resolver: zodResolver(addSpocSchema),
     defaultValues: {
+      handlerId: '',
       firstName: '',
       lastName: '',
       email: '',
       phone: '',
       designation: '',
       department: '',
-      handlerId: '',
       serviceLineId: '',
       businessUnitId: '',
       isPrimary: false,
@@ -547,20 +576,24 @@ function AddSpocDialog({
     },
   });
 
-  const { data: usersRes } = useQuery<{
-    data: { id: string; firstName: string; lastName: string; employeeId?: string }[];
-  }>({
+  // Watch handlerId so we can react to changes and auto-fill
+  const watchedHandlerId = useWatch({ control, name: 'handlerId' });
+
+  // ── Dropdown data ─────────────────────────────────────────────────────────
+  const { data: usersRes } = useQuery<{ data: UserDropdown[] }>({
     queryKey: ['users-dropdown'],
     queryFn: async () => (await axios.get('/users?limit=200&isActive=true')).data,
     staleTime: 60_000,
     enabled: open,
   });
+
   const { data: slRes } = useQuery<{ data: { id: string; name: string }[] }>({
     queryKey: ['service-lines-dropdown'],
     queryFn: async () => (await axios.get('/service-lines?limit=100')).data,
     staleTime: 60_000,
     enabled: open,
   });
+
   const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
     queryKey: ['bus-dropdown'],
     queryFn: async () => (await axios.get('/business-units?limit=100')).data,
@@ -572,6 +605,27 @@ function AddSpocDialog({
   const serviceLines = slRes?.data ?? [];
   const businessUnits = busRes?.data ?? [];
 
+  // ── Derive selected handler object for preview card ───────────────────────
+  const selectedHandler = users.find(u => u.id === watchedHandlerId) ?? null;
+
+  // ── Auto-fill serviceLineId + businessUnitId when handler changes ─────────
+  useEffect(() => {
+    if (!selectedHandler) return;
+
+    if (selectedHandler.defaultServiceLineId) {
+      setValue('serviceLineId', selectedHandler.defaultServiceLineId, { shouldValidate: false });
+    }
+    if (selectedHandler.defaultBUId) {
+      setValue('businessUnitId', selectedHandler.defaultBUId, { shouldValidate: false });
+    }
+  }, [selectedHandler, setValue]);
+
+  // ── Reset form when dialog closes ─────────────────────────────────────────
+  const handleClose = () => {
+    reset();
+    onClose();
+  };
+
   const mutation = useMutation({
     mutationFn: async (data: AddSpocValues) =>
       (await axios.post(`/clients/${clientId}/spocs`, data)).data,
@@ -581,154 +635,255 @@ function AddSpocDialog({
       onAdded();
       onClose();
     },
-    // @ts-expect-error err type
-    onError: err => toast.error(err?.response?.data?.message ?? 'Failed to add SPOC'),
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to add SPOC'),
   });
 
   return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={o => !o && handleClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-base font-semibold">Add SPOC</DialogTitle>
         </DialogHeader>
-        {/* @ts-expect-error zod compat */}
-        <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="flex flex-col gap-4 mt-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label required>First name</Label>
-              <Input className="h-8 text-sm" placeholder="John" {...register('firstName')} />
-              <FieldError message={errors.firstName?.message} />
+
+        <form
+          onSubmit={
+            // @ts-expect-error err
+            handleSubmit(d => mutation.mutate(d))
+          }
+          className="flex flex-col gap-5 mt-1"
+        >
+          {/* ── STEP 1: Handler selection ──────────────────────────────── */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
+                1
+              </span>
+              <span className="text-xs font-semibold text-foreground">Select handler</span>
             </div>
+
             <div className="flex flex-col gap-1.5">
-              <Label required>Last name</Label>
-              <Input className="h-8 text-sm" placeholder="Doe" {...register('lastName')} />
-              <FieldError message={errors.lastName?.message} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Email</Label>
-              <Input
-                className="h-8 text-sm"
-                type="email"
-                placeholder="john@client.com"
-                {...register('email')}
+              <Label required>Handler</Label>
+              <Controller
+                control={control}
+                name="handlerId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Pick the handler for this SPOC…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map(u => (
+                        <SelectItem key={u.id} value={u.id} className="text-sm">
+                          <span className="font-medium">
+                            {u.firstName} {u.lastName}
+                          </span>
+                          {u.employeeId && (
+                            <span className="text-muted-foreground ml-1.5">· {u.employeeId}</span>
+                          )}
+                          {u.role && (
+                            <span className="text-muted-foreground ml-1.5">· {u.role.name}</span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               />
-              <FieldError message={errors.email?.message} />
+              <FieldError message={errors.handlerId?.message} />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Phone</Label>
-              <Input className="h-8 text-sm" placeholder="+91 9999999999" {...register('phone')} />
-            </div>
+
+            {/* Handler preview card — visible once a handler is selected */}
+            {selectedHandler && (
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 dark:border-blue-900 mt-1">
+                <Avatar
+                  first={selectedHandler.firstName}
+                  last={selectedHandler.lastName}
+                  size="md"
+                  colorClass="bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:ring-blue-800"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {selectedHandler.firstName} {selectedHandler.lastName}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {[selectedHandler.role?.name, selectedHandler.department?.name]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
+                {(selectedHandler.defaultServiceLineId || selectedHandler.defaultBUId) && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900 shrink-0">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    Auto-filled
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label>Designation</Label>
-              <Input
-                className="h-8 text-sm"
-                placeholder="HR Manager"
-                {...register('designation')}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Department</Label>
-              <Input className="h-8 text-sm" placeholder="HR" {...register('department')} />
-            </div>
-          </div>
+
           <Separator />
-          <div className="flex flex-col gap-1.5">
-            <Label required>Handler</Label>
+
+          {/* ── STEP 2: SPOC contact details ───────────────────────────── */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
+                2
+              </span>
+              <span className="text-xs font-semibold text-foreground">SPOC contact details</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label required>First name</Label>
+                <Input className="h-9 text-sm" placeholder="Rekha" {...register('firstName')} />
+                <FieldError message={errors.firstName?.message} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label required>Last name</Label>
+                <Input className="h-9 text-sm" placeholder="Krishnan" {...register('lastName')} />
+                <FieldError message={errors.lastName?.message} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>Email</Label>
+                <Input
+                  className="h-9 text-sm"
+                  type="email"
+                  placeholder="rekha@client.com"
+                  {...register('email')}
+                />
+                <FieldError message={errors.email?.message} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Phone</Label>
+                <Input
+                  className="h-9 text-sm"
+                  placeholder="+91 9999999999"
+                  {...register('phone')}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>Designation</Label>
+                <Input
+                  className="h-9 text-sm"
+                  placeholder="HR Manager"
+                  {...register('designation')}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Department</Label>
+                <Input className="h-9 text-sm" placeholder="HR" {...register('department')} />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* ── STEP 3: Assignment (pre-filled from handler, editable) ─── */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
+                3
+              </span>
+              <span className="text-xs font-semibold text-foreground">Assignment</span>
+              {selectedHandler &&
+                (selectedHandler.defaultServiceLineId || selectedHandler.defaultBUId) && (
+                  <span className="text-[10px] text-muted-foreground">
+                    (auto-filled from handler — edit if needed)
+                  </span>
+                )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label required>Service line</Label>
+                <Controller
+                  control={control}
+                  name="serviceLineId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {serviceLines.map(sl => (
+                          <SelectItem key={sl.id} value={sl.id} className="text-sm">
+                            {sl.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <FieldError message={errors.serviceLineId?.message} />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label required>Business unit</Label>
+                <Controller
+                  control={control}
+                  name="businessUnitId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {businessUnits.map(b => (
+                          <SelectItem key={b.id} value={b.id} className="text-sm">
+                            {b.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <FieldError message={errors.businessUnitId?.message} />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Notes</Label>
+              <Input
+                className="h-9 text-sm"
+                placeholder="Optional notes about this SPOC"
+                {...register('notes')}
+              />
+            </div>
+
             <Controller
               control={control}
-              name="handlerId"
+              name="isPrimary"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-8 text-sm">
-                    <SelectValue placeholder="Who handles this SPOC" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map(u => (
-                      <SelectItem key={u.id} value={u.id} className="text-sm">
-                        {u.firstName} {u.lastName}
-                        {u.employeeId ? ` · ${u.employeeId}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <button
+                  type="button"
+                  onClick={() => field.onChange(!field.value)}
+                  className={`self-start flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${
+                    field.value
+                      ? 'bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400'
+                      : 'border-border text-muted-foreground hover:border-primary/40 hover:bg-muted/40'
+                  }`}
+                >
+                  <Star
+                    className={`w-3 h-3 ${field.value ? 'fill-amber-500 text-amber-500' : ''}`}
+                  />
+                  {field.value ? 'Primary SPOC' : 'Set as primary'}
+                </button>
               )}
             />
-            <FieldError message={errors.handlerId?.message} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label required>Service line</Label>
-              <Controller
-                control={control}
-                name="serviceLineId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {serviceLines.map(sl => (
-                        <SelectItem key={sl.id} value={sl.id} className="text-sm">
-                          {sl.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <FieldError message={errors.serviceLineId?.message} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label required>Business unit</Label>
-              <Controller
-                control={control}
-                name="businessUnitId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-8 text-sm">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {businessUnits.map(b => (
-                        <SelectItem key={b.id} value={b.id} className="text-sm">
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <FieldError message={errors.businessUnitId?.message} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>Notes</Label>
-            <Input className="h-8 text-sm" placeholder="Optional notes" {...register('notes')} />
-          </div>
-          <Controller
-            control={control}
-            name="isPrimary"
-            render={({ field }) => (
-              <button
-                type="button"
-                onClick={() => field.onChange(!field.value)}
-                className={`self-start flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${field.value ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400' : 'border-border text-muted-foreground hover:border-primary/40'}`}
-              >
-                <Star className={`w-3 h-3 ${field.value ? 'fill-amber-500 text-amber-500' : ''}`} />
-                {field.value ? 'Primary SPOC' : 'Set as primary'}
-              </button>
-            )}
-          />
+
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={mutation.isPending}
             >
               Cancel
@@ -792,9 +947,7 @@ function EditSpocDialog({
     }
   }, [spoc, reset]);
 
-  const { data: usersRes } = useQuery<{
-    data: { id: string; firstName: string; lastName: string }[];
-  }>({
+  const { data: usersRes } = useQuery<{ data: UserDropdown[] }>({
     queryKey: ['users-dropdown'],
     queryFn: async () => (await axios.get('/users?limit=200&isActive=true')).data,
     staleTime: 60_000,
@@ -810,8 +963,7 @@ function EditSpocDialog({
       onUpdated();
       onClose();
     },
-    // @ts-expect-error err
-    onError: err => toast.error(err?.response?.data?.message ?? 'Failed to update'),
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update'),
   });
 
   return (
@@ -824,36 +976,39 @@ function EditSpocDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label required>First name</Label>
-              <Input className="h-8 text-sm" {...register('firstName')} />
+              <Input className="h-9 text-sm" {...register('firstName')} />
               <FieldError message={errors.firstName?.message} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label required>Last name</Label>
-              <Input className="h-8 text-sm" {...register('lastName')} />
+              <Input className="h-9 text-sm" {...register('lastName')} />
               <FieldError message={errors.lastName?.message} />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Email</Label>
-              <Input className="h-8 text-sm" type="email" {...register('email')} />
+              <Input className="h-9 text-sm" type="email" {...register('email')} />
               <FieldError message={errors.email?.message} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Phone</Label>
-              <Input className="h-8 text-sm" {...register('phone')} />
+              <Input className="h-9 text-sm" {...register('phone')} />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Designation</Label>
-              <Input className="h-8 text-sm" {...register('designation')} />
+              <Input className="h-9 text-sm" {...register('designation')} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Department</Label>
-              <Input className="h-8 text-sm" {...register('department')} />
+              <Input className="h-9 text-sm" {...register('department')} />
             </div>
           </div>
+
           <div className="flex flex-col gap-1.5">
             <Label required>Handler</Label>
             <Controller
@@ -861,7 +1016,7 @@ function EditSpocDialog({
               name="handlerId"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-8 text-sm">
+                  <SelectTrigger className="h-9 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -876,10 +1031,12 @@ function EditSpocDialog({
             />
             <FieldError message={errors.handlerId?.message} />
           </div>
+
           <div className="flex flex-col gap-1.5">
             <Label>Notes</Label>
-            <Input className="h-8 text-sm" {...register('notes')} />
+            <Input className="h-9 text-sm" {...register('notes')} />
           </div>
+
           <Controller
             control={control}
             name="isPrimary"
@@ -887,13 +1044,18 @@ function EditSpocDialog({
               <button
                 type="button"
                 onClick={() => field.onChange(!field.value)}
-                className={`self-start flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${field.value ? 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400' : 'border-border text-muted-foreground'}`}
+                className={`self-start flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${
+                  field.value
+                    ? 'bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-400'
+                    : 'border-border text-muted-foreground hover:border-primary/40'
+                }`}
               >
                 <Star className={`w-3 h-3 ${field.value ? 'fill-amber-500 text-amber-500' : ''}`} />
                 {field.value ? 'Primary SPOC' : 'Set as primary'}
               </button>
             )}
           />
+
           <DialogFooter>
             <Button
               type="button"
@@ -955,46 +1117,51 @@ function SpocCard({
   const dms = spoc.clientSpocDms ?? [];
 
   return (
-    <div className="group rounded-xl border bg-card hover:border-primary/20 transition-all duration-200">
-      {/* top strip — primary badge */}
+    <div
+      className={`group relative rounded-2xl border bg-card transition-all duration-150 hover:border-border/80 hover:shadow-sm ${
+        spoc.isPrimary ? 'border-amber-200 dark:border-amber-900' : 'border-border/60'
+      }`}
+    >
+      {/* Primary accent top bar */}
       {spoc.isPrimary && (
-        <div className="h-0.5 rounded-t-xl bg-gradient-to-r from-amber-400 via-amber-300 to-transparent" />
+        <div className="h-[3px] rounded-t-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-transparent" />
       )}
 
       <div className="p-4">
+        {/* Header row */}
         <div className="flex items-start gap-3">
-          {/* Avatar */}
           <Avatar first={spoc.firstName} last={spoc.lastName} size="lg" />
 
-          {/* Main info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm text-foreground">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-sm text-foreground leading-tight">
                 {spoc.firstName} {spoc.lastName}
               </span>
               {spoc.isPrimary && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
-                  <Star className="w-2.5 h-2.5 fill-amber-500" />
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">
+                  <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
                   Primary
                 </span>
               )}
             </div>
-            {spoc.designation && (
+            {(spoc.designation || spoc.department) && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                {spoc.designation}
-                {spoc.department ? ` · ${spoc.department}` : ''}
+                {[spoc.designation, spoc.department].filter(Boolean).join(' · ')}
               </p>
             )}
-            <div className="flex flex-col gap-0.5 mt-1">
+            <div className="flex flex-col gap-0.5 mt-1.5">
               {spoc.email && (
-                <a href={`mailto:${spoc.email}`} className="text-xs text-primary hover:underline">
+                <a
+                  href={`mailto:${spoc.email}`}
+                  className="text-xs text-primary hover:underline underline-offset-2 w-fit"
+                >
                   {spoc.email}
                 </a>
               )}
               {spoc.phone && (
                 <a
                   href={`tel:${spoc.phone}`}
-                  className="text-xs text-muted-foreground hover:text-foreground"
+                  className="text-xs text-muted-foreground hover:text-foreground w-fit"
                 >
                   {spoc.phone}
                 </a>
@@ -1002,9 +1169,9 @@ function SpocCard({
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Actions — appear on hover */}
           {canEdit && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1032,25 +1199,23 @@ function SpocCard({
           )}
         </div>
 
-        {/* Handler / service line row */}
-        <div className="mt-3 pt-2.5 border-t border-border/40 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-              Handled by
-            </span>
-            <span className="text-xs font-medium text-foreground">
-              {spoc.handler.firstName} {spoc.handler.lastName}
-            </span>
-          </div>
-          <span className="text-border/60">·</span>
-          <span className="text-xs text-muted-foreground">{spoc.serviceLine.name}</span>
-          <span className="text-border/60">·</span>
-          <span className="text-xs text-muted-foreground">{spoc.businessUnit.name}</span>
+        {/* Handler / service line / BU row */}
+        <div className="mt-3 pt-2.5 border-t border-border/40 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+          <span className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground/70">
+            Handled by
+          </span>
+          <span className="font-medium text-foreground text-[11px]">
+            {spoc.handler.firstName} {spoc.handler.lastName}
+          </span>
+          <span className="text-border">·</span>
+          <span className="text-[11px]">{spoc.serviceLine.name}</span>
+          <span className="text-border">·</span>
+          <span className="text-[11px]">{spoc.businessUnit.name}</span>
         </div>
 
-        {/* DM tags row */}
-        <div className="mt-2.5 flex items-start gap-1.5 flex-wrap overflow-visible">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1 mt-0.5 shrink-0">
+        {/* DM chips row */}
+        <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium flex items-center gap-1 shrink-0">
             <Tag className="w-2.5 h-2.5" />
             DMs
           </span>
@@ -1072,13 +1237,15 @@ function SpocCard({
           )}
         </div>
 
+        {/* Notes */}
         {spoc.notes && (
-          <p className="mt-2.5 text-[11px] text-muted-foreground italic border-l-2 border-border/40 pl-2">
+          <p className="mt-2.5 text-[11px] text-muted-foreground italic border-l-2 border-border/40 pl-2 leading-relaxed">
             {spoc.notes}
           </p>
         )}
 
-        <p className="mt-2 text-[10px] text-muted-foreground/60">
+        {/* Footer */}
+        <p className="mt-2.5 text-[10px] text-muted-foreground/50">
           Added {formatDistanceToNow(new Date(spoc.createdAt), { addSuffix: true })} by{' '}
           {spoc.addedBy.firstName} {spoc.addedBy.lastName}
         </p>
@@ -1123,24 +1290,26 @@ function SpocTab({
 
   return (
     <>
-      <div className="flex flex-col gap-4 pb-6">
+      <div className="flex flex-col gap-5 pb-8">
+        {/* Section header */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             {activeSpocs.length === 0
               ? 'No SPOCs assigned yet.'
-              : `${activeSpocs.length} active contact${activeSpocs.length !== 1 ? 's' : ''} for this account`}
+              : `${activeSpocs.length} active contact${activeSpocs.length !== 1 ? 's' : ''}`}
           </p>
           {canEdit && (
-            <Button size="sm" onClick={() => setAddOpen(true)} className="h-8 gap-1.5">
+            <Button size="sm" onClick={() => setAddOpen(true)} className="h-8 gap-1.5 rounded-lg">
               <Plus className="w-3.5 h-3.5" />
               Add SPOC
             </Button>
           )}
         </div>
 
+        {/* Active spocs grid */}
         {activeSpocs.length === 0 ? (
-          <div className="rounded-xl border border-dashed bg-muted/20 flex flex-col items-center justify-center py-14 gap-3">
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+          <div className="rounded-2xl border border-dashed bg-muted/10 flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center">
               <Users className="w-5 h-5 text-muted-foreground" />
             </div>
             <p className="text-sm text-muted-foreground">No SPOCs assigned</p>
@@ -1149,9 +1318,10 @@ function SpocTab({
                 size="sm"
                 variant="outline"
                 onClick={() => setAddOpen(true)}
-                className="gap-1.5"
+                className="gap-1.5 rounded-lg"
               >
-                <Plus className="w-3.5 h-3.5" /> Add first SPOC
+                <Plus className="w-3.5 h-3.5" />
+                Add first SPOC
               </Button>
             )}
           </div>
@@ -1171,9 +1341,10 @@ function SpocTab({
           </div>
         )}
 
+        {/* Inactive spocs collapsible */}
         {inactiveSpocs.length > 0 && (
-          <details className="mt-2">
-            <summary className="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none flex items-center gap-1.5">
+          <details className="mt-1">
+            <summary className="text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none flex items-center gap-1.5 list-none">
               <ChevronRight className="w-3 h-3 transition-transform [details[open]_&]:rotate-90" />
               {inactiveSpocs.length} past SPOC{inactiveSpocs.length !== 1 ? 's' : ''}
             </summary>
@@ -1181,7 +1352,7 @@ function SpocTab({
               {inactiveSpocs.map(s => (
                 <div
                   key={s.id}
-                  className="rounded-lg border bg-muted/20 px-3 py-2.5 flex items-center gap-2.5 opacity-60"
+                  className="rounded-xl border bg-muted/20 px-3 py-2.5 flex items-center gap-2.5 opacity-50"
                 >
                   <Avatar first={s.firstName} last={s.lastName} size="sm" />
                   <div>
@@ -1200,6 +1371,7 @@ function SpocTab({
         )}
       </div>
 
+      {/* Dialogs */}
       <AddSpocDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
@@ -1252,14 +1424,15 @@ function RequirementsTab({
 
   if (requirements.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed bg-muted/20 flex flex-col items-center justify-center py-14 gap-3">
-        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+      <div className="rounded-2xl border border-dashed bg-muted/10 flex flex-col items-center justify-center py-16 gap-3">
+        <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center">
           <Briefcase className="w-5 h-5 text-muted-foreground" />
         </div>
         <p className="text-sm text-muted-foreground">No requirements yet</p>
         <Link href={`/requirements/new?clientId=${clientId}`}>
-          <Button size="sm" variant="outline" className="gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Create requirement
+          <Button size="sm" variant="outline" className="gap-1.5 rounded-lg">
+            <Plus className="w-3.5 h-3.5" />
+            Create requirement
           </Button>
         </Link>
       </div>
@@ -1267,27 +1440,20 @@ function RequirementsTab({
   }
 
   return (
-    <div className="flex flex-col gap-2 pb-6">
+    <div className="flex flex-col gap-2 pb-8">
       {requirements.map(r => (
         <div
           key={r.id}
           onClick={() => router.push(`/requirements/${r.id}`)}
-          className="group rounded-xl border bg-card p-4 flex items-center gap-4 cursor-pointer hover:border-primary/20 hover:bg-muted/20 transition-all"
+          className="group rounded-xl border border-border/60 bg-card px-4 py-3.5 flex items-center gap-4 cursor-pointer hover:border-border hover:bg-muted/20 transition-all"
         >
           {/* Priority dot */}
-          <div
-            className={`w-2 h-2 rounded-full shrink-0 ${r.priority === 'HIGH' ? 'bg-red-500' : r.priority === 'MEDIUM' ? 'bg-amber-500' : 'bg-zinc-400'}`}
-          />
+          <div className={`w-2 h-2 rounded-full shrink-0 ${priorityDotColor(r.priority)}`} />
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                 {r.reqCode}
-              </span>
-              <span
-                className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${priorityDot(r.priority)}`}
-              >
-                {humanize(r.priority)}
               </span>
             </div>
             <p className="text-sm font-medium text-foreground truncate">{r.title}</p>
@@ -1298,11 +1464,11 @@ function RequirementsTab({
               {r.totalOpenings} opening{r.totalOpenings !== 1 ? 's' : ''}
             </span>
             <span
-              className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${reqStatusConfig(r.status)}`}
+              className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${reqStatusConfig(r.status)}`}
             >
               {humanize(r.status)}
             </span>
-            <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+            <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
           </div>
         </div>
       ))}
@@ -1362,19 +1528,19 @@ function NotesTab({
 
   return (
     <>
-      <div className="flex flex-col gap-4 pb-6">
+      <div className="flex flex-col gap-4 pb-8">
         {/* Add note form */}
-        <form onSubmit={handleSubmit(d => addMutation.mutate(d))} className="flex flex-col gap-2">
+        <form onSubmit={handleSubmit(d => addMutation.mutate(d))} className="flex flex-col gap-1.5">
           <div className="flex gap-2">
             <Input
-              className="h-9 text-sm flex-1"
+              className="h-9 text-sm flex-1 rounded-lg"
               placeholder="Add a note about this client…"
               {...register('content')}
             />
             <Button
               type="submit"
               size="sm"
-              className="h-9 shrink-0"
+              className="h-9 shrink-0 rounded-lg px-4"
               disabled={isSubmitting || addMutation.isPending}
             >
               {addMutation.isPending ? (
@@ -1387,9 +1553,10 @@ function NotesTab({
           <FieldError message={errors.content?.message} />
         </form>
 
+        {/* Notes list */}
         {notes.length === 0 ? (
-          <div className="rounded-xl border border-dashed bg-muted/20 flex flex-col items-center justify-center py-12 gap-2">
-            <StickyNote className="w-8 h-8 text-muted-foreground/40" />
+          <div className="rounded-2xl border border-dashed bg-muted/10 flex flex-col items-center justify-center py-14 gap-2">
+            <StickyNote className="w-8 h-8 text-muted-foreground/30" />
             <p className="text-sm text-muted-foreground">No notes yet</p>
           </div>
         ) : (
@@ -1397,15 +1564,20 @@ function NotesTab({
             {notes.map(note => {
               const canDelete = isSuperAdmin || note.author.id === currentUserId;
               return (
-                <div key={note.id} className="group rounded-xl border bg-card p-4 flex gap-3">
+                <div
+                  key={note.id}
+                  className="group rounded-xl border border-border/60 bg-card p-4 flex gap-3 hover:border-border/80 transition-colors"
+                >
                   <Avatar first={note.author.firstName} last={note.author.lastName} size="sm" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-xs font-medium text-foreground">
+                      <span className="text-xs font-semibold text-foreground">
                         {note.author.firstName} {note.author.lastName}
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        {formatDistanceToNow(new Date(note.createdAt), { addSuffix: true })}
+                        {formatDistanceToNow(new Date(note.createdAt), {
+                          addSuffix: true,
+                        })}
                       </span>
                     </div>
                     <p className="text-sm text-foreground/80 leading-relaxed">{note.content}</p>
@@ -1448,36 +1620,36 @@ function NotesTab({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// STAT CARD — clickable, navigates with query param pre-set
+// SIDEBAR STAT CARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function StatLink({
+function StatCard({
   href,
   value,
   label,
   icon: Icon,
-  color,
+  colorClass,
 }: {
   href: string;
   value: number;
   label: string;
   icon: React.ElementType;
-  color: string;
+  colorClass: string;
 }) {
   if (value === 0) return null;
   return (
     <Link
       href={href}
-      className={`group flex items-center gap-3 px-4 py-3 rounded-xl border bg-card hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer`}
+      className="group flex items-center gap-3 px-3 py-2.5 rounded-xl border border-border/60 bg-card hover:border-border hover:bg-muted/20 transition-all cursor-pointer"
     >
-      <div className={`w-8 h-8 rounded-lg ${color} flex items-center justify-center shrink-0`}>
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${colorClass}`}>
         <Icon className="w-4 h-4" />
       </div>
-      <div className="min-w-0">
-        <p className="text-xl font-bold tabular-nums leading-none">{value}</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">{label}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-lg font-bold tabular-nums leading-none">{value}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{label}</p>
       </div>
-      <ExternalLink className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-muted-foreground ml-auto transition-colors" />
+      <ExternalLink className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors shrink-0" />
     </Link>
   );
 }
@@ -1496,13 +1668,13 @@ function InfoRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2.5 py-2 border-b border-border/30 last:border-0">
-      <Icon className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+    <div className="flex items-start gap-2 py-1.5 border-b border-border/30 last:border-0">
+      <Icon className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-0.5">
           {label}
         </p>
-        <div className="text-xs text-foreground">{children}</div>
+        <div className="text-[11px] text-foreground leading-snug">{children}</div>
       </div>
     </div>
   );
@@ -1546,7 +1718,7 @@ export default function ClientDetailPage() {
     onError: () => toast.error('Failed to update status'),
   });
 
-  // ── Loading skeleton ────────────────────────────────────────────────────────
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="p-6 flex flex-col gap-4 max-w-7xl mx-auto">
@@ -1556,18 +1728,20 @@ export default function ClientDetailPage() {
           <Skeleton className="h-4 w-32" />
         </div>
         <div className="flex items-start gap-4 mt-2">
+          <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
           <div className="flex flex-col gap-2 flex-1">
-            <Skeleton className="h-7 w-56" />
-            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-64" />
           </div>
           <Skeleton className="h-8 w-28" />
         </div>
-        <div className="grid grid-cols-3 gap-3 mt-2">
-          <Skeleton className="h-20 rounded-xl" />
-          <Skeleton className="h-20 rounded-xl" />
-          <Skeleton className="h-20 rounded-xl" />
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          <Skeleton className="h-[72px] rounded-xl" />
+          <Skeleton className="h-[72px] rounded-xl" />
+          <Skeleton className="h-[72px] rounded-xl" />
+          <Skeleton className="h-[72px] rounded-xl" />
         </div>
-        <Skeleton className="h-[400px] mt-4 rounded-xl" />
+        <Skeleton className="h-[400px] mt-4 rounded-2xl" />
       </div>
     );
   }
@@ -1599,8 +1773,9 @@ export default function ClientDetailPage() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* ── Top nav bar ────────────────────────────────────────────────────── */}
+      {/* ── Sticky top bar ───────────────────────────────────────────────── */}
       <div className="shrink-0 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20">
+        {/* Breadcrumb */}
         <div className="px-6 pt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
           <button
             onClick={() => router.push('/clients')}
@@ -1609,24 +1784,26 @@ export default function ClientDetailPage() {
             <ArrowLeft className="w-3 h-3" />
             Clients
           </button>
-          <ChevronRight className="w-3 h-3 opacity-40" />
+          <ChevronRight className="w-3 h-3 opacity-30" />
           <span className="text-foreground font-medium truncate max-w-[200px]">{client.name}</span>
         </div>
 
-        <div className="px-6 pb-3 mt-2 flex items-start justify-between gap-6">
+        {/* Client header */}
+        <div className="px-6 pb-3 mt-2.5 flex items-start justify-between gap-6">
           <div className="flex items-start gap-3 min-w-0">
-            {/* Client initial badge */}
+            {/* Logo badge */}
             <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary font-bold text-base flex items-center justify-center shrink-0 ring-1 ring-primary/20">
               {client.name[0]?.toUpperCase()}
             </div>
+
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-foreground leading-tight truncate">
+              <h1 className="text-[17px] font-bold text-foreground leading-tight truncate">
                 {client.name}
               </h1>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 {/* Status pill */}
                 <span
-                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${sc.color}`}
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border ${sc.className}`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                   {sc.label}
@@ -1651,207 +1828,205 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            {permissions?.canEdit && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push(`/clients/${client.id}/edit`)}
-                  className="h-8 gap-1.5"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  Edit
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      disabled={statusMutation.isPending}
-                    >
-                      {statusMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      )}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="text-sm">
-                    {client.status !== 'ACTIVE' && (
-                      <DropdownMenuItem onClick={() => statusMutation.mutate('ACTIVE')}>
-                        <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" />
-                        Mark active
-                      </DropdownMenuItem>
+          {permissions?.canEdit && (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/clients/${client.id}/edit`)}
+                className="h-8 gap-1.5 rounded-lg"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 rounded-lg"
+                    disabled={statusMutation.isPending}
+                  >
+                    {statusMutation.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <MoreVertical className="w-3.5 h-3.5" />
                     )}
-                    {client.status !== 'PENDING' && (
-                      <DropdownMenuItem onClick={() => statusMutation.mutate('PENDING')}>
-                        <Clock3 className="w-3.5 h-3.5 mr-2 text-amber-500" />
-                        Mark pending
-                      </DropdownMenuItem>
-                    )}
-                    {client.status !== 'INACTIVE' && (
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="text-sm w-44">
+                  {client.status !== 'ACTIVE' && (
+                    <DropdownMenuItem onClick={() => statusMutation.mutate('ACTIVE')}>
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" />
+                      Mark active
+                    </DropdownMenuItem>
+                  )}
+                  {client.status !== 'PENDING' && (
+                    <DropdownMenuItem onClick={() => statusMutation.mutate('PENDING')}>
+                      <Clock3 className="w-3.5 h-3.5 mr-2 text-amber-500" />
+                      Mark pending
+                    </DropdownMenuItem>
+                  )}
+                  {client.status !== 'INACTIVE' && (
+                    <>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => statusMutation.mutate('INACTIVE')}
                         className="text-muted-foreground"
                       >
-                        <AlertCircle className="w-3.5 h-3.5 mr-2" />
+                        <XCircle className="w-3.5 h-3.5 mr-2" />
                         Mark inactive
                       </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            )}
-          </div>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Body ──────────────────────────────────────────────────────────── */}
+      {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* ── Left sidebar ──────────────────────────────────────────────── */}
-        <ScrollArea className="w-[240px] shrink-0 border-r">
-          <div className="p-4 flex flex-col gap-4">
-            {/* Stat cards — all are deep links */}
+        {/* ── Left sidebar ────────────────────────────────────────────── */}
+        <ScrollArea className="w-[220px] shrink-0 border-r">
+          <div className="p-4 flex flex-col gap-3">
+            {/* Stat cards */}
             <div className="flex flex-col gap-2">
-              <StatLink
+              <StatCard
                 href={`/requirements?clientId=${client.id}`}
                 value={client._count.requirements}
                 label="Total requirements"
                 icon={LayoutList}
-                color="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                colorClass="bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400"
               />
-              <StatLink
+              <StatCard
                 href={`/requirements?clientId=${client.id}&status=ACTIVE`}
                 value={activeReqs}
                 label="Active requirements"
                 icon={CheckCircle2}
-                color="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                colorClass="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"
               />
-              <StatLink
+              <StatCard
                 href={`/requirements?clientId=${client.id}&status=PENDING_APPROVAL`}
                 value={pendingReqs}
                 label="Pending approval"
                 icon={Clock3}
-                color="bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                colorClass="bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400"
               />
-              <StatLink
+              <StatCard
                 href={`/clients/${client.id}?tab=spocs`}
                 value={activeSpocs.length}
                 label="Active SPOCs"
                 icon={Users}
-                color="bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                colorClass="bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400"
               />
             </div>
 
-            <Separator />
+            <Separator className="my-1" />
 
             {/* Meta info */}
-            {client.vmsName && (
-              <InfoRow icon={Building2} label="VMS name">
-                {client.vmsName}
-              </InfoRow>
-            )}
-            {client.website && (
-              <InfoRow icon={Globe} label="Website">
-                <a
-                  href={client.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline flex items-center gap-1 truncate"
-                >
-                  {client.website.replace(/^https?:\/\//, '')}
-                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                </a>
-              </InfoRow>
-            )}
-            {(client.city || client.state || client.country) && (
-              <InfoRow icon={MapPin} label="Location">
-                {[client.city, client.state, client.country].filter(Boolean).join(', ')}
-              </InfoRow>
-            )}
-            {client.address && (
-              <InfoRow icon={MapPin} label="Address">
-                {client.address}
-              </InfoRow>
-            )}
-
-            <Separator />
+            <div className="flex flex-col gap-0">
+              {client.vmsName && (
+                <InfoRow icon={Building2} label="VMS name">
+                  {client.vmsName}
+                </InfoRow>
+              )}
+              {client.website && (
+                <InfoRow icon={Globe} label="Website">
+                  <a
+                    href={client.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline underline-offset-2 flex items-center gap-1 truncate"
+                  >
+                    {client.website.replace(/^https?:\/\//, '')}
+                    <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                  </a>
+                </InfoRow>
+              )}
+              {(client.city || client.state || client.country) && (
+                <InfoRow icon={MapPin} label="Location">
+                  {[client.city, client.state, client.country].filter(Boolean).join(', ')}
+                </InfoRow>
+              )}
+              {client.address && (
+                <InfoRow icon={MapPin} label="Address">
+                  {client.address}
+                </InfoRow>
+              )}
+            </div>
 
             {/* Relations */}
-            {client.parentClient && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                  Parent client
-                </p>
-                <Link
-                  href={`/clients/${client.parentClient.id}`}
-                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                >
-                  <ChevronRight className="w-3 h-3" />
-                  {client.parentClient.name}
-                </Link>
-              </div>
-            )}
-            {client.childClients.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">
-                  Child clients ({client.childClients.length})
-                </p>
-                <div className="flex flex-col gap-1">
-                  {client.childClients.map(c => (
-                    <Link
-                      key={c.id}
-                      href={`/clients/${c.id}`}
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
-                    >
-                      <ChevronRight className="w-3 h-3" />
-                      {c.name}
-                    </Link>
-                  ))}
+            {(client.parentClient || client.childClients.length > 0) && (
+              <>
+                <Separator className="my-1" />
+                <div className="flex flex-col gap-3">
+                  {client.parentClient && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">
+                        Parent client
+                      </p>
+                      <Link
+                        href={`/clients/${client.parentClient.id}`}
+                        className="text-[11px] text-primary hover:underline underline-offset-2 flex items-center gap-1"
+                      >
+                        <ChevronRight className="w-3 h-3" />
+                        {client.parentClient.name}
+                      </Link>
+                    </div>
+                  )}
+                  {client.childClients.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">
+                        Child clients ({client.childClients.length})
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {client.childClients.map(c => (
+                          <Link
+                            key={c.id}
+                            href={`/clients/${c.id}`}
+                            className="text-[11px] text-primary hover:underline underline-offset-2 flex items-center gap-1"
+                          >
+                            <ChevronRight className="w-3 h-3" />
+                            {c.name}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              </>
             )}
 
-            <Separator />
+            <Separator className="my-1" />
 
             {/* Audit */}
             <div className="flex flex-col gap-0">
               <InfoRow icon={UserCircle2} label="Created by">
                 {client.createdBy.firstName} {client.createdBy.lastName}
               </InfoRow>
-              <div className="py-2 border-b border-border/30">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
-                  Created
-                </p>
-                <p className="text-xs text-foreground">
-                  {format(new Date(client.createdAt), 'dd MMM yyyy')}
-                </p>
-              </div>
+              <InfoRow icon={Clock3} label="Created">
+                {format(new Date(client.createdAt), 'dd MMM yyyy')}
+              </InfoRow>
               {client.approvedBy && (
                 <InfoRow icon={CheckCircle2} label="Approved by">
                   {client.approvedBy.firstName} {client.approvedBy.lastName}
                 </InfoRow>
               )}
               {client.approvedAt && (
-                <div className="py-2">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-0.5">
-                    Approved
-                  </p>
-                  <p className="text-xs text-foreground">
-                    {format(new Date(client.approvedAt), 'dd MMM yyyy')}
-                  </p>
-                </div>
+                <InfoRow icon={Clock3} label="Approved">
+                  {format(new Date(client.approvedAt), 'dd MMM yyyy')}
+                </InfoRow>
               )}
             </div>
           </div>
         </ScrollArea>
 
-        {/* ── Main content ──────────────────────────────────────────────── */}
+        {/* ── Main content ────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col min-h-0">
           {/* Tab bar */}
-          <div className="shrink-0 border-b px-6 flex items-center gap-0">
+          <div className="shrink-0 border-b px-6 flex items-center gap-0 bg-background">
             {tabs.map(tab => (
               <button
                 key={tab.id}
@@ -1865,7 +2040,7 @@ export default function ClientDetailPage() {
                 {tab.label}
                 {tab.count !== undefined && tab.count > 0 && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums ${
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold tabular-nums min-w-[18px] text-center ${
                       activeTab === tab.id
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted text-muted-foreground'
@@ -1874,9 +2049,8 @@ export default function ClientDetailPage() {
                     {tab.count}
                   </span>
                 )}
-                {/* Active underline */}
                 {activeTab === tab.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                  <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" />
                 )}
               </button>
             ))}

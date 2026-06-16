@@ -1521,7 +1521,7 @@ export default function NewRequirementPage() {
                 label="Client & SPOC"
                 color="bg-indigo-100 text-indigo-600"
               />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5">
                 <div>
                   <FieldLabel required>Client</FieldLabel>
                   <Select
