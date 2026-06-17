@@ -23,6 +23,7 @@ import {
   UserSearch,
   Kanban,
   BarChart2,
+  Puzzle,
 } from 'lucide-react';
 
 const NAV = [
@@ -45,6 +46,7 @@ const NAV = [
   { label: 'Org Tree', href: '/org', icon: Network },
   { label: 'Roles', href: '/roles', icon: UserSquare2, module: 'roles' },
   { type: 'divider' as const },
+  { label: 'Extension', href: '/extension', icon: Puzzle },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
