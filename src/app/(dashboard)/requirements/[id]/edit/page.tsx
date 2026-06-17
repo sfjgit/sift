@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
@@ -38,164 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAxios } from '@/hooks/useAxios';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCHEMA — only the fields that are actually editable in edit mode
-// client, serviceLine, businessUnit, status, reqCode → NOT editable here
-// ─────────────────────────────────────────────────────────────────────────────
-
-const schema = z.object({
-  title: z.string().min(1, 'Title is required').max(300).trim(),
-  description: z.string().max(5000).optional().nullable(),
-  jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
-  remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
-  jobOpenFor: z.enum(['EXTERNAL', 'INTERNAL', 'BOTH']),
-  totalOpenings: z.number().min(1),
-  city: z.string().max(100).optional().nullable(),
-  state: z.string().max(100).optional().nullable(),
-  country: z.string().max(100).optional().nullable(),
-  experienceMin: z.number().min(0).optional().nullable(),
-  experienceMax: z.number().min(0).optional().nullable(),
-  salaryMin: z.number().min(0).optional().nullable(),
-  salaryMax: z.number().min(0).optional().nullable(),
-  salaryType: z.enum(['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY']).optional().nullable(),
-  salaryCurrency: z.string(),
-  bonusAmount: z.number().min(0).optional().nullable(),
-  hideSalaryFromCandidate: z.boolean(),
-  showMedianSalary: z.boolean(),
-  primarySkills: z.array(z.string().trim().min(1)),
-  keySkills: z.array(z.string().trim().min(1)),
-  education: z.string().max(300).optional().nullable(),
-  functionalArea: z.string().max(200).optional().nullable(),
-  shift: z.string().max(100).optional().nullable(),
-  targetCompanies: z.array(z.string().trim().min(1)),
-  noPoachCompanies: z.array(z.string().trim().min(1)),
-  startDate: z.string().optional().nullable(),
-  targetDate: z.string().optional().nullable(),
-  respondBy: z.string().optional().nullable(),
-  turnaroundDays: z.number().min(1).optional().nullable(),
-});
-
-type EditFormValues = z.infer<typeof schema>;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LOCATION DATA
-// ─────────────────────────────────────────────────────────────────────────────
-
-const INDIAN_STATES = [
-  'Andhra Pradesh',
-  'Arunachal Pradesh',
-  'Assam',
-  'Bihar',
-  'Chhattisgarh',
-  'Goa',
-  'Gujarat',
-  'Haryana',
-  'Himachal Pradesh',
-  'Jharkhand',
-  'Karnataka',
-  'Kerala',
-  'Madhya Pradesh',
-  'Maharashtra',
-  'Manipur',
-  'Meghalaya',
-  'Mizoram',
-  'Nagaland',
-  'Odisha',
-  'Punjab',
-  'Rajasthan',
-  'Sikkim',
-  'Tamil Nadu',
-  'Telangana',
-  'Tripura',
-  'Uttar Pradesh',
-  'Uttarakhand',
-  'West Bengal',
-  'Andaman and Nicobar Islands',
-  'Chandigarh',
-  'Dadra and Nagar Haveli and Daman and Diu',
-  'Delhi',
-  'Jammu and Kashmir',
-  'Ladakh',
-  'Lakshadweep',
-  'Puducherry',
-];
-
-const MAJOR_INDIAN_CITIES = [
-  'Bengaluru',
-  'Mumbai',
-  'Delhi',
-  'Hyderabad',
-  'Chennai',
-  'Pune',
-  'Kolkata',
-  'Ahmedabad',
-  'Jaipur',
-  'Surat',
-  'Lucknow',
-  'Kanpur',
-  'Nagpur',
-  'Indore',
-  'Thane',
-  'Bhopal',
-  'Visakhapatnam',
-  'Patna',
-  'Vadodara',
-  'Ghaziabad',
-  'Ludhiana',
-  'Agra',
-  'Nashik',
-  'Faridabad',
-  'Meerut',
-  'Rajkot',
-  'Varanasi',
-  'Srinagar',
-  'Aurangabad',
-  'Dhanbad',
-  'Amritsar',
-  'Allahabad',
-  'Ranchi',
-  'Howrah',
-  'Coimbatore',
-  'Jabalpur',
-  'Gwalior',
-  'Vijayawada',
-  'Jodhpur',
-  'Madurai',
-  'Raipur',
-  'Kota',
-  'Guwahati',
-  'Chandigarh',
-  'Solapur',
-  'Hubli',
-  'Tiruchirappalli',
-  'Bareilly',
-  'Mysuru',
-  'Noida',
-  'Gurugram',
-];
-
-const COUNTRIES = [
-  'India',
-  'United States',
-  'United Kingdom',
-  'United Arab Emirates',
-  'Singapore',
-  'Australia',
-  'Canada',
-  'Germany',
-  'Netherlands',
-  'Qatar',
-  'Saudi Arabia',
-  'Bahrain',
-  'Malaysia',
-  'Japan',
-  'New Zealand',
-  'France',
-  'Ireland',
-  'South Africa',
-];
+import { COUNTRIES, getStates, getCities } from '@/data/locationData';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -219,8 +62,67 @@ function toISOOrNull(v?: string | null) {
   }
 }
 
+function coerceNumber(v: unknown): number | null {
+  if (v === '' || v === undefined || v === null) return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+function toNum(v: any): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+function computeTurnaround(start?: string | null, target?: string | null): number | null {
+  if (!start || !target) return null;
+  const days = Math.ceil(
+    (new Date(target).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)
+  );
+  return days > 0 ? days : null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// MAP API response → form default values
+// SCHEMA
+// ─────────────────────────────────────────────────────────────────────────────
+
+const optionalNumber = z.preprocess(coerceNumber, z.number().min(0).optional().nullable());
+
+const schema = z.object({
+  title: z.string().min(1, 'Title is required').max(300).trim(),
+  description: z.string().max(5000).optional().nullable(),
+  jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
+  remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+  jobOpenFor: z.enum(['EXTERNAL', 'INTERNAL', 'BOTH']),
+  totalOpenings: z.number().min(1),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  country: z.string().max(100).optional().nullable(),
+  experienceMin: optionalNumber,
+  experienceMax: optionalNumber,
+  salaryMin: optionalNumber,
+  salaryMax: optionalNumber,
+  salaryType: z.enum(['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY']).optional().nullable(),
+  salaryCurrency: z.string(),
+  bonusAmount: optionalNumber,
+  hideSalaryFromCandidate: z.boolean(),
+  showMedianSalary: z.boolean(),
+  primarySkills: z.array(z.string().trim().min(1)),
+  keySkills: z.array(z.string().trim().min(1)),
+  education: z.string().max(300).optional().nullable(),
+  functionalArea: z.string().max(200).optional().nullable(),
+  shift: z.string().max(100).optional().nullable(),
+  targetCompanies: z.array(z.string().trim().min(1)),
+  noPoachCompanies: z.array(z.string().trim().min(1)),
+  startDate: z.string().optional().nullable(),
+  targetDate: z.string().optional().nullable(),
+});
+
+type EditFormValues = z.infer<typeof schema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAP API → form defaults
 // ─────────────────────────────────────────────────────────────────────────────
 
 function reqToFormValues(req: any): EditFormValues {
@@ -234,7 +136,7 @@ function reqToFormValues(req: any): EditFormValues {
     totalOpenings: req.totalOpenings ?? 1,
     city: req.city ?? null,
     state: req.state ?? null,
-    country: req.country ?? 'India',
+    country: req.country ?? null,
     experienceMin: req.experienceMin ?? null,
     experienceMax: req.experienceMax ?? null,
     salaryMin: req.salaryMin ?? null,
@@ -253,13 +155,11 @@ function reqToFormValues(req: any): EditFormValues {
     noPoachCompanies: req.noPoachCompanies ?? [],
     startDate: toDateInput(req.startDate),
     targetDate: toDateInput(req.targetDate),
-    respondBy: toDateInput(req.respondBy),
-    turnaroundDays: req.turnaroundDays ?? null,
   };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHARED STYLES
+// STYLES
 // ─────────────────────────────────────────────────────────────────────────────
 
 const inputCls =
@@ -320,7 +220,6 @@ function SectionTitle({
   );
 }
 
-// Read-only display field — for things like client, SPOC, reqCode
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -403,74 +302,199 @@ function TagInput({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMBO SELECT
+// LOCATION SECTION — same cascading pattern as new requirement page
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ComboSelect({
-  value,
-  onChange,
-  options,
-  placeholder,
-  className,
+function LocationSection({
+  control,
+  register,
+  setValue,
+  getValues,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-  placeholder?: string;
-  className?: string;
+  control: any;
+  register: any;
+  setValue: any;
+  getValues: any;
 }) {
-  const [open, setOpen] = useState(false);
-  const [inputVal, setInputVal] = useState(value ?? '');
-  const ref = useRef<HTMLDivElement>(null);
+  const watchedCountry = useWatch({ control, name: 'country' });
+  const watchedState = useWatch({ control, name: 'state' });
 
+  const states = watchedCountry ? getStates(watchedCountry) : [];
+  const cities = watchedCountry && watchedState ? getCities(watchedCountry, watchedState) : [];
+
+  const [manualState, setManualState] = useState(false);
+  const [manualCity, setManualCity] = useState(false);
+
+  // on initial load the country/state may already be set from the requirement —
+  // only reset when country CHANGES after mount
+  const mountedRef = useRef(false);
   useEffect(() => {
-    setInputVal(value ?? '');
-  }, [value]);
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    setValue('state', '');
+    setValue('city', '');
+    setManualState(false);
+    setManualCity(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedCountry]);
 
-  const filtered = options
-    .filter(o => o.toLowerCase().includes(inputVal.toLowerCase()))
-    .slice(0, 12);
-
+  const stateChangedRef = useRef(false);
   useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    if (!stateChangedRef.current) {
+      stateChangedRef.current = true;
+      return;
+    }
+    setValue('city', '');
+    setManualCity(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedState]);
 
   return (
-    <div className="relative" ref={ref}>
-      <input
-        className={className}
-        placeholder={placeholder}
-        value={inputVal}
-        autoComplete="off"
-        onChange={e => {
-          setInputVal(e.target.value);
-          onChange(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-      />
-      {open && filtered.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-52 overflow-y-auto">
-          {filtered.map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => {
-                setInputVal(opt);
-                onChange(opt);
-                setOpen(false);
-              }}
-              className={`w-full text-left px-3 py-2 text-[13px] hover:bg-slate-50 transition-colors ${opt === value ? 'bg-primary/5 text-primary font-semibold' : 'text-slate-700'}`}
-            >
-              {opt}
-            </button>
-          ))}
+    <div className="space-y-4">
+      <p className="text-[11.5px] text-slate-400">Pick from the list or type any custom value</p>
+
+      {/* Country */}
+      <div>
+        <FieldLabel>Country</FieldLabel>
+        <Controller
+          control={control}
+          name="country"
+          render={({ field }) => (
+            <Select value={field.value ?? ''} onValueChange={v => field.onChange(v || null)}>
+              <SelectTrigger className={`${selectCls} w-full`}>
+                <div className="flex items-center gap-2">
+                  <MapPin size={13} className="text-slate-400 shrink-0" />
+                  <SelectValue placeholder="Select country…" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {COUNTRIES.map(c => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* State */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <FieldLabel>State / Province</FieldLabel>
+            {states.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setManualState(v => !v);
+                  setValue('state', '');
+                }}
+                className="text-[11px] text-primary underline underline-offset-2"
+              >
+                {manualState ? 'Use list' : 'Type manually'}
+              </button>
+            )}
+          </div>
+          {!manualState && states.length > 0 ? (
+            <Controller
+              control={control}
+              name="state"
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? ''}
+                  onValueChange={v => field.onChange(v || null)}
+                  disabled={!watchedCountry}
+                >
+                  <SelectTrigger className={selectCls}>
+                    <SelectValue
+                      placeholder={watchedCountry ? 'Select state…' : 'Select country first'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {states.map(s => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          ) : (
+            <Input
+              className={inputCls}
+              placeholder="Type state / province…"
+              {...register('state')}
+            />
+          )}
+        </div>
+
+        {/* City */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <FieldLabel>City</FieldLabel>
+            {cities.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setManualCity(v => !v);
+                  setValue('city', '');
+                }}
+                className="text-[11px] text-primary underline underline-offset-2"
+              >
+                {manualCity ? 'Use list' : 'Type manually'}
+              </button>
+            )}
+          </div>
+          {!manualCity && cities.length > 0 ? (
+            <Controller
+              control={control}
+              name="city"
+              render={({ field }) => (
+                <Select
+                  value={field.value ?? ''}
+                  onValueChange={v => field.onChange(v || null)}
+                  disabled={!watchedState}
+                >
+                  <SelectTrigger className={selectCls}>
+                    <SelectValue
+                      placeholder={watchedState ? 'Select city…' : 'Select state first'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {cities.map(c => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          ) : (
+            <div className="relative">
+              <MapPin
+                size={13}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <Input
+                className={`${inputCls} pl-9`}
+                placeholder="Type city…"
+                {...register('city')}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {(watchedCountry || watchedState) && (
+        <div className="flex items-center gap-1.5 text-[12px] text-slate-500 flex-wrap">
+          <MapPin size={11} className="text-blue-400 shrink-0" />
+          {[getValues('city'), getValues('state'), getValues('country')].filter(Boolean).join(', ')}
         </div>
       )}
     </div>
@@ -478,7 +502,82 @@ function ComboSelect({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTIONS for scroll-spy sidebar
+// TURNAROUND DISPLAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TurnaroundDisplay({ control }: { control: any }) {
+  const startDate = useWatch({ control, name: 'startDate' });
+  const targetDate = useWatch({ control, name: 'targetDate' });
+  const days = computeTurnaround(startDate, targetDate);
+  if (!days) return null;
+  return (
+    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-100 w-fit">
+      <Calendar size={13} className="text-rose-400 shrink-0" />
+      <span className="text-[13px] text-slate-500">
+        Turnaround:{' '}
+        <span className="font-bold text-rose-600">
+          {days} day{days !== 1 ? 's' : ''}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BONUS FIELD — toggle pattern, no NaN
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BonusField({
+  control,
+  setValue,
+  register,
+}: {
+  control: any;
+  setValue: any;
+  register: any;
+}) {
+  const bonus = useWatch({ control, name: 'bonusAmount' });
+  const hasBonus = bonus !== null && bonus !== undefined && !isNaN(bonus as number);
+
+  if (!hasBonus) {
+    return (
+      <button
+        type="button"
+        onClick={() => setValue('bonusAmount', 0)}
+        className="flex items-center gap-2 text-[12.5px] font-semibold text-slate-500 hover:text-primary border border-dashed border-slate-300 hover:border-primary px-3 py-2 rounded-xl transition-colors w-full justify-center"
+      >
+        <Plus size={13} />
+        Add Bonus Amount
+      </button>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <FieldLabel>Bonus Amount</FieldLabel>
+        <button
+          type="button"
+          onClick={() => setValue('bonusAmount', null)}
+          className="text-[11px] text-slate-400 hover:text-red-500 flex items-center gap-1"
+        >
+          <X size={11} />
+          Remove
+        </button>
+      </div>
+      <Input
+        type="number"
+        min={0}
+        className={inputCls}
+        placeholder="Enter bonus amount"
+        {...register('bonusAmount', { valueAsNumber: true })}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
@@ -487,7 +586,7 @@ const SECTIONS = [
   { id: 'edit-skills', label: 'Skills', icon: Briefcase, sub: 'Primary & key skills' },
   { id: 'edit-compensation', label: 'Compensation', icon: DollarSign, sub: 'Salary, bonus' },
   { id: 'edit-client', label: 'Client & SPOC', icon: UserCheck, sub: 'Read-only context' },
-  { id: 'edit-timeline', label: 'Timeline', icon: Calendar, sub: 'Dates & deadlines' },
+  { id: 'edit-timeline', label: 'Timeline', icon: Calendar, sub: 'Dates & turnaround' },
 ];
 
 const SECTION_FIELDS: Record<string, (keyof EditFormValues)[]> = {
@@ -512,12 +611,11 @@ export default function EditRequirementPage() {
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
   const [isReady, setIsReady] = useState(false);
 
-  // ── Fetch requirement ─────────────────────────────────────────────────────
+  // ── Fetch ─────────────────────────────────────────────────────────────────
   const { data: reqRes, isLoading } = useQuery({
     queryKey: ['requirement', id],
     queryFn: async () => (await axios.get(`/requirements/${id}`)).data,
   });
-
   const req = reqRes?.data;
 
   // ── RHF ──────────────────────────────────────────────────────────────────
@@ -526,9 +624,10 @@ export default function EditRequirementPage() {
     control,
     handleSubmit,
     reset,
+    setValue,
     trigger,
+    getValues,
     formState: { errors, dirtyFields },
-    watch,
   } = useForm<EditFormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: {
@@ -542,29 +641,21 @@ export default function EditRequirementPage() {
       priority: 'MEDIUM',
       jobOpenFor: 'EXTERNAL',
       totalOpenings: 1,
+      bonusAmount: null,
     },
   });
 
-  // Hydrate once when data arrives — set isReady AFTER reset so Controllers
-  // mount with the correct values already in the form store
+  // Hydrate once when data arrives
   useEffect(() => {
     if (!req) return;
     reset(reqToFormValues(req));
-    // small tick ensures react re-renders Controllers with new values before showing form
     setTimeout(() => setIsReady(true), 0);
   }, [req, reset]);
-
-  // Live watch for tag arrays (controlled via Controller)
-  const primarySkills = watch('primarySkills') ?? [];
-  const keySkills = watch('keySkills') ?? [];
-  const targetCompanies = watch('targetCompanies') ?? [];
-  const noPoachCompanies = watch('noPoachCompanies') ?? [];
 
   // ── Scroll-spy ────────────────────────────────────────────────────────────
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
     const visibilityMap = new Map<string, number>();
-
     SECTIONS.forEach(sec => {
       const el = document.getElementById(sec.id);
       if (!el) return;
@@ -587,15 +678,15 @@ export default function EditRequirementPage() {
       observers.push(obs);
     });
     return () => observers.forEach(o => o.disconnect());
-  }, [req]); // re-run after req loads so elements exist
+  }, [req]);
 
   const scrollToSection = useCallback((sid: string) => {
     document.getElementById(sid)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  // ── Mutation — only send dirty fields ────────────────────────────────────
+  // ── Submit — only dirty fields ────────────────────────────────────────────
   const updateMutation = useMutation({
-    mutationFn: async (payload: Partial<EditFormValues>) =>
+    mutationFn: async (payload: Record<string, any>) =>
       (await axios.put(`/requirements/${id}`, payload)).data,
     onSuccess: () => {
       toast.success('Requirement updated');
@@ -608,7 +699,6 @@ export default function EditRequirementPage() {
   });
 
   async function onSubmit(allValues: EditFormValues) {
-    // Build payload from only dirty fields
     const payload: Record<string, any> = {};
 
     (Object.keys(dirtyFields) as (keyof EditFormValues)[]).forEach(field => {
@@ -620,21 +710,39 @@ export default function EditRequirementPage() {
       return;
     }
 
-    // Convert date strings to ISO for dirty date fields
-    if (payload.startDate !== undefined)
-      payload.startDate = toISOOrNull(payload.startDate as string);
-    if (payload.targetDate !== undefined)
-      payload.targetDate = toISOOrNull(payload.targetDate as string);
-    if (payload.respondBy !== undefined)
-      payload.respondBy = toISOOrNull(payload.respondBy as string);
+    // coerce number fields — just like controller does on create
+    const numFields = [
+      'experienceMin',
+      'experienceMax',
+      'salaryMin',
+      'salaryMax',
+      'bonusAmount',
+      'totalOpenings',
+    ] as const;
+    numFields.forEach(f => {
+      if (f in payload) payload[f] = toNum(payload[f]);
+    });
 
-    await updateMutation.mutateAsync(payload as Partial<EditFormValues>);
+    // dates
+    if ('startDate' in payload) payload.startDate = toISOOrNull(payload.startDate);
+    if ('targetDate' in payload) payload.targetDate = toISOOrNull(payload.targetDate);
+
+    // auto-compute turnaround if either date changed
+    if ('startDate' in payload || 'targetDate' in payload) {
+      const start = payload.startDate ?? toISOOrNull(allValues.startDate);
+      const target = payload.targetDate ?? toISOOrNull(allValues.targetDate);
+      if (start && target) {
+        payload.turnaroundDays = Math.ceil(
+          (new Date(target).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)
+        );
+      }
+    }
+
+    await updateMutation.mutateAsync(payload);
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────
-  const showSkeleton = isLoading || !isReady || !req;
-
-  if (showSkeleton) {
+  // ── Skeleton ──────────────────────────────────────────────────────────────
+  if (isLoading || !isReady || !req) {
     return (
       <div className="h-screen flex flex-col bg-[#F8F9FB] overflow-hidden">
         <div className="shrink-0 bg-white border-b px-6 py-3 flex items-center gap-4">
@@ -655,9 +763,11 @@ export default function EditRequirementPage() {
     );
   }
 
+  const dirtyCount = Object.keys(dirtyFields).length;
+
   return (
     <div className="h-screen flex flex-col bg-[#F8F9FB] overflow-hidden">
-      {/* ── Top bar ────────────────────────────────────────────────────────── */}
+      {/* Top bar */}
       <div className="shrink-0 z-20 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4">
         <button
           onClick={() => router.back()}
@@ -669,15 +779,11 @@ export default function EditRequirementPage() {
           <h1 className="text-[15px] font-bold text-slate-900 leading-none">Edit Requirement</h1>
           <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{req.reqCode}</p>
         </div>
-
-        {/* Dirty field count badge */}
-        {Object.keys(dirtyFields).length > 0 && (
+        {dirtyCount > 0 && (
           <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
-            {Object.keys(dirtyFields).length} unsaved change
-            {Object.keys(dirtyFields).length !== 1 ? 's' : ''}
+            {dirtyCount} unsaved change{dirtyCount !== 1 ? 's' : ''}
           </span>
         )}
-
         <div className="ml-auto flex items-center gap-2">
           <Button
             variant="outline"
@@ -708,9 +814,9 @@ export default function EditRequirementPage() {
         </div>
       </div>
 
-      {/* ── Body ─────────────────────────────────────────────────────────────── */}
+      {/* Body */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* ── Sidebar ──────────────────────────────────────────────────────── */}
+        {/* Sidebar */}
         <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
           <div className="flex-1 overflow-y-auto py-6 px-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-3">
@@ -721,47 +827,28 @@ export default function EditRequirementPage() {
                 const isActive = activeSection === sec.id;
                 const secFields = SECTION_FIELDS[sec.id] ?? [];
                 const hasError = secFields.some(f => (errors as any)[f]);
-                const Icon = sec.icon;
                 const isDirty = secFields.some(f => (dirtyFields as any)[f]);
-
+                const Icon = sec.icon;
                 return (
                   <button
                     key={sec.id}
                     type="button"
                     onClick={() => scrollToSection(sec.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${
-                      isActive ? 'bg-primary/[0.08] border border-primary/20' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${isActive ? 'bg-primary/[0.08] border border-primary/20' : 'hover:bg-slate-50'}`}
                   >
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${
-                        hasError
-                          ? 'bg-red-500 text-white'
-                          : isActive
-                            ? 'bg-primary text-white shadow-sm shadow-primary/30'
-                            : isDirty
-                              ? 'bg-amber-400 text-white'
-                              : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
-                      }`}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${hasError ? 'bg-red-500 text-white' : isActive ? 'bg-primary text-white shadow-sm shadow-primary/30' : isDirty ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}
                     >
                       {hasError ? <AlertCircle size={13} /> : <Icon size={13} />}
                     </div>
                     <div className="min-w-0">
                       <p
-                        className={`text-[12.5px] font-semibold leading-none truncate ${
-                          hasError ? 'text-red-600' : isActive ? 'text-primary' : 'text-slate-600'
-                        }`}
+                        className={`text-[12.5px] font-semibold leading-none truncate ${hasError ? 'text-red-600' : isActive ? 'text-primary' : 'text-slate-600'}`}
                       >
                         {sec.label}
                       </p>
                       <p
-                        className={`text-[10.5px] mt-0.5 truncate ${
-                          hasError
-                            ? 'text-red-400'
-                            : isActive
-                              ? 'text-primary/60'
-                              : 'text-slate-400'
-                        }`}
+                        className={`text-[10.5px] mt-0.5 truncate ${hasError ? 'text-red-400' : isActive ? 'text-primary/60' : 'text-slate-400'}`}
                       >
                         {hasError ? 'Has errors' : isDirty ? 'Modified' : sec.sub}
                       </p>
@@ -774,8 +861,6 @@ export default function EditRequirementPage() {
               })}
             </nav>
           </div>
-
-          {/* Req context widget */}
           <div className="shrink-0 p-4 border-t border-slate-100">
             <div className="rounded-xl p-3 bg-slate-50 border border-slate-200 space-y-1.5">
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -788,17 +873,16 @@ export default function EditRequirementPage() {
           </div>
         </aside>
 
-        {/* ── Scrollable form ───────────────────────────────────────────────── */}
+        {/* Scrollable form */}
         <main className="flex-1 overflow-y-auto">
           <form onSubmit={handleSubmit(onSubmit)} className="px-8 py-8 space-y-6 max-w-3xl">
-            {/* ── Basic Info ─────────────────────────────────────────────── */}
+            {/* Basic Info */}
             <SectionCard id="edit-basics">
               <SectionTitle
                 icon={FileText}
                 label="Basic Info"
                 color="bg-slate-100 text-slate-600"
               />
-
               <div>
                 <FieldLabel required>Job Title</FieldLabel>
                 <Input
@@ -807,7 +891,6 @@ export default function EditRequirementPage() {
                 />
                 <FieldError msg={errors.title?.message} />
               </div>
-
               <div>
                 <FieldLabel>Description</FieldLabel>
                 <Textarea
@@ -816,7 +899,6 @@ export default function EditRequirementPage() {
                   {...register('description')}
                 />
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <FieldLabel>Job Type</FieldLabel>
@@ -935,75 +1017,27 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* ── Location ─────────────────────────────────────────────────── */}
+            {/* Location — cascading */}
             <SectionCard id="edit-location">
               <SectionTitle icon={MapPin} label="Location" color="bg-blue-100 text-blue-600" />
-              <p className="text-[11.5px] text-slate-400 -mt-2">
-                Pick from the list or type any custom value
-              </p>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <FieldLabel>City</FieldLabel>
-                  <Controller
-                    control={control}
-                    name="city"
-                    render={({ field }) => (
-                      <ComboSelect
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        options={MAJOR_INDIAN_CITIES}
-                        placeholder="e.g. Bengaluru"
-                        className={`w-full ${inputCls}`}
-                      />
-                    )}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>State</FieldLabel>
-                  <Controller
-                    control={control}
-                    name="state"
-                    render={({ field }) => (
-                      <ComboSelect
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        options={INDIAN_STATES}
-                        placeholder="e.g. Karnataka"
-                        className={`w-full ${inputCls}`}
-                      />
-                    )}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Country</FieldLabel>
-                  <Controller
-                    control={control}
-                    name="country"
-                    render={({ field }) => (
-                      <ComboSelect
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        options={COUNTRIES}
-                        placeholder="India"
-                        className={`w-full ${inputCls}`}
-                      />
-                    )}
-                  />
-                </div>
-              </div>
+              <LocationSection
+                control={control}
+                register={register}
+                setValue={setValue}
+                getValues={getValues}
+              />
             </SectionCard>
 
-            {/* ── Skills ────────────────────────────────────────────────────── */}
+            {/* Skills */}
             <SectionCard id="edit-skills">
               <SectionTitle
                 icon={Briefcase}
                 label="Skills & Experience"
                 color="bg-emerald-100 text-emerald-600"
               />
-
               <div>
                 <FieldLabel>
-                  Primary Skills
+                  Primary Skills{' '}
                   <span className="ml-2 text-[11px] font-normal text-slate-400 normal-case">
                     top 3–5 must-have
                   </span>
@@ -1021,12 +1055,10 @@ export default function EditRequirementPage() {
                   )}
                 />
               </div>
-
               <div className="h-px bg-slate-100" />
-
               <div>
                 <FieldLabel>
-                  Key Skills
+                  Key Skills{' '}
                   <span className="ml-2 text-[11px] font-normal text-slate-400 normal-case">
                     all other required skills
                   </span>
@@ -1044,9 +1076,7 @@ export default function EditRequirementPage() {
                   )}
                 />
               </div>
-
               <div className="h-px bg-slate-100" />
-
               <div>
                 <FieldLabel>Experience Range (years)</FieldLabel>
                 <div className="grid grid-cols-2 gap-4">
@@ -1068,9 +1098,7 @@ export default function EditRequirementPage() {
                   />
                 </div>
               </div>
-
               <div className="h-px bg-slate-100" />
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <FieldLabel>Target Companies</FieldLabel>
@@ -1105,7 +1133,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* ── Compensation ──────────────────────────────────────────────── */}
+            {/* Compensation */}
             <SectionCard id="edit-compensation">
               <SectionTitle
                 icon={DollarSign}
@@ -1177,15 +1205,8 @@ export default function EditRequirementPage() {
                     )}
                   />
                 </div>
-                <div>
-                  <FieldLabel>Bonus Amount</FieldLabel>
-                  <Input
-                    type="number"
-                    min={0}
-                    className={inputCls}
-                    placeholder="0"
-                    {...register('bonusAmount', { valueAsNumber: true })}
-                  />
+                <div className="col-span-2">
+                  <BonusField control={control} setValue={setValue} register={register} />
                 </div>
               </div>
               <div className="flex gap-6 pt-1">
@@ -1210,7 +1231,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* ── Client & SPOC — READ ONLY ─────────────────────────────────── */}
+            {/* Client & SPOC — read only */}
             <SectionCard id="edit-client">
               <SectionTitle
                 icon={UserCheck}
@@ -1219,8 +1240,7 @@ export default function EditRequirementPage() {
               />
               <p className="text-[11.5px] text-slate-400 -mt-2 flex items-center gap-1.5">
                 <Sparkles size={11} className="text-slate-400" />
-                Client and SPOC cannot be changed after creation. Create a new requirement if
-                needed.
+                Client and SPOC cannot be changed after creation.
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <ReadonlyField label="Client" value={req.client?.name ?? '—'} />
@@ -1237,7 +1257,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* ── Timeline ──────────────────────────────────────────────────── */}
+            {/* Timeline */}
             <SectionCard id="edit-timeline">
               <SectionTitle icon={Calendar} label="Timeline" color="bg-rose-100 text-rose-600" />
               <div className="grid grid-cols-2 gap-5">
@@ -1249,24 +1269,15 @@ export default function EditRequirementPage() {
                   <FieldLabel>Target Date</FieldLabel>
                   <Input type="date" className={inputCls} {...register('targetDate')} />
                 </div>
-                <div>
-                  <FieldLabel>Respond By</FieldLabel>
-                  <Input type="date" className={inputCls} {...register('respondBy')} />
-                </div>
-                <div>
-                  <FieldLabel>Turnaround (days)</FieldLabel>
-                  <Input
-                    type="number"
-                    min={1}
-                    placeholder="—"
-                    className={inputCls}
-                    {...register('turnaroundDays', { valueAsNumber: true })}
-                  />
-                </div>
               </div>
+              {/* turnaround auto-computed — shown read-only, same as create */}
+              <TurnaroundDisplay control={control} />
+              <p className="text-[11px] text-slate-400">
+                Turnaround is auto-calculated and saved on submit.
+              </p>
             </SectionCard>
 
-            {/* ── Bottom submit ─────────────────────────────────────────────── */}
+            {/* Bottom actions */}
             <div className="pb-16 pt-2 flex items-center justify-between">
               <Button
                 type="button"
