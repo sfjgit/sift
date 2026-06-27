@@ -3,7 +3,8 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -102,7 +103,7 @@ const MODULE_META: Record<string, { icon: string; color: string }> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scope pill colors — compact pill, each scope has a distinct color
+// Scope pill colors
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SCOPE_PILL_CLS: Record<string, string> = {
@@ -135,10 +136,11 @@ function hasAnyPermission(row: PermissionRowPayload) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scope pill with dropdown — compact pill, opens inline popover on click
-// No truncation issues — the pill shows just the scope name (short), the
-// full description appears in the dropdown option only
+// ScopePill — portal-based dropdown so it always escapes overflow/stacking
+// contexts and renders correctly even for the last rows in a long matrix
 // ─────────────────────────────────────────────────────────────────────────────
+
+const POPUP_WIDTH = 224; // w-56
 
 function ScopePill({
   value,
@@ -152,25 +154,81 @@ function ScopePill({
   onChange: (v: PermissionScope) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
+  // Calculate where to place the portal popup, flipping up if near the bottom
+  const calcCoords = useCallback(() => {
+    const btn = triggerRef.current;
+    if (!btn) return null;
+
+    const rect = btn.getBoundingClientRect();
+    const estPopupHeight = scopeOptions.length * 52 + 8; // approx per-option height
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    const openUpward = spaceBelow < estPopupHeight + 8 && spaceAbove > spaceBelow;
+
+    const top = openUpward
+      ? rect.top + window.scrollY - estPopupHeight - 6
+      : rect.bottom + window.scrollY + 6;
+
+    let left = rect.left + window.scrollX;
+
+    // Keep within right edge of viewport
+    if (left + POPUP_WIDTH > window.innerWidth - 8) {
+      left = window.innerWidth - POPUP_WIDTH - 8;
+    }
+
+    return { top, left };
+  }, [scopeOptions.length]);
+
+  const handleOpen = () => {
+    if (disabled) return;
+    const c = calcCoords();
+    if (c) setCoords(c);
+    setOpen(true);
+  };
+
+  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        !triggerRef.current?.contains(e.target as Node) &&
+        !popoverRef.current?.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const currentScope = scopeOptions?.find(s => s.value === value);
+  // Reposition on scroll or resize while open
+  useEffect(() => {
+    if (!open) return;
+    const recalc = () => {
+      const c = calcCoords();
+      if (c) setCoords(c);
+    };
+    window.addEventListener('scroll', recalc, true);
+    window.addEventListener('resize', recalc);
+    return () => {
+      window.removeEventListener('scroll', recalc, true);
+      window.removeEventListener('resize', recalc);
+    };
+  }, [open, calcCoords]);
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
-        onClick={() => !disabled && setOpen(p => !p)}
+        onClick={handleOpen}
         className={cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold tracking-wide transition-all',
           scopePillCls(value),
@@ -179,7 +237,6 @@ function ScopePill({
             : 'cursor-pointer hover:opacity-80'
         )}
       >
-        {/* Show abbreviated label — no long text in the pill */}
         {value.replace('_', ' ')}
         {!disabled && (
           <svg className="w-2.5 h-2.5 opacity-60" viewBox="0 0 10 10" fill="none">
@@ -194,35 +251,49 @@ function ScopePill({
         )}
       </button>
 
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-50 w-56 rounded-xl border border-border bg-popover shadow-lg overflow-hidden">
-          {scopeOptions.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => {
-                onChange(opt.value);
-                setOpen(false);
-              }}
-              className={cn(
-                'w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-muted/60 transition-colors',
-                opt.value === value && 'bg-muted'
-              )}
-            >
-              <span
+      {/* Portal — renders at document.body level, fully escapes table/card stacking */}
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{
+              position: 'absolute',
+              top: coords.top,
+              left: coords.left,
+              width: POPUP_WIDTH,
+              zIndex: 9999,
+            }}
+            className="rounded-xl border border-border bg-popover shadow-lg overflow-hidden"
+          >
+            {scopeOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value as PermissionScope);
+                  setOpen(false);
+                }}
                 className={cn(
-                  'mt-0.5 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold',
-                  scopePillCls(opt.value)
+                  'w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-muted/60 transition-colors',
+                  opt.value === value && 'bg-muted'
                 )}
               >
-                {opt.value.replace('_', ' ')}
-              </span>
-              <span className="text-[11px] text-muted-foreground leading-snug">{opt.desc}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+                <span
+                  className={cn(
+                    'mt-0.5 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold',
+                    scopePillCls(opt.value)
+                  )}
+                >
+                  {opt.value.replace('_', ' ')}
+                </span>
+                <span className="text-[11px] text-muted-foreground leading-snug">{opt.desc}</span>
+              </button>
+            ))}
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 
@@ -504,10 +575,7 @@ export function PermissionsMatrix({
                     meta.color
                   )}
                 >
-                  <span className="text-[13px]">
-                    {/* icon placeholder — swap with your actual icon component */}
-                    {module[0].toUpperCase()}
-                  </span>
+                  <span className="text-[13px]">{module[0].toUpperCase()}</span>
                 </div>
               )}
               <p
