@@ -28,18 +28,26 @@ import {
   Pencil,
   Save,
   X,
-  CheckCircle2,
-  ShieldAlert,
-  Clock,
   DollarSign,
   Tag,
-  ChevronRight,
+  Wallet,
+  CalendarCheck,
+  AlertTriangle,
+  ExternalLink,
+  Send,
+  PauseCircle,
+  XCircle,
+  LogOut,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -47,8 +55,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { useAxios } from '@/hooks/useAxios';
 import { ResumeViewButton } from './ResumeViewButton';
 import { ResumeReplaceButton } from './ResumeReplaceButton';
@@ -143,10 +149,39 @@ interface CandidateDetail {
     createdAt: string;
   }[];
   requirements: {
-    id: string;
+    id: string; // pipelineId
     requirementId: string;
+    reqCode?: string | null;
+    reqTitle?: string | null;
+    clientName?: string | null;
     stage: string;
+    canonicalStage?: string | null;
     createdAt: string;
+    // CTC ladder
+    currentCtc?: number | null;
+    expectedCtc?: number | null;
+    negotiatedCtc?: number | null;
+    ctcNotes?: string | null;
+    // Offer
+    offeredCtc?: number | null;
+    salaryType?: string | null;
+    offerStatus?: string | null;
+    offeredAt?: string | null;
+    // Joining
+    expectedJoiningDate?: string | null;
+    actualJoiningDate?: string | null;
+    lastWorkingDate?: string | null;
+    monthOfJoining?: string | null;
+    remainingDaysToJoin?: number | null;
+    // Status
+    isRejected?: boolean;
+    isWithdrawn?: boolean;
+    isOnHold?: boolean;
+    onHoldReason?: string | null;
+    rejectionReason?: string | null;
+    withdrawnReason?: string | null;
+    submittedAt?: string | null;
+    submissionNote?: string | null;
   }[];
   certifications: {
     id: string;
@@ -205,6 +240,20 @@ const formatDuration = (months: number | null) => {
   return [y ? `${y}y` : '', m ? `${m}m` : ''].filter(Boolean).join(' ');
 };
 
+const formatCtcBig = (val: number | null | undefined) =>
+  val != null ? `₹${(val / 100000).toFixed(1)}L` : '—';
+
+const formatDateShort = (d: string | null | undefined) =>
+  d ? format(new Date(d), 'dd MMM yy') : '—';
+
+const humanizeCanonical = (key: string) =>
+  key
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+
+const toNum = (v: string) => (v.trim() === '' ? null : parseFloat(v));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION WRAPPER
 // ─────────────────────────────────────────────────────────────────────────────
@@ -221,7 +270,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EDIT FORM FIELDS
+// EDIT STATE
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface EditState {
@@ -267,6 +316,681 @@ function buildEditState(c: CandidateDetail): EditState {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PIPELINE ACTION TABS — same logic as CandidateDetailsModal in assignments page
+// Submission / Offer & CTC / Joining / Status
+// pipelineId = req.id (which IS the pipeline id from the requirements array)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type DetailTab = 'submission' | 'offer' | 'joining' | 'status';
+
+function SubmissionTab({
+  req,
+  axios,
+  onDone,
+}: {
+  req: CandidateDetail['requirements'][number];
+  axios: any;
+  onDone: () => void;
+}) {
+  const [note, setNote] = useState(req.submissionNote ?? '');
+  const mut = useMutation({
+    mutationFn: async () =>
+      axios.patch(`/pipeline/${req.id}/submit`, { submissionNote: note || undefined }),
+    onSuccess: () => {
+      toast.success(req.submittedAt ? 'Submission updated' : 'Submitted to client');
+      onDone();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  });
+
+  return (
+    <div className="space-y-4 p-4">
+      {req.submittedAt ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-xs font-semibold text-blue-800">
+          Submitted on {formatDateShort(req.submittedAt)}
+        </div>
+      ) : (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-xs font-medium text-slate-500">
+          Not submitted to client yet.
+        </div>
+      )}
+      <div>
+        <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">Submission note</Label>
+        <Textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Notes for the client..."
+          rows={3}
+          className="resize-none text-sm"
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" disabled={mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+          {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          {req.submittedAt ? 'Update Submission' : 'Mark Submitted'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function OfferCtcTab({
+  req,
+  axios,
+  onDone,
+}: {
+  req: CandidateDetail['requirements'][number];
+  axios: any;
+  onDone: () => void;
+}) {
+  const [currentCtc, setCurrentCtc] = useState(req.currentCtc?.toString() ?? '');
+  const [expectedCtc, setExpectedCtc] = useState(req.expectedCtc?.toString() ?? '');
+  const [negotiatedCtc, setNegotiatedCtc] = useState(req.negotiatedCtc?.toString() ?? '');
+  const [ctcNotes, setCtcNotes] = useState(req.ctcNotes ?? '');
+  const [offeredCtc, setOfferedCtc] = useState(req.offeredCtc?.toString() ?? '');
+  const [salaryType, setSalaryType] = useState(req.salaryType ?? 'MONTHLY');
+  const [expectedJoiningDate, setExpectedJoiningDate] = useState(
+    req.expectedJoiningDate ? req.expectedJoiningDate.slice(0, 10) : ''
+  );
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      await axios.patch(`/pipeline/${req.id}/offer`, {
+        currentCtc: toNum(currentCtc),
+        expectedCtc: toNum(expectedCtc),
+        negotiatedCtc: toNum(negotiatedCtc),
+        ctcNotes: ctcNotes.trim() || null,
+        ...(offeredCtc.trim() && {
+          offeredCtc: toNum(offeredCtc),
+          salaryCurrency: 'INR',
+          salaryType,
+        }),
+        ...(expectedJoiningDate && { expectedJoiningDate }),
+      });
+    },
+    onSuccess: () => {
+      toast.success('Offer & CTC saved');
+      onDone();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to save'),
+  });
+
+  return (
+    <div className="space-y-4 p-4">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">
+          CTC Ladder
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Current CTC (₹)', val: currentCtc, set: setCurrentCtc },
+            { label: 'Expected CTC (₹)', val: expectedCtc, set: setExpectedCtc },
+            { label: 'Negotiated CTC (₹)', val: negotiatedCtc, set: setNegotiatedCtc },
+          ].map(f => (
+            <div key={f.label}>
+              <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">{f.label}</Label>
+              <Input
+                type="number"
+                value={f.val}
+                onChange={e => f.set(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-3">
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">CTC Notes</Label>
+          <Textarea
+            value={ctcNotes}
+            onChange={e => setCtcNotes(e.target.value)}
+            rows={2}
+            className="resize-none text-sm"
+            placeholder="Any context on negotiation, breakup, etc."
+          />
+        </div>
+      </div>
+
+      <div className="pt-1 border-t border-slate-100">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2 mt-2">
+          Formal Offer
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+              Offered CTC (₹)
+            </Label>
+            <Input
+              type="number"
+              value={offeredCtc}
+              onChange={e => setOfferedCtc(e.target.value)}
+              placeholder="e.g. 800000"
+              className="h-8 text-sm"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">Salary Type</Label>
+            <Select value={salaryType} onValueChange={setSalaryType}>
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY'].map(t => (
+                  <SelectItem key={t} value={t} className="text-sm">
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-3">
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Expected Joining
+          </Label>
+          <Input
+            type="date"
+            value={expectedJoiningDate}
+            onChange={e => setExpectedJoiningDate(e.target.value)}
+            className="h-8 text-sm w-44"
+          />
+        </div>
+        {req.offerStatus && (
+          <p className="text-xs text-slate-500 mt-2">
+            Offer status: <span className="font-semibold text-slate-700">{req.offerStatus}</span>
+          </p>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          disabled={mut.isPending}
+          onClick={() => mut.mutate()}
+          className="gap-2 bg-violet-600 hover:bg-violet-700"
+        >
+          {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Save Offer & CTC
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function JoiningTab({
+  req,
+  axios,
+  onDone,
+}: {
+  req: CandidateDetail['requirements'][number];
+  axios: any;
+  onDone: () => void;
+}) {
+  const [lastWorkingDate, setLastWorkingDate] = useState(
+    req.lastWorkingDate ? req.lastWorkingDate.slice(0, 10) : ''
+  );
+  const [actualJoiningDate, setActualJoiningDate] = useState(
+    req.actualJoiningDate ? req.actualJoiningDate.slice(0, 10) : ''
+  );
+
+  const mut = useMutation({
+    mutationFn: async () =>
+      axios.patch(`/pipeline/${req.id}/details`, {
+        lastWorkingDate: lastWorkingDate || null,
+        actualJoiningDate: actualJoiningDate || null,
+      }),
+    onSuccess: () => {
+      toast.success('Joining details saved');
+      onDone();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to save'),
+  });
+
+  return (
+    <div className="space-y-4 p-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Last Working Day
+          </Label>
+          <Input
+            type="date"
+            value={lastWorkingDate}
+            onChange={e => setLastWorkingDate(e.target.value)}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Actual Joining Date
+          </Label>
+          <Input
+            type="date"
+            value={actualJoiningDate}
+            onChange={e => setActualJoiningDate(e.target.value)}
+            className="h-8 text-sm"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Expected Joining
+          </p>
+          <p className="text-sm font-semibold text-slate-700 mt-0.5">
+            {formatDateShort(req.expectedJoiningDate)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Days to Join
+          </p>
+          <p
+            className={`text-sm font-semibold mt-0.5 ${req.remainingDaysToJoin != null && req.remainingDaysToJoin < 0 ? 'text-rose-600' : 'text-slate-700'}`}
+          >
+            {req.remainingDaysToJoin != null ? req.remainingDaysToJoin : '—'}
+          </p>
+        </div>
+        <div className="col-span-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Month of Joining
+          </p>
+          <p className="text-sm font-semibold text-slate-700 mt-0.5">{req.monthOfJoining ?? '—'}</p>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" disabled={mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+          {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Save Joining Details
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function StatusTab({
+  req,
+  axios,
+  onDone,
+}: {
+  req: CandidateDetail['requirements'][number];
+  axios: any;
+  onDone: () => void;
+}) {
+  const [active, setActive] = useState<'hold' | 'withdraw' | 'reject' | null>(null);
+  const [reason, setReason] = useState('');
+  const isTerminated = req.isRejected || req.isWithdrawn;
+
+  const endpointFor = (a: string) =>
+    a === 'hold'
+      ? `/pipeline/${req.id}/hold`
+      : a === 'withdraw'
+        ? `/pipeline/${req.id}/withdraw`
+        : `/pipeline/${req.id}/reject`;
+
+  const bodyKeyFor = (a: string) =>
+    a === 'hold' ? 'onHoldReason' : a === 'withdraw' ? 'withdrawnReason' : 'rejectionReason';
+
+  const mut = useMutation({
+    mutationFn: async () =>
+      axios.patch(endpointFor(active!), { [bodyKeyFor(active!)]: reason || undefined }),
+    onSuccess: () => {
+      toast.success('Status updated');
+      onDone();
+      setActive(null);
+      setReason('');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  });
+
+  const ROWS = [
+    {
+      id: 'hold' as const,
+      label: 'Put on Hold',
+      icon: <PauseCircle className="w-4 h-4 text-amber-600" />,
+      isActive: req.isOnHold,
+      reasonText: req.onHoldReason,
+      variant: 'amber',
+    },
+    {
+      id: 'withdraw' as const,
+      label: 'Withdraw',
+      icon: <LogOut className="w-4 h-4 text-slate-600" />,
+      isActive: req.isWithdrawn,
+      reasonText: req.withdrawnReason,
+      variant: 'default',
+    },
+    {
+      id: 'reject' as const,
+      label: 'Reject',
+      icon: <XCircle className="w-4 h-4 text-rose-600" />,
+      isActive: req.isRejected,
+      reasonText: req.rejectionReason,
+      variant: 'danger',
+    },
+  ];
+
+  return (
+    <div className="space-y-2 p-4">
+      {isTerminated && (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-xs font-medium text-slate-500 mb-3">
+          This candidate is already out of the active pipeline.
+        </div>
+      )}
+      {ROWS.map(row => (
+        <div key={row.id} className="border border-slate-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setActive(prev => (prev === row.id ? null : row.id))}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+          >
+            {row.icon}
+            <span className="text-sm font-semibold text-slate-800 flex-1">{row.label}</span>
+            {row.isActive && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                Applied
+              </span>
+            )}
+            <ChevronDown
+              className={`w-4 h-4 text-slate-400 transition-transform ${active === row.id ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {row.isActive && row.reasonText && active !== row.id && (
+            <p className="px-4 pb-3 text-xs text-slate-500">Reason: {row.reasonText}</p>
+          )}
+          {active === row.id && (
+            <div className="px-4 pb-4 pt-1 space-y-2.5 bg-slate-50/60 border-t border-slate-100">
+              <Textarea
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder={`Why is this candidate being ${row.label.toLowerCase()}ed?`}
+                rows={2}
+                className="resize-none text-sm bg-white"
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setActive(null);
+                    setReason('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={mut.isPending}
+                  className={
+                    row.variant === 'danger'
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                      : row.variant === 'amber'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                        : ''
+                  }
+                  onClick={() => mut.mutate()}
+                >
+                  {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                  Confirm {row.label}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENGAGEMENT CARD — read view + inline edit panel (same tabs as assignment page)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function EngagementCard({
+  req,
+  router,
+  axios,
+  onDone,
+}: {
+  req: CandidateDetail['requirements'][number];
+  router: any;
+  axios: any;
+  onDone: () => void;
+}) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [tab, setTab] = useState<DetailTab>('submission');
+
+  const isTerminated = req.isRejected || req.isWithdrawn;
+  const hasOffer = req.offeredCtc != null;
+  const overdue =
+    req.remainingDaysToJoin != null && req.remainingDaysToJoin < 0 && !req.actualJoiningDate;
+
+  const TABS: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'submission', label: 'Submission', icon: <Send className="w-3.5 h-3.5" /> },
+    { id: 'offer', label: 'Offer & CTC', icon: <Wallet className="w-3.5 h-3.5" /> },
+    { id: 'joining', label: 'Joining', icon: <CalendarCheck className="w-3.5 h-3.5" /> },
+    { id: 'status', label: 'Status', icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+  ];
+
+  return (
+    <div
+      className={`border-2 rounded-2xl overflow-hidden ${
+        isTerminated
+          ? 'border-slate-200 opacity-60'
+          : hasOffer
+            ? 'border-violet-300'
+            : 'border-slate-200'
+      }`}
+    >
+      {/* ── TOP BAR — req identity + actions ── */}
+      <div className="flex items-center gap-3 px-5 py-3.5 bg-slate-50 border-b border-slate-200">
+        <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            {req.reqCode && (
+              <span className="text-xs font-bold text-slate-500 font-mono">{req.reqCode}</span>
+            )}
+            <span className="text-sm font-bold text-slate-900 truncate">
+              {req.reqTitle ?? req.requirementId}
+            </span>
+          </div>
+          {req.clientName && <p className="text-xs text-slate-500 mt-0.5">{req.clientName}</p>}
+        </div>
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-300 text-slate-700 shrink-0">
+          {req.stage}
+        </span>
+        {req.canonicalStage && (
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 shrink-0">
+            {humanizeCanonical(req.canonicalStage)}
+          </span>
+        )}
+        {/* Edit toggle */}
+        <button
+          title={editOpen ? 'Close edit panel' : 'Edit pipeline details'}
+          onClick={() => setEditOpen(v => !v)}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+            editOpen
+              ? 'bg-primary text-white'
+              : 'text-slate-400 hover:text-primary hover:bg-primary/10'
+          }`}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        <button
+          title="View in requirement pipeline"
+          onClick={() => router.push(`/requirements/${req.requirementId}?pipelineId=${req.id}`)}
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* ── STATUS FLAGS ── */}
+      {(req.submittedAt ||
+        req.isOnHold ||
+        req.isRejected ||
+        req.isWithdrawn ||
+        req.offerStatus) && (
+        <div className="flex items-center gap-1.5 px-5 py-2 border-b border-slate-100 flex-wrap">
+          {req.submittedAt && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+              <Send className="w-2.5 h-2.5" /> Submitted {formatDateShort(req.submittedAt)}
+            </span>
+          )}
+          {req.offerStatus && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-violet-100 text-violet-700">
+              Offer: {req.offerStatus}
+            </span>
+          )}
+          {req.isOnHold && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+              <PauseCircle className="w-2.5 h-2.5" /> On Hold
+            </span>
+          )}
+          {req.isRejected && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700">
+              <XCircle className="w-2.5 h-2.5" /> Rejected
+            </span>
+          )}
+          {req.isWithdrawn && (
+            <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+              <LogOut className="w-2.5 h-2.5" /> Withdrawn
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── HEADLINE NUMBERS — CTC + Joining ── */}
+      <div className="grid grid-cols-2 divide-x divide-slate-100">
+        {/* CTC ladder */}
+        <div className="px-5 py-4">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">
+            <Wallet className="w-3 h-3" /> CTC
+          </p>
+          <div className="grid grid-cols-3 gap-3 mb-2">
+            {[
+              { label: 'Current', val: req.currentCtc },
+              { label: 'Expected', val: req.expectedCtc },
+              { label: 'Negotiated', val: req.negotiatedCtc },
+            ].map(f => (
+              <div key={f.label}>
+                <p className="text-[10px] font-semibold text-slate-400">{f.label}</p>
+                <p className="text-lg font-black text-slate-900 leading-tight">
+                  {formatCtcBig(f.val)}
+                </p>
+              </div>
+            ))}
+          </div>
+          {hasOffer && (
+            <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 mt-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-violet-500">
+                Offered
+              </p>
+              <p className="text-2xl font-black text-violet-700 leading-tight">
+                {formatCtcBig(req.offeredCtc)}
+                {req.salaryType && (
+                  <span className="text-xs font-semibold text-violet-400 ml-1.5">
+                    / {req.salaryType.toLowerCase()}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+          {req.ctcNotes && <p className="text-xs text-slate-500 mt-2 italic">{req.ctcNotes}</p>}
+        </div>
+
+        {/* Joining */}
+        <div className="px-5 py-4">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">
+            <CalendarCheck className="w-3 h-3" /> Joining
+          </p>
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400">Expected</p>
+              <p className="text-lg font-black text-slate-900 leading-tight">
+                {formatDateShort(req.expectedJoiningDate)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400">Actual</p>
+              <p className="text-lg font-black text-emerald-700 leading-tight">
+                {formatDateShort(req.actualJoiningDate)}
+              </p>
+            </div>
+          </div>
+          {req.lastWorkingDate && (
+            <p className="text-xs text-slate-500">
+              Last working day:{' '}
+              <span className="font-semibold text-slate-700">
+                {formatDateShort(req.lastWorkingDate)}
+              </span>
+            </p>
+          )}
+          {req.monthOfJoining && (
+            <p className="text-xs text-slate-500 mt-0.5">
+              Month of joining:{' '}
+              <span className="font-semibold text-slate-700">{req.monthOfJoining}</span>
+            </p>
+          )}
+          {req.remainingDaysToJoin != null && !req.actualJoiningDate && (
+            <div
+              className={`mt-2 inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${
+                overdue ? 'bg-rose-100 text-rose-700' : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {overdue && <AlertTriangle className="w-3 h-3" />}
+              {overdue
+                ? `${Math.abs(req.remainingDaysToJoin)} days overdue`
+                : `Joining in ${req.remainingDaysToJoin} days`}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── INLINE EDIT PANEL — slides open below the numbers ── */}
+      {editOpen && (
+        <div className="border-t-2 border-primary/20 bg-slate-50/60">
+          {/* Tab nav */}
+          <div className="flex border-b border-slate-200 bg-white">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold border-b-2 transition-colors ${
+                  tab === t.id
+                    ? 'border-primary text-primary bg-primary/5'
+                    : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setEditOpen(false)}
+              className="ml-auto px-3 py-2.5 text-slate-400 hover:text-slate-700 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Tab content */}
+          {tab === 'submission' && <SubmissionTab req={req} axios={axios} onDone={onDone} />}
+          {tab === 'offer' && <OfferCtcTab req={req} axios={axios} onDone={onDone} />}
+          {tab === 'joining' && <JoiningTab req={req} axios={axios} onDone={onDone} />}
+          {tab === 'status' && <StatusTab req={req} axios={axios} onDone={onDone} />}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="px-5 py-2 border-t border-slate-100">
+        <p className="text-[10px] text-slate-400">
+          Added to pipeline {formatDateShort(req.createdAt)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -282,17 +1006,12 @@ export default function CandidateDetailPage() {
   const { data, isLoading, isError } = useQuery<{ success: boolean; data: CandidateDetail }>({
     queryKey: ['candidate', id],
     queryFn: async () =>
-      (
-        await axios.get(`/candidate/api/candidates/${id}`, {
-          baseURL: '/api/proxy',
-        })
-      ).data,
+      (await axios.get(`/candidate/api/candidates/${id}`, { baseURL: '/api/proxy' })).data,
     enabled: !!id,
   });
 
   const updateMut = useMutation({
     mutationFn: async (payload: Partial<EditState>) => {
-      // convert number strings back
       const body: any = { ...payload };
       if (body.currentSalary !== undefined)
         body.currentSalary = body.currentSalary ? parseFloat(body.currentSalary) : null;
@@ -317,6 +1036,11 @@ export default function CandidateDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Update failed'),
   });
 
+  // Invalidate candidate query after any pipeline action so the numbers refresh
+  const onPipelineDone = () => {
+    qc.invalidateQueries({ queryKey: ['candidate', id] });
+  };
+
   const startEditing = () => {
     if (!data?.data) return;
     setEditState(buildEditState(data.data));
@@ -327,12 +1051,10 @@ export default function CandidateDetailPage() {
     setEditing(false);
     setEditState(null);
   };
-
   const saveEditing = () => {
     if (!editState) return;
     updateMut.mutate(editState);
   };
-
   const set = (key: keyof EditState, val: any) =>
     setEditState(prev => (prev ? { ...prev, [key]: val } : prev));
 
@@ -349,14 +1071,14 @@ export default function CandidateDetailPage() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-3 gap-5">
-          <div className="col-span-1 flex flex-col gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-xl" />
-            ))}
-          </div>
           <div className="col-span-2 flex flex-col gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-28 w-full rounded-xl" />
+            ))}
+          </div>
+          <div className="col-span-1 flex flex-col gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-xl" />
             ))}
           </div>
         </div>
@@ -379,6 +1101,16 @@ export default function CandidateDetailPage() {
   const c = data.data;
   const es = editState;
 
+  const bestOffer = c.requirements
+    .filter(r => r.offeredCtc != null)
+    .sort((a, b) => (b.offeredCtc ?? 0) - (a.offeredCtc ?? 0))[0];
+  const nearestJoining = c.requirements
+    .filter(r => r.expectedJoiningDate && !r.actualJoiningDate)
+    .sort(
+      (a, b) =>
+        new Date(a.expectedJoiningDate!).getTime() - new Date(b.expectedJoiningDate!).getTime()
+    )[0];
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-white">
       {/* ═══ HEADER ═══ */}
@@ -390,13 +1122,11 @@ export default function CandidateDetailPage() {
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-
           <Avatar className="h-11 w-11 shrink-0">
             <AvatarFallback className={`text-sm font-bold ${avatarColor(c.id)}`}>
               {initials(c.fullName)}
             </AvatarFallback>
           </Avatar>
-
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-base font-bold text-slate-900">{c.fullName}</h1>
@@ -432,7 +1162,26 @@ export default function CandidateDetailPage() {
               </p>
             )}
           </div>
-
+          {bestOffer && (
+            <div className="flex flex-col items-center px-4 border-l border-slate-200 shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-violet-400">
+                Best Offer
+              </p>
+              <p className="text-xl font-black text-violet-700 leading-tight">
+                {formatCtcBig(bestOffer.offeredCtc)}
+              </p>
+            </div>
+          )}
+          {nearestJoining && (
+            <div className="flex flex-col items-center px-4 border-l border-slate-200 shrink-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-500">
+                Next Joining
+              </p>
+              <p className="text-xl font-black text-emerald-700 leading-tight">
+                {formatDateShort(nearestJoining.expectedJoiningDate)}
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-2 shrink-0">
             {editing ? (
               <>
@@ -443,8 +1192,7 @@ export default function CandidateDetailPage() {
                   onClick={cancelEditing}
                   disabled={updateMut.isPending}
                 >
-                  <X className="w-3.5 h-3.5" />
-                  Cancel
+                  <X className="w-3.5 h-3.5" /> Cancel
                 </Button>
                 <Button
                   size="sm"
@@ -467,8 +1215,7 @@ export default function CandidateDetailPage() {
                 className="gap-2 h-8 text-sm font-semibold"
                 onClick={startEditing}
               >
-                <Pencil className="w-3.5 h-3.5" />
-                Edit
+                <Pencil className="w-3.5 h-3.5" /> Edit
               </Button>
             )}
           </div>
@@ -476,315 +1223,39 @@ export default function CandidateDetailPage() {
       </div>
 
       {/* ═══ BODY ═══ */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-hidden">
         <div className="grid grid-cols-3 divide-x divide-slate-200 h-full">
-          {/* LEFT — quick stats + contact */}
-          <div className="col-span-1 overflow-y-auto bg-slate-50/40">
-            {/* Stat strip */}
-            <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 bg-white">
-              {[
-                { label: 'Experience', value: formatExp(c.cachedTotalExpYears) },
-                { label: 'Skills', value: String(c.skills.length || c.cachedTopSkills.length) },
-                { label: 'Applied', value: String(c.requirements.length) },
-              ].map(s => (
-                <div key={s.label} className="flex flex-col items-center py-4 gap-0.5">
-                  <p className="text-[10px] uppercase tracking-wide font-semibold text-slate-400">
-                    {s.label}
-                  </p>
-                  <p className="text-xl font-black text-slate-900">{s.value}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="p-4 space-y-4">
-              {/* Contact */}
-              <Section title="Contact">
-                <div className="divide-y divide-slate-100">
-                  {[
-                    {
-                      icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
-                      label: 'Email',
-                      value: c.email,
-                      editable: false,
-                    },
-                    {
-                      icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
-                      label: 'Phone',
-                      value: editing ? es?.phone : c.phone,
-                      editKey: 'phone' as const,
-                    },
-                    {
-                      icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
-                      label: 'Alt Phone',
-                      value: editing ? es?.altPhone : c.altPhone,
-                      editKey: 'altPhone' as const,
-                    },
-                    {
-                      icon: <MapPin className="w-3.5 h-3.5 text-slate-400" />,
-                      label: 'Location',
-                      value:
-                        [c.cachedLocationCity, c.cachedLocationState].filter(Boolean).join(', ') ||
-                        null,
-                      editable: false,
-                    },
-                  ].map(row =>
-                    row.value || editing ? (
-                      <div key={row.label} className="flex items-start gap-3 px-4 py-3">
-                        <div className="mt-0.5 shrink-0">{row.icon}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                            {row.label}
-                          </p>
-                          {editing && row.editKey ? (
-                            <Input
-                              value={(es as any)?.[row.editKey] ?? ''}
-                              onChange={e => set(row.editKey!, e.target.value)}
-                              className="h-7 text-xs mt-0.5 px-2"
-                              placeholder={row.label}
-                            />
-                          ) : (
-                            <p className="text-xs font-semibold text-slate-800 break-words mt-0.5">
-                              {row.value || '—'}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ) : null
-                  )}
-                </div>
-              </Section>
-
-              {/* Links */}
-              {(c.linkedinUrl || c.githubUrl || c.portfolioUrl || c.otherUrl || editing) && (
-                <Section title="Links">
-                  <div className="divide-y divide-slate-100">
-                    {[
-                      {
-                        icon: <Linkedin className="w-3.5 h-3.5 text-sky-600" />,
-                        label: 'LinkedIn',
-                        key: 'linkedinUrl' as const,
-                        val: editing ? es?.linkedinUrl : c.linkedinUrl,
-                      },
-                      {
-                        icon: <Github className="w-3.5 h-3.5 text-slate-700" />,
-                        label: 'GitHub',
-                        key: 'githubUrl' as const,
-                        val: editing ? es?.githubUrl : c.githubUrl,
-                      },
-                      {
-                        icon: <Globe className="w-3.5 h-3.5 text-indigo-500" />,
-                        label: 'Portfolio',
-                        key: 'portfolioUrl' as const,
-                        val: editing ? es?.portfolioUrl : c.portfolioUrl,
-                      },
-                      {
-                        icon: <Link2 className="w-3.5 h-3.5 text-slate-400" />,
-                        label: 'Other',
-                        key: 'otherUrl' as const,
-                        val: editing ? es?.otherUrl : c.otherUrl,
-                      },
-                    ].map(row =>
-                      row.val || editing ? (
-                        <div key={row.label} className="flex items-start gap-3 px-4 py-3">
-                          <div className="mt-0.5 shrink-0">{row.icon}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                              {row.label}
-                            </p>
-                            {editing ? (
-                              <Input
-                                value={es?.[row.key] ?? ''}
-                                onChange={e => set(row.key, e.target.value)}
-                                className="h-7 text-xs mt-0.5 px-2"
-                                placeholder={`${row.label} URL`}
-                              />
-                            ) : row.val ? (
-                              <a
-                                href={row.val}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs font-semibold text-primary hover:underline truncate block mt-0.5"
-                              >
-                                {row.val}
-                              </a>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : null
-                    )}
-                  </div>
-                </Section>
-              )}
-
-              {/* Salary & Notice */}
-              <Section title="Compensation & Availability">
-                <div className="divide-y divide-slate-100">
-                  {[
-                    {
-                      label: 'Current CTC',
-                      key: 'currentSalary' as const,
-                      val: editing
-                        ? es?.currentSalary
-                        : c.currentSalary != null
-                          ? String(c.currentSalary)
-                          : '',
-                    },
-                    {
-                      label: 'Expected CTC',
-                      key: 'expectedSalary' as const,
-                      val: editing
-                        ? es?.expectedSalary
-                        : c.expectedSalary != null
-                          ? String(c.expectedSalary)
-                          : '',
-                    },
-                    {
-                      label: 'Notice Period (days)',
-                      key: 'noticePeriodDays' as const,
-                      val: editing
-                        ? es?.noticePeriodDays
-                        : c.noticePeriodDays != null
-                          ? String(c.noticePeriodDays)
-                          : '',
-                    },
-                  ].map(row =>
-                    row.val || editing ? (
-                      <div key={row.label} className="flex items-start gap-3 px-4 py-3">
-                        <DollarSign className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                        <div className="flex-1">
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                            {row.label}
-                          </p>
-                          {editing ? (
-                            <Input
-                              type="number"
-                              value={es?.[row.key] ?? ''}
-                              onChange={e => set(row.key, e.target.value)}
-                              className="h-7 text-xs mt-0.5 px-2"
-                            />
-                          ) : (
-                            <p className="text-xs font-semibold text-slate-800 mt-0.5">
-                              {row.val || '—'}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ) : null
-                  )}
-
-                  {editing && (
-                    <div className="px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                          Immediate Joiner
-                        </p>
-                      </div>
-                      <Switch
-                        checked={es?.isImmediateJoiner ?? false}
-                        onCheckedChange={v => set('isImmediateJoiner', v)}
-                      />
-                    </div>
-                  )}
-                </div>
-              </Section>
-
-              {/* Flags */}
-              {editing && (
-                <Section title="Flags">
-                  <div className="divide-y divide-slate-100">
-                    <div className="px-4 py-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold text-slate-700">Active</p>
-                      <Switch
-                        checked={es?.isActive ?? true}
-                        onCheckedChange={v => set('isActive', v)}
-                      />
-                    </div>
-                    <div className="px-4 py-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold text-slate-700">Do Not Contact</p>
-                      <Switch
-                        checked={es?.doNotContact ?? false}
-                        onCheckedChange={v => set('doNotContact', v)}
-                      />
-                    </div>
-                    {es?.doNotContact && (
-                      <div className="px-4 py-3">
-                        <Label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                          DNC Reason
-                        </Label>
-                        <Textarea
-                          value={es?.doNotContactReason ?? ''}
-                          onChange={e => set('doNotContactReason', e.target.value)}
-                          rows={2}
-                          className="resize-none text-xs mt-1"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </Section>
-              )}
-
-              {/* Resumes */}
-              {c.resumes.length > 0 && (
-                <Section title="Resumes">
-                  <div className="divide-y divide-slate-100">
-                    {c.resumes.map(r => (
-                      <div key={r.id} className="flex items-center gap-3 px-4 py-3">
-                        <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-slate-800 truncate">
-                            {r.fileName}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            {format(new Date(r.createdAt), 'dd MMM yyyy')} · v
-                            {
-                              // @ts-expect-error err
-                              r.version
-                            }{' '}
-                            · {r.parseStatus}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <ResumeViewButton resumeId={r.id} fileName={r.fileName} />
-                          <ResumeReplaceButton candidateId={c.id} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              )}
-
-              {/* Meta */}
-              <Section title="Meta">
-                <div className="divide-y divide-slate-100">
-                  {[
-                    { label: 'Added', value: format(new Date(c.createdAt), 'dd MMM yyyy, HH:mm') },
-                    {
-                      label: 'Updated',
-                      value: format(new Date(c.updatedAt), 'dd MMM yyyy, HH:mm'),
-                    },
-                    {
-                      label: 'Last activity',
-                      value: format(new Date(c.lastActivityAt), 'dd MMM yyyy'),
-                    },
-                    c.reqCode ? { label: 'Req Code', value: c.reqCode } : null,
-                  ]
-                    .filter(Boolean)
-                    .map((row: any) => (
-                      <div
-                        key={row.label}
-                        className="flex items-center justify-between gap-2 px-4 py-2.5"
-                      >
-                        <span className="text-xs text-slate-400">{row.label}</span>
-                        <span className="text-xs font-semibold text-slate-700">{row.value}</span>
-                      </div>
-                    ))}
-                </div>
-              </Section>
-            </div>
-          </div>
-
-          {/* RIGHT — skills, experience, education, certifications, requirements */}
+          {/* ── LEFT col-span-2 — Engagements, Skills, Experience, Education, Certs ── */}
           <div className="col-span-2 overflow-y-auto px-6 py-5 space-y-5">
+            {c.requirements.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                    Requirement Engagements ({c.requirements.length})
+                  </h2>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                    CTC / Offer / Joining — click ✏️ to edit
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  {c.requirements
+                    .slice()
+                    .sort(
+                      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                    )
+                    .map(req => (
+                      <EngagementCard
+                        key={req.id}
+                        req={req}
+                        router={router}
+                        axios={axios}
+                        onDone={onPipelineDone}
+                      />
+                    ))}
+                </div>
+              </div>
+            )}
+
             {/* Skills */}
             {(c.skills.length > 0 || c.cachedTopSkills.length > 0) && (
               <Section title={`Skills (${c.skills.length || c.cachedTopSkills.length})`}>
@@ -942,37 +1413,303 @@ export default function CandidateDetailPage() {
                 </div>
               </Section>
             )}
+          </div>
 
-            {/* Requirements / pipeline */}
-            {c.requirements.length > 0 && (
-              <Section title={`Pipeline History (${c.requirements.length})`}>
+          {/* ── RIGHT col-span-1 — Stat strip + Contact/Links/Salary/Flags/Resumes/Meta ── */}
+          <div className="col-span-1 overflow-y-auto bg-slate-50/40">
+            {/* Stat strip */}
+            <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 bg-white">
+              {[
+                { label: 'Experience', value: formatExp(c.cachedTotalExpYears) },
+                { label: 'Skills', value: String(c.skills.length || c.cachedTopSkills.length) },
+                { label: 'Applied', value: String(c.requirements.length) },
+              ].map(s => (
+                <div key={s.label} className="flex flex-col items-center py-4 gap-0.5">
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-slate-400">
+                    {s.label}
+                  </p>
+                  <p className="text-xl font-black text-slate-900">{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Contact */}
+              <Section title="Contact">
                 <div className="divide-y divide-slate-100">
-                  {c.requirements.map(req => (
-                    <div
-                      key={req.id}
-                      className="px-4 py-3 flex items-center gap-3 hover:bg-slate-50 cursor-pointer group"
-                      onClick={() => router.push(`/requirements/${req.requirementId}`)}
-                    >
-                      <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-800 font-mono">
-                          {req.requirementId}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
-                            {req.stage}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {format(new Date(req.createdAt), 'dd MMM yyyy')}
-                          </span>
+                  {[
+                    {
+                      icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
+                      label: 'Email',
+                      value: c.email,
+                      editable: false,
+                    },
+                    {
+                      icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
+                      label: 'Phone',
+                      value: editing ? es?.phone : c.phone,
+                      editKey: 'phone' as const,
+                    },
+                    {
+                      icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
+                      label: 'Alt Phone',
+                      value: editing ? es?.altPhone : c.altPhone,
+                      editKey: 'altPhone' as const,
+                    },
+                    {
+                      icon: <MapPin className="w-3.5 h-3.5 text-slate-400" />,
+                      label: 'Location',
+                      value:
+                        [c.cachedLocationCity, c.cachedLocationState].filter(Boolean).join(', ') ||
+                        null,
+                      editable: false,
+                    },
+                  ].map(row =>
+                    row.value || editing ? (
+                      <div key={row.label} className="flex items-start gap-3 px-4 py-3">
+                        <div className="mt-0.5 shrink-0">{row.icon}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                            {row.label}
+                          </p>
+                          {editing && (row as any).editKey ? (
+                            <Input
+                              value={(es as any)?.[(row as any).editKey] ?? ''}
+                              onChange={e => set((row as any).editKey, e.target.value)}
+                              className="h-7 text-xs mt-0.5 px-2"
+                              placeholder={row.label}
+                            />
+                          ) : (
+                            <p className="text-xs font-semibold text-slate-800 break-words mt-0.5">
+                              {row.value || '—'}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 transition-colors" />
-                    </div>
-                  ))}
+                    ) : null
+                  )}
                 </div>
               </Section>
-            )}
+
+              {/* Links */}
+              {(c.linkedinUrl || c.githubUrl || c.portfolioUrl || c.otherUrl || editing) && (
+                <Section title="Links">
+                  <div className="divide-y divide-slate-100">
+                    {[
+                      {
+                        icon: <Linkedin className="w-3.5 h-3.5 text-sky-600" />,
+                        label: 'LinkedIn',
+                        key: 'linkedinUrl' as const,
+                        val: editing ? es?.linkedinUrl : c.linkedinUrl,
+                      },
+                      {
+                        icon: <Github className="w-3.5 h-3.5 text-slate-700" />,
+                        label: 'GitHub',
+                        key: 'githubUrl' as const,
+                        val: editing ? es?.githubUrl : c.githubUrl,
+                      },
+                      {
+                        icon: <Globe className="w-3.5 h-3.5 text-indigo-500" />,
+                        label: 'Portfolio',
+                        key: 'portfolioUrl' as const,
+                        val: editing ? es?.portfolioUrl : c.portfolioUrl,
+                      },
+                      {
+                        icon: <Link2 className="w-3.5 h-3.5 text-slate-400" />,
+                        label: 'Other',
+                        key: 'otherUrl' as const,
+                        val: editing ? es?.otherUrl : c.otherUrl,
+                      },
+                    ].map(row =>
+                      row.val || editing ? (
+                        <div key={row.label} className="flex items-start gap-3 px-4 py-3">
+                          <div className="mt-0.5 shrink-0">{row.icon}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                              {row.label}
+                            </p>
+                            {editing ? (
+                              <Input
+                                value={es?.[row.key] ?? ''}
+                                onChange={e => set(row.key, e.target.value)}
+                                className="h-7 text-xs mt-0.5 px-2"
+                                placeholder={`${row.label} URL`}
+                              />
+                            ) : row.val ? (
+                              <a
+                                href={row.val}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs font-semibold text-primary hover:underline truncate block mt-0.5"
+                              >
+                                {row.val}
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                </Section>
+              )}
+
+              {/* Compensation */}
+              <Section title="Compensation & Availability">
+                <div className="divide-y divide-slate-100">
+                  {[
+                    {
+                      label: 'Current CTC',
+                      key: 'currentSalary' as const,
+                      val: editing
+                        ? es?.currentSalary
+                        : c.currentSalary != null
+                          ? String(c.currentSalary)
+                          : '',
+                    },
+                    {
+                      label: 'Expected CTC',
+                      key: 'expectedSalary' as const,
+                      val: editing
+                        ? es?.expectedSalary
+                        : c.expectedSalary != null
+                          ? String(c.expectedSalary)
+                          : '',
+                    },
+                    {
+                      label: 'Notice Period (days)',
+                      key: 'noticePeriodDays' as const,
+                      val: editing
+                        ? es?.noticePeriodDays
+                        : c.noticePeriodDays != null
+                          ? String(c.noticePeriodDays)
+                          : '',
+                    },
+                  ].map(row =>
+                    row.val || editing ? (
+                      <div key={row.label} className="flex items-start gap-3 px-4 py-3">
+                        <DollarSign className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                            {row.label}
+                          </p>
+                          {editing ? (
+                            <Input
+                              type="number"
+                              value={es?.[row.key] ?? ''}
+                              onChange={e => set(row.key, e.target.value)}
+                              className="h-7 text-xs mt-0.5 px-2"
+                            />
+                          ) : (
+                            <p className="text-xs font-semibold text-slate-800 mt-0.5">
+                              {row.val || '—'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null
+                  )}
+                  {editing && (
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                        Immediate Joiner
+                      </p>
+                      <Switch
+                        checked={es?.isImmediateJoiner ?? false}
+                        onCheckedChange={v => set('isImmediateJoiner', v)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </Section>
+
+              {/* Flags */}
+              {editing && (
+                <Section title="Flags">
+                  <div className="divide-y divide-slate-100">
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-700">Active</p>
+                      <Switch
+                        checked={es?.isActive ?? true}
+                        onCheckedChange={v => set('isActive', v)}
+                      />
+                    </div>
+                    <div className="px-4 py-3 flex items-center justify-between">
+                      <p className="text-xs font-semibold text-slate-700">Do Not Contact</p>
+                      <Switch
+                        checked={es?.doNotContact ?? false}
+                        onCheckedChange={v => set('doNotContact', v)}
+                      />
+                    </div>
+                    {es?.doNotContact && (
+                      <div className="px-4 py-3">
+                        <Label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                          DNC Reason
+                        </Label>
+                        <Textarea
+                          value={es?.doNotContactReason ?? ''}
+                          onChange={e => set('doNotContactReason', e.target.value)}
+                          rows={2}
+                          className="resize-none text-xs mt-1"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </Section>
+              )}
+
+              {/* Resumes */}
+              {c.resumes.length > 0 && (
+                <Section title="Resumes">
+                  <div className="divide-y divide-slate-100">
+                    {c.resumes.map(r => (
+                      <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                        <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate">
+                            {r.fileName}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {format(new Date(r.createdAt), 'dd MMM yyyy')} · {r.parseStatus}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <ResumeViewButton resumeId={r.id} fileName={r.fileName} />
+                          <ResumeReplaceButton candidateId={c.id} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Meta */}
+              <Section title="Meta">
+                <div className="divide-y divide-slate-100">
+                  {[
+                    { label: 'Added', value: format(new Date(c.createdAt), 'dd MMM yyyy, HH:mm') },
+                    {
+                      label: 'Updated',
+                      value: format(new Date(c.updatedAt), 'dd MMM yyyy, HH:mm'),
+                    },
+                    {
+                      label: 'Last activity',
+                      value: format(new Date(c.lastActivityAt), 'dd MMM yyyy'),
+                    },
+                    c.reqCode ? { label: 'Req Code', value: c.reqCode } : null,
+                  ]
+                    .filter(Boolean)
+                    .map((row: any) => (
+                      <div
+                        key={row.label}
+                        className="flex items-center justify-between gap-2 px-4 py-2.5"
+                      >
+                        <span className="text-xs text-slate-400">{row.label}</span>
+                        <span className="text-xs font-semibold text-slate-700">{row.value}</span>
+                      </div>
+                    ))}
+                </div>
+              </Section>
+            </div>
           </div>
         </div>
       </div>
