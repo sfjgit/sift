@@ -243,6 +243,7 @@ const formatDuration = (months: number | null) => {
 const formatCtcBig = (val: number | null | undefined) =>
   val != null ? `₹${(val / 100000).toFixed(1)}L` : '—';
 
+// formatDateShort
 const formatDateShort = (d: string | null | undefined) =>
   d ? format(new Date(d), 'dd MMM yy') : '—';
 
