@@ -13,16 +13,14 @@ import {
   Users,
   Clock,
   ChevronRight,
-  Phone,
   Mail,
-  MapPin,
+  Phone,
   Briefcase,
   FileText,
   Database,
   Globe,
   ExternalLink,
   GitBranch,
-  AlertTriangle,
   CheckCircle2,
   Flame,
   CalendarClock,
@@ -32,7 +30,6 @@ import {
   Search,
   RefreshCw,
   Filter,
-  Eye,
   AlertCircle,
   ChevronDown,
   Loader2,
@@ -42,13 +39,13 @@ import {
   PauseCircle,
   XCircle,
   LogOut,
-  MoreHorizontal,
   SlidersHorizontal,
   TrendingUp,
-  Calendar,
+  Wallet,
+  CalendarCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -60,13 +57,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -77,8 +67,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAxios } from '@/hooks/useAxios';
-import { usePermission } from '@/hooks/usePermission';
-import { useAuth } from '@/context/AuthContext';
+import Link from 'next/link';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -102,12 +91,27 @@ interface PipelineCandidate {
   isRejected: boolean;
   isWithdrawn: boolean;
   isOnHold: boolean;
+  onHoldReason: string | null;
+  rejectionReason: string | null;
+  withdrawnReason: string | null;
+  submissionNote: string | null;
   submittedAt: string | null;
   offeredAt: string | null;
   offerStatus: string | null;
   offeredCtc: number | null;
+  salaryCurrency: string | null;
+  salaryType: string | null;
+  // ── CTC ladder ──
+  currentCtc: number | null;
+  expectedCtc: number | null;
+  negotiatedCtc: number | null;
+  ctcNotes: string | null;
+  // ── Joining ──
+  lastWorkingDate: string | null;
   expectedJoiningDate: string | null;
   actualJoiningDate: string | null;
+  monthOfJoining: string | null;
+  remainingDaysToJoin: number | null;
   stageUpdatedAt: string;
   createdAt: string;
   aging: { minutes: number; label: string };
@@ -121,6 +125,7 @@ interface PipelineCandidate {
   recruiter: { id: string; firstName: string; lastName: string; role: { name: string } };
   snapshot: {
     id: string;
+    candidateServiceId: string;
     fullName: string;
     email: string;
     phone: string | null;
@@ -219,15 +224,22 @@ interface PipelineResponse {
   permissions: { canEdit: boolean; canDelete: boolean };
 }
 
-type ActionType = 'move' | 'reject' | 'withdraw' | 'hold' | 'submit' | 'offer' | null;
+// Only two row-level actions now — everything else lives inside the details modal.
+type ActionType = 'move' | 'details' | null;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STAGE COLOURS — same map as requirement page so it's visually consistent
+// STAGE COLOURS
 // ─────────────────────────────────────────────────────────────────────────────
-
 const STAGE_COLORS: Record<
   string,
-  { bg: string; text: string; dot: string; border: string; bar: string; header: string }
+  {
+    bg: string;
+    text: string;
+    dot: string;
+    border: string;
+    bar: string;
+    header: string;
+  }
 > = {
   '01': {
     bg: 'bg-slate-100',
@@ -310,6 +322,7 @@ const STAGE_COLORS: Record<
     header: 'text-green-700',
   },
 };
+
 const SC = (code: string) => STAGE_COLORS[code] ?? STAGE_COLORS['01'];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -348,6 +361,18 @@ const formatMins = (mins: number | null) => {
   return `${Math.floor(d / 30)}mo`;
 };
 
+const formatCtc = (val: number | null | undefined) =>
+  val != null ? `₹${(val / 100000).toFixed(1)}L` : '—';
+
+const formatDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yy') : '—');
+
+// "OFFER_IN_PROGRESS" → "Offer In Progress" — used for the dynamic canonical-stage chips
+const humanizeCanonical = (key: string) =>
+  key
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+
 const PORTAL_APPS = [
   {
     appName: 'NAUKRI',
@@ -378,29 +403,13 @@ const PORTAL_APPS = [
   },
 ];
 
-// function triggerExtension(rId: string, rCode: string, rTitle: string, app: string) {
-//   window.postMessage(
-//     {
-//       type: 'TALENTOX_SOURCE_NAUKRI',
-//       requirementId: rId,
-//       requirementCode: rCode,
-//       requirementTitle: rTitle,
-//       appName: app,
-//     },
-//     window.location.origin
-//   );
-// }
-// In page.tsx — add assignmentId to triggerExtension call signature and payload
-
 function triggerExtension(
   rId: string,
   rCode: string,
   rTitle: string,
   app: string,
-  assignmentId: string // ← add this
+  assignmentId: string
 ) {
-  console.log('triggerExtension', rId, rCode, rTitle, app, assignmentId);
-
   window.postMessage(
     {
       type: 'TALENTOX_SOURCE_NAUKRI',
@@ -408,13 +417,37 @@ function triggerExtension(
       requirementCode: rCode,
       requirementTitle: rTitle,
       appName: app,
-      assignmentId: assignmentId, // ← add this
+      assignmentId,
     },
     window.location.origin
   );
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
-// UPLOAD RESUME MODAL
+// STAT CHIP — small reusable header metric
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StatChip({
+  label,
+  value,
+  colorClass,
+}: {
+  label: string;
+  value: number;
+  colorClass: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 shrink-0">
+      <span className={`text-3xl font-black tabular-nums leading-none ${colorClass}`}>{value}</span>
+      <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPLOAD RESUME MODAL  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UploadResumeModal({
@@ -450,9 +483,6 @@ function UploadResumeModal({
       form.append('mimeType', file.type);
       form.append('requirementId', req.id);
       form.append('reqCode', req.reqCode);
-
-      // form.append('requirementId', req.id);
-      // form.append('reqCode', req.reqCode);
       form.append('assignmentId', assignmentId);
       return axios.post('/candidate/api/resume/ingest', form, {
         baseURL: '/api/proxy',
@@ -595,7 +625,7 @@ function UploadResumeModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADD CANDIDATE MODAL
+// ADD CANDIDATE MODAL  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AddCandidateModal({
@@ -607,7 +637,7 @@ function AddCandidateModal({
   open: boolean;
   onClose: () => void;
   req: any;
-  assignmentId: string; // ← add
+  assignmentId: string;
 }) {
   const [portalExpanded, setPortalExpanded] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -734,11 +764,8 @@ function AddCandidateModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ACTION DIALOGS — identical to requirement page
+// MOVE STAGE DIALOG  (unchanged — already does exactly one job well)
 // ─────────────────────────────────────────────────────────────────────────────
-
-// File: page.tsx
-// Path: src/app/(dashboard)/assignments/[id]/page.tsx  (MoveStageDialog — redesigned)
 
 function MoveStageDialog({
   pipeline,
@@ -759,7 +786,6 @@ function MoveStageDialog({
 
   const currentOrder = pipeline.currentStage.order;
 
-  // Terminal stages are reached via reject/withdraw/hold, not a move.
   const selectableStages = useMemo(
     () => [...stages].filter(s => !s.isTerminal).sort((a, b) => a.order - b.order),
     [stages]
@@ -776,10 +802,7 @@ function MoveStageDialog({
 
   const mut = useMutation({
     mutationFn: async () =>
-      axios.patch(`/pipeline/${pipeline.id}/stage`, {
-        stageId,
-        note: note.trim() || undefined,
-      }),
+      axios.patch(`/pipeline/${pipeline.id}/stage`, { stageId, note: note.trim() || undefined }),
     onSuccess: () => {
       toast.success(`Moved to ${selected?.label}`);
       onDone();
@@ -800,7 +823,6 @@ function MoveStageDialog({
       }}
     >
       <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
-        {/* ── HEADER ─────────────────────────────────────────────── */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-100">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-slate-900">
@@ -831,7 +853,6 @@ function MoveStageDialog({
           </div>
         </div>
 
-        {/* ── FROM → TO BANNER ──────────────────────────────────────── */}
         <div className="px-6 py-4 bg-slate-50/70 border-b border-slate-100">
           <div className="flex items-end gap-3">
             <div className="flex-1 min-w-0">
@@ -866,7 +887,6 @@ function MoveStageDialog({
           </div>
         </div>
 
-        {/* ── STAGE PICKER ─────────────────────────────────────────── */}
         <div className="px-4 py-3 max-h-[44vh] overflow-y-auto">
           <div className="space-y-1">
             {selectableStages.map(s => {
@@ -887,7 +907,6 @@ function MoveStageDialog({
                         : 'border-transparent hover:bg-slate-50 hover:border-slate-200'
                   }`}
                 >
-                  {/* order node */}
                   <span
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 border-2 ${
                       isCurrent || isSelected
@@ -899,7 +918,6 @@ function MoveStageDialog({
                   >
                     {s.order}
                   </span>
-                  {/* label + meta tags */}
                   <div className="flex-1 min-w-0">
                     <p
                       className={`text-sm font-bold leading-tight truncate ${isCurrent ? 'text-slate-500' : 'text-slate-900'}`}
@@ -914,12 +932,11 @@ function MoveStageDialog({
                       </span>
                       {s.canonicalStage && (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
-                          {s.canonicalStage.replace(/_/g, ' ')}
+                          {humanizeCanonical(s.canonicalStage)}
                         </span>
                       )}
                     </div>
                   </div>
-                  {/* right indicator */}
                   <div className="shrink-0">
                     {isCurrent ? (
                       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 bg-white border border-slate-200 px-2 py-1 rounded-full">
@@ -945,7 +962,6 @@ function MoveStageDialog({
           </div>
         </div>
 
-        {/* ── NOTE + FOOTER ────────────────────────────────────────── */}
         <div className="px-6 py-4 border-t border-slate-100 space-y-3">
           <div>
             <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
@@ -991,92 +1007,14 @@ function MoveStageDialog({
   );
 }
 
-function SimpleActionDialog({
-  open,
-  onClose,
-  onDone,
-  title,
-  icon,
-  description,
-  placeholder,
-  actionLabel,
-  actionVariant,
-  endpoint,
-  bodyKey,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onDone: () => void;
-  title: string;
-  icon: React.ReactNode;
-  description?: string;
-  placeholder: string;
-  actionLabel: string;
-  actionVariant?: string;
-  endpoint: string;
-  bodyKey: string;
-}) {
-  const axios = useAxios();
-  const [reason, setReason] = useState('');
-  const mut = useMutation({
-    mutationFn: async () => axios.patch(endpoint, { [bodyKey]: reason || undefined }),
-    onSuccess: () => {
-      toast.success(`${title} successful`);
-      onDone();
-      onClose();
-      setReason('');
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
-  });
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            {icon}
-            {title}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-1">
-          {description && <p className="text-sm text-slate-600">{description}</p>}
-          <div>
-            <Label className="text-sm font-semibold text-slate-800 mb-2 block">
-              Reason <span className="font-normal text-slate-500">(optional)</span>
-            </Label>
-            <Textarea
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-              placeholder={placeholder}
-              rows={3}
-              className="resize-none text-sm"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={mut.isPending}
-            className={
-              actionVariant === 'danger'
-                ? 'bg-rose-600 hover:bg-rose-700 text-white'
-                : actionVariant === 'amber'
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                  : ''
-            }
-            onClick={() => mut.mutate()}
-          >
-            {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
-            {actionLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// CANDIDATE DETAILS MODAL — replaces SubmitDialog / OfferDialog / SimpleActionDialog
+// One place: Submission, Offer & CTC, Joining, Status (hold / withdraw / reject)
+// ─────────────────────────────────────────────────────────────────────────────
 
-function SubmitDialog({
+type DetailTab = 'submission' | 'offer' | 'joining' | 'status';
+
+function CandidateDetailsModal({
   pipeline,
   open,
   onClose,
@@ -1088,386 +1026,808 @@ function SubmitDialog({
   onDone: () => void;
 }) {
   const axios = useAxios();
-  const [note, setNote] = useState('');
+  const [tab, setTab] = useState<DetailTab>('submission');
+  const snap = pipeline.snapshot;
+  const isTerminated = pipeline.isRejected || pipeline.isWithdrawn;
+
+  const TABS: { id: DetailTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'submission', label: 'Submission', icon: <Send className="w-3.5 h-3.5" /> },
+    { id: 'offer', label: 'Offer & CTC', icon: <Wallet className="w-3.5 h-3.5" /> },
+    { id: 'joining', label: 'Joining', icon: <CalendarCheck className="w-3.5 h-3.5" /> },
+    { id: 'status', label: 'Status', icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
+        {/* HEADER — identity, always visible regardless of tab */}
+        <div className="px-6 pt-5 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <Avatar className="h-11 w-11 shrink-0">
+              <AvatarFallback className={`text-sm font-bold ${avatarColor(snap.id)}`}>
+                {initials(snap.fullName)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-slate-900 truncate">{snap.fullName}</h2>
+                {pipeline.isRejected && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300">
+                    Rejected
+                  </span>
+                )}
+                {pipeline.isWithdrawn && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 border border-slate-300">
+                    Withdrawn
+                  </span>
+                )}
+                {pipeline.isOnHold && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
+                    On Hold
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 truncate mt-0.5">
+                {snap.currentTitle}
+                {snap.currentTitle && snap.currentCompany ? ' · ' : ''}
+                {snap.currentCompany}
+                {snap.email && <> &nbsp;·&nbsp; {snap.email}</>}
+                {snap.phone && <> &nbsp;·&nbsp; {snap.phone}</>}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex">
+          {/* TAB NAV */}
+          <div className="w-40 shrink-0 border-r border-slate-100 py-2">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold transition-colors border-l-2 ${
+                  tab === t.id
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-transparent text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* TAB CONTENT */}
+          <div className="flex-1 p-6 max-h-[55vh] overflow-y-auto">
+            {tab === 'submission' && (
+              <SubmissionTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
+            )}
+            {tab === 'offer' && (
+              <OfferCtcTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
+            )}
+            {tab === 'joining' && (
+              <JoiningTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
+            )}
+            {tab === 'status' && (
+              <StatusTab
+                pipeline={pipeline}
+                axios={axios}
+                onDone={onDone}
+                onClose={onClose}
+                isTerminated={isTerminated}
+              />
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Submission tab ──────────────────────────────────────────────────────────
+function SubmissionTab({ pipeline, axios, onDone, onClose }: any) {
+  const [note, setNote] = useState(pipeline.submissionNote ?? '');
   const mut = useMutation({
     mutationFn: async () =>
       axios.patch(`/pipeline/${pipeline.id}/submit`, { submissionNote: note || undefined }),
     onSuccess: () => {
-      toast.success('Submitted to client');
+      toast.success(pipeline.submittedAt ? 'Submission updated' : 'Submitted to client');
       onDone();
       onClose();
-      setNote('');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   });
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Send className="w-4 h-4 text-blue-600" />
-            Submit to Client
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-1">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <p className="text-sm font-semibold text-blue-900">{pipeline.snapshot.fullName}</p>
-            <p className="text-xs text-blue-700 mt-0.5">
-              {pipeline.snapshot.currentTitle}
-              {pipeline.snapshot.currentTitle && pipeline.snapshot.currentCompany ? ' · ' : ''}
-              {pipeline.snapshot.currentCompany}
-            </p>
-          </div>
-          <div>
-            <Label className="text-sm font-semibold text-slate-800 mb-2 block">
-              Submission note <span className="font-normal text-slate-500">(optional)</span>
-            </Label>
-            <Textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder="Notes for the client..."
-              rows={3}
-              className="resize-none text-sm"
-            />
-          </div>
+    <div className="space-y-4">
+      {pipeline.submittedAt ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-xs font-semibold text-blue-800">
+          Submitted on {formatDate(pipeline.submittedAt)}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={mut.isPending} onClick={() => mut.mutate()}>
-            {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}Submit
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function OfferDialog({
-  pipeline,
-  open,
-  onClose,
-  onDone,
-}: {
-  pipeline: PipelineCandidate;
-  open: boolean;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const axios = useAxios();
-  const [ctc, setCtc] = useState('');
-  const [salaryType, setSalaryType] = useState('MONTHLY');
-  const [joiningDate, setJoiningDate] = useState('');
-  const mut = useMutation({
-    mutationFn: async () =>
-      axios.patch(`/pipeline/${pipeline.id}/offer`, {
-        offeredCtc: parseFloat(ctc),
-        salaryCurrency: 'INR',
-        salaryType,
-        expectedJoiningDate: joiningDate || undefined,
-      }),
-    onSuccess: () => {
-      toast.success('Offer rolled out');
-      onDone();
-      onClose();
-      setCtc('');
-      setJoiningDate('');
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
-  });
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <DollarSign className="w-4 h-4 text-violet-600" />
-            Roll Offer
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-1">
-          <div className="bg-violet-50 border border-violet-200 rounded-lg px-4 py-3">
-            <p className="text-sm font-semibold text-violet-900">{pipeline.snapshot.fullName}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-sm font-semibold text-slate-800 mb-2 block">CTC (₹)</Label>
-              <Input
-                type="number"
-                value={ctc}
-                onChange={e => setCtc(e.target.value)}
-                placeholder="e.g. 800000"
-                className="h-10 text-sm font-medium"
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-slate-800 mb-2 block">Salary Type</Label>
-              <Select value={salaryType} onValueChange={setSalaryType}>
-                <SelectTrigger className="h-10 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY'].map(t => (
-                    <SelectItem key={t} value={t} className="text-sm">
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div>
-            <Label className="text-sm font-semibold text-slate-800 mb-2 block">
-              Expected Joining <span className="font-normal text-slate-500">(optional)</span>
-            </Label>
-            <Input
-              type="date"
-              value={joiningDate}
-              onChange={e => setJoiningDate(e.target.value)}
-              className="h-10 text-sm"
-            />
-          </div>
+      ) : (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-xs font-medium text-slate-500">
+          Not submitted to client yet.
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            className="bg-violet-600 hover:bg-violet-700"
-            disabled={!ctc || mut.isPending}
-            onClick={() => mut.mutate()}
-          >
-            {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}Roll Offer
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATE CARD — identical layout to requirement page
-// ─────────────────────────────────────────────────────────────────────────────
-
-function CandidateCard({
-  p,
-  onAction,
-  canEdit,
-  requirementId,
-}: {
-  p: PipelineCandidate;
-  onAction: (action: ActionType, pipeline: PipelineCandidate) => void;
-  canEdit: boolean;
-  requirementId: string;
-}) {
-  const router = useRouter();
-  const snap = p.snapshot;
-  const c = SC(p.currentStage.code);
-  const isTerminated = p.isRejected || p.isWithdrawn;
-  const agingColor =
-    p.aging.minutes > 43200
-      ? 'text-rose-600 bg-rose-50 border-rose-200'
-      : p.aging.minutes > 10080
-        ? 'text-amber-600 bg-amber-50 border-amber-200'
-        : 'text-slate-600 bg-slate-50 border-slate-200';
-
-  return (
-    <div
-      className={`relative flex border-b border-slate-100 hover:bg-blue-50/30 transition-colors ${isTerminated ? 'opacity-50' : ''}`}
-    >
-      {/* Stage colour bar */}
-      <div className={`w-1 shrink-0 ${c.bar}`} />
-      {/* Checkbox */}
-      <div className="flex items-center px-4 shrink-0">
-        <input
-          type="checkbox"
-          className="rounded border-slate-400 text-primary cursor-pointer w-4 h-4"
+      )}
+      <div>
+        <Label className="text-sm font-semibold text-slate-800 mb-2 block">Submission note</Label>
+        <Textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Notes for the client..."
+          rows={4}
+          className="resize-none text-sm"
         />
       </div>
-      {/* Main content */}
-      <div className="flex-1 min-w-0 py-4 pr-3">
-        {/* Row 1 — identity + stage badge */}
-        <div className="flex items-start gap-3 mb-3">
-          <Avatar className="h-11 w-11 shrink-0">
-            <AvatarFallback className={`text-sm font-bold ${avatarColor(snap.id)}`}>
-              {initials(snap.fullName)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base font-bold text-slate-900 leading-tight">{snap.fullName}</h3>
-              {p.isRejected && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300">
-                  Rejected
-                </span>
-              )}
-              {p.isWithdrawn && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 border border-slate-300">
-                  Withdrawn
-                </span>
-              )}
-              {p.isOnHold && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
-                  On Hold
-                </span>
-              )}
-              {p.offeredCtc && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-300">
-                  ₹{(p.offeredCtc / 100000).toFixed(1)}L Offer
-                </span>
-              )}
-            </div>
-            {(snap.currentTitle || snap.currentCompany) && (
-              <p className="text-sm font-medium text-slate-600 mt-0.5 truncate">
-                {snap.currentTitle}
-                {snap.currentTitle && snap.currentCompany ? ' · ' : ''}
-                {snap.currentCompany}
-              </p>
-            )}
-          </div>
-          <span
-            className={`shrink-0 flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border ${c.bg} ${c.text} ${c.border}`}
-          >
-            <span className={`w-2 h-2 rounded-full ${c.dot} shrink-0`} />
-            {p.currentStage.label}
-          </span>
-        </div>
-        {/* Row 2 — contact + meta */}
-        <div className="flex items-center gap-4 flex-wrap ml-14">
-          {snap.email && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-              <Mail className="w-3.5 h-3.5 text-slate-400" />
-              {snap.email}
-            </span>
-          )}
-          {snap.phone && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-              <Phone className="w-3.5 h-3.5 text-slate-400" />
-              {snap.phone}
-            </span>
-          )}
-          {snap.totalExpYears != null && (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-              <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-              {Math.floor(snap.totalExpYears)}y {Math.round((snap.totalExpYears % 1) * 12)}m exp
-            </span>
-          )}
-        </div>
-        {/* Row 3 — skills */}
-        {snap.topSkills?.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap mt-2.5 ml-14">
-            {snap.topSkills.slice(0, 4).map(s => (
-              <span
-                key={s}
-                className="text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-md"
-              >
-                {s}
-              </span>
-            ))}
-            {snap.topSkills.length > 4 && (
-              <span className="text-xs font-medium text-slate-500">
-                +{snap.topSkills.length - 4} more
-              </span>
-            )}
-          </div>
-        )}
-        {/* Footer */}
-        <div className="flex items-center gap-3 mt-2.5 ml-14">
-          <p className="text-xs font-medium text-slate-500">
-            by{' '}
-            <span className="font-bold text-slate-700">
-              {p.recruiter.firstName} {p.recruiter.lastName}
-            </span>
-            {' · '}
-            {format(new Date(p.stageUpdatedAt), 'dd MMM yyyy')}
-          </p>
-          {p.stageHistory.length > 0 && (
-            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-              {p.stageHistory.length} moves
-            </span>
-          )}
-          <span
-            className={`ml-auto text-xs font-bold px-2.5 py-0.5 rounded-full border ${agingColor} flex items-center gap-1`}
-          >
-            <Clock className="w-3 h-3" />
-            {p.aging.label}
-          </span>
-        </div>
-      </div>
-      {/* Action bar */}
-      <div className="flex flex-col items-center justify-center gap-1 px-3 shrink-0 border-l border-slate-100">
-        <button
-          title="Open in requirement"
-          onClick={() => router.push(`/requirements/${requirementId}?pipelineId=${p.id}`)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors"
-        >
-          <ExternalLink className="w-4 h-4" />
-        </button>
-        {canEdit && !isTerminated && (
-          <>
-            <button
-              title="Move Stage"
-              onClick={() => onAction('move', p)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
-            >
-              <ArrowUpDown className="w-4 h-4" />
-            </button>
-            <button
-              title="Submit to Client"
-              onClick={() => onAction('submit', p)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-blue-700 hover:bg-blue-100 transition-colors"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-            <button
-              title="Roll Offer"
-              onClick={() => onAction('offer', p)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-violet-700 hover:bg-violet-100 transition-colors"
-            >
-              <DollarSign className="w-4 h-4" />
-            </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors">
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                {!p.isOnHold && (
-                  <DropdownMenuItem
-                    onClick={() => onAction('hold', p)}
-                    className="text-amber-700 font-medium text-sm"
-                  >
-                    <PauseCircle className="w-4 h-4 mr-2" />
-                    Put on Hold
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  onClick={() => onAction('withdraw', p)}
-                  className="text-slate-700 font-medium text-sm"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Withdraw
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => onAction('reject', p)}
-                  className="text-rose-700 font-medium text-sm"
-                >
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Reject
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
+      <div className="flex justify-end">
+        <Button disabled={mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+          {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          {pipeline.submittedAt ? 'Update Submission' : 'Mark Submitted'}
+        </Button>
       </div>
     </div>
   );
 }
 
+// ── Offer & CTC tab ─────────────────────────────────────────────────────────
+function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
+  const [currentCtc, setCurrentCtc] = useState(pipeline.currentCtc?.toString() ?? '');
+  const [expectedCtc, setExpectedCtc] = useState(pipeline.expectedCtc?.toString() ?? '');
+  const [negotiatedCtc, setNegotiatedCtc] = useState(pipeline.negotiatedCtc?.toString() ?? '');
+  const [ctcNotes, setCtcNotes] = useState(pipeline.ctcNotes ?? '');
+  const [offeredCtc, setOfferedCtc] = useState(pipeline.offeredCtc?.toString() ?? '');
+  const [salaryType, setSalaryType] = useState(pipeline.salaryType ?? 'MONTHLY');
+  const [expectedJoiningDate, setExpectedJoiningDate] = useState(
+    pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+  );
+
+  // Guard: parseFloat('') === NaN which backend discards — use null instead
+  const toNum = (v: string) => (v.trim() === '' ? null : parseFloat(v));
+
+  const mut = useMutation({
+    mutationFn: async () => {
+      // Single call — merge CTC ladder + formal offer into /offer endpoint
+      // because /details endpoint does not exist yet
+      await axios.patch(`/pipeline/${pipeline.id}/offer`, {
+        // CTC ladder
+        currentCtc: toNum(currentCtc),
+        expectedCtc: toNum(expectedCtc),
+        negotiatedCtc: toNum(negotiatedCtc),
+        ctcNotes: ctcNotes.trim() || null,
+        // Formal offer (optional)
+        ...(offeredCtc.trim() && {
+          offeredCtc: toNum(offeredCtc),
+          salaryCurrency: 'INR',
+          salaryType,
+        }),
+        ...(expectedJoiningDate && { expectedJoiningDate }),
+      });
+    },
+    onSuccess: () => {
+      toast.success('Offer & CTC details saved');
+      onDone();
+      onClose();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to save'),
+  });
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">CTC Ladder</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+              Current CTC (₹)
+            </Label>
+            <Input
+              type="number"
+              value={currentCtc}
+              onChange={e => setCurrentCtc(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+              Expected CTC (₹)
+            </Label>
+            <Input
+              type="number"
+              value={expectedCtc}
+              onChange={e => setExpectedCtc(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+              Negotiated CTC (₹)
+            </Label>
+            <Input
+              type="number"
+              value={negotiatedCtc}
+              onChange={e => setNegotiatedCtc(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+        </div>
+        <div className="mt-3">
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">CTC Notes</Label>
+          <Textarea
+            value={ctcNotes}
+            onChange={e => setCtcNotes(e.target.value)}
+            rows={2}
+            className="resize-none text-sm"
+            placeholder="Any context on negotiation, breakup, etc."
+          />
+        </div>
+      </div>
+
+      <div className="pt-1 border-t border-slate-100">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2 mt-3">
+          Formal Offer
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+              Offered CTC (₹)
+            </Label>
+            <Input
+              type="number"
+              value={offeredCtc}
+              onChange={e => setOfferedCtc(e.target.value)}
+              placeholder="e.g. 800000"
+              className="h-9 text-sm"
+            />
+          </div>
+          <div>
+            <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">Salary Type</Label>
+            <Select value={salaryType} onValueChange={setSalaryType}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {['MONTHLY', 'ANNUAL', 'HOURLY', 'DAILY'].map(t => (
+                  <SelectItem key={t} value={t} className="text-sm">
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-3">
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Expected Joining
+          </Label>
+          <Input
+            type="date"
+            value={expectedJoiningDate}
+            onChange={e => setExpectedJoiningDate(e.target.value)}
+            className="h-9 text-sm w-48"
+          />
+        </div>
+        {pipeline.offerStatus && (
+          <p className="text-xs text-slate-500 mt-2">
+            Current offer status:{' '}
+            <span className="font-semibold text-slate-700">{pipeline.offerStatus}</span>
+          </p>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          disabled={mut.isPending}
+          onClick={() => mut.mutate()}
+          className="gap-2 bg-violet-600 hover:bg-violet-700"
+        >
+          {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Save Offer & CTC
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Joining tab ──────────────────────────────────────────────────────────────
+function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
+  const [lastWorkingDate, setLastWorkingDate] = useState(
+    pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : ''
+  );
+  const [actualJoiningDate, setActualJoiningDate] = useState(
+    pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : ''
+  );
+
+  const mut = useMutation({
+    mutationFn: async () =>
+      axios.patch(`/pipeline/${pipeline.id}/details`, {
+        lastWorkingDate: lastWorkingDate || null,
+        actualJoiningDate: actualJoiningDate || null,
+      }),
+    onSuccess: () => {
+      toast.success('Joining details saved');
+      onDone();
+      onClose();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to save'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Last Working Day (current company)
+          </Label>
+          <Input
+            type="date"
+            value={lastWorkingDate}
+            onChange={e => setLastWorkingDate(e.target.value)}
+            className="h-9 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Actual Joining Date
+          </Label>
+          <Input
+            type="date"
+            value={actualJoiningDate}
+            onChange={e => setActualJoiningDate(e.target.value)}
+            className="h-9 text-sm"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Expected Joining
+          </p>
+          <p className="text-sm font-semibold text-slate-700 mt-0.5">
+            {formatDate(pipeline.expectedJoiningDate)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Days to Join
+          </p>
+          <p
+            className={`text-sm font-semibold mt-0.5 ${pipeline.remainingDaysToJoin != null && pipeline.remainingDaysToJoin < 0 ? 'text-rose-600' : 'text-slate-700'}`}
+          >
+            {pipeline.remainingDaysToJoin != null ? pipeline.remainingDaysToJoin : '—'}
+          </p>
+        </div>
+        <div className="col-span-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Month of Joining
+          </p>
+          <p className="text-sm font-semibold text-slate-700 mt-0.5">
+            {pipeline.monthOfJoining ?? '—'}
+          </p>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <Button disabled={mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+          {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Save Joining Details
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Status tab — hold / withdraw / reject, consolidated ────────────────────
+function StatusTab({ pipeline, axios, onDone, onClose, isTerminated }: any) {
+  const [active, setActive] = useState<'hold' | 'withdraw' | 'reject' | null>(null);
+  const [reason, setReason] = useState('');
+
+  const endpointFor = (a: string) =>
+    a === 'hold'
+      ? `/pipeline/${pipeline.id}/hold`
+      : a === 'withdraw'
+        ? `/pipeline/${pipeline.id}/withdraw`
+        : `/pipeline/${pipeline.id}/reject`;
+  const bodyKeyFor = (a: string) =>
+    a === 'hold' ? 'onHoldReason' : a === 'withdraw' ? 'withdrawnReason' : 'rejectionReason';
+
+  const mut = useMutation({
+    mutationFn: async () =>
+      axios.patch(endpointFor(active!), { [bodyKeyFor(active!)]: reason || undefined }),
+    onSuccess: () => {
+      toast.success('Status updated');
+      onDone();
+      onClose();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  });
+
+  const ROWS = [
+    {
+      id: 'hold' as const,
+      label: 'Put on Hold',
+      icon: <PauseCircle className="w-4 h-4 text-amber-600" />,
+      active: pipeline.isOnHold,
+      reasonText: pipeline.onHoldReason,
+      variant: 'amber',
+    },
+    {
+      id: 'withdraw' as const,
+      label: 'Withdraw',
+      icon: <LogOut className="w-4 h-4 text-slate-600" />,
+      active: pipeline.isWithdrawn,
+      reasonText: pipeline.withdrawnReason,
+      variant: 'default',
+    },
+    {
+      id: 'reject' as const,
+      label: 'Reject',
+      icon: <XCircle className="w-4 h-4 text-rose-600" />,
+      active: pipeline.isRejected,
+      reasonText: pipeline.rejectionReason,
+      variant: 'danger',
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {isTerminated && (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-xs font-medium text-slate-500">
+          This candidate is already out of the active pipeline.
+        </div>
+      )}
+      {ROWS.map(row => (
+        <div key={row.id} className="border border-slate-200 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setActive(prev => (prev === row.id ? null : row.id))}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+          >
+            {row.icon}
+            <span className="text-sm font-semibold text-slate-800 flex-1">{row.label}</span>
+            {row.active && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                Applied
+              </span>
+            )}
+            <ChevronDown
+              className={`w-4 h-4 text-slate-400 transition-transform ${active === row.id ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {row.active && row.reasonText && active !== row.id && (
+            <p className="px-4 pb-3 text-xs text-slate-500">Reason: {row.reasonText}</p>
+          )}
+          {active === row.id && (
+            <div className="px-4 pb-4 pt-1 space-y-2.5 bg-slate-50/60 border-t border-slate-100">
+              <Textarea
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder={`Why is this candidate being ${row.label.toLowerCase()}ed?`}
+                rows={2}
+                className="resize-none text-sm bg-white"
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setActive(null);
+                    setReason('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={mut.isPending}
+                  className={
+                    row.variant === 'danger'
+                      ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                      : row.variant === 'amber'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                        : ''
+                  }
+                  onClick={() => mut.mutate()}
+                >
+                  {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />}
+                  Confirm {row.label}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE SKELETON
+// CANDIDATE TABLE — replaces the card list
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CandidateTable({
+  candidates,
+  canEdit,
+  requirementId,
+  onAction,
+}: {
+  candidates: PipelineCandidate[];
+  canEdit: boolean;
+  requirementId: string;
+  onAction: (a: ActionType, p: PipelineCandidate) => void;
+}) {
+  const router = useRouter();
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm border-collapse">
+        <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="w-9 px-3 py-2.5">
+              <input type="checkbox" className="rounded border-slate-400 w-3.5 h-3.5" />
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[230px]">
+              Candidate
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[140px]">
+              Stage
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[130px]">
+              Recruiter
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[150px]">
+              CTC (Cur / Exp / Neg / Offered)
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[140px]">
+              Joining
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[130px]">
+              Status
+            </th>
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[90px]">
+              Aging
+            </th>
+            <th className="w-20 px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 text-center">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {candidates.map(p => {
+            const snap = p.snapshot;
+            const c = SC(p.currentStage.code);
+            const isTerminated = p.isRejected || p.isWithdrawn;
+            const agingColor =
+              p.aging.minutes > 43200
+                ? 'text-rose-600 bg-rose-50 border-rose-200'
+                : p.aging.minutes > 10080
+                  ? 'text-amber-600 bg-amber-50 border-amber-200'
+                  : 'text-slate-600 bg-slate-50 border-slate-200';
+
+            return (
+              <tr
+                key={p.id}
+                // onClick={() => router.push(`/candidates/${p.snapshot.candidateServiceId}`)}
+                className={`hover:bg-blue-50/30 transition-colors ${isTerminated ? 'opacity-50' : ''}`}
+              >
+                <td className="px-3 py-3 align-top">
+                  <input type="checkbox" className="rounded border-slate-400 w-3.5 h-3.5" />
+                </td>
+
+                {/* Candidate */}
+                <td className="px-3 py-3 align-top">
+                  <div className="flex items-start gap-2.5">
+                    <Avatar className="h-9 w-9 shrink-0">
+                      <AvatarFallback className={`text-xs font-bold ${avatarColor(snap.id)}`}>
+                        {initials(snap.fullName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <Link href={`/candidates/${snap.candidateServiceId}`}>
+                        <p className="text-sm font-bold text-slate-900 leading-tight truncate">
+                          {snap.fullName}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">
+                          {snap.currentTitle}
+                          {snap.currentTitle && snap.currentCompany ? ' · ' : ''}
+                          {snap.currentCompany}
+                        </p>
+                      </Link>
+                      <div className="flex items-center gap-2.5 mt-1 text-[11px] text-slate-400">
+                        {snap.email && (
+                          <span className="flex items-center gap-1 truncate">
+                            <Mail className="w-3 h-3 shrink-0" />
+                            {snap.email}
+                          </span>
+                        )}
+                        {snap.phone && (
+                          <span className="flex items-center gap-1 shrink-0">
+                            <Phone className="w-3 h-3" />
+                            {snap.phone}
+                          </span>
+                        )}
+                      </div>
+                      {snap.totalExpYears != null && (
+                        <span className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
+                          <Briefcase className="w-3 h-3" />
+                          {Math.floor(snap.totalExpYears)}y{' '}
+                          {Math.round((snap.totalExpYears % 1) * 12)}m exp
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </td>
+
+                {/* Stage */}
+                <td className="px-3 py-3 align-top">
+                  <span
+                    className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border ${c.bg} ${c.text} ${c.border}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${c.dot} shrink-0`} />
+                    {p.currentStage.label}
+                  </span>
+                  {p.stageHistory.length > 0 && (
+                    <p className="text-[10px] text-slate-400 mt-1">{p.stageHistory.length} moves</p>
+                  )}
+                </td>
+
+                {/* Recruiter */}
+                <td className="px-3 py-3 align-top text-xs font-semibold text-slate-700">
+                  {p.recruiter.firstName} {p.recruiter.lastName}
+                  <p className="text-[10px] font-normal text-slate-400 mt-0.5">
+                    {format(new Date(p.stageUpdatedAt), 'dd MMM yyyy')}
+                  </p>
+                </td>
+
+                {/* CTC ladder */}
+                <td className="px-3 py-3 align-top">
+                  <div className="space-y-0.5 text-[11px]">
+                    <p className="text-slate-500">
+                      Cur:{' '}
+                      <span className="font-semibold text-slate-700">
+                        {formatCtc(p.currentCtc)}
+                      </span>
+                    </p>
+                    <p className="text-slate-500">
+                      Exp:{' '}
+                      <span className="font-semibold text-slate-700">
+                        {formatCtc(p.expectedCtc)}
+                      </span>
+                    </p>
+                    <p className="text-slate-500">
+                      Neg:{' '}
+                      <span className="font-semibold text-slate-700">
+                        {formatCtc(p.negotiatedCtc)}
+                      </span>
+                    </p>
+                    {p.offeredCtc != null && (
+                      <p className="text-violet-600 font-bold">
+                        Offered: {formatCtc(p.offeredCtc)}
+                      </p>
+                    )}
+                  </div>
+                </td>
+
+                {/* Joining */}
+                <td className="px-3 py-3 align-top text-[11px] text-slate-500 space-y-0.5">
+                  <p>
+                    Exp:{' '}
+                    <span className="font-semibold text-slate-700">
+                      {formatDate(p.expectedJoiningDate)}
+                    </span>
+                  </p>
+                  <p>
+                    Act:{' '}
+                    <span className="font-semibold text-slate-700">
+                      {formatDate(p.actualJoiningDate)}
+                    </span>
+                  </p>
+                  {p.remainingDaysToJoin != null && (
+                    <p
+                      className={
+                        p.remainingDaysToJoin < 0 ? 'text-rose-600 font-semibold' : 'text-slate-400'
+                      }
+                    >
+                      {p.remainingDaysToJoin < 0
+                        ? `${Math.abs(p.remainingDaysToJoin)}d overdue`
+                        : `in ${p.remainingDaysToJoin}d`}
+                    </p>
+                  )}
+                </td>
+
+                {/* Status pills */}
+                <td className="px-3 py-3 align-top">
+                  <div className="flex flex-col gap-1 items-start">
+                    {p.submittedAt && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                        Submitted
+                      </span>
+                    )}
+                    {p.offerStatus && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                        {p.offerStatus}
+                      </span>
+                    )}
+                    {p.isOnHold && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                        On Hold
+                      </span>
+                    )}
+                    {p.isRejected && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
+                        Rejected
+                      </span>
+                    )}
+                    {p.isWithdrawn && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                        Withdrawn
+                      </span>
+                    )}
+                    {!p.submittedAt &&
+                      !p.offerStatus &&
+                      !p.isOnHold &&
+                      !p.isRejected &&
+                      !p.isWithdrawn && <span className="text-[10px] text-slate-300">—</span>}
+                  </div>
+                </td>
+
+                {/* Aging */}
+                <td className="px-3 py-3 align-top">
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border ${agingColor}`}
+                  >
+                    <Clock className="w-3 h-3" />
+                    {p.aging.label}
+                  </span>
+                </td>
+
+                {/* Actions — only Move Stage + Edit Details */}
+                <td className="px-3 py-3 align-top">
+                  <div className="flex items-center justify-center gap-1">
+                    <button
+                      title="Open in requirement"
+                      onClick={() =>
+                        router.push(`/requirements/${requirementId}?pipelineId=${p.id}`)
+                      }
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                    {canEdit && (
+                      <>
+                        {!isTerminated && (
+                          <button
+                            title="Move Stage"
+                            onClick={() => onAction('move', p)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                          >
+                            <ArrowUpDown className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          title="Update Candidate Details"
+                          onClick={() => onAction('details', p)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-100 transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAGE SKELETON  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PageSkeleton() {
@@ -1520,7 +1880,6 @@ export default function AssignmentDetailPage() {
     pipeline: PipelineCandidate;
   } | null>(null);
 
-  // ── Fetch assignment detail (header data + stats) ──────────────────────────
   const { data: assignmentData, isLoading: assignmentLoading } = useQuery({
     queryKey: ['assignment-detail', id],
     queryFn: async () => {
@@ -1533,7 +1892,6 @@ export default function AssignmentDetailPage() {
     enabled: !!id,
   });
 
-  // ── Fetch pipeline candidates (with filters) ───────────────────────────────
   const pipelineParams = useMemo(() => {
     const p = new URLSearchParams();
     if (activeStageId) p.set('stageId', activeStageId);
@@ -1558,6 +1916,45 @@ export default function AssignmentDetailPage() {
     placeholderData: prev => prev,
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // IMPORTANT: this useMemo MUST run on every single render, including the
+  // loading-skeleton render and the "assignment not found" render below.
+  // That's why it lives here — above both early `return`s — instead of after
+  // them. Hooks can never be skipped conditionally (Rules of Hooks), so all
+  // its inputs are read defensively via optional chaining instead of from
+  // the `a` / `stats` / `pipelineStages` constants (which aren't declared
+  // yet at this point in the component).
+  // ─────────────────────────────────────────────────────────────────────────
+  const canonicalChips = useMemo(() => {
+    const stats = pipelineData?.candidateStats ?? assignmentData?.data?.candidateStats;
+    const stages = pipelineData?.pipelineStages ?? [];
+    const source = stats?.byPipelineStage ?? [];
+    if (!source.length || !stages.length) return [];
+    const stageMeta = new Map(stages.map(s => [s.id, s]));
+    const counts: Record<string, number> = {};
+    const repStage: Record<string, PipelineStage> = {};
+    for (const row of source) {
+      const meta = stageMeta.get(row.id);
+      const canon = meta?.canonicalStage;
+      if (!canon) continue;
+      if (!(canon in counts)) {
+        counts[canon] = 0;
+        repStage[canon] = meta!;
+      } else if (meta!.order < repStage[canon].order) {
+        repStage[canon] = meta!;
+      }
+      counts[canon] += row.count;
+    }
+    return Object.keys(counts)
+      .sort((x, y) => repStage[x].order - repStage[y].order)
+      .map(key => ({
+        key,
+        label: humanizeCanonical(key),
+        value: counts[key],
+        color: SC(repStage[key].code),
+      }));
+  }, [pipelineData, assignmentData]);
+
   const invalidateAfterAction = () => {
     qc.invalidateQueries({ queryKey: ['assignment-pipeline', id] });
     qc.invalidateQueries({ queryKey: ['assignment-detail', id] });
@@ -1580,20 +1977,12 @@ export default function AssignmentDetailPage() {
 
   const req = a.requirement;
   const canEdit = pipelineData?.permissions?.canEdit ?? false;
-
-  // Stats come from the pipeline response (freshest after filters)
-  // Fall back to assignment-level stats for the header chips before pipeline loads
   const stats = pipelineData?.candidateStats ?? a.candidateStats;
   const candidates = pipelineData?.data ?? [];
   const meta = pipelineData?.meta;
   const pipelineStages = pipelineData?.pipelineStages ?? [];
-
-  // Stage sidebar: use byPipelineStage from unfiltered stats (always the assignment-level ones)
   const sidebarStages = a.candidateStats?.byPipelineStage ?? [];
-
   const isBreached = !!a.breachedAt || !!req.isRespondByBreached;
-
-  // The req object to pass to the add-candidate modal
   const reqForModal = pipelineData?.requirement ?? {
     id: req.id,
     reqCode: req.reqCode,
@@ -1607,7 +1996,6 @@ export default function AssignmentDetailPage() {
         {isBreached && <div className="h-0.5 w-full bg-red-500" />}
 
         <div className="flex min-h-[110px]">
-          {/* LEFT — assignment info */}
           <div className="w-[42%] shrink-0 border-r border-slate-200 px-6 py-5">
             <div className="flex items-start gap-3">
               <button
@@ -1617,7 +2005,6 @@ export default function AssignmentDetailPage() {
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div className="flex-1 min-w-0">
-                {/* Badges row */}
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                   <span className="text-xs font-bold text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                     {req.reqCode}
@@ -1638,11 +2025,9 @@ export default function AssignmentDetailPage() {
                     </span>
                   )}
                 </div>
-                {/* Title */}
                 <h1 className="text-base font-bold text-slate-900 leading-tight truncate mb-1">
                   {req.title}
                 </h1>
-                {/* Meta */}
                 <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500 mb-3">
                   {req.client?.name && (
                     <span className="font-medium text-slate-700">{req.client.name}</span>
@@ -1675,7 +2060,6 @@ export default function AssignmentDetailPage() {
                     </>
                   )}
                 </div>
-                {/* Action buttons */}
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
@@ -1699,35 +2083,31 @@ export default function AssignmentDetailPage() {
             </div>
           </div>
 
-          {/* RIGHT — stats chips */}
+          {/* RIGHT — dynamic stats chips */}
           <div className="flex-1 flex items-center px-8 gap-6 flex-wrap">
-            {[
-              { label: 'Total', value: stats?.total ?? 0, color: 'text-slate-800' },
-              { label: 'Active', value: stats?.active ?? 0, color: 'text-emerald-600' },
-              { label: 'Submitted', value: stats?.submitted ?? 0, color: 'text-blue-600' },
-              { label: 'Offered', value: stats?.offered ?? 0, color: 'text-violet-600' },
-              { label: 'Placed', value: stats?.placed ?? 0, color: 'text-emerald-700' },
-              { label: 'Dropped', value: stats?.dropped ?? 0, color: 'text-rose-500' },
-            ].map(s => (
-              <div key={s.label} className="flex flex-col items-center gap-1 shrink-0">
-                <span className={`text-3xl font-black tabular-nums leading-none ${s.color}`}>
-                  {s.value}
-                </span>
-                <span className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-                  {s.label}
-                </span>
-              </div>
+            <StatChip label="Total" value={stats?.total ?? 0} colorClass="text-slate-800" />
+            <StatChip label="Active" value={stats?.active ?? 0} colorClass="text-emerald-600" />
+
+            {/* fully data-driven — one chip per canonical stage that exists in this pipeline */}
+            {canonicalChips.map(chip => (
+              <StatChip
+                key={chip.key}
+                label={chip.label}
+                value={chip.value}
+                colorClass={chip.color.header}
+              />
             ))}
+
+            <StatChip label="Dropped" value={stats?.dropped ?? 0} colorClass="text-rose-500" />
+
             {stats?.agingBuckets.critical > 0 && (
-              <div className="flex flex-col items-center gap-1 shrink-0">
-                <span className="text-3xl font-black tabular-nums leading-none text-amber-600">
-                  {stats.agingBuckets.critical}
-                </span>
-                <span className="text-[10px] font-bold tracking-widest text-amber-400 uppercase">
-                  Stale
-                </span>
-              </div>
+              <StatChip
+                label="Stale"
+                value={stats.agingBuckets.critical}
+                colorClass="text-amber-600"
+              />
             )}
+
             <div className="flex items-center gap-3 ml-auto pl-6 border-l border-slate-200 shrink-0">
               <span className="text-sm font-semibold text-slate-600 whitespace-nowrap">
                 Active only
@@ -1766,11 +2146,9 @@ export default function AssignmentDetailPage() {
         </div>
       </div>
 
-      {/* ═══ SIDEBAR + LIST ═══ */}
+      {/* ═══ SIDEBAR + TABLE ═══ */}
       <div className="flex flex-1 overflow-hidden">
-        {/* STAGE SIDEBAR */}
         <div className="w-44 shrink-0 border-r border-slate-200 overflow-y-auto bg-white">
-          {/* All */}
           <button
             onClick={() => setActiveStageId(null)}
             className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${!activeStageId ? 'border-primary bg-primary/5 text-primary' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}
@@ -1811,7 +2189,6 @@ export default function AssignmentDetailPage() {
           })}
         </div>
 
-        {/* CANDIDATE LIST */}
         <div className="flex-1 overflow-y-auto">
           {pipelineLoading ? (
             <div className="divide-y divide-slate-100">
@@ -1854,16 +2231,12 @@ export default function AssignmentDetailPage() {
             </div>
           ) : (
             <div>
-              {candidates.map(c => (
-                <CandidateCard
-                  key={c.id}
-                  p={c}
-                  canEdit={canEdit}
-                  requirementId={req.id}
-                  onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
-                />
-              ))}
-              {/* Pagination (if needed beyond the 50 limit) */}
+              <CandidateTable
+                candidates={candidates}
+                canEdit={canEdit}
+                requirementId={req.id}
+                onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
+              />
               {meta && meta.pages > 1 && (
                 <div className="flex items-center justify-center gap-3 py-6 border-t border-slate-100">
                   <span className="text-xs text-slate-500">
@@ -1881,7 +2254,7 @@ export default function AssignmentDetailPage() {
         open={addModal}
         onClose={() => setAddModal(false)}
         req={reqForModal}
-        assignmentId={a.id} // ← add this, a.id is the assignment UUID
+        assignmentId={a.id}
       />
 
       {actionDialog?.type === 'move' && (
@@ -1893,61 +2266,12 @@ export default function AssignmentDetailPage() {
           onDone={invalidateAfterAction}
         />
       )}
-      {actionDialog?.type === 'submit' && (
-        <SubmitDialog
-          pipeline={actionDialog.pipeline!}
+      {actionDialog?.type === 'details' && (
+        <CandidateDetailsModal
+          pipeline={actionDialog.pipeline}
           open
           onClose={() => setActionDialog(null)}
           onDone={invalidateAfterAction}
-        />
-      )}
-      {actionDialog?.type === 'offer' && (
-        <OfferDialog
-          pipeline={actionDialog.pipeline!}
-          open
-          onClose={() => setActionDialog(null)}
-          onDone={invalidateAfterAction}
-        />
-      )}
-      {actionDialog?.type === 'reject' && (
-        <SimpleActionDialog
-          open
-          onClose={() => setActionDialog(null)}
-          onDone={invalidateAfterAction}
-          title="Reject Candidate"
-          icon={<XCircle className="w-4 h-4 text-rose-600" />}
-          placeholder="Why is this candidate being rejected?"
-          actionLabel="Reject"
-          actionVariant="danger"
-          endpoint={`/pipeline/${actionDialog.pipeline?.id}/reject`}
-          bodyKey="rejectionReason"
-        />
-      )}
-      {actionDialog?.type === 'withdraw' && (
-        <SimpleActionDialog
-          open
-          onClose={() => setActionDialog(null)}
-          onDone={invalidateAfterAction}
-          title="Withdraw Candidate"
-          icon={<LogOut className="w-4 h-4 text-slate-600" />}
-          placeholder="Why is this candidate withdrawing?"
-          actionLabel="Withdraw"
-          endpoint={`/pipeline/${actionDialog.pipeline?.id}/withdraw`}
-          bodyKey="withdrawnReason"
-        />
-      )}
-      {actionDialog?.type === 'hold' && (
-        <SimpleActionDialog
-          open
-          onClose={() => setActionDialog(null)}
-          onDone={invalidateAfterAction}
-          title="Put on Hold"
-          icon={<PauseCircle className="w-4 h-4 text-amber-600" />}
-          placeholder="Why is this candidate on hold?"
-          actionLabel="Put on Hold"
-          actionVariant="amber"
-          endpoint={`/pipeline/${actionDialog.pipeline?.id}/hold`}
-          bodyKey="onHoldReason"
         />
       )}
     </div>
