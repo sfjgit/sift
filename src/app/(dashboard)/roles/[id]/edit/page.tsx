@@ -50,6 +50,7 @@ export default function RoleEditPage() {
   useEffect(() => {
     const role = roleQuery.data?.data;
     if (!role) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(role.name.replace(/_/g, ' '));
     setDescription(role.description ?? '');
     setPermissions(role.permissions);
