@@ -231,7 +231,7 @@ export default function NotificationsPage() {
           <p className="text-sm font-medium">
             {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
           </p>
-          <p className="text-xs opacity-70">You're all caught up 🎉</p>
+          <p className="text-xs opacity-70">You&apos;re all caught up 🎉</p>
         </div>
       ) : (
         <div className="flex flex-col">
