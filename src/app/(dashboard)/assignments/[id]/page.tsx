@@ -35,12 +35,10 @@ import {
   Loader2,
   ArrowUpDown,
   Send,
-  DollarSign,
   PauseCircle,
   XCircle,
   LogOut,
   SlidersHorizontal,
-  TrendingUp,
   Wallet,
   CalendarCheck,
   AlertTriangle,
@@ -68,6 +66,7 @@ import {
 } from '@/components/ui/select';
 import { useAxios } from '@/hooks/useAxios';
 import Link from 'next/link';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -201,6 +200,7 @@ interface AssignmentDetail {
     reqCode: string;
     title: string;
     status: string;
+    description: string | null;
     priority: string;
     totalOpenings: number;
     isRespondByBreached: boolean;
@@ -219,7 +219,13 @@ interface PipelineResponse {
   data: PipelineCandidate[];
   candidateStats: CandidateStats;
   pipelineStages: PipelineStage[];
-  requirement: { id: string; reqCode: string; title: string; serviceLine: any };
+  requirement: {
+    id: string;
+    reqCode: string;
+    title: string;
+    serviceLine: any;
+    description: string;
+  };
   meta: { total: number; page: number; limit: number; pages: number };
   permissions: { canEdit: boolean; canDelete: boolean };
 }
@@ -567,7 +573,7 @@ function UploadResumeModal({
                   <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
                     <FileText className="w-6 h-6 text-emerald-600" />
                   </div>
-                  <p className="text-sm font-bold text-emerald-800 truncate max-w-[240px]">
+                  <p className="text-sm font-bold text-emerald-800 truncate max-w-60">
                     {file.name}
                   </p>
                   <p className="text-xs text-emerald-600 mt-1">
@@ -646,7 +652,7 @@ function AddCandidateModal({
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative z-10 w-full max-w-[440px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+        <div className="relative z-10 w-full max-w-110 rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -991,7 +997,7 @@ function MoveStageDialog({
             <Button
               disabled={!stageId || mut.isPending}
               onClick={() => mut.mutate()}
-              className="gap-2 min-w-[130px]"
+              className="gap-2 min-w-32.5"
             >
               {mut.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1568,25 +1574,25 @@ function CandidateTable({
             <th className="w-9 px-3 py-2.5">
               <input type="checkbox" className="rounded border-slate-400 w-3.5 h-3.5" />
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[230px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-57.5">
               Candidate
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[140px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-35">
               Stage
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[130px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-32.5">
               Recruiter
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[150px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-37.5">
               CTC (Cur / Exp / Neg / Offered)
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[140px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-35">
               Joining
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[130px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-32.5">
               Status
             </th>
-            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-[90px]">
+            <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-22.5">
               Aging
             </th>
             <th className="w-20 px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 text-center">
@@ -1833,7 +1839,7 @@ function CandidateTable({
 function PageSkeleton() {
   return (
     <div className="flex flex-col h-screen bg-white">
-      <div className="border-b p-6 flex gap-4 min-h-[100px]">
+      <div className="border-b p-6 flex gap-4 min-h-25">
         <div className="flex flex-col gap-3 flex-1">
           <Skeleton className="h-5 w-48" />
           <Skeleton className="h-4 w-64" />
@@ -1870,7 +1876,7 @@ export default function AssignmentDetailPage() {
   const router = useRouter();
   const axios = useAxios();
   const qc = useQueryClient();
-
+  const [tab, setTab] = useState('candidate');
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [activeOnly, setActiveOnly] = useState(true);
   const [search, setSearch] = useState('');
@@ -1995,7 +2001,7 @@ export default function AssignmentDetailPage() {
       <div className="border-b border-slate-200 bg-white shrink-0">
         {isBreached && <div className="h-0.5 w-full bg-red-500" />}
 
-        <div className="flex min-h-[110px]">
+        <div className="flex min-h-27.5">
           <div className="w-[42%] shrink-0 border-r border-slate-200 px-6 py-5">
             <div className="flex items-start gap-3">
               <button
@@ -2069,15 +2075,6 @@ export default function AssignmentDetailPage() {
                     <UserPlus className="w-4 h-4" />
                     Add Candidate
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-sm font-semibold gap-1.5 px-3"
-                    onClick={() => router.push(`/requirements/${req.id}`)}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Requirement
-                  </Button>
                 </div>
               </div>
             </div>
@@ -2117,137 +2114,175 @@ export default function AssignmentDetailPage() {
           </div>
         </div>
       </div>
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        defaultValue="candidates"
+        className="flex flex-col flex-1 overflow-hidden"
+      >
+        {/* 🔹 Tabs Header */}
+        <div className="border-b border-slate-200 bg-white px-4">
+          <TabsList className="h-10">
+            <TabsTrigger value="jd">JD</TabsTrigger>
+            <TabsTrigger value="candidates">Candidates</TabsTrigger>
+          </TabsList>
+        </div>
 
-      {/* ═══ FILTER BAR ═══ */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-white shrink-0">
-        <span className="text-sm font-semibold text-slate-600">{meta?.total ?? 0} candidates</span>
-        <div className="flex items-center gap-2 ml-auto">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <Input
-              placeholder="Search candidates..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 h-8 text-sm w-52 border-slate-200 focus-visible:ring-1"
-            />
+        {/* ✅ JD TAB */}
+        <TabsContent value="jd" className="flex-1 overflow-y-auto p-6 bg-slate-50">
+          <div className="max-w-4xl">
+            <div className="bg-white border border-slate-200 rounded-xl p-6">
+              <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-slate-500" />
+                Job Description
+              </h3>
+
+              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                {req.description || 'No description added yet.'}
+              </p>
+            </div>
           </div>
-          <button
-            className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
-            onClick={() => refetch()}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          </button>
-          <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors">
-            <Filter className="w-3.5 h-3.5" />
-          </button>
-          <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors">
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
+        </TabsContent>
 
-      {/* ═══ SIDEBAR + TABLE ═══ */}
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-44 shrink-0 border-r border-slate-200 overflow-y-auto bg-white">
-          <button
-            onClick={() => setActiveStageId(null)}
-            className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${!activeStageId ? 'border-primary bg-primary/5 text-primary' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}
-          >
-            <span className="text-xs font-bold uppercase tracking-wide">All</span>
-            <span
-              className={`text-sm font-black tabular-nums ${!activeStageId ? 'text-primary' : 'text-slate-700'}`}
-            >
-              {a.candidateStats?.total ?? 0}
+        {/* ✅ CANDIDATES TAB */}
+        <TabsContent value="candidates" className="flex flex-col flex-1 overflow-hidden">
+          {/* ═══ FILTER BAR ═══ */}
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-white shrink-0">
+            <span className="text-sm font-semibold text-slate-600">
+              {meta?.total ?? 0} candidates
             </span>
-          </button>
-
-          {sidebarStages.map(stage => {
-            const isActive = activeStageId === stage.id;
-            const c = SC(stage.code);
-            return (
-              <div key={stage.id}>
-                <div className="flex justify-center py-0.5">
-                  <ChevronDown className="w-3 h-3 text-slate-300" />
-                </div>
-                <button
-                  onClick={() => setActiveStageId(prev => (prev === stage.id ? null : stage.id))}
-                  className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${isActive ? `border-primary ${c.bg}` : 'border-transparent hover:bg-slate-50'}`}
-                >
-                  <span
-                    className={`text-xs font-semibold leading-tight max-w-[90px] truncate ${isActive ? c.text : stage.count === 0 ? 'text-slate-300' : 'text-slate-600'}`}
-                  >
-                    {stage.label}
-                  </span>
-                  <span
-                    className={`text-sm font-black tabular-nums shrink-0 ${isActive ? c.text : stage.count === 0 ? 'text-slate-300' : 'text-slate-700'}`}
-                  >
-                    {stage.count}
-                  </span>
-                </button>
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Input
+                  placeholder="Search candidates..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 h-8 text-sm w-52 border-slate-200 focus-visible:ring-1"
+                />
               </div>
-            );
-          })}
-        </div>
+              <button
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                onClick={() => refetch()}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+              </button>
+              <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors">
+                <Filter className="w-3.5 h-3.5" />
+              </button>
+              <button className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors">
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {pipelineLoading ? (
-            <div className="divide-y divide-slate-100">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex gap-4 px-5 py-4">
-                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
-                  <div className="flex-1 flex flex-col gap-2">
-                    <Skeleton className="h-4 w-48" />
-                    <Skeleton className="h-3 w-64" />
-                    <Skeleton className="h-3 w-36" />
+          {/* ═══ SIDEBAR + TABLE ═══ */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* sidebar */}
+            <div className="w-44 shrink-0 border-r border-slate-200 overflow-y-auto bg-white">
+              <button
+                onClick={() => setActiveStageId(null)}
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${!activeStageId ? 'border-primary bg-primary/5 text-primary' : 'border-transparent text-slate-600 hover:bg-slate-50'}`}
+              >
+                <span className="text-xs font-bold uppercase tracking-wide">All</span>
+                <span
+                  className={`text-sm font-black tabular-nums ${!activeStageId ? 'text-primary' : 'text-slate-700'}`}
+                >
+                  {a.candidateStats?.total ?? 0}
+                </span>
+              </button>
+
+              {sidebarStages.map(stage => {
+                const isActive = activeStageId === stage.id;
+                const c = SC(stage.code);
+                return (
+                  <div key={stage.id}>
+                    <div className="flex justify-center py-0.5">
+                      <ChevronDown className="w-3 h-3 text-slate-300" />
+                    </div>
+                    <button
+                      onClick={() =>
+                        setActiveStageId(prev => (prev === stage.id ? null : stage.id))
+                      }
+                      className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors border-l-2 ${isActive ? `border-primary ${c.bg}` : 'border-transparent hover:bg-slate-50'}`}
+                    >
+                      <span
+                        className={`text-xs font-semibold leading-tight max-w-22.5 truncate ${isActive ? c.text : stage.count === 0 ? 'text-slate-300' : 'text-slate-600'}`}
+                      >
+                        {stage.label}
+                      </span>
+                      <span
+                        className={`text-sm font-black tabular-nums shrink-0 ${isActive ? c.text : stage.count === 0 ? 'text-slate-300' : 'text-slate-700'}`}
+                      >
+                        {stage.count}
+                      </span>
+                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          ) : candidates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-72 gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
-                <Users className="w-7 h-7 text-slate-400" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-bold text-slate-700">
-                  No candidates {activeStageId ? 'in this stage' : 'yet'}
-                </p>
-                <p className="text-xs font-medium text-slate-500 mt-1">
-                  {activeStageId
-                    ? 'Try a different stage or clear the filter'
-                    : 'Use "Add Candidate" to get started'}
-                </p>
-              </div>
-              {activeStageId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="font-semibold"
-                  onClick={() => setActiveStageId(null)}
-                >
-                  Clear filter
-                </Button>
+
+            <div className="flex-1 overflow-y-auto">
+              {pipelineLoading ? (
+                <div className="divide-y divide-slate-100">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex gap-4 px-5 py-4">
+                      <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                      <div className="flex-1 flex flex-col gap-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-64" />
+                        <Skeleton className="h-3 w-36" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : candidates.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-72 gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                    <Users className="w-7 h-7 text-slate-400" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-slate-700">
+                      No candidates {activeStageId ? 'in this stage' : 'yet'}
+                    </p>
+                    <p className="text-xs font-medium text-slate-500 mt-1">
+                      {activeStageId
+                        ? 'Try a different stage or clear the filter'
+                        : 'Use "Add Candidate" to get started'}
+                    </p>
+                  </div>
+                  {activeStageId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="font-semibold"
+                      onClick={() => setActiveStageId(null)}
+                    >
+                      Clear filter
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <CandidateTable
+                    candidates={candidates}
+                    canEdit={canEdit}
+                    requirementId={req.id}
+                    onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
+                  />
+                  {meta && meta.pages > 1 && (
+                    <div className="flex items-center justify-center gap-3 py-6 border-t border-slate-100">
+                      <span className="text-xs text-slate-500">
+                        {meta.total} total · page {meta.page} of {meta.pages}
+                      </span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          ) : (
-            <div>
-              <CandidateTable
-                candidates={candidates}
-                canEdit={canEdit}
-                requirementId={req.id}
-                onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
-              />
-              {meta && meta.pages > 1 && (
-                <div className="flex items-center justify-center gap-3 py-6 border-t border-slate-100">
-                  <span className="text-xs text-slate-500">
-                    {meta.total} total · page {meta.page} of {meta.pages}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* ═══ MODALS ═══ */}
       <AddCandidateModal

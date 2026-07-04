@@ -29,6 +29,18 @@ export default function CreateUserPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const buQuery = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['business-units-simple'],
+    queryFn: async () => (await axios.get('/business-units')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const slQuery = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['Service-lines-simple'],
+    queryFn: async () => (await axios.get('/service-lines')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const usersQuery = useQuery<{
     data: { id: string; firstName: string; lastName: string }[];
   }>({
@@ -66,7 +78,12 @@ export default function CreateUserPage() {
     },
   });
 
-  const isLoading = rolesQuery.isLoading || deptsQuery.isLoading || usersQuery.isLoading;
+  const isLoading =
+    rolesQuery.isLoading ||
+    deptsQuery.isLoading ||
+    buQuery.isLoading ||
+    slQuery.isLoading ||
+    usersQuery.isLoading;
 
   const userOptions = (usersQuery.data?.data ?? []).map(u => ({
     id: u.id,
@@ -110,6 +127,8 @@ export default function CreateUserPage() {
               mode="create"
               roles={rolesQuery.data?.data ?? []}
               departments={deptsQuery.data?.data ?? []}
+              businessUnits={buQuery.data?.data ?? []}
+              serviceLines={slQuery.data?.data ?? []}
               users={userOptions}
               isSubmitting={createMutation.isPending}
               onSubmit={values => createMutation.mutate(values as CreateFormValues)}
