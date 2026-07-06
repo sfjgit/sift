@@ -71,6 +71,8 @@ export interface UserFormProps {
   roles: FormOption[];
   departments: FormOption[];
   users: FormOption[];
+  businessUnits: FormOption[];
+  serviceLines: FormOption[];
   isSubmitting: boolean;
   onSubmit: (values: UserFormValues) => void;
   onCancel: () => void;
@@ -216,6 +218,8 @@ export function UserForm({
   roles,
   departments,
   users,
+  businessUnits,
+  serviceLines,
   isSubmitting,
   onSubmit,
   onCancel,
@@ -371,7 +375,7 @@ export function UserForm({
           />
         </Field>
 
-        <Field label="Department" error={errors.departmentId?.message as string}>
+        <Field label="Department" required error={errors.departmentId?.message as string}>
           <Controller
             control={control}
             name="departmentId"
@@ -402,6 +406,46 @@ export function UserForm({
         </Field>
       </div>
 
+      {/* ── Assignments ───────────────────────────────────────────────────── */}
+      <SectionHead icon={User} title="Assignments" sub="Clients,BU,Service line" />
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
+        <Field label="BuinessUnit" required error={errors.buId?.message as string}>
+          <Controller
+            control={control}
+            name="buId"
+            render={({ field }) => (
+              <UserSelect
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Select Buisness Unit"
+                options={(businessUnits || []).map(bu => ({
+                  id: bu.id,
+                  name: bu.name.replace(/_/g, ' '),
+                }))}
+                withNone={false}
+              />
+            )}
+          />
+        </Field>
+
+        <Field label="ServiceLine" required error={errors.serviceLineId?.message as string}>
+          <Controller
+            control={control}
+            name="serviceLineId"
+            render={({ field }) => (
+              <UserSelect
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Select Service Line"
+                options={(serviceLines || []).map(sl => ({
+                  id: sl.id,
+                  name: sl.name.replace(/_/g, ' '),
+                }))}
+              />
+            )}
+          />
+        </Field>
+      </div>
       {/* ── Access ─────────────────────────────────────────────────────────── */}
       <SectionHead icon={ShieldAlert} title="Access" sub="System-level permissions" />
 
