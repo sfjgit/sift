@@ -2,12 +2,12 @@
 'use client';
 
 import { format, formatDistanceToNow } from 'date-fns';
-import { AlertTriangle, Calendar, Clock, Download, FileText, MapPin, User } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
-import { STATUS_LABEL, STATUS_COLOR, PRIORITY_COLOR, daysRemaining, fullName } from './types';
+import { Calendar } from 'lucide-react';
+// import { Badge } from '@/components/ui/badge';
+// import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+// import { Separator } from '@/components/ui/separator';
+// import { Button } from '@/components/ui/button';
+import { daysRemaining } from './types';
 import type { RequirementDetail } from './types';
 
 interface Props {
@@ -265,7 +265,7 @@ export function RequirementOverviewTab({ requirement: req }: { requirement: Requ
       </div>
 
       {/* JD Parse info */}
-      {req.jdParseStatus === 'PARSED' && (
+      {/* {req.jdParseStatus === 'PARSED' && (
         <div>
           <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
             JD Parse Info
@@ -291,7 +291,7 @@ export function RequirementOverviewTab({ requirement: req }: { requirement: Requ
             {req.jdFileName && <InfoRow label="JD File" value={req.jdFileName} />}
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Audit */}
       <div>

@@ -57,6 +57,18 @@ export default function EditUserPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const buQuery = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['business-units-simple'],
+    queryFn: async () => (await axios.get('/business-units')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const slQuery = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['Service-lines-simple'],
+    queryFn: async () => (await axios.get('/service-lines')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const usersQuery = useQuery<{ data: { id: string; firstName: string; lastName: string }[] }>({
     queryKey: ['users-simple-list'],
     queryFn: async () => (await axios.get('/users?limit=200&isActive=true&sortBy=firstName')).data,
@@ -158,6 +170,8 @@ export default function EditUserPage() {
           roles={rolesQuery.data?.data ?? []}
           departments={deptsQuery.data?.data ?? []}
           users={userOptions}
+          businessUnits={buQuery.data?.data ?? []}
+          serviceLines={slQuery.data?.data ?? []}
           isSubmitting={updateMutation.isPending}
           onSubmit={values => updateMutation.mutate(values as EditFormValues)}
           onCancel={() => router.push(`/users/${id}`)}
