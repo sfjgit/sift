@@ -2140,6 +2140,10 @@ export default function AssignmentDetailPage() {
               <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
                 {req.description || 'No description added yet.'}
               </p>
+              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                <span className="font-semibold">Skills: </span>
+                {req.primarySkills.join(', ')}
+              </p>
             </div>
           </div>
         </TabsContent>
