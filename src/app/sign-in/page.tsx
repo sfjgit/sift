@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState } from 'react';
@@ -8,6 +9,15 @@ import { toast } from 'sonner';
 // import env from '@/co';
 
 import { useAuth } from '@/context/AuthContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { useAxios } from '@/hooks/useAxios';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -16,6 +26,11 @@ export default function SignInPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [sendingReset, setSendingReset] = useState(false);
+
+  const axios = useAxios();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +64,30 @@ export default function SignInPage() {
       setIsLoading(false);
     }
   }
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail) {
+      toast.error('Please enter your email.');
+      return;
+    }
+
+    setSendingReset(true);
+
+    try {
+      await axios.post('/auth/forgot-password', {
+        email: forgotEmail,
+      });
+
+      toast.success('If an account exists, a password reset link has been sent to your email.');
+
+      setForgotOpen(false);
+      setForgotEmail('');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? 'Network error. Please try again.');
+    } finally {
+      setSendingReset(false);
+    }
+  };
 
   return (
     <div className="min-h-[calc(100vh-73px)] flex items-center justify-center px-4">
@@ -130,8 +169,13 @@ export default function SignInPage() {
                 <label className="text-xs font-medium text-foreground/60 uppercase tracking-wider">
                   Password
                 </label>
+
                 <button
                   type="button"
+                  onClick={() => {
+                    setForgotEmail(email);
+                    setForgotOpen(true);
+                  }}
                   className="text-xs text-primary hover:text-primary/80 transition-colors"
                 >
                   Forgot password?
@@ -246,6 +290,49 @@ export default function SignInPage() {
           </Link>
         </p>
       </div>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Forgot Password</DialogTitle>
+
+            <DialogDescription>
+              Enter your email address and we&apos;ll send you a password reset link.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Email</label>
+
+            <input
+              type="email"
+              value={forgotEmail}
+              onChange={e => setForgotEmail(e.target.value)}
+              placeholder="you@company.com"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          </div>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setForgotOpen(false)}
+              className="rounded-md border px-4 py-2 text-sm"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={sendingReset}
+              onClick={handleForgotPassword}
+              className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
+            >
+              {sendingReset ? 'Sending...' : 'Send Reset Link'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
