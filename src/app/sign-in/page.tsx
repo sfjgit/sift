@@ -498,7 +498,7 @@ function SignInForm() {
   const [resetLoading, setResetLoading] = useState(false);
 
   const searchParams = useSearchParams(); // ← safe inside Suspense now
-  const resetToken = searchParams.get('resetToken');
+  const resetToken = searchParams.get('token');
   const axios = useAxios();
 
   useEffect(() => {
