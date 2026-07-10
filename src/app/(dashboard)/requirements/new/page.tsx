@@ -798,27 +798,47 @@ function SpocSelectItem({ spoc }: { spoc: ClientSpoc }) {
 // JD SECTION — library gate + upload + AI prompt tabs
 // ─────────────────────────────────────────────────────────────────────────────
 
+// File: page.tsx
+// Path: src/app/(dashboard)/requirements/new/page.tsx
+// — replace only the JDSection component and the router.push call in handleLibrarySelect —
+
+// ─── add to your router.push calls ───────────────────────────────────────────
+// After handleLibrarySelect fills the form:
+//   router.push(`/requirements/new?mode=new`) — user stays on this page (already there)
+//   router.push(`/requirements/new?mode=duplicate&fromId=<existingReqId>`)
+// The page reads searchParams and fires the right prefill.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type JDMode = 'new' | 'duplicate';
+
 function JDSection({
   onSelectLibrary,
   onUpload,
   onPromptFill,
   isParsing,
   parsedTitle,
+  parsedFileName,
+  parsedFieldCount,
 }: {
   onSelectLibrary: (id: string) => void;
   onUpload: () => void;
   onPromptFill: (parsed: any, libraryId: string | null) => void;
   isParsing: boolean;
   parsedTitle: string | null;
+  parsedFileName?: string | null; // ← add to parent state
+  parsedFieldCount?: number | null; // ← add to parent state
 }) {
   const axios = useAxios();
-  const [confirmedSearch, setConfirmedSearch] = useState(false);
-  const [inputTab, setInputTab] = useState<'upload' | 'prompt'>('prompt');
+  const router = useRouter();
+
   const [q, setQ] = useState('');
   const [dropOpen, setDropOpen] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [isPrompting, setIsPrompting] = useState(false);
   const [promptUsed, setPromptUsed] = useState(0);
+  const [mode, setMode] = useState<JDMode>('new');
+  const [isDragging, setIsDragging] = useState(false);
   const PROMPT_LIMIT = 3;
   const promptLocked = promptUsed >= PROMPT_LIMIT;
   const dropRef = useRef<HTMLDivElement>(null);
@@ -828,9 +848,11 @@ function JDSection({
     queryFn: async () =>
       (await axios.get(`/jd/library/search?q=${encodeURIComponent(q)}&limit=8`)).data
         ?.data as LibraryResult[],
+    enabled: dropOpen,
     staleTime: 30_000,
   });
 
+  // close library dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (dropRef.current && !dropRef.current.contains(e.target as Node)) setDropOpen(false);
@@ -838,6 +860,22 @@ function JDSection({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // drag-over on upload zone
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+  function handleDragLeave() {
+    setIsDragging(false);
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    // trigger the hidden file input via onUpload —
+    // parent handles the actual file from jdInputRef
+    onUpload();
+  }
 
   async function handlePromptSubmit() {
     if (!prompt.trim() || promptLocked || isPrompting) return;
@@ -848,275 +886,314 @@ function JDSection({
       setPromptUsed(used);
       onPromptFill(parsed, libraryId);
       toast.success('AI filled the form from your prompt');
-      if (used >= limit) toast.warning(`You've used all ${limit} AI prompts. Locked for 1 hour.`);
-      else
-        toast.info(`${limit - used} AI prompt${limit - used !== 1 ? 's' : ''} remaining this hour`);
+      if (used >= limit) toast.warning(`All ${limit} AI prompts used. Locked for 1 hour.`);
+      else toast.info(`${limit - used} AI prompt${limit - used !== 1 ? 's' : ''} remaining`);
     } catch (err: any) {
       const data = err?.response?.data;
       if (data?.code === 'PROMPT_LIMIT_EXCEEDED') {
         setPromptUsed(PROMPT_LIMIT);
         toast.error(data.message);
-      } else toast.error(data?.message ?? 'AI prompt failed. Try rephrasing.');
+      } else toast.error(data?.message ?? 'AI prompt failed — try rephrasing');
     } finally {
       setIsPrompting(false);
     }
   }
 
+  // ── "Duplicate" mode: pick an existing requirement to clone ───────────────
+  function handleModeChange(m: JDMode) {
+    setMode(m);
+    if (m === 'duplicate') {
+      // pass ?mode=duplicate to URL so page can read it on mount
+      // and show a requirement picker or redirect
+      router.push(`/requirements/new?mode=duplicate`);
+    }
+  }
+
+  const isParsed = !!parsedTitle;
+
   return (
-    <div className="space-y-5">
-      {/* Library search */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <FieldLabel>Search JD Library</FieldLabel>
-          <span className="text-[11px] text-slate-400">Search before creating new</span>
-        </div>
-        <div className="relative" ref={dropRef}>
-          <Search
-            size={15}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10"
-          />
-          <input
-            className="w-full h-11 pl-10 pr-4 text-[14px] font-medium border border-slate-200 rounded-xl bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-            placeholder="Search previously parsed JDs…"
-            value={q}
-            onChange={e => {
-              setQ(e.target.value);
-              setDropOpen(true);
-            }}
-            onFocus={() => setDropOpen(true)}
-          />
-          {dropOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden max-h-72 overflow-y-auto">
-              {libLoading ? (
-                <div className="flex items-center justify-center py-8 text-slate-400">
-                  <Loader2 size={16} className="animate-spin mr-2" />
-                  Searching…
-                </div>
-              ) : !libData?.length ? (
-                <div className="py-6 text-center text-[13px] text-slate-400">
-                  {q ? 'No matches found' : 'Start typing to search'}
-                </div>
-              ) : (
-                libData.map(item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectLibrary(item.id);
-                      setDropOpen(false);
-                      setQ(item.title);
-                    }}
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
+    <div className="space-y-4">
+      {/* ── PARSED: success banner + mode chooser ── */}
+      {isParsed ? (
+        <div className="space-y-3">
+          {/* Success banner */}
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <CheckCircle size={18} className="text-emerald-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-semibold text-emerald-800 truncate">
+                {parsedFileName ?? parsedTitle}
+              </p>
+              <p className="text-[11px] text-emerald-600 mt-0.5">
+                {parsedFieldCount ? `${parsedFieldCount} fields auto-filled` : 'Form pre-filled'} ·
+                saved to library
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onUpload}
+              className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-slate-700 shrink-0"
+            >
+              <RotateCcw size={12} />
+              Reupload
+            </button>
+          </div>
+
+          {/* New vs Duplicate */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              How do you want to use this JD?
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  {
+                    id: 'new' as JDMode,
+                    icon: FileText,
+                    title: 'New requirement',
+                    sub: 'Fresh form, pre-filled from this JD',
+                  },
+                  {
+                    id: 'duplicate' as JDMode,
+                    icon: Users,
+                    title: 'Duplicate existing',
+                    sub: 'Clone a previous requirement',
+                  },
+                ] as const
+              ).map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleModeChange(opt.id)}
+                  className={`text-left p-3 rounded-lg border transition-all ${
+                    mode === opt.id
+                      ? 'border-primary bg-white shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div
+                    className={`flex items-center gap-2 text-[13px] font-semibold mb-0.5 ${mode === opt.id ? 'text-primary' : 'text-slate-700'}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13.5px] font-semibold text-slate-900 truncate">
-                          {item.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          {item.primarySkills.slice(0, 3).map(s => (
-                            <span
-                              key={s}
-                              className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                          {item.experienceMin != null && (
-                            <span className="text-[11px] text-slate-400">
-                              {item.experienceMin}–{item.experienceMax}y
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="flex items-center gap-1 text-[11px] text-slate-400">
-                          <Users size={10} />
-                          {item.usageCount} used
-                        </span>
-                        <span className="text-[10px] text-slate-300 mt-0.5 block">
-                          by {item.parsedBy.firstName}
-                        </span>
-                      </div>
+                    <opt.icon size={13} />
+                    {opt.title}
+                  </div>
+                  <p className="text-[11px] text-slate-400">{opt.sub}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ── NOT PARSED: upload-first UI ── */
+        <div className="space-y-4">
+          {/* PRIMARY: Upload zone */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={onUpload}
+            className={`cursor-pointer flex flex-col items-center gap-2 py-8 px-6 border-2 border-dashed rounded-xl transition-all ${
+              isDragging
+                ? 'border-violet-500 bg-violet-50'
+                : 'border-violet-200 hover:border-violet-400 hover:bg-violet-50/50'
+            } ${isParsing ? 'opacity-60 pointer-events-none' : ''}`}
+          >
+            {isParsing ? (
+              <>
+                <Loader2 size={28} className="text-violet-400 animate-spin" />
+                <p className="text-[14px] font-semibold text-violet-600">Parsing JD…</p>
+                <p className="text-[12px] text-slate-400">AI is extracting fields</p>
+              </>
+            ) : (
+              <>
+                <Wand2 size={28} className="text-violet-400" />
+                <p className="text-[14px] font-semibold text-violet-600">
+                  Drop your JD here or click to upload
+                </p>
+                <p className="text-[12px] text-slate-400">AI will parse and auto-fill the form</p>
+                <div className="flex gap-2 mt-1">
+                  {['PDF', 'DOC', 'DOCX'].map(ext => (
+                    <span
+                      key={ext}
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-600"
+                    >
+                      {ext}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* SECONDARY: Library search */}
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex-1 h-px bg-slate-100" />
+              <span className="text-[11px] text-slate-400 shrink-0">or search library</span>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <div className="relative" ref={dropRef}>
+              <Search
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10"
+              />
+              <input
+                className="w-full h-10 pl-9 pr-4 text-[13px] border border-slate-200 rounded-xl bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                placeholder="Search previously parsed JDs…"
+                value={q}
+                onChange={e => {
+                  setQ(e.target.value);
+                  setDropOpen(true);
+                }}
+                onFocus={() => setDropOpen(true)}
+              />
+              {dropOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden max-h-64 overflow-y-auto">
+                  {libLoading ? (
+                    <div className="flex items-center justify-center py-6 text-slate-400">
+                      <Loader2 size={14} className="animate-spin mr-2" />
+                      Searching…
                     </div>
-                  </button>
-                ))
+                  ) : !libData?.length ? (
+                    <div className="py-5 text-center text-[12px] text-slate-400">
+                      {q ? 'No matches' : 'Start typing to search'}
+                    </div>
+                  ) : (
+                    libData.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectLibrary(item.id);
+                          setDropOpen(false);
+                          setQ(item.title);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold text-slate-900 truncate">
+                              {item.title}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              {item.primarySkills.slice(0, 3).map(s => (
+                                <span
+                                  key={s}
+                                  className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium"
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                              {item.experienceMin != null && (
+                                <span className="text-[11px] text-slate-400">
+                                  {item.experienceMin}–{item.experienceMax}y
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                              <Users size={10} />
+                              {item.usageCount} used
+                            </span>
+                            <span className="text-[10px] text-slate-300 mt-0.5 block">
+                              by {item.parsedBy.firstName}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
-        {parsedTitle && (
-          <p className="mt-2 flex items-center gap-1.5 text-[12px] text-emerald-600 font-medium">
-            <CheckCircle size={12} />
-            Using: {parsedTitle}
-          </p>
-        )}
-      </div>
-
-      {/* Gate */}
-      {!confirmedSearch && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <AlertCircle size={15} className="text-amber-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[13px] font-semibold text-amber-800">
-                Have you thoroughly checked the library?
-              </p>
-              <p className="text-[12px] text-amber-600 mt-0.5">
-                Re-parsing the same JD wastes your AI credits. Search above before proceeding.
-              </p>
-            </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">
+              Reuse a parsed JD to skip re-parsing and save credits
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setConfirmedSearch(true)}
-            className="flex items-center gap-1.5 text-[12.5px] font-semibold text-amber-700 hover:text-amber-900 border border-amber-300 bg-white hover:bg-amber-50 px-3 py-2 rounded-lg transition-colors"
-          >
-            <Check size={13} />
-            Yes, I checked — it's not in the library
-            <ChevronRight size={13} />
-          </button>
-        </div>
-      )}
 
-      {/* Upload + Prompt tabs */}
-      {confirmedSearch && (
-        <div className="rounded-xl border border-slate-200 overflow-hidden">
-          <div className="flex border-b border-slate-200 bg-slate-50">
-            {(['prompt', 'upload'] as const).map(tab => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setInputTab(tab)}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[12.5px] font-semibold transition-colors ${inputTab === tab ? 'bg-white text-violet-700 border-b-2 border-violet-500' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                {tab === 'prompt' ? (
-                  <>
-                    <Zap size={13} />
-                    AI Prompt
-                    {promptLocked ? (
-                      <Lock size={11} className="text-red-400" />
-                    ) : (
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${promptUsed > 0 ? 'bg-amber-100 text-amber-700' : 'bg-violet-100 text-violet-600'}`}
-                      >
-                        {PROMPT_LIMIT - promptUsed} left
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={13} />
-                    Upload JD
-                  </>
-                )}
-              </button>
-            ))}
+          {/* TERTIARY: AI prompt toggle */}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowPrompt(v => !v)}
+              className="flex items-center gap-1.5 text-[12px] font-semibold text-violet-600 hover:text-violet-800 underline underline-offset-2 decoration-dashed"
+            >
+              <Zap size={12} />
+              {showPrompt ? 'Hide AI prompt' : 'Use AI prompt instead'}
+            </button>
           </div>
-          <div className="p-4">
-            {inputTab === 'prompt' ? (
-              <div className="space-y-3">
-                {promptLocked ? (
-                  <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 border border-red-200">
-                    <Lock size={16} className="text-red-400 shrink-0" />
-                    <div>
-                      <p className="text-[13px] font-semibold text-red-700">AI Prompt Locked</p>
-                      <p className="text-[12px] text-red-500 mt-0.5">
-                        You've used all {PROMPT_LIMIT} prompts. Use Upload or wait up to 1 hour.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-[12px] text-slate-500">
-                      Describe the role in plain English. AI will extract and fill the form
-                      automatically.
+
+          {/* AI Prompt — shown only when toggled */}
+          {showPrompt && (
+            <div className="rounded-xl border border-slate-200 p-4 space-y-3 bg-slate-50">
+              {promptLocked ? (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                  <Lock size={14} className="text-red-400 shrink-0" />
+                  <div>
+                    <p className="text-[13px] font-semibold text-red-700">AI prompt locked</p>
+                    <p className="text-[11px] text-red-500 mt-0.5">
+                      All {PROMPT_LIMIT} prompts used. Upload a file or wait up to 1 hour.
                     </p>
-                    <Textarea
-                      rows={4}
-                      value={prompt}
-                      onChange={e => setPrompt(e.target.value)}
-                      placeholder="e.g. Looking for a Senior React Developer with 5+ years experience, remote, permanent role, salary 25–35 LPA, skills: React, TypeScript, Node.js, AWS…"
-                      className="text-[13.5px] border-slate-200 rounded-xl resize-none focus-visible:ring-2 focus-visible:ring-violet-200 focus-visible:border-violet-400"
-                      disabled={isPrompting}
-                    />
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11.5px] text-slate-400">
-                        {promptUsed}/{PROMPT_LIMIT} prompts used this hour
-                      </span>
-                      <div className="flex gap-2">
-                        {prompt && (
-                          <button
-                            type="button"
-                            onClick={() => setPrompt('')}
-                            className="flex items-center gap-1 text-[12px] text-slate-400 hover:text-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-100"
-                          >
-                            <RotateCcw size={11} />
-                            Clear
-                          </button>
-                        )}
-                        <Button
-                          type="button"
-                          onClick={handlePromptSubmit}
-                          disabled={!prompt.trim() || isPrompting}
-                          size="sm"
-                          className="h-9 px-4 bg-violet-600 hover:bg-violet-700 text-white font-semibold gap-1.5 rounded-xl"
-                        >
-                          {isPrompting ? (
-                            <>
-                              <Loader2 size={13} className="animate-spin" />
-                              Generating…
-                            </>
-                          ) : (
-                            <>
-                              <Zap size={13} />
-                              Generate from Prompt
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-[12px] text-slate-500">
+                    Describe the role — AI will extract and fill the form automatically.
+                  </p>
+                  <Textarea
+                    rows={3}
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    placeholder="e.g. Senior React Developer, 5+ yrs, remote, permanent, 25–35 LPA, skills: React, TypeScript, Node.js…"
+                    className="text-[13px] border-slate-200 rounded-xl resize-none focus-visible:ring-2 focus-visible:ring-violet-200 focus-visible:border-violet-400"
+                    disabled={isPrompting}
+                  />
+                  <div className="flex items-center justify-between">
                     <div className="flex gap-1">
                       {Array.from({ length: PROMPT_LIMIT }).map((_, i) => (
                         <div
                           key={i}
-                          className={`h-1 flex-1 rounded-full transition-colors ${i < promptUsed ? 'bg-violet-500' : 'bg-slate-200'}`}
+                          className={`h-1 w-8 rounded-full transition-colors ${i < promptUsed ? 'bg-violet-500' : 'bg-slate-200'}`}
                         />
                       ))}
+                      <span className="text-[11px] text-slate-400 ml-1">
+                        {PROMPT_LIMIT - promptUsed} left
+                      </span>
                     </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-[12px] text-slate-500">
-                  Upload a PDF, DOC or DOCX and AI will parse it automatically.
-                </p>
-                <button
-                  type="button"
-                  onClick={onUpload}
-                  disabled={isParsing}
-                  className="w-full h-12 flex items-center justify-center gap-2.5 border-2 border-dashed border-violet-200 rounded-xl text-[14px] font-semibold text-violet-500 hover:border-violet-400 hover:text-violet-700 hover:bg-violet-50/50 transition-all disabled:opacity-50"
-                >
-                  {isParsing ? (
-                    <>
-                      <Loader2 size={15} className="animate-spin" />
-                      Parsing…
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 size={15} />
-                      Upload PDF / DOC / DOCX
-                    </>
-                  )}
-                </button>
-                <p className="text-[11.5px] text-slate-400 text-center">
-                  Auto-fills the form and saves to library
-                </p>
-              </div>
-            )}
-          </div>
+                    <Button
+                      type="button"
+                      onClick={handlePromptSubmit}
+                      disabled={!prompt.trim() || isPrompting}
+                      size="sm"
+                      className="h-8 px-4 bg-violet-600 hover:bg-violet-700 text-white font-semibold gap-1.5 rounded-xl"
+                    >
+                      {isPrompting ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          Generating…
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={12} />
+                          Generate
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* library-selected indicator */}
+      {parsedTitle && !parsedFileName && (
+        <p className="flex items-center gap-1.5 text-[12px] text-emerald-600 font-medium">
+          <CheckCircle size={12} />
+          Using: {parsedTitle}
+        </p>
       )}
     </div>
   );
@@ -1145,6 +1222,14 @@ export default function NewRequirementPage() {
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
   const jdInputRef = useRef<HTMLInputElement>(null!);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // 1. Add two state vars next to isParsing in NewRequirementPage:
+  // const [parsedFileName, setParsedFileName] = useState<string | null>(null);
+  // const [parsedFieldCount, setParsedFieldCount] = useState<number | null>(null);
+
+  // // 2. In handleJdFile, after fillFormFromParsed:
+  // setParsedFileName(file.name);
+  // setParsedFieldCount(filled.length);
 
   // ── RHF ──────────────────────────────────────────────────────────────────
   const {

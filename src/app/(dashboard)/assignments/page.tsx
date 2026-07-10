@@ -38,6 +38,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
+import { se } from 'date-fns/locale';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -956,8 +957,9 @@ export default function AssignmentsPage() {
     p.set('sortDir', sortDir);
     p.set('page', String(page));
     p.set('limit', String(limit));
+    if (search.trim()) p.set('search', search.trim()); // ← ADD THIS
     return p.toString();
-  }, [depth, buId, sortBy, sortDir, page]);
+  }, [depth, buId, sortBy, sortDir, page, search]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['assignments', qs],
@@ -979,17 +981,17 @@ export default function AssignmentsPage() {
     if (reqStatusFilter === '')
       list = list.filter(a => LIVE_REQ_STATUSES.includes(a.requirement.status));
     else list = list.filter(a => a.requirement.status === reqStatusFilter);
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        a =>
-          a.requirement.title.toLowerCase().includes(q) ||
-          a.requirement.reqCode.toLowerCase().includes(q) ||
-          `${a.assignedTo.firstName} ${a.assignedTo.lastName}`.toLowerCase().includes(q)
-      );
-    }
+    // if (search) {
+    //   const q = search.toLowerCase();
+    //   list = list.filter(
+    //     a =>
+    //       a.requirement.title.toLowerCase().includes(q) ||
+    //       a.requirement.reqCode.toLowerCase().includes(q) ||
+    //       `${a.assignedTo.firstName} ${a.assignedTo.lastName}`.toLowerCase().includes(q)
+    //   );
+    // }
     return list;
-  }, [assignments, reqStatusFilter, search]);
+  }, [assignments, reqStatusFilter]);
 
   const totalInPipeline = assignments.reduce((s, a) => s + a.candidateStats.total, 0);
   const totalPlaced = assignments.reduce((s, a) => s + a.candidateStats.placed, 0);
@@ -1095,7 +1097,10 @@ export default function AssignmentsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search by name, title, code…"
                 className="pl-10 h-10 text-sm border-slate-200 bg-slate-50 focus:bg-white"
               />

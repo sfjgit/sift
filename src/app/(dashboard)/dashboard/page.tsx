@@ -1918,12 +1918,25 @@ function PipelineFunnelChart({
     <ChartContainer config={funnelChartConfig} className="h-[220px] w-full">
       <BarChart data={data} barSize={16} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis
+        {/* <XAxis
           dataKey="name"
           tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           tickLine={false}
           axisLine={false}
           interval={0}
+        /> */}
+        <XAxis
+          dataKey="name"
+          interval={0}
+          angle={-40}
+          textAnchor="end"
+          height={60}
+          tick={{
+            fontSize: 10,
+            fill: 'hsl(var(--muted-foreground))',
+          }}
+          tickLine={false}
+          axisLine={false}
         />
         <YAxis
           tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
