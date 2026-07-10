@@ -114,6 +114,37 @@
   --sidebar-ring: oklch(0.62 0.22 264);
 }
 
+/* globals.css */
+.prose-jd h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 1rem 0 0.375rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+.prose-jd h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0.875rem 0 0.375rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+.prose-jd h3:first-child {
+  margin-top: 0;
+}
+.prose-jd ul {
+  padding-left: 1.125rem;
+  margin-bottom: 0.5rem;
+}
+.prose-jd li {
+  margin-bottom: 0.15rem;
+}
+.prose-jd p {
+  margin-bottom: 0.625rem;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
