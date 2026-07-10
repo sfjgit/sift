@@ -11,10 +11,6 @@ interface Props {
   requirement: RequirementDetail;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MARKDOWN → HTML  (description field comes in as raw markdown from DB)
-// ─────────────────────────────────────────────────────────────────────────────
-
 function parseMd(md: string): string {
   const lines = md.split('\n');
   const out: string[] = [];
@@ -42,7 +38,6 @@ function parseMd(md: string): string {
         out.push('</ul>');
         inList = false;
       }
-      // skip the redundant "## Job Title: ..." — already shown in the page header
       if (!t.toLowerCase().includes('job title')) {
         out.push(`<h2>${t.slice(3)}</h2>`);
       }
@@ -66,10 +61,32 @@ function parseMd(md: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SALARY HELPERS — no division, just Indian locale commas + pay period label
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fmt(amount: number): string {
+  return `₹${amount.toLocaleString('en-IN')}`;
+}
+
+function buildSalaryDisplay(
+  min: number | null | undefined,
+  max: number | null | undefined,
+  type: string | null | undefined
+): string | null {
+  if (min == null && max == null) return null;
+  const typeLabel =
+    ({ ANNUAL: '/yr', MONTHLY: '/mo', DAILY: '/day', HOURLY: '/hr' } as Record<string, string>)[
+      type ?? ''
+    ] ?? '';
+  if (min != null && max != null) return `${fmt(min)} – ${fmt(max)}${typeLabel}`;
+  if (min != null) return `From ${fmt(min)}${typeLabel}`;
+  return `Up to ${fmt(max!)}${typeLabel}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SHARED PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Sidebar section wrapper */
 function SideCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4">
@@ -79,7 +96,6 @@ function SideCard({ title, children }: { title: string; children: React.ReactNod
   );
 }
 
-/** Single key / value row inside a SideCard */
 function DR({ label, value }: { label: string; value: React.ReactNode }) {
   if (value === null || value === undefined || value === '') return null;
   return (
@@ -90,7 +106,6 @@ function DR({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-/** Skill / tag pill */
 function Pill({
   text,
   variant = 'default',
@@ -114,7 +129,6 @@ function Pill({
   );
 }
 
-/** Deadline row with overdue badge — keeps the existing DateRow logic */
 function DeadlineRow({
   label,
   date,
@@ -157,56 +171,27 @@ function DeadlineRow({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function RequirementOverviewTab({ requirement: req }: Props) {
-  const salaryDisplay =
-    req.salaryMin != null && req.salaryMax != null
-      ? `${req.salaryCurrency ?? 'INR'} ${(req.salaryMin / 100000).toFixed(1)}L – ${(req.salaryMax / 100000).toFixed(1)}L`
-      : req.salaryMin != null
-        ? `From ${req.salaryCurrency ?? 'INR'} ${(req.salaryMin / 100000).toFixed(1)}L`
-        : null;
-
+  const salaryDisplay = buildSalaryDisplay(req.salaryMin, req.salaryMax, req.salaryType);
   const location = [req.city, req.state, req.country].filter(Boolean).join(', ') || null;
 
   return (
     <>
-      {/* ── scoped prose styles ─────────────────────────────────────────── */}
       <style>{`
-        .jd-prose h2 {
-          font-size: 13px; font-weight: 600; color: #1e293b;
-          margin: 1rem 0 .375rem; padding-bottom: .25rem;
-          border-bottom: 1px solid #f1f5f9;
-        }
-        .jd-prose h3 {
-          font-size: 13px; font-weight: 600; color: #1e293b;
-          margin: .875rem 0 .35rem; padding-bottom: .2rem;
-          border-bottom: 1px solid #f1f5f9;
-        }
-        .jd-prose h2:first-child,
-        .jd-prose h3:first-child { margin-top: 0; }
-        .jd-prose ul {
-          padding-left: 1.125rem; margin-bottom: .5rem;
-          list-style-type: disc;
-        }
-        .jd-prose li {
-          margin-bottom: .15rem; font-size: 13px;
-          line-height: 1.75; color: #475569;
-        }
-        .jd-prose p {
-          margin-bottom: .6rem; font-size: 13px;
-          line-height: 1.75; color: #475569;
-        }
+        .jd-prose h2 { font-size: 13px; font-weight: 600; color: #1e293b; margin: 1rem 0 .375rem; padding-bottom: .25rem; border-bottom: 1px solid #f1f5f9; }
+        .jd-prose h3 { font-size: 13px; font-weight: 600; color: #1e293b; margin: .875rem 0 .35rem; padding-bottom: .2rem; border-bottom: 1px solid #f1f5f9; }
+        .jd-prose h2:first-child, .jd-prose h3:first-child { margin-top: 0; }
+        .jd-prose ul { padding-left: 1.125rem; margin-bottom: .5rem; list-style-type: disc; }
+        .jd-prose li { margin-bottom: .15rem; font-size: 13px; line-height: 1.75; color: #475569; }
+        .jd-prose p  { margin-bottom: .6rem; font-size: 13px; line-height: 1.75; color: #475569; }
       `}</style>
 
-      {/* ── two-column shell — parent TabsContent must be overflow-hidden ── */}
       <div className="grid h-full" style={{ gridTemplateColumns: '1fr 288px' }}>
-        {/* ════════════════════════════════════════════════════════════════
-            LEFT — job header card + description prose
-        ════════════════════════════════════════════════════════════════ */}
+        {/* ═══ LEFT ═══ */}
         <div className="overflow-y-auto p-5 space-y-4 border-r border-slate-200">
-          {/* ── header card ─────────────────────────────────────────────── */}
+          {/* header card */}
           <div className="bg-white border border-slate-200 rounded-xl p-5">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                {/* badge row */}
                 <div className="flex items-center gap-2 flex-wrap mb-2.5">
                   <span className="text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-500">
                     {req.reqCode}
@@ -240,12 +225,10 @@ export function RequirementOverviewTab({ requirement: req }: Props) {
                   )}
                 </div>
 
-                {/* title */}
                 <h1 className="text-[17px] font-bold text-slate-900 leading-snug mb-2.5">
                   {req.title}
                 </h1>
 
-                {/* meta pills */}
                 <div className="flex flex-wrap gap-1.5">
                   {req.remoteType && (
                     <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
@@ -286,19 +269,16 @@ export function RequirementOverviewTab({ requirement: req }: Props) {
                 </div>
               </div>
 
-              {/* salary — top right */}
+              {/* salary */}
               {salaryDisplay && (
                 <div className="text-right shrink-0">
                   <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">
                     Salary range
                   </p>
                   <p className="text-base font-bold text-emerald-700">{salaryDisplay}</p>
-                  {req.salaryType && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{req.salaryType}</p>
-                  )}
                   {req.bonusAmount ? (
                     <p className="text-[10px] text-violet-600 font-semibold mt-1">
-                      + {req.salaryCurrency ?? 'INR'} {req.bonusAmount} bonus
+                      + {fmt(req.bonusAmount)} bonus
                     </p>
                   ) : null}
                 </div>
@@ -306,7 +286,7 @@ export function RequirementOverviewTab({ requirement: req }: Props) {
             </div>
           </div>
 
-          {/* ── description prose ───────────────────────────────────────── */}
+          {/* description */}
           {req.description && (
             <div className="bg-white border border-slate-200 rounded-xl p-5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
@@ -320,9 +300,7 @@ export function RequirementOverviewTab({ requirement: req }: Props) {
           )}
         </div>
 
-        {/* ════════════════════════════════════════════════════════════════
-            RIGHT SIDEBAR — all metadata cards stacked vertically
-        ════════════════════════════════════════════════════════════════ */}
+        {/* ═══ RIGHT SIDEBAR ═══ */}
         <div className="overflow-y-auto p-4 space-y-3 bg-slate-50/40">
           {/* Skills */}
           {((req.primarySkills?.length ?? 0) > 0 || (req.keySkills?.length ?? 0) > 0) && (
@@ -378,11 +356,9 @@ export function RequirementOverviewTab({ requirement: req }: Props) {
           {(salaryDisplay || req.bonusAmount) && (
             <SideCard title="Compensation">
               <DR label="Salary range" value={salaryDisplay} />
-              <DR label="Type" value={req.salaryType} />
+              <DR label="Pay period" value={req.salaryType} />
               <DR label="Currency" value={req.salaryCurrency} />
-              {req.bonusAmount && (
-                <DR label="Bonus" value={`${req.salaryCurrency ?? 'INR'} ${req.bonusAmount}`} />
-              )}
+              {req.bonusAmount && <DR label="Bonus" value={fmt(req.bonusAmount)} />}
               <DR
                 label="Visibility"
                 value={
