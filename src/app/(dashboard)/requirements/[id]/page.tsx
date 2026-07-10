@@ -2200,6 +2200,7 @@ export default function RequirementDetailPage() {
         </TabsContent>
 
         <TabsContent value="overview" className="flex-1 overflow-y-auto mt-0 p-6">
+          aaaaa
           <RequirementOverviewTab requirement={req} />
         </TabsContent>
         <TabsContent value="assignments" className="flex-1 overflow-y-auto mt-0 p-6">
