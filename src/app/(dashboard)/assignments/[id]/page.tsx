@@ -2343,16 +2343,19 @@ export default function AssignmentDetailPage() {
                         ))}
                     </div>
                   </div>
+                  {/* // AFTER */}
                   {req.salaryMin && req.salaryMax && (
                     <div className="text-right shrink-0">
                       <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">
                         Salary range
                       </p>
                       <p className="text-base font-bold text-emerald-700">
-                        ₹{(req.salaryMin / 100000).toFixed(1)}L – ₹
-                        {(req.salaryMax / 10000000).toFixed(1)}Cr
+                        ₹{req.salaryMin.toLocaleString('en-IN')} – ₹
+                        {req.salaryMax.toLocaleString('en-IN')}
                       </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">Annual · INR</p>
+                      {req.salaryType && (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{req.salaryType}</p>
+                      )}
                     </div>
                   )}
                 </div>
