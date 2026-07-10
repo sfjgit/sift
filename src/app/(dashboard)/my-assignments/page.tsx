@@ -891,8 +891,10 @@ export default function MyAssignmentsPage() {
     p.set('sortDir', sortDir);
     p.set('page', String(page));
     p.set('limit', String(limit));
+    if (search.trim()) p.set('search', search.trim()); // ← ADD THIS
+
     return p.toString();
-  }, [sortBy, sortDir, page]);
+  }, [sortBy, sortDir, page, search]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['my-assignments', qs],
@@ -914,16 +916,16 @@ export default function MyAssignmentsPage() {
     if (reqStatusFilter === '')
       list = list.filter(a => LIVE_REQ_STATUSES.includes(a.requirement.status));
     else list = list.filter(a => a.requirement.status === reqStatusFilter);
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        a =>
-          a.requirement.title.toLowerCase().includes(q) ||
-          a.requirement.reqCode.toLowerCase().includes(q)
-      );
-    }
+    // if (search) {
+    //   const q = search.toLowerCase();
+    //   list = list.filter(
+    //     a =>
+    //       a.requirement.title.toLowerCase().includes(q) ||
+    //       a.requirement.reqCode.toLowerCase().includes(q)
+    //   );
+    // }
     return list;
-  }, [assignments, reqStatusFilter, search]);
+  }, [assignments, reqStatusFilter]);
 
   const totalInPipeline = assignments.reduce((s, a) => s + a.candidateStats.total, 0);
   const totalPlaced = assignments.reduce((s, a) => s + a.candidateStats.placed, 0);
@@ -1028,7 +1030,10 @@ export default function MyAssignmentsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search requirement or code…"
                 className="pl-10 h-10 text-sm border-slate-200 bg-slate-50 focus:bg-white"
               />
