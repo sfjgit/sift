@@ -1,12 +1,9 @@
 /* eslint-disable react/no-unescaped-entities */
+// File: RequirementOverviewTab.tsx
+// Path: src/components/requirements/RequirementOverviewTab.tsx
 'use client';
 
-import { format, formatDistanceToNow } from 'date-fns';
-import { Calendar } from 'lucide-react';
-// import { Badge } from '@/components/ui/badge';
-// import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-// import { Separator } from '@/components/ui/separator';
-// import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
 import { daysRemaining } from './types';
 import type { RequirementDetail } from './types';
 
@@ -14,35 +11,111 @@ interface Props {
   requirement: RequirementDetail;
 }
 
-// ─── Stat tile ────────────────────────────────────────────────────────────────
-function StatTile({
-  label,
-  value,
-  sub,
-  warn,
-}: {
-  label: string;
-  value: number | string;
-  sub?: string;
-  warn?: boolean;
-}) {
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKDOWN → HTML  (description field comes in as raw markdown from DB)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseMd(md: string): string {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let inList = false;
+
+  for (const line of lines) {
+    const t = line.trim();
+
+    if (!t) {
+      if (inList) {
+        out.push('</ul>');
+        inList = false;
+      }
+      continue;
+    }
+
+    if (t.startsWith('### ')) {
+      if (inList) {
+        out.push('</ul>');
+        inList = false;
+      }
+      out.push(`<h3>${t.slice(4)}</h3>`);
+    } else if (t.startsWith('## ')) {
+      if (inList) {
+        out.push('</ul>');
+        inList = false;
+      }
+      // skip the redundant "## Job Title: ..." — already shown in the page header
+      if (!t.toLowerCase().includes('job title')) {
+        out.push(`<h2>${t.slice(3)}</h2>`);
+      }
+    } else if (t.startsWith('- ')) {
+      if (!inList) {
+        out.push('<ul>');
+        inList = true;
+      }
+      out.push(`<li>${t.slice(2)}</li>`);
+    } else {
+      if (inList) {
+        out.push('</ul>');
+        inList = false;
+      }
+      out.push(`<p>${t}</p>`);
+    }
+  }
+
+  if (inList) out.push('</ul>');
+  return out.join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED PRIMITIVES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Sidebar section wrapper */
+function SideCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div
-      className={`rounded-lg border p-4 ${warn ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30' : 'border-border bg-card'}`}
-    >
-      <p
-        className={`text-2xl font-bold tabular-nums ${warn ? 'text-red-600 dark:text-red-400' : ''}`}
-      >
-        {value}
-      </p>
-      <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-      {sub && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sub}</p>}
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{title}</p>
+      {children}
     </div>
   );
 }
 
-// ─── Date row ────────────────────────────────────────────────────────────────
-function DateRow({
+/** Single key / value row inside a SideCard */
+function DR({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div className="flex items-baseline justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
+      <span className="text-[11px] text-slate-400 shrink-0">{label}</span>
+      <span className="text-xs font-semibold text-slate-800 text-right max-w-[170px]">{value}</span>
+    </div>
+  );
+}
+
+/** Skill / tag pill */
+function Pill({
+  text,
+  variant = 'default',
+}: {
+  text: string;
+  variant?: 'primary' | 'key' | 'teal' | 'red' | 'default';
+}) {
+  const cls = {
+    primary: 'bg-rose-50 text-rose-700 border-rose-200',
+    key: 'bg-blue-50 text-blue-700 border-blue-200',
+    teal: 'bg-teal-50 text-teal-700 border-teal-200',
+    red: 'bg-red-50 text-red-700 border-red-200',
+    default: 'bg-slate-100 text-slate-600 border-slate-200',
+  }[variant];
+  return (
+    <span
+      className={`inline-block text-[11px] font-semibold px-2.5 py-1 rounded-full border m-0.5 ${cls}`}
+    >
+      {text}
+    </span>
+  );
+}
+
+/** Deadline row with overdue badge — keeps the existing DateRow logic */
+function DeadlineRow({
   label,
   date,
   breached,
@@ -55,21 +128,20 @@ function DateRow({
   const days = daysRemaining(date);
   const past = days !== null && days < 0;
   return (
-    <div className="flex items-center justify-between py-2 border-b last:border-0">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Calendar className="h-3.5 w-3.5" />
-        <span>{label}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">{format(new Date(date), 'dd MMM yyyy')}</span>
+    <div className="flex items-baseline justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
+      <span className="text-[11px] text-slate-400 shrink-0">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-semibold text-slate-800">
+          {format(new Date(date), 'dd MMM yyyy')}
+        </span>
         {days !== null && (
           <span
-            className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+            className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
               breached || past
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                ? 'bg-red-100 text-red-700'
                 : days <= 3
                   ? 'bg-amber-100 text-amber-700'
-                  : 'bg-muted text-muted-foreground'
+                  : 'bg-slate-100 text-slate-500'
             }`}
           >
             {past ? `${Math.abs(days)}d overdue` : `${days}d left`}
@@ -80,245 +152,344 @@ function DateRow({
   );
 }
 
-// File: RequirementOverviewTab.tsx
-// Path: src/components/requirements/RequirementOverviewTab.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 
-// import type { RequirementDetail } from './types';
+export function RequirementOverviewTab({ requirement: req }: Props) {
+  const salaryDisplay =
+    req.salaryMin != null && req.salaryMax != null
+      ? `${req.salaryCurrency ?? 'INR'} ${(req.salaryMin / 100000).toFixed(1)}L – ${(req.salaryMax / 100000).toFixed(1)}L`
+      : req.salaryMin != null
+        ? `From ${req.salaryCurrency ?? 'INR'} ${(req.salaryMin / 100000).toFixed(1)}L`
+        : null;
 
-function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
-  if (!value) return null;
+  const location = [req.city, req.state, req.country].filter(Boolean).join(', ') || null;
+
   return (
-    <div className="flex items-start gap-4 py-3 border-b border-slate-100 last:border-0">
-      <span className="text-[12px] font-bold text-slate-400 uppercase tracking-widest w-36 shrink-0 mt-0.5">
-        {label}
-      </span>
-      <span className="text-[13.5px] font-medium text-slate-800 flex-1">{value}</span>
-    </div>
-  );
-}
+    <>
+      {/* ── scoped prose styles ─────────────────────────────────────────── */}
+      <style>{`
+        .jd-prose h2 {
+          font-size: 13px; font-weight: 600; color: #1e293b;
+          margin: 1rem 0 .375rem; padding-bottom: .25rem;
+          border-bottom: 1px solid #f1f5f9;
+        }
+        .jd-prose h3 {
+          font-size: 13px; font-weight: 600; color: #1e293b;
+          margin: .875rem 0 .35rem; padding-bottom: .2rem;
+          border-bottom: 1px solid #f1f5f9;
+        }
+        .jd-prose h2:first-child,
+        .jd-prose h3:first-child { margin-top: 0; }
+        .jd-prose ul {
+          padding-left: 1.125rem; margin-bottom: .5rem;
+          list-style-type: disc;
+        }
+        .jd-prose li {
+          margin-bottom: .15rem; font-size: 13px;
+          line-height: 1.75; color: #475569;
+        }
+        .jd-prose p {
+          margin-bottom: .6rem; font-size: 13px;
+          line-height: 1.75; color: #475569;
+        }
+      `}</style>
 
-function SkillBadges({ skills, color }: { skills: string[]; color: string }) {
-  if (!skills?.length) return <span className="text-slate-400 text-sm">—</span>;
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {skills.map(s => (
-        <span
-          key={s}
-          className={`text-[12px] font-semibold px-2.5 py-1 rounded-full border ${color}`}
-        >
-          {s}
-        </span>
-      ))}
-    </div>
-  );
-}
+      {/* ── two-column shell — parent TabsContent must be overflow-hidden ── */}
+      <div className="grid h-full" style={{ gridTemplateColumns: '1fr 288px' }}>
+        {/* ════════════════════════════════════════════════════════════════
+            LEFT — job header card + description prose
+        ════════════════════════════════════════════════════════════════ */}
+        <div className="overflow-y-auto p-5 space-y-4 border-r border-slate-200">
+          {/* ── header card ─────────────────────────────────────────────── */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                {/* badge row */}
+                <div className="flex items-center gap-2 flex-wrap mb-2.5">
+                  <span className="text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-500">
+                    {req.reqCode}
+                  </span>
+                  <span
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                      req.status === 'ACTIVE'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : req.status === 'CLOSED' || req.status === 'CANCELLED'
+                          ? 'bg-slate-100 text-slate-500 border-slate-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                  >
+                    {req.status.replace(/_/g, ' ')}
+                  </span>
+                  <span
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                      req.priority === 'HIGH'
+                        ? 'bg-red-50 text-red-700 border-red-200'
+                        : req.priority === 'MEDIUM'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}
+                  >
+                    {req.priority}
+                  </span>
+                  {req.client?.name && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      {req.client.name}
+                    </span>
+                  )}
+                </div>
 
-export function RequirementOverviewTab({ requirement: req }: { requirement: RequirementDetail }) {
-  return (
-    <div className="max-w-3xl space-y-8">
-      {/* Description */}
-      {req.description && (
-        <div>
-          <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-            About the Role
-          </h3>
-          <p className="text-[14px] text-slate-700 leading-relaxed whitespace-pre-line">
-            {req.description}
-          </p>
-        </div>
-      )}
+                {/* title */}
+                <h1 className="text-[17px] font-bold text-slate-900 leading-snug mb-2.5">
+                  {req.title}
+                </h1>
 
-      {/* Skills */}
-      <div>
-        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">
-          Skills
-        </h3>
-        <div className="space-y-4">
-          <div>
-            <p className="text-[12px] font-semibold text-slate-500 mb-2">
-              Primary Skills (Must-Have)
-            </p>
-            <SkillBadges
-              skills={req.primarySkills}
-              color="bg-rose-50 text-rose-700 border-rose-200"
-            />
-          </div>
-          <div>
-            <p className="text-[12px] font-semibold text-slate-500 mb-2">Key Skills</p>
-            <SkillBadges skills={req.keySkills} color="bg-blue-50 text-blue-700 border-blue-200" />
-          </div>
-        </div>
-      </div>
-
-      {/* Job Details */}
-      <div>
-        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-          Job Details
-        </h3>
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <InfoRow label="Job Type" value={req.jobType?.replace(/_/g, ' ')} />
-          <InfoRow label="Remote Type" value={req.remoteType} />
-          <InfoRow label="Open For" value={req.jobOpenFor} />
-          <InfoRow label="Priority" value={req.priority} />
-          <InfoRow label="Openings" value={String(req.totalOpenings)} />
-          <InfoRow
-            label="Location"
-            value={[req.city, req.state, req.country].filter(Boolean).join(', ') || null}
-          />
-          <InfoRow label="Functional Area" value={req.functionalArea} />
-          <InfoRow label="Shift" value={req.shift} />
-          <InfoRow label="Education" value={req.education} />
-          <InfoRow
-            label="Experience"
-            value={
-              req.experienceMin != null || req.experienceMax != null
-                ? `${req.experienceMin ?? 0} – ${req.experienceMax ?? '?'} years`
-                : null
-            }
-          />
-        </div>
-      </div>
-
-      {/* Compensation */}
-      <div>
-        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-          Compensation
-        </h3>
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <InfoRow
-            label="Salary Range"
-            value={
-              req.salaryMin != null || req.salaryMax != null
-                ? `${req.salaryCurrency ?? 'INR'} ${req.salaryMin ?? '?'} – ${req.salaryMax ?? '?'} ${req.salaryType ?? ''}`
-                : null
-            }
-          />
-          <InfoRow
-            label="Bonus"
-            value={req.bonusAmount ? `${req.salaryCurrency ?? 'INR'} ${req.bonusAmount}` : null}
-          />
-          <InfoRow
-            label="Salary Visibility"
-            value={req.hideSalaryFromCandidate ? 'Hidden from candidate' : 'Visible to candidate'}
-          />
-        </div>
-      </div>
-
-      {/* Sourcing */}
-      {(req.targetCompanies?.length > 0 || req.noPoachCompanies?.length > 0) && (
-        <div>
-          <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">
-            Sourcing Strategy
-          </h3>
-          <div className="space-y-4">
-            {req.targetCompanies?.length > 0 && (
-              <div>
-                <p className="text-[12px] font-semibold text-slate-500 mb-2">Target Companies</p>
-                <SkillBadges
-                  skills={req.targetCompanies}
-                  color="bg-teal-50 text-teal-700 border-teal-200"
-                />
+                {/* meta pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  {req.remoteType && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                      {req.remoteType}
+                    </span>
+                  )}
+                  {req.jobType && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {req.jobType.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                  {req.experienceMin != null && req.experienceMax != null && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {req.experienceMin}–{req.experienceMax} yrs
+                    </span>
+                  )}
+                  {req.totalOpenings > 0 && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {req.totalOpenings} opening{req.totalOpenings !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {location && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {location}
+                    </span>
+                  )}
+                  {req.businessUnit?.name && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {req.businessUnit.name}
+                      {req.serviceLine?.name ? ` · ${req.serviceLine.name}` : ''}
+                    </span>
+                  )}
+                  {req.jobOpenFor && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                      Open for: {req.jobOpenFor}
+                    </span>
+                  )}
+                </div>
               </div>
-            )}
-            {req.noPoachCompanies?.length > 0 && (
-              <div>
-                <p className="text-[12px] font-semibold text-slate-500 mb-2">No-Poach Companies</p>
-                <SkillBadges
-                  skills={req.noPoachCompanies}
-                  color="bg-red-50 text-red-700 border-red-200"
-                />
-              </div>
-            )}
+
+              {/* salary — top right */}
+              {salaryDisplay && (
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">
+                    Salary range
+                  </p>
+                  <p className="text-base font-bold text-emerald-700">{salaryDisplay}</p>
+                  {req.salaryType && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">{req.salaryType}</p>
+                  )}
+                  {req.bonusAmount ? (
+                    <p className="text-[10px] text-violet-600 font-semibold mt-1">
+                      + {req.salaryCurrency ?? 'INR'} {req.bonusAmount} bonus
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Client & SPOC */}
-      <div>
-        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-          Client & SPOC
-        </h3>
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <InfoRow label="Client" value={req.client?.name} />
-          <InfoRow label="Industry" value={req.client?.industry} />
-          <InfoRow label="Business Unit" value={req.businessUnit?.name} />
-          <InfoRow label="Service Line" value={req.serviceLine?.name} />
-          <InfoRow
-            label="SPOC"
-            value={
-              req.clientSpoc
-                ? `${req.clientSpoc.firstName} ${req.clientSpoc.lastName}${req.clientSpoc.designation ? ` · ${req.clientSpoc.designation}` : ''}`
-                : null
-            }
-          />
-          <InfoRow label="SPOC Email" value={req.clientSpoc?.email} />
-          <InfoRow label="SPOC Phone" value={req.clientSpoc?.phone} />
-          <InfoRow
-            label="Handler"
-            value={
-              req.clientSpoc?.handler
-                ? `${req.clientSpoc.handler.firstName} ${req.clientSpoc.handler.lastName}`
-                : null
-            }
-          />
+          {/* ── description prose ───────────────────────────────────────── */}
+          {req.description && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                Job Description
+              </p>
+              <div
+                className="jd-prose"
+                dangerouslySetInnerHTML={{ __html: parseMd(req.description) }}
+              />
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* JD Parse info */}
-      {/* {req.jdParseStatus === 'PARSED' && (
-        <div>
-          <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-            JD Parse Info
-          </h3>
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <InfoRow
-              label="Parse Status"
+        {/* ════════════════════════════════════════════════════════════════
+            RIGHT SIDEBAR — all metadata cards stacked vertically
+        ════════════════════════════════════════════════════════════════ */}
+        <div className="overflow-y-auto p-4 space-y-3 bg-slate-50/40">
+          {/* Skills */}
+          {((req.primarySkills?.length ?? 0) > 0 || (req.keySkills?.length ?? 0) > 0) && (
+            <SideCard title="Skills">
+              {(req.primarySkills?.length ?? 0) > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                    Must-have
+                  </p>
+                  <div className="-m-0.5">
+                    {req.primarySkills.map(s => (
+                      <Pill key={s} text={s} variant="primary" />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(req.keySkills?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                    Key skills
+                  </p>
+                  <div className="-m-0.5">
+                    {req.keySkills.map(s => (
+                      <Pill key={s} text={s} variant="key" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SideCard>
+          )}
+
+          {/* Job details */}
+          <SideCard title="Job Details">
+            <DR label="Job type" value={req.jobType?.replace(/_/g, ' ')} />
+            <DR label="Remote" value={req.remoteType} />
+            <DR label="Open for" value={req.jobOpenFor} />
+            <DR label="Openings" value={req.totalOpenings} />
+            <DR
+              label="Experience"
               value={
-                <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                  Parsed by AI
-                </span>
-              }
-            />
-            <InfoRow
-              label="Fields Filled"
-              value={
-                req.jdParsedFields?.length
-                  ? `${req.jdParsedFields.length} fields auto-filled`
+                req.experienceMin != null || req.experienceMax != null
+                  ? `${req.experienceMin ?? 0} – ${req.experienceMax ?? '?'} yrs`
                   : null
               }
             />
-            {req.jdFileName && <InfoRow label="JD File" value={req.jdFileName} />}
-          </div>
-        </div>
-      )} */}
+            <DR label="Education" value={req.education} />
+            <DR label="Location" value={location} />
+            <DR label="Shift" value={req.shift} />
+            <DR label="Functional area" value={req.functionalArea} />
+          </SideCard>
 
-      {/* Audit */}
-      <div>
-        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-          Audit
-        </h3>
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <InfoRow
-            label="Created By"
-            value={`${req.createdBy.firstName} ${req.createdBy.lastName}`}
-          />
-          <InfoRow label="Created At" value={new Date(req.createdAt).toLocaleString()} />
-          {req.approvedBy && (
-            <InfoRow
-              label="Approved By"
-              value={`${req.approvedBy.firstName} ${req.approvedBy.lastName}`}
-            />
+          {/* Compensation */}
+          {(salaryDisplay || req.bonusAmount) && (
+            <SideCard title="Compensation">
+              <DR label="Salary range" value={salaryDisplay} />
+              <DR label="Type" value={req.salaryType} />
+              <DR label="Currency" value={req.salaryCurrency} />
+              {req.bonusAmount && (
+                <DR label="Bonus" value={`${req.salaryCurrency ?? 'INR'} ${req.bonusAmount}`} />
+              )}
+              <DR
+                label="Visibility"
+                value={
+                  req.hideSalaryFromCandidate ? 'Hidden from candidate' : 'Visible to candidate'
+                }
+              />
+            </SideCard>
           )}
-          {req.closedBy && (
-            <InfoRow
-              label="Closed By"
-              value={`${req.closedBy.firstName} ${req.closedBy.lastName}`}
-            />
+
+          {/* Client & SPOC */}
+          {(req.client || req.businessUnit || req.serviceLine || req.clientSpoc) && (
+            <SideCard title="Client & SPOC">
+              <DR label="Client" value={req.client?.name} />
+              <DR label="Industry" value={req.client?.industry} />
+              <DR label="Business unit" value={req.businessUnit?.name} />
+              <DR label="Service line" value={req.serviceLine?.name} />
+              <DR
+                label="SPOC"
+                value={
+                  req.clientSpoc
+                    ? `${req.clientSpoc.firstName} ${req.clientSpoc.lastName}${req.clientSpoc.designation ? ` · ${req.clientSpoc.designation}` : ''}`
+                    : null
+                }
+              />
+              <DR label="SPOC email" value={req.clientSpoc?.email} />
+              <DR label="SPOC phone" value={req.clientSpoc?.phone} />
+              <DR
+                label="Handler"
+                value={
+                  req.clientSpoc?.handler
+                    ? `${req.clientSpoc.handler.firstName} ${req.clientSpoc.handler.lastName}`
+                    : null
+                }
+              />
+            </SideCard>
           )}
-          {req.closureReason && <InfoRow label="Closure Reason" value={req.closureReason} />}
+
+          {/* Dates & deadlines */}
+          {(req.respondBy || req.targetDate || req.startDate || req.turnaroundDays) && (
+            <SideCard title="Dates & Deadlines">
+              <DeadlineRow
+                label="Respond by"
+                date={req.respondBy ?? null}
+                breached={req.isRespondByBreached}
+              />
+              <DeadlineRow
+                label="Target date"
+                date={req.targetDate ?? null}
+                breached={req.isTurnaroundBreached}
+              />
+              <DeadlineRow label="Start date" date={req.startDate ?? null} />
+              {req.turnaroundDays && <DR label="Turnaround" value={`${req.turnaroundDays} days`} />}
+            </SideCard>
+          )}
+
+          {/* Sourcing strategy */}
+          {((req.targetCompanies?.length ?? 0) > 0 || (req.noPoachCompanies?.length ?? 0) > 0) && (
+            <SideCard title="Sourcing Strategy">
+              {(req.targetCompanies?.length ?? 0) > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                    Target companies
+                  </p>
+                  <div className="-m-0.5">
+                    {req.targetCompanies.map(c => (
+                      <Pill key={c} text={c} variant="teal" />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(req.noPoachCompanies?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                    No-poach
+                  </p>
+                  <div className="-m-0.5">
+                    {req.noPoachCompanies.map(c => (
+                      <Pill key={c} text={c} variant="red" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SideCard>
+          )}
+
+          {/* Audit */}
+          <SideCard title="Audit">
+            <DR label="Created by" value={`${req.createdBy.firstName} ${req.createdBy.lastName}`} />
+            <DR label="Created on" value={format(new Date(req.createdAt), 'dd MMM yyyy')} />
+            {req.approvedBy && (
+              <DR
+                label="Approved by"
+                value={`${req.approvedBy.firstName} ${req.approvedBy.lastName}`}
+              />
+            )}
+            {req.approvedAt && (
+              <DR label="Approved on" value={format(new Date(req.approvedAt), 'dd MMM yyyy')} />
+            )}
+            {req.closedBy && (
+              <DR label="Closed by" value={`${req.closedBy.firstName} ${req.closedBy.lastName}`} />
+            )}
+            {req.closureReason && (
+              <DR label="Closure reason" value={req.closureReason.replace(/_/g, ' ')} />
+            )}
+          </SideCard>
         </div>
       </div>
-    </div>
+    </>
   );
 }
