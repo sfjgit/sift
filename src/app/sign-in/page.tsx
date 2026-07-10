@@ -557,7 +557,7 @@ function SignInForm() {
       setResetOpen(false);
       setNewPassword('');
       setConfirmPassword('');
-      router.replace('/login');
+      router.replace('/sign-in');
     } catch (error: any) {
       toast.error(error?.response?.data?.message ?? 'Unable to reset password.');
     } finally {
