@@ -2285,81 +2285,206 @@ export default function AssignmentDetailPage() {
         </div>
 
         {/* ✅ JD TAB */}
-        <TabsContent value="jd" className="flex-1 overflow-y-auto p-6 bg-white">
-          <div className="max-w-3xl space-y-8">
-            {req.description && (
-              <div>
-                <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-3">
-                  Description
-                </h3>
-                <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
-                  {req.description}
-                </p>
+        <TabsContent value="jd" className="flex-1 overflow-hidden">
+          <div className="grid h-full overflow-hidden" style={{ gridTemplateColumns: '1fr 300px' }}>
+            {/* ═══ LEFT — header + description prose (scrollable) ═══ */}
+            <div className="overflow-y-auto p-5 space-y-4 border-r border-slate-200">
+              {/* Header card */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <span className="text-[10px] font-mono font-semibold bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-slate-500">
+                        {req.reqCode}
+                      </span>
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${req.priority === 'HIGH' ? 'bg-red-50 text-red-700 border-red-200' : req.priority === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
+                      >
+                        {req.priority} priority
+                      </span>
+                      {req.client?.name && (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                          {req.client.name}
+                        </span>
+                      )}
+                    </div>
+                    <h1 className="text-lg font-bold text-slate-900 mb-2">{req.title}</h1>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        {
+                          label: req.remoteType,
+                          color: 'bg-blue-50 text-blue-700 border-blue-200',
+                        },
+                        {
+                          label: req.jobType?.replace(/_/g, ' '),
+                          color: 'bg-slate-100 text-slate-600 border-slate-200',
+                        },
+                        req.experienceMin != null && {
+                          label: `${req.experienceMin}–${req.experienceMax} yrs exp`,
+                          color: 'bg-slate-100 text-slate-600 border-slate-200',
+                        },
+                        {
+                          label: `${req.totalOpenings} opening${req.totalOpenings !== 1 ? 's' : ''}`,
+                          color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                        },
+                        req.businessUnit?.name && {
+                          label: `${req.businessUnit.name} · ${req.serviceLine?.name ?? ''}`,
+                          color: 'bg-slate-100 text-slate-600 border-slate-200',
+                        },
+                      ]
+                        .filter(Boolean)
+                        .map((b: any) => (
+                          <span
+                            key={b.label}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${b.color}`}
+                          >
+                            {b.label}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                  {req.salaryMin && req.salaryMax && (
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">
+                        Salary range
+                      </p>
+                      <p className="text-base font-bold text-emerald-700">
+                        ₹{(req.salaryMin / 100000).toFixed(1)}L – ₹
+                        {(req.salaryMax / 10000000).toFixed(1)}Cr
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">Annual · INR</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
 
-            {/*  Skills */}
-            <div>
-              <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-4">
-                Skills
-              </h3>
-              <div className="space-y-5">
-                {req.primarySkills?.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 mb-2">
-                      Primary Skills (Must-Have)
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {req.primarySkills.map(skill => (
-                        <SkillPill key={skill} text={skill} variant="primary" />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(req.keySkills?.length ?? 0) > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 mb-2">Key Skills</p>
-                    <div className="flex flex-wrap gap-2">
-                      {req.keySkills!.map(skill => (
-                        <SkillPill key={skill} text={skill} variant="key" />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {!req.primarySkills?.length && !(req.keySkills?.length ?? 0) && (
-                  <p className="text-sm text-slate-400">No skills added yet.</p>
-                )}
-              </div>
+              {/* Description prose */}
+              {req.description && (
+                <div className="bg-white border border-slate-200 rounded-xl p-5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Job description
+                  </p>
+                  <div
+                    className="prose-jd text-[13px] leading-relaxed text-slate-600"
+                    dangerouslySetInnerHTML={{ __html: parseMd(req.description) }}
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Job Details */}
-            <div>
-              <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                Job Details
-              </h3>
-              <div>
-                <DetailRow label="Job Type" value={req.jobType ?? '—'} />
-                <DetailRow label="Remote Type" value={req.remoteType ?? '—'} />
-                <DetailRow label="Open For" value={req.jobOpenFor ?? '—'} />
-                <DetailRow label="Priority" value={req.priority ?? '—'} />
-                <DetailRow label="Openings" value={req.totalOpenings ?? '—'} />
+            {/* ═══ RIGHT SIDEBAR — sticky, no scroll ═══ */}
+            <div className="overflow-y-auto p-4 space-y-3 bg-slate-50/40">
+              {/* Skills */}
+              {(req.primarySkills?.length > 0 || req.keySkills?.length > 0) && (
+                <div className="bg-white border border-slate-200 rounded-xl p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+                    Skills
+                  </p>
+                  {req.primarySkills?.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                        Must-have
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {req.primarySkills.map(s => (
+                          <span
+                            key={s}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {req.keySkills?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+                        Key skills
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {req.keySkills.map(s => (
+                          <span
+                            key={s}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                <DetailRow
-                  label="Experience"
-                  value={
-                    req.experienceMin && req.experienceMax
-                      ? `${req.experienceMin} - ${req.experienceMax} years`
-                      : 'N/A'
-                  }
-                />
-                <DetailRow
-                  label="Salary"
-                  value={
-                    req.salaryMin && req.salaryMax
-                      ? `${req.salaryMin}LPA - ${req.salaryMax}LPA`
-                      : 'N/A'
-                  }
-                />
+              {/* Job details */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+                  Job details
+                </p>
+                {[
+                  ['Job type', req.jobType?.replace(/_/g, ' ')],
+                  ['Remote', req.remoteType],
+                  [
+                    'Experience',
+                    req.experienceMin != null
+                      ? `${req.experienceMin} – ${req.experienceMax} yrs`
+                      : null,
+                  ],
+                  ['Education', req.education ? "Bachelor's in CS / IT" : null],
+                  ['Openings', req.totalOpenings],
+                  ['Client', req.client?.name],
+                  ['BU', req.businessUnit?.name],
+                  ['Service line', req.serviceLine?.name],
+                ]
+                  .filter(([, v]) => v != null && v !== '')
+                  .map(([label, val]) => (
+                    <div
+                      key={label as string}
+                      className="flex items-baseline justify-between gap-2 py-2 border-b border-slate-100 last:border-0"
+                    >
+                      <span className="text-[11px] text-slate-400 shrink-0">{label}</span>
+                      <span className="text-xs font-semibold text-slate-800 text-right">
+                        {val as string}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+
+              {/* Assignment info */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+                  Assignment
+                </p>
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${avatarColor(a.assignedTo.id)}`}
+                  >
+                    {initials(`${a.assignedTo.firstName} ${a.assignedTo.lastName}`)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {a.assignedTo.firstName} {a.assignedTo.lastName}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {a.assignedTo.role.name}
+                      {a.assignedTo.department?.name ? ` · ${a.assignedTo.department.name}` : ''}
+                    </p>
+                  </div>
+                </div>
+                {[
+                  ['Assigned by', `${a.assignedBy.firstName} ${a.assignedBy.lastName}`],
+                  ['Assigned on', format(new Date(a.assignedAt), 'dd MMM yyyy')],
+                  ['Status', a.status],
+                ].map(([label, val]) => (
+                  <div
+                    key={label}
+                    className="flex items-baseline justify-between gap-2 py-2 border-b border-slate-100 last:border-0"
+                  >
+                    <span className="text-[11px] text-slate-400">{label}</span>
+                    <span className="text-xs font-semibold text-slate-800">{val}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -2531,5 +2656,31 @@ export default function AssignmentDetailPage() {
         />
       )}
     </div>
+  );
+}
+
+function parseMd(md: string): string {
+  return (
+    md
+      // strip the redundant "## Job Title: ..." block at the top
+      .replace(/^## Job Title:.*\n?/m, '')
+      // h3 before h2 so h3 doesn't get double-processed
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      // bullet lines → li, then wrap consecutive li blocks in ul
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>[^]*?<\/li>)(\n<li>[^]*?<\/li>)*/g, match => `<ul>${match}</ul>`)
+      // blank lines between paragraphs
+      .replace(/\n{2,}/g, '\n')
+      // plain text lines that aren't already HTML tags → wrap in p
+      .split('\n')
+      .map(line => {
+        const t = line.trim();
+        if (!t) return '';
+        if (t.startsWith('<')) return t;
+        return `<p>${t}</p>`;
+      })
+      .filter(Boolean)
+      .join('')
   );
 }
