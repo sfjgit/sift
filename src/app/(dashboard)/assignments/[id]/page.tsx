@@ -833,7 +833,7 @@ function BulkUploadModal({
     try {
       const form = new FormData();
       // multer field name must match uploadBulk's configured field name
-      files.forEach(f => form.append('files', f, f.name));
+      files.forEach(f => form.append('file', f, f.name));
       form.append('reqCode', req.reqCode);
       form.append('requirementId', req.id);
       form.append('assignmentId', assignmentId);
