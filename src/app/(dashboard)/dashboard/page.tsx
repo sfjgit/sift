@@ -1624,6 +1624,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  Download,
 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
@@ -2165,15 +2166,427 @@ const DIM_EMPTY: Record<ResumeDim, React.ReactNode> = {
   ),
 };
 
+async function downloadResumeReport(resumeStats: ResumeStats, dateFrom?: string, dateTo?: string) {
+  // Dynamic import keeps xlsx out of the initial bundle (SSR-safe in Next.js)
+  // const XLSX = (await import('xlsx')).default;
+  const XLSX = await import('xlsx');
+
+  const wb = XLSX.utils.book_new();
+  const total = resumeStats.total;
+
+  const period =
+    dateFrom && dateTo
+      ? `${dateFrom}  →  ${dateTo}`
+      : dateFrom
+        ? `From ${dateFrom}`
+        : dateTo
+          ? `Up to ${dateTo}`
+          : 'All time';
+
+  const generatedAt = new Date().toLocaleString('en-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const pct = (n: number) => (total > 0 ? `${((n / total) * 100).toFixed(1)}%` : '—');
+
+  const subPct = (n: number, sub: number) => (sub > 0 ? `${((n / sub) * 100).toFixed(1)}%` : '—');
+
+  // ── helper: set column widths ──────────────────────────────────────────────
+  function colWidths(ws: ReturnType<typeof XLSX.utils.aoa_to_sheet>, widths: number[]) {
+    ws['!cols'] = widths.map(w => ({ wch: w }));
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SHEET 1 — Summary
+  // ──────────────────────────────────────────────────────────────────────────
+  const summaryRows: (string | number)[][] = [
+    ['Resume Parsing Report — SFJ Business Solutions'],
+    [],
+    ['Period', period],
+    ['Generated on', generatedAt],
+    ['Total resumes parsed', total],
+    [],
+    ['Breakdown by Source'],
+    ['Source', 'Count', '% of Total'],
+    ...resumeStats.bySource.map(s => [s.source, s.count, pct(s.count)]),
+    [],
+    ['Breakdown by Department'],
+    ['Department', 'Total Resumes', '% of Total'],
+    ...[...resumeStats.byDepartment]
+      .sort((a, b) => b.count - a.count)
+      .map(d => [d.name, d.count, pct(d.count)]),
+    [],
+    ['Breakdown by Team Lead'],
+    ['Team Lead', 'Total Resumes', '% of Total'],
+    ...[...resumeStats.byTeamLead]
+      .sort((a, b) => b.count - a.count)
+      .map(t => [t.name, t.count, pct(t.count)]),
+  ];
+
+  const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
+  colWidths(ws1, [32, 20, 14]);
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SHEET 2 — By Department
+  // ──────────────────────────────────────────────────────────────────────────
+  const deptRows: (string | number)[][] = [
+    [`Resume Parsing — By Department  |  Period: ${period}  |  Generated: ${generatedAt}`],
+    [],
+    ['Department', 'Person Name', 'Resumes Parsed', '% of Dept', '% of Grand Total'],
+  ];
+
+  const deptsSorted = [...resumeStats.byDepartment].sort((a, b) => b.count - a.count);
+
+  for (const dept of deptsSorted) {
+    const people = resumeStats.byRecruiter
+      .filter(r => r.departmentId === dept.id)
+      .sort((a, b) => b.count - a.count);
+
+    for (const p of people) {
+      deptRows.push([dept.name, p.name, p.count, subPct(p.count, dept.count), pct(p.count)]);
+    }
+
+    // Subtotal row (blank dept col = visual separator from next group)
+    deptRows.push([`  ↳ ${dept.name} subtotal`, '', dept.count, '100%', pct(dept.count)]);
+    deptRows.push([]); // blank gap between groups
+  }
+
+  // People with no department assigned
+  const unassigned = resumeStats.byRecruiter
+    .filter(r => !r.departmentId)
+    .sort((a, b) => b.count - a.count);
+
+  if (unassigned.length > 0) {
+    for (const p of unassigned) {
+      deptRows.push(['Unassigned', p.name, p.count, '—', pct(p.count)]);
+    }
+    const uTotal = unassigned.reduce((s, r) => s + r.count, 0);
+    deptRows.push(['  ↳ Unassigned subtotal', '', uTotal, '—', pct(uTotal)]);
+    deptRows.push([]);
+  }
+
+  const ws2 = XLSX.utils.aoa_to_sheet(deptRows);
+  colWidths(ws2, [26, 24, 16, 12, 16]);
+  XLSX.utils.book_append_sheet(wb, ws2, 'By Department');
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SHEET 3 — By Team Lead
+  // ──────────────────────────────────────────────────────────────────────────
+  const tlRows: (string | number)[][] = [
+    [`Resume Parsing — By Team Lead  |  Period: ${period}  |  Generated: ${generatedAt}`],
+    [],
+    ['Team Lead', 'Person Name', 'Resumes Parsed', '% of TL Group', '% of Grand Total'],
+  ];
+
+  const tlSorted = [...resumeStats.byTeamLead].sort((a, b) => b.count - a.count);
+
+  for (const tl of tlSorted) {
+    const people = resumeStats.byRecruiter
+      .filter(r => r.teamLeadId === tl.id)
+      .sort((a, b) => b.count - a.count);
+
+    for (const p of people) {
+      tlRows.push([tl.name, p.name, p.count, subPct(p.count, tl.count), pct(p.count)]);
+    }
+
+    tlRows.push([`  ↳ ${tl.name} subtotal`, '', tl.count, '100%', pct(tl.count)]);
+    tlRows.push([]);
+  }
+
+  // People with no team lead assigned
+  const noTL = resumeStats.byRecruiter.filter(r => !r.teamLeadId).sort((a, b) => b.count - a.count);
+
+  if (noTL.length > 0) {
+    for (const p of noTL) {
+      tlRows.push(['No Team Lead', p.name, p.count, '—', pct(p.count)]);
+    }
+    const ntTotal = noTL.reduce((s, r) => s + r.count, 0);
+    tlRows.push(['  ↳ No Team Lead subtotal', '', ntTotal, '—', pct(ntTotal)]);
+    tlRows.push([]);
+  }
+
+  const ws3 = XLSX.utils.aoa_to_sheet(tlRows);
+  colWidths(ws3, [26, 24, 16, 14, 16]);
+  XLSX.utils.book_append_sheet(wb, ws3, 'By Team Lead');
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SHEET 4 — By Business Unit
+  // ──────────────────────────────────────────────────────────────────────────
+  const buRows: (string | number)[][] = [
+    [`Resume Parsing — By Business Unit  |  Period: ${period}  |  Generated: ${generatedAt}`],
+    [],
+    ['Business Unit', 'Person Name', 'Resumes Parsed', '% of BU', '% of Grand Total'],
+  ];
+
+  const buSorted = [...resumeStats.byBusinessUnit].sort((a, b) => b.count - a.count);
+
+  for (const bu of buSorted) {
+    const people = resumeStats.byRecruiter
+      .filter(r => r.buId === bu.id)
+      .sort((a, b) => b.count - a.count);
+
+    for (const p of people) {
+      buRows.push([bu.name, p.name, p.count, subPct(p.count, bu.count), pct(p.count)]);
+    }
+
+    buRows.push([`  ↳ ${bu.name} subtotal`, '', bu.count, '100%', pct(bu.count)]);
+    buRows.push([]);
+  }
+
+  const noBU = resumeStats.byRecruiter.filter(r => !r.buId).sort((a, b) => b.count - a.count);
+
+  if (noBU.length > 0) {
+    for (const p of noBU) {
+      buRows.push(['No BU', p.name, p.count, '—', pct(p.count)]);
+    }
+    const nbTotal = noBU.reduce((s, r) => s + r.count, 0);
+    buRows.push(['  ↳ No BU subtotal', '', nbTotal, '—', pct(nbTotal)]);
+  }
+
+  const ws4 = XLSX.utils.aoa_to_sheet(buRows);
+  colWidths(ws4, [26, 24, 16, 12, 16]);
+  XLSX.utils.book_append_sheet(wb, ws4, 'By Business Unit');
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SHEET 5 — All People (flat ranked list)
+  // ──────────────────────────────────────────────────────────────────────────
+  const allRows: (string | number)[][] = [
+    [`Resume Parsing — All People  |  Period: ${period}  |  Generated: ${generatedAt}`],
+    [],
+    ['Rank', 'Name', 'Department', 'Team Lead', 'Business Unit', 'Resumes Parsed', '% of Total'],
+    ...[...resumeStats.byRecruiter]
+      .sort((a, b) => b.count - a.count)
+      .map((p, i) => [
+        i + 1,
+        p.name,
+        p.departmentName ?? '—',
+        p.teamLeadName ?? '—',
+        p.buName ?? '—',
+        p.count,
+        pct(p.count),
+      ]),
+  ];
+
+  const ws5 = XLSX.utils.aoa_to_sheet(allRows);
+  colWidths(ws5, [6, 24, 22, 22, 20, 16, 14]);
+  XLSX.utils.book_append_sheet(wb, ws5, 'All People');
+
+  // ── Download ───────────────────────────────────────────────────────────────
+  const dateSuffix = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  XLSX.writeFile(wb, `resume-parsing-${dateSuffix}.xlsx`);
+}
+
+// function ResumeParsedCard({
+//   resumeStats,
+//   loading,
+// }: {
+//   resumeStats: ResumeStats | undefined;
+//   loading: boolean;
+// }) {
+//   const [dim, setDim] = useState<ResumeDim>('department');
+//   const [popup, setPopup] = useState<{ id: string; name: string } | null>(null);
+
+//   const dimItems: { id: string; name: string; count: number }[] =
+//     dim === 'department'
+//       ? (resumeStats?.byDepartment ?? [])
+//       : dim === 'teamLead'
+//         ? (resumeStats?.byTeamLead ?? [])
+//         : (resumeStats?.byBusinessUnit ?? []);
+
+//   const popupPeople = popup
+//     ? (resumeStats?.byRecruiter ?? [])
+//         .filter(r =>
+//           dim === 'department'
+//             ? r.departmentId === popup.id
+//             : dim === 'teamLead'
+//               ? r.teamLeadId === popup.id
+//               : r.buId === popup.id
+//         )
+//         .sort((a, b) => b.count - a.count)
+//     : [];
+
+//   const popupTotal = popupPeople.reduce((s, r) => s + r.count, 0);
+//   const popupMax = popupPeople[0]?.count ?? 1;
+
+//   return (
+//     <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
+//       {/* ── Header ── */}
+//       <div className="flex items-start justify-between mb-3">
+//         <div>
+//           <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
+//           <p className="text-[11px] text-muted-foreground mt-0.5">
+//             {loading ? '—' : (resumeStats?.total ?? 0)} total
+//           </p>
+//         </div>
+//         <Select
+//           value={dim}
+//           onValueChange={v => {
+//             setDim(v as ResumeDim);
+//             setPopup(null);
+//           }}
+//         >
+//           <SelectTrigger className="h-7 w-40 text-[11px]">
+//             <SelectValue />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="department">By department</SelectItem>
+//             <SelectItem value="teamLead">By team lead</SelectItem>
+//             <SelectItem value="businessUnit">By business unit</SelectItem>
+//           </SelectContent>
+//         </Select>
+//       </div>
+
+//       {/* ── Source pills ── */}
+//       {!loading && (resumeStats?.bySource ?? []).length > 0 && (
+//         <div className="flex flex-wrap gap-1.5 mb-3">
+//           {resumeStats!.bySource.map(s => {
+//             const style = sourceStyle(s.source);
+//             return (
+//               <span
+//                 key={s.source}
+//                 className={cn(
+//                   'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
+//                   style.bg,
+//                   style.text
+//                 )}
+//               >
+//                 {s.source}
+//                 <span className="opacity-50">·</span>
+//                 {s.count}
+//               </span>
+//             );
+//           })}
+//         </div>
+//       )}
+
+//       {/* ── Chart + popup ── */}
+//       {/*
+//         FIX 2: overflow-visible so the popup (taller than the 200px chart)
+//         isn't clipped by this container. The popup uses top-0/left-0/right-0
+//         without bottom-0 and max-h-72, letting it grow as needed.
+//       */}
+//       <div className="relative" style={{ overflow: 'visible' }}>
+//         <ResumeDimBarChart
+//           items={dimItems}
+//           loading={loading}
+//           onBarClick={setPopup}
+//           emptyMessage={DIM_EMPTY[dim]}
+//         />
+
+//         {popup && (
+//           <div
+//             className={cn(
+//               'absolute top-0 left-0 right-0 z-20',
+//               'bg-card border border-emerald-500/20 rounded-lg shadow-xl',
+//               'flex flex-col overflow-hidden'
+//             )}
+//             style={{ height: '350px' }}
+//           >
+//             {/* Popup header */}
+//             <div
+//               className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0"
+//               style={{ borderLeftColor: '#10B981', borderLeftWidth: 3 }}
+//             >
+//               <div>
+//                 <p className="text-[12px] font-semibold text-foreground">{popup.name}</p>
+//                 <p className="text-[10px] text-muted-foreground mt-0.5">
+//                   {popupPeople.length} person{popupPeople.length !== 1 ? 's' : ''}
+//                   &nbsp;&middot;&nbsp;
+//                   {popupTotal} resumes
+//                 </p>
+//               </div>
+//               <button
+//                 onClick={() => setPopup(null)}
+//                 className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted"
+//                 aria-label="Close"
+//               >
+//                 <X size={13} />
+//               </button>
+//             </div>
+
+//             {/* Scrollable people list — min-h-0 is required for flex+scroll */}
+//             <div className="flex-1 overflow-y-auto">
+//               <div className="px-4 py-2 space-y-0.5">
+//                 {popupPeople.length === 0 ? (
+//                   <p className="text-[11px] text-muted-foreground py-6 text-center">
+//                     No data available for this group
+//                   </p>
+//                 ) : (
+//                   popupPeople.map((r, i) => (
+//                     <div
+//                       key={r.recruiterId}
+//                       className="flex items-center gap-2.5 py-1.5 px-1 rounded-md hover:bg-muted/50 transition-colors"
+//                     >
+//                       {/* rank */}
+//                       <span className="text-[10px] text-muted-foreground/40 tabular-nums w-4 text-right shrink-0 font-mono">
+//                         {i + 1}
+//                       </span>
+
+//                       {/* initials avatar */}
+//                       <div
+//                         className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
+//                         style={{
+//                           background: `hsl(${(i * 53 + 140) % 360}deg 55% 92%)`,
+//                           color: `hsl(${(i * 53 + 140) % 360}deg 45% 35%)`,
+//                         }}
+//                       >
+//                         {nameInitials(r.name)}
+//                       </div>
+
+//                       {/* name */}
+//                       <p className="flex-1 text-[11.5px] font-medium text-foreground truncate">
+//                         {r.name}
+//                       </p>
+
+//                       {/* mini bar */}
+//                       <div className="w-14 h-0.75 bg-muted rounded-full overflow-hidden shrink-0">
+//                         <div
+//                           className="h-full bg-emerald-500 rounded-full"
+//                           style={{ width: `${(r.count / popupMax) * 100}%` }}
+//                         />
+//                       </div>
+
+//                       {/* count */}
+//                       <span className="text-[12px] font-semibold tabular-nums text-foreground shrink-0 w-7 text-right">
+//                         {r.count}
+//                       </span>
+//                     </div>
+//                   ))
+//                 )}
+//               </div>
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       {/* Footer hint */}
+//       {!popup && dimItems.length > 0 && !loading && (
+//         <p className="text-[10px] text-muted-foreground/40 mt-3 pt-2 border-t border-border">
+//           Click anywhere on a row to see who parsed resumes
+//         </p>
+//       )}
+//     </div>
+//   );
+// }
+
+// ─── Stage Card ───────────────────────────────────────────────────────────────
+
 function ResumeParsedCard({
   resumeStats,
   loading,
+  dateFrom,
+  dateTo,
 }: {
   resumeStats: ResumeStats | undefined;
   loading: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }) {
   const [dim, setDim] = useState<ResumeDim>('department');
   const [popup, setPopup] = useState<{ id: string; name: string } | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const dimItems: { id: string; name: string; count: number }[] =
     dim === 'department'
@@ -2197,6 +2610,16 @@ function ResumeParsedCard({
   const popupTotal = popupPeople.reduce((s, r) => s + r.count, 0);
   const popupMax = popupPeople[0]?.count ?? 1;
 
+  async function handleDownload() {
+    if (!resumeStats || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      await downloadResumeReport(resumeStats, dateFrom, dateTo);
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   return (
     <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
       {/* ── Header ── */}
@@ -2207,22 +2630,41 @@ function ResumeParsedCard({
             {loading ? '—' : (resumeStats?.total ?? 0)} total
           </p>
         </div>
-        <Select
-          value={dim}
-          onValueChange={v => {
-            setDim(v as ResumeDim);
-            setPopup(null);
-          }}
-        >
-          <SelectTrigger className="h-7 w-40 text-[11px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="department">By department</SelectItem>
-            <SelectItem value="teamLead">By team lead</SelectItem>
-            <SelectItem value="businessUnit">By business unit</SelectItem>
-          </SelectContent>
-        </Select>
+
+        {/* Controls: download + dimension selector */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={handleDownload}
+            disabled={loading || !resumeStats || isDownloading}
+            title="Download Excel report (dept, team lead, BU, all people)"
+            className={cn(
+              'h-7 px-2 inline-flex items-center gap-1 rounded-md border border-border',
+              'text-[11px] font-medium transition-colors',
+              'text-muted-foreground hover:text-foreground hover:bg-muted',
+              'disabled:opacity-40 disabled:cursor-not-allowed'
+            )}
+          >
+            <Download size={12} className={isDownloading ? 'animate-bounce' : ''} />
+            {isDownloading ? 'Generating…' : 'Export'}
+          </button>
+
+          <Select
+            value={dim}
+            onValueChange={v => {
+              setDim(v as ResumeDim);
+              setPopup(null);
+            }}
+          >
+            <SelectTrigger className="h-7 w-38 text-[11px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="department">By department</SelectItem>
+              <SelectItem value="teamLead">By team lead</SelectItem>
+              <SelectItem value="businessUnit">By business unit</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* ── Source pills ── */}
@@ -2249,11 +2691,6 @@ function ResumeParsedCard({
       )}
 
       {/* ── Chart + popup ── */}
-      {/*
-        FIX 2: overflow-visible so the popup (taller than the 200px chart)
-        isn't clipped by this container. The popup uses top-0/left-0/right-0
-        without bottom-0 and max-h-72, letting it grow as needed.
-      */}
       <div className="relative" style={{ overflow: 'visible' }}>
         <ResumeDimBarChart
           items={dimItems}
@@ -2293,7 +2730,7 @@ function ResumeParsedCard({
               </button>
             </div>
 
-            {/* Scrollable people list — min-h-0 is required for flex+scroll */}
+            {/* Scrollable people list */}
             <div className="flex-1 overflow-y-auto">
               <div className="px-4 py-2 space-y-0.5">
                 {popupPeople.length === 0 ? (
@@ -2306,12 +2743,9 @@ function ResumeParsedCard({
                       key={r.recruiterId}
                       className="flex items-center gap-2.5 py-1.5 px-1 rounded-md hover:bg-muted/50 transition-colors"
                     >
-                      {/* rank */}
                       <span className="text-[10px] text-muted-foreground/40 tabular-nums w-4 text-right shrink-0 font-mono">
                         {i + 1}
                       </span>
-
-                      {/* initials avatar */}
                       <div
                         className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
                         style={{
@@ -2321,21 +2755,15 @@ function ResumeParsedCard({
                       >
                         {nameInitials(r.name)}
                       </div>
-
-                      {/* name */}
                       <p className="flex-1 text-[11.5px] font-medium text-foreground truncate">
                         {r.name}
                       </p>
-
-                      {/* mini bar */}
                       <div className="w-14 h-0.75 bg-muted rounded-full overflow-hidden shrink-0">
                         <div
                           className="h-full bg-emerald-500 rounded-full"
                           style={{ width: `${(r.count / popupMax) * 100}%` }}
                         />
                       </div>
-
-                      {/* count */}
                       <span className="text-[12px] font-semibold tabular-nums text-foreground shrink-0 w-7 text-right">
                         {r.count}
                       </span>
@@ -2351,14 +2779,12 @@ function ResumeParsedCard({
       {/* Footer hint */}
       {!popup && dimItems.length > 0 && !loading && (
         <p className="text-[10px] text-muted-foreground/40 mt-3 pt-2 border-t border-border">
-          Click anywhere on a row to see who parsed resumes
+          Click any row to see who parsed resumes · Export for full report
         </p>
       )}
     </div>
   );
 }
-
-// ─── Stage Card ───────────────────────────────────────────────────────────────
 
 function StageCard({
   stage,
@@ -2939,7 +3365,13 @@ function MainContent({
           {/* Second row: Resume card + BU breakdown */}
           <div className="grid grid-cols-2 gap-3">
             {/* ── REPLACED: ResumeParsedCard handles all resume breakdown logic ── */}
-            <ResumeParsedCard resumeStats={resumeStats} loading={resumeStatsLoading} />
+            {/* <ResumeParsedCard resumeStats={resumeStats} loading={resumeStatsLoading} /> */}
+            <ResumeParsedCard
+              resumeStats={resumeStats}
+              loading={resumeStatsLoading}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+            />
 
             {/* BU breakdown */}
             <div className="bg-card border border-border rounded-xl p-5">
