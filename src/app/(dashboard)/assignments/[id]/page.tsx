@@ -463,16 +463,6 @@ const avatarColor = (seed: string) => {
   return p[seed.charCodeAt(0) % p.length];
 };
 
-const formatMins = (mins: number | null) => {
-  if (!mins || mins === 0) return '—';
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d`;
-  return `${Math.floor(d / 30)}mo`;
-};
-
 const formatCtc = (val: number | null | undefined) =>
   val != null ? `₹${(val / 100000).toFixed(1)}L` : '—';
 
@@ -561,31 +551,6 @@ function StatChip({
 // ─────────────────────────────────────────────────────────────────────────────
 // JD TAB — SKILL PILL + DETAIL ROW
 // ─────────────────────────────────────────────────────────────────────────────
-
-function SkillPill({ text, variant }: { text: string; variant: 'primary' | 'key' }) {
-  const styles =
-    variant === 'primary'
-      ? 'bg-rose-50 text-rose-600 border-rose-100'
-      : 'bg-blue-50 text-blue-600 border-blue-100';
-  return (
-    <span
-      className={`inline-flex items-center text-xs font-semibold px-3 py-1.5 rounded-full border ${styles}`}
-    >
-      {text}
-    </span>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[160px_1fr] items-center py-3.5 border-b border-slate-100 last:border-0">
-      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
-        {label}
-      </span>
-      <span className="text-sm font-semibold text-slate-800">{value}</span>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UPLOAD RESUME MODAL  (unchanged)
@@ -998,7 +963,8 @@ function BulkUploadModal({
                             className="text-xs text-rose-600 truncate block max-w-40"
                             title={r.error}
                           >
-                            {r.error ?? 'Parse failed'}
+                            {/* {r.error ?? 'Parse failed'} */}
+                            {r.status}
                           </span>
                         )}
                       </td>
