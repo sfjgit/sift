@@ -498,6 +498,8 @@ function triggerExtension(
   app: string,
   assignmentId: string
 ) {
+  console.log(rId, rCode, rTitle, app, assignmentId);
+
   window.postMessage(
     {
       type: 'TALENTOX_SOURCE_NAUKRI',
