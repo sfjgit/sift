@@ -1,5 +1,5 @@
-// // File: page.tsx
-// // Path: src/app/(dashboard)/dashboard/page.tsx
+// File: page.tsx
+// Path: src/app/(dashboard)/dashboard/page.tsx
 
 // 'use client';
 
@@ -47,6 +47,7 @@
 // } from 'lucide-react';
 // import { useAxios } from '@/hooks/useAxios';
 // import { useAuth } from '@/context/AuthContext';
+// // import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -391,12 +392,25 @@
 //     <ChartContainer config={funnelChartConfig} className="h-[220px] w-full">
 //       <BarChart data={data} barSize={16} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
 //         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-//         <XAxis
+//         {/* <XAxis
 //           dataKey="name"
 //           tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
 //           tickLine={false}
 //           axisLine={false}
 //           interval={0}
+//         /> */}
+//         <XAxis
+//           dataKey="name"
+//           interval={0}
+//           angle={-40}
+//           textAnchor="end"
+//           height={60}
+//           tick={{
+//             fontSize: 10,
+//             fill: 'hsl(var(--muted-foreground))',
+//           }}
+//           tickLine={false}
+//           axisLine={false}
 //         />
 //         <YAxis
 //           tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
@@ -711,246 +725,200 @@
 //   return `${u.firstName} ${u.lastName}`.trim();
 // }
 
-// // ─── Sidebar ──────────────────────────────────────────────────────────────────
+// // ─── Filter Bar (all dropdown filters, top of page) ──────────────────────────
 
-// function Sidebar({
-//   statusFilter,
-//   onStatusChange,
+// function FilterBar({
+//   dateRange,
+//   onDateChange,
 //   buId,
 //   onBuChange,
-//   deptId, // ← add
-//   onDeptChange, // ← add
+//   deptId,
+//   onDeptChange,
 //   serviceLineId,
 //   onSlChange,
-//   byStatus,
-//   busData,
-//   deptsData,
-//   slData,
-//   isRecruiter,
-//   isSuperAdmin,
-//   hierarchyData,
 //   teamLeadId,
 //   onTeamLeadChange,
 //   reportingToId,
 //   onReportingToChange,
+//   busData,
+//   deptsData,
+//   slData,
+//   hierarchyData,
+//   isRecruiter,
 // }: {
-//   statusFilter: string;
-//   onStatusChange: (v: string) => void;
+//   dateRange: DateRange | undefined;
+//   onDateChange: (r: DateRange | undefined) => void;
 //   buId: string;
 //   onBuChange: (v: string) => void;
-//   deptId: string; // ← add
+//   deptId: string;
 //   onDeptChange: (v: string) => void;
 //   serviceLineId: string;
 //   onSlChange: (v: string) => void;
-//   byStatus: Record<string, number>;
-//   busData: { id: string; name: string }[] | undefined;
-//   deptsData: Department[] | undefined;
-//   slData: { id: string; name: string }[] | undefined;
-//   isRecruiter: boolean;
-//   isSuperAdmin: boolean | undefined;
 //   teamLeadId: string;
 //   onTeamLeadChange: (v: string) => void;
 //   reportingToId: string;
 //   onReportingToChange: (v: string) => void;
+//   busData: { id: string; name: string }[] | undefined;
+//   deptsData: Department[] | undefined;
+//   slData: { id: string; name: string }[] | undefined;
 //   hierarchyData: { teamLeads: HierarchyUser[]; reportingTo: HierarchyUser[] } | undefined;
+//   isRecruiter: boolean;
 // }) {
-//   const total = Object.values(byStatus).reduce((s, n) => s + n, 0);
+//   const hasAnyFilter =
+//     !!buId || !!deptId || !!teamLeadId || !!reportingToId || !!serviceLineId || !!dateRange?.from;
+
+//   function clearAll() {
+//     onBuChange('');
+//     onDeptChange('');
+//     onTeamLeadChange('');
+//     onReportingToChange('');
+//     onSlChange('');
+//     onDateChange(undefined);
+//   }
 
 //   return (
-//     <div
-//       className="bg-card border-r border-border flex flex-col"
-//       style={{ height: '100%', overflow: 'hidden' }}
-//     >
-//       {/* Header */}
-//       <div className="px-4 py-5 border-b border-border">
-//         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1">
-//           Jobs
-//         </p>
-//         <p className="text-[32px] font-semibold text-foreground leading-none tabular-nums">
-//           {total}
-//         </p>
-//         <p className="text-[11px] text-muted-foreground mt-1">requirements total</p>
-//       </div>
+//     <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border bg-background shrink-0">
+//       <DateRangePicker range={dateRange} onChange={onDateChange} />
 
-//       <ScrollArea className="flex-1 h-full overflow-y-auto">
-//         <div className="py-3 px-2">
-//           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 mt-1">
-//             Status
-//           </p>
+//       {!isRecruiter && busData && busData.length > 0 && (
+//         <Select value={buId || '_all'} onValueChange={v => onBuChange(v === '_all' ? '' : v)}>
+//           <SelectTrigger className="h-8 w-[150px] text-xs gap-1.5">
+//             <Building2 size={12} className="text-muted-foreground shrink-0" />
+//             <SelectValue placeholder="All BUs" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="_all">All BUs</SelectItem>
+//             {busData.map(b => (
+//               <SelectItem key={b.id} value={b.id}>
+//                 {b.name}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//       )}
 
-//           {SIDEBAR_STATUSES.map(s => {
-//             const count = byStatus[s.key] ?? 0;
-//             const isActive = statusFilter === s.key;
-//             return (
-//               <button
-//                 key={s.key}
-//                 onClick={() => onStatusChange(statusFilter === s.key ? '' : s.key)}
-//                 className={cn(
-//                   'w-full flex items-center justify-between px-2.5 py-2.5 rounded-lg text-[13px] font-medium transition-colors',
-//                   isActive
-//                     ? 'bg-muted text-foreground'
-//                     : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-//                 )}
-//               >
-//                 <span className="flex items-center gap-2.5">
-//                   <span
-//                     className="w-[7px] h-[7px] rounded-full shrink-0"
-//                     style={{ backgroundColor: s.color }}
-//                   />
-//                   {s.label}
-//                 </span>
-//                 {count > 0 && (
-//                   <span
-//                     className={cn(
-//                       'text-[12px] tabular-nums',
-//                       isActive ? 'text-foreground font-bold' : 'text-muted-foreground'
-//                     )}
-//                   >
-//                     {count}
-//                   </span>
-//                 )}
-//               </button>
-//             );
-//           })}
+//       {deptsData && deptsData.length > 0 && (
+//         <Select value={deptId || '_all'} onValueChange={v => onDeptChange(v === '_all' ? '' : v)}>
+//           <SelectTrigger className="h-8 w-[170px] text-xs gap-1.5">
+//             <Building2 size={12} className="text-muted-foreground shrink-0" />
+//             <SelectValue placeholder="All departments" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="_all">All departments</SelectItem>
+//             {deptsData.map(d => (
+//               <SelectItem key={d.id} value={d.id}>
+//                 {d.name}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//       )}
 
-//           {!isRecruiter && busData && busData.length > 0 && (
-//             <>
-//               <div className="h-px bg-border my-3 mx-1" />
-//               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 flex items-center gap-1.5">
-//                 <Building2 size={9} />
-//                 Business Units
-//               </p>
-//               {[{ id: '', name: 'All BUs' }, ...busData].map(b => (
-//                 <button
-//                   key={b.id}
-//                   onClick={() => onBuChange(b.id === buId ? '' : b.id)}
-//                   className={cn(
-//                     'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
-//                     buId === b.id
-//                       ? 'bg-muted text-foreground font-semibold'
-//                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-//                   )}
-//                 >
-//                   {b.name}
-//                 </button>
-//               ))}
-//             </>
-//           )}
+//       {!isRecruiter && hierarchyData?.teamLeads && hierarchyData.teamLeads.length > 0 && (
+//         <Select
+//           value={teamLeadId || '_all'}
+//           onValueChange={v => onTeamLeadChange(v === '_all' ? '' : v)}
+//         >
+//           <SelectTrigger className="h-8 w-[170px] text-xs gap-1.5">
+//             <Users size={12} className="text-muted-foreground shrink-0" />
+//             <SelectValue placeholder="All team leads" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="_all">All team leads</SelectItem>
+//             {hierarchyData.teamLeads.map(t => (
+//               <SelectItem key={t.id} value={t.id}>
+//                 {fullName(t)}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//       )}
 
-//           {deptsData && (
-//             <>
-//               <div className="h-px bg-border my-3 mx-1" />
-//               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 flex items-center gap-1.5">
-//                 <Building2 size={9} />
-//                 Departments
-//               </p>
-//               {[{ id: '', name: 'All departments' }, ...deptsData].map(d => (
-//                 <button
-//                   key={d.id}
-//                   onClick={() => onDeptChange(d.id === deptId ? '' : d.id)}
-//                   className={cn(
-//                     'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
-//                     deptId === d.id
-//                       ? 'bg-muted text-foreground font-semibold'
-//                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-//                   )}
-//                 >
-//                   {d.name}
-//                 </button>
-//               ))}
-//             </>
-//           )}
+//       {!isRecruiter && hierarchyData?.reportingTo && hierarchyData.reportingTo.length > 0 && (
+//         <Select
+//           value={reportingToId || '_all'}
+//           onValueChange={v => onReportingToChange(v === '_all' ? '' : v)}
+//         >
+//           <SelectTrigger className="h-8 w-[180px] text-xs gap-1.5">
+//             <Users size={12} className="text-muted-foreground shrink-0" />
+//             <SelectValue placeholder="All managers" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="_all">All managers</SelectItem>
+//             {hierarchyData.reportingTo.map(r => (
+//               <SelectItem key={r.id} value={r.id}>
+//                 {fullName(r)}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//       )}
 
-//           {!isRecruiter && hierarchyData?.teamLeads && hierarchyData.teamLeads.length > 0 && (
-//             <>
-//               <div className="h-px bg-border my-3 mx-1" />
-//               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 flex items-center gap-1.5">
-//                 <Users size={9} />
-//                 Team Lead
-//               </p>
-//               {[
-//                 {
-//                   id: '',
-//                   firstName: 'All',
-//                   lastName: 'team leads',
-//                   employeeId: null,
-//                   isActive: true,
-//                 },
-//                 ...hierarchyData.teamLeads,
-//               ].map(t => (
-//                 <button
-//                   key={t.id}
-//                   onClick={() => onTeamLeadChange(t.id === teamLeadId ? '' : t.id)}
-//                   className={cn(
-//                     'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
-//                     teamLeadId === t.id
-//                       ? 'bg-muted text-foreground font-semibold'
-//                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-//                   )}
-//                 >
-//                   {fullName(t)}
-//                 </button>
-//               ))}
-//             </>
-//           )}
+//       {!isRecruiter && slData && slData.length > 0 && (
+//         <Select
+//           value={serviceLineId || '_all'}
+//           onValueChange={v => onSlChange(v === '_all' ? '' : v)}
+//         >
+//           <SelectTrigger className="h-8 w-[160px] text-xs">
+//             <SelectValue placeholder="All service lines" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="_all">All service lines</SelectItem>
+//             {slData.map(s => (
+//               <SelectItem key={s.id} value={s.id}>
+//                 {s.name}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//       )}
 
-//           {!isRecruiter && hierarchyData?.reportingTo && hierarchyData.reportingTo.length > 0 && (
-//             <>
-//               <div className="h-px bg-border my-3 mx-1" />
-//               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2 flex items-center gap-1.5">
-//                 <Users size={9} />
-//                 Reporting Manager
-//               </p>
-//               {[
-//                 {
-//                   id: '',
-//                   firstName: 'All',
-//                   lastName: 'managers',
-//                   employeeId: null,
-//                   isActive: true,
-//                 },
-//                 ...hierarchyData.reportingTo,
-//               ].map(r => (
-//                 <button
-//                   key={r.id}
-//                   onClick={() => onReportingToChange(r.id === reportingToId ? '' : r.id)}
-//                   className={cn(
-//                     'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
-//                     reportingToId === r.id
-//                       ? 'bg-muted text-foreground font-semibold'
-//                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-//                   )}
-//                 >
-//                   {fullName(r)}
-//                 </button>
-//               ))}
-//             </>
-//           )}
+//       {hasAnyFilter && (
+//         <button
+//           onClick={clearAll}
+//           className="text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1 ml-1"
+//         >
+//           <X size={11} /> Clear all
+//         </button>
+//       )}
+//     </div>
+//   );
+// }
 
-//           {!isRecruiter && slData && slData.length > 0 && (
-//             <>
-//               <div className="h-px bg-border my-3 mx-1" />
-//               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 px-2 mb-2">
-//                 Service Lines
-//               </p>
-//               {[{ id: '', name: 'All service lines' }, ...slData].map(s => (
-//                 <button
-//                   key={s.id}
-//                   onClick={() => onSlChange(s.id === serviceLineId ? '' : s.id)}
-//                   className={cn(
-//                     'w-full text-left px-2.5 py-2 rounded-lg text-[12.5px] truncate transition-colors',
-//                     serviceLineId === s.id
-//                       ? 'bg-muted text-foreground font-semibold'
-//                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-//                   )}
-//                 >
-//                   {s.name}
-//                 </button>
-//               ))}
-//             </>
-//           )}
-//         </div>
-//       </ScrollArea>
+// // ─── Status Tabs ──────────────────────────────────────────────────────────────
+
+// function StatusTabs({
+//   statusFilter,
+//   onStatusChange,
+//   byStatus,
+// }: {
+//   statusFilter: string;
+//   onStatusChange: (v: string) => void;
+//   byStatus: Record<string, number>;
+// }) {
+//   const total = Object.values(byStatus).reduce((s, n) => s + n, 0);
+//   const tabs = [
+//     { key: '_all', label: 'All', count: total },
+//     ...SIDEBAR_STATUSES.map(s => ({ key: s.key, label: s.label, count: byStatus[s.key] ?? 0 })),
+//   ];
+
+//   return (
+//     <div className="px-5 pt-3 shrink-0">
+//       {/* <Tabs
+//         value={statusFilter || '_all'}
+//         onValueChange={v => onStatusChange(v === '_all' ? '' : v)}
+//       >
+//         <TabsList className="h-9 bg-muted/50">
+//           {tabs.map(t => (
+//             <TabsTrigger key={t.key} value={t.key} className="text-[12px] gap-1.5">
+//               {t.label}
+//               {t.count > 0 && (
+//                 <span className="text-[10px] tabular-nums text-muted-foreground">{t.count}</span>
+//               )}
+//             </TabsTrigger>
+//           ))}
+//         </TabsList>
+//       </Tabs> */}
 //     </div>
 //   );
 // }
@@ -1159,10 +1127,10 @@
 //       )}
 
 //       {/* ── Charts (non-recruiter) ── */}
-//       {!isRecruiter && (
-//         <div className="grid grid-cols-2 gap-3 px-5 pb-4 shrink-0">
-//           {/* Pipeline funnel */}
-//           <div className="bg-card border border-border rounded-xl p-5">
+//       {/* {!isRecruiter && (
+//         <div className="grid grid-cols-2 gap-3 px-5 pb-4 shrink-0"> */}
+//       {/* Pipeline funnel */}
+//       {/* <div className="bg-card border border-border rounded-xl p-5">
 //             <div className="flex items-center justify-between mb-1">
 //               <p className="text-[13px] font-semibold text-foreground">Pipeline funnel</p>
 //               <p className="text-[11px] text-muted-foreground">candidates by stage</p>
@@ -1189,10 +1157,10 @@
 //               ))}
 //             </div>
 //             <PipelineFunnelChart stages={stages} loading={pipelineLoading} />
-//           </div>
+//           </div> */}
 
-//           {/* Resume stats */}
-//           {!isRecruiter && (
+//       {/* Resume stats */}
+//       {/* {!isRecruiter && (
 //             <div className="px-5 pb-4 shrink-0">
 //               <div className="bg-card border border-border rounded-xl p-5">
 //                 <div className="flex items-center justify-between mb-1">
@@ -1235,10 +1203,10 @@
 //                 />
 //               </div>
 //             </div>
-//           )}
+//           )} */}
 
-//           {/* BU breakdown */}
-//           <div className="bg-card border border-border rounded-xl p-5">
+//       {/* BU breakdown */}
+//       {/* <div className="bg-card border border-border rounded-xl p-5">
 //             <div className="flex items-center justify-between mb-1">
 //               <p className="text-[13px] font-semibold text-foreground">By business unit</p>
 //               <p className="text-[11px] text-muted-foreground">active requirements</p>
@@ -1253,6 +1221,114 @@
 //               </span>
 //             </div>
 //             <BUBreakdownChart items={stats?.buBreakdown ?? []} loading={statsLoading} />
+//           </div>
+//         </div>
+//       )} */}
+
+//       {!isRecruiter && (
+//         <div className="px-5 pb-4 shrink-0 space-y-3">
+//           {/* ========================= FIRST ROW ========================= */}
+//           {/* Pipeline funnel */}
+//           <div className="bg-card border border-border rounded-xl p-5">
+//             <div className="flex items-center justify-between mb-1">
+//               <p className="text-[13px] font-semibold text-foreground">Pipeline funnel</p>
+//               <p className="text-[11px] text-muted-foreground">candidates by stage</p>
+//             </div>
+
+//             <div className="flex gap-4 mb-3">
+//               {[
+//                 { color: '#378ADD', label: 'Active' },
+//                 { color: '#EF9F27', label: 'On hold' },
+//                 { color: '#e2e8f0', label: 'Inactive', border: true },
+//               ].map(l => (
+//                 <span
+//                   key={l.label}
+//                   className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
+//                 >
+//                   <span
+//                     className="w-2 h-2 rounded-sm shrink-0"
+//                     style={{
+//                       backgroundColor: l.color,
+//                       border: l.border ? '0.5px solid #cbd5e1' : undefined,
+//                     }}
+//                   />
+//                   {l.label}
+//                 </span>
+//               ))}
+//             </div>
+
+//             <PipelineFunnelChart stages={stages} loading={pipelineLoading} />
+//           </div>
+
+//           {/* ========================= SECOND ROW ========================= */}
+//           <div className="grid grid-cols-2 gap-3">
+//             {/* Resume stats */}
+//             <div className="bg-card border border-border rounded-xl p-5">
+//               <div className="flex items-center justify-between mb-1">
+//                 <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
+
+//                 <Select
+//                   value={resumeBreakdownDim}
+//                   onValueChange={v => setResumeBreakdownDim(v as typeof resumeBreakdownDim)}
+//                 >
+//                   <SelectTrigger className="h-7 w-36 text-[11px]">
+//                     <SelectValue />
+//                   </SelectTrigger>
+
+//                   <SelectContent>
+//                     <SelectItem value="department">By department</SelectItem>
+//                     <SelectItem value="teamLead">By team lead</SelectItem>
+//                     <SelectItem value="businessUnit">By business unit</SelectItem>
+//                   </SelectContent>
+//                 </Select>
+//               </div>
+
+//               <div className="flex gap-4 mb-3">
+//                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+//                   <span
+//                     className="w-2 h-2 rounded-sm shrink-0"
+//                     style={{ backgroundColor: '#10B981' }}
+//                   />
+//                   Resumes
+//                 </span>
+
+//                 <span className="text-[11px] text-muted-foreground ml-auto">
+//                   {resumeStats?.total ?? 0} total
+//                 </span>
+//               </div>
+
+//               <ResumeBreakdownChart
+//                 items={
+//                   resumeBreakdownDim === 'department'
+//                     ? (resumeStats?.byDepartment ?? [])
+//                     : resumeBreakdownDim === 'teamLead'
+//                       ? (resumeStats?.byTeamLead ?? [])
+//                       : (resumeStats?.byBusinessUnit ?? [])
+//                 }
+//                 loading={resumeStatsLoading}
+//               />
+//             </div>
+
+//             {/* BU breakdown */}
+//             <div className="bg-card border border-border rounded-xl p-5">
+//               <div className="flex items-center justify-between mb-1">
+//                 <p className="text-[13px] font-semibold text-foreground">By business unit</p>
+
+//                 <p className="text-[11px] text-muted-foreground">active requirements</p>
+//               </div>
+
+//               <div className="flex gap-4 mb-3">
+//                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+//                   <span
+//                     className="w-2 h-2 rounded-sm shrink-0"
+//                     style={{ backgroundColor: '#7F77DD' }}
+//                   />
+//                   Requirements
+//                 </span>
+//               </div>
+
+//               <BUBreakdownChart items={stats?.buBreakdown ?? []} loading={statsLoading} />
+//             </div>
 //           </div>
 //         </div>
 //       )}
@@ -1428,64 +1504,48 @@
 //                 : "Here's what's happening across your requirements."}
 //           </p>
 //         </div>
-
-//         <div className="flex items-center gap-2">
-//           <DateRangePicker range={dateRange} onChange={setDateRange} />
-//           {!isRecruiter && slData && slData.length > 0 && (
-//             <Select
-//               value={serviceLineId || '_all'}
-//               onValueChange={v => setServiceLineId(v === '_all' ? '' : v)}
-//             >
-//               <SelectTrigger className="h-8 w-40 text-xs">
-//                 <SelectValue placeholder="All service lines" />
-//               </SelectTrigger>
-//               <SelectContent>
-//                 <SelectItem value="_all">All service lines</SelectItem>
-//                 {slData.map(s => (
-//                   <SelectItem key={s.id} value={s.id}>
-//                     {s.name}
-//                   </SelectItem>
-//                 ))}
-//               </SelectContent>
-//             </Select>
-//           )}
-//         </div>
 //       </div>
 
-//       {/* ── 3-column layout ── */}
+//       {/* ── Filter bar ── */}
+//       <FilterBar
+//         dateRange={dateRange}
+//         onDateChange={setDateRange}
+//         buId={buId}
+//         onBuChange={setBuId}
+//         deptId={deptId}
+//         onDeptChange={setDeptId}
+//         serviceLineId={serviceLineId}
+//         onSlChange={setServiceLineId}
+//         teamLeadId={teamLeadId}
+//         onTeamLeadChange={setTeamLeadId}
+//         reportingToId={reportingToId}
+//         onReportingToChange={setReportingToId}
+//         busData={busData}
+//         deptsData={deptsData}
+//         slData={slData}
+//         hierarchyData={hierarchyData}
+//         isRecruiter={isRecruiter}
+//       />
+
+//       {/* ── Status tabs (non-recruiter only) ── */}
+//       {!isRecruiter && (
+//         <StatusTabs
+//           statusFilter={statusFilter}
+//           onStatusChange={setStatusFilter}
+//           byStatus={byStatus}
+//         />
+//       )}
+
+//       {/* ── 2-column layout: main + right panel ── */}
 //       <div
 //         style={{
 //           display: 'grid',
-//           gridTemplateColumns: '210px 1fr 256px',
+//           gridTemplateColumns: '1fr 256px',
 //           flex: 1,
 //           minHeight: 0,
 //           overflow: 'hidden',
 //         }}
 //       >
-//         <div style={{ height: '100%', overflow: 'hidden' }}>
-//           <Sidebar
-//             statusFilter={statusFilter}
-//             onStatusChange={setStatusFilter}
-//             buId={buId}
-//             onBuChange={setBuId}
-//             deptId={deptId}
-//             onDeptChange={setDeptId}
-//             serviceLineId={serviceLineId}
-//             onSlChange={setServiceLineId}
-//             byStatus={byStatus}
-//             busData={busData}
-//             deptsData={deptsData}
-//             slData={slData}
-//             isRecruiter={isRecruiter}
-//             isSuperAdmin={isSuperAdmin}
-//             teamLeadId={teamLeadId}
-//             onTeamLeadChange={setTeamLeadId}
-//             reportingToId={reportingToId}
-//             onReportingToChange={setReportingToId}
-//             hierarchyData={hierarchyData}
-//           />
-//         </div>
-
 //         <div style={{ height: '100%', overflow: 'hidden' }}>
 //           <MainContent
 //             stats={stats}
@@ -1524,9 +1584,6 @@
 //   );
 // }
 
-// File: page.tsx
-// Path: src/app/(dashboard)/dashboard/page.tsx
-
 'use client';
 
 import { Suspense, useState, useMemo } from 'react';
@@ -1534,7 +1591,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays, startOfMonth, endOfMonth, startOfYear } from 'date-fns';
 import { DateRange } from 'react-day-picker';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from 'recharts';
 import {
   ChartContainer,
   ChartTooltip,
@@ -1552,28 +1609,24 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import {
   Zap,
   TrendingUp,
   AlertTriangle,
-  Clock,
   Users,
   Briefcase,
   CalendarIcon,
   X,
   ChevronRight,
-  PauseCircle,
   Building2,
   FileText,
-  Ban,
   CheckCircle2,
   AlertCircle,
+  Info,
 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
-// import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1657,13 +1710,26 @@ interface HierarchyUser {
   isActive: boolean;
 }
 
+// ── Enhanced recruiter stat — now includes group membership for drill-down ──
+interface RecruiterStat {
+  recruiterId: string;
+  name: string;
+  count: number;
+  departmentId: string | null;
+  departmentName: string | null;
+  teamLeadId: string | null;
+  teamLeadName: string | null;
+  buId: string | null;
+  buName: string | null;
+}
+
 interface ResumeStats {
   total: number;
   bySource: { source: string; count: number }[];
   byDepartment: { id: string; name: string; count: number }[];
   byTeamLead: { id: string; name: string; count: number }[];
   byBusinessUnit: { id: string; name: string; count: number }[];
-  byRecruiter: { recruiterId: string; name: string; count: number }[];
+  byRecruiter: RecruiterStat[];
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1691,14 +1757,24 @@ const PRESETS = [
   { label: 'This year', from: () => startOfYear(new Date()), to: () => new Date() },
 ];
 
-const SIDEBAR_STATUSES = [
-  { key: 'ACTIVE', label: 'Active', color: '#639922' },
-  { key: 'ON_HOLD', label: 'On hold', color: '#BA7517' },
-  { key: 'PENDING_APPROVAL', label: 'Pending', color: '#378ADD' },
-  { key: 'DRAFT', label: 'Draft', color: '#888780' },
-  { key: 'CLOSED', label: 'Closed', color: '#888780' },
-  { key: 'CANCELLED', label: 'Cancelled', color: '#888780' },
-];
+// ─── Source colors ────────────────────────────────────────────────────────────
+
+const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
+  Naukri: { bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400' },
+  LinkedIn: { bg: 'bg-sky-500/10', text: 'text-sky-600 dark:text-sky-400' },
+  Manual: { bg: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-400' },
+  Referral: { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400' },
+  Unspecified: { bg: 'bg-slate-500/10', text: 'text-slate-500 dark:text-slate-400' },
+};
+
+function sourceStyle(source: string) {
+  return (
+    SOURCE_COLORS[source] ?? {
+      bg: 'bg-emerald-500/10',
+      text: 'text-emerald-600 dark:text-emerald-400',
+    }
+  );
+}
 
 // ─── Chart configs ────────────────────────────────────────────────────────────
 
@@ -1710,10 +1786,6 @@ const funnelChartConfig: ChartConfig = {
 
 const buChartConfig: ChartConfig = {
   count: { label: 'Requirements', color: '#7F77DD' },
-};
-
-const resumeChartConfig: ChartConfig = {
-  count: { label: 'Resumes parsed', color: '#10B981' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1734,6 +1806,13 @@ const PRIORITY_COLOR: Record<string, string> = {
   MEDIUM: '#BA7517',
   LOW: '#639922',
 };
+
+function nameInitials(name: string) {
+  const parts = name.trim().split(' ');
+  return parts.length >= 2
+    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
 
 // ─── Date Range Picker ────────────────────────────────────────────────────────
 
@@ -1859,7 +1938,6 @@ function StatCard({
         onClick && 'cursor-pointer hover:shadow-sm hover:border-border/80 transition-all'
       )}
     >
-      {/* faint icon watermark */}
       <div
         className="absolute right-4 top-4 opacity-[0.07]"
         style={{ color: accentColor }}
@@ -1885,9 +1963,8 @@ function StatCard({
 
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
 
-      {/* bottom accent line */}
       <div
-        className="absolute bottom-0 left-0 right-0 h-[2px] opacity-60"
+        className="absolute bottom-0 left-0 right-0 h-0.5 opacity-60"
         style={{ background: accentColor }}
       />
     </div>
@@ -1903,7 +1980,7 @@ function PipelineFunnelChart({
   stages: PipelineStageOverview[];
   loading: boolean;
 }) {
-  if (loading) return <Skeleton className="h-[220px] w-full" />;
+  if (loading) return <Skeleton className="h-55 w-full" />;
 
   const data = stages.map(s => ({
     name: s.label.length > 9 ? s.label.slice(0, 9) + '…' : s.label,
@@ -1915,26 +1992,16 @@ function PipelineFunnelChart({
   }));
 
   return (
-    <ChartContainer config={funnelChartConfig} className="h-[220px] w-full">
+    <ChartContainer config={funnelChartConfig} className="h-55 w-full">
       <BarChart data={data} barSize={16} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        {/* <XAxis
-          dataKey="name"
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-          interval={0}
-        /> */}
         <XAxis
           dataKey="name"
           interval={0}
           angle={-40}
           textAnchor="end"
           height={60}
-          tick={{
-            fontSize: 10,
-            fill: 'hsl(var(--muted-foreground))',
-          }}
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
           tickLine={false}
           axisLine={false}
         />
@@ -1968,7 +2035,7 @@ function BUBreakdownChart({
   items: { id: string; name: string; count: number }[];
   loading: boolean;
 }) {
-  if (loading) return <Skeleton className="h-[220px] w-full" />;
+  if (loading) return <Skeleton className="h-55 w-full" />;
 
   const data = items.slice(0, 6).map(i => ({
     name: i.name.length > 18 ? i.name.slice(0, 18) + '…' : i.name,
@@ -1977,7 +2044,7 @@ function BUBreakdownChart({
   }));
 
   return (
-    <ChartContainer config={buChartConfig} className="h-[220px] w-full">
+    <ChartContainer config={buChartConfig} className="h-55 w-full">
       <BarChart
         layout="vertical"
         data={data}
@@ -2017,18 +2084,23 @@ function BUBreakdownChart({
   );
 }
 
-// ─── Resume Breakdown Chart (generic — dept / team-lead / BU) ────────────────
+// ─── Resume: clickable grouped bar chart ──────────────────────────────────────
 
-function ResumeBreakdownChart({
+function ResumeDimBarChart({
   items,
   loading,
+  onBarClick,
+  emptyMessage,
 }: {
   items: { id: string; name: string; count: number }[];
   loading: boolean;
+  onBarClick: (item: { id: string; name: string }) => void;
+  emptyMessage: React.ReactNode;
 }) {
-  if (loading) return <Skeleton className="h-[220px] w-full" />;
+  if (loading) return <Skeleton className="h-50 w-full" />;
 
-  const data = items.slice(0, 6).map(i => ({
+  const data = items.slice(0, 7).map(i => ({
+    id: i.id,
     name: i.name.length > 18 ? i.name.slice(0, 18) + '…' : i.name,
     fullName: i.name,
     count: i.count,
@@ -2036,50 +2108,253 @@ function ResumeBreakdownChart({
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[220px] text-[12px] text-muted-foreground">
-        No data for this period
+      <div className="flex flex-col items-center justify-center h-50 gap-2 px-6 text-center">
+        <Info size={16} className="text-muted-foreground/40" />
+        <p className="text-[11.5px] text-muted-foreground leading-relaxed">{emptyMessage}</p>
       </div>
     );
   }
 
   return (
-    <ChartContainer config={resumeChartConfig} className="h-[220px] w-full">
-      <BarChart
-        layout="vertical"
-        data={data}
-        barSize={14}
-        margin={{ top: 4, right: 28, left: 4, bottom: 0 }}
-      >
-        <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis
-          type="number"
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-          allowDecimals={false}
-        />
-        <YAxis
-          type="category"
-          dataKey="name"
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-          width={100}
-        />
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ''}
+    <div className="space-y-2">
+      {data.map(item => (
+        <div
+          key={item.id}
+          onClick={() => onBarClick({ id: item.id, name: item.fullName })}
+          className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-muted p-2"
+        >
+          <div className="w-28 text-xs truncate">{item.name}</div>
+
+          <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full"
+              style={{
+                width: `${(item.count / data[0].count) * 100}%`,
+              }}
             />
-          }
+          </div>
+
+          <div className="w-8 text-right text-xs font-semibold">{item.count}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Resume Parsed Card ───────────────────────────────────────────────────────
+// Popup overlay appears ON TOP of the chart when a bar is clicked.
+// No separate "By recruiter" tab — just click the chart to see who parsed.
+
+type ResumeDim = 'department' | 'teamLead' | 'businessUnit';
+
+const DIM_EMPTY: Record<ResumeDim, React.ReactNode> = {
+  department: 'No department data for this period.',
+  teamLead: (
+    <>
+      No team lead data.
+      <br />
+      Users may not have a team lead assigned to their profile.
+    </>
+  ),
+  businessUnit: (
+    <>
+      No business unit data.
+      <br />
+      Users may not have a BU assigned to their profile.
+    </>
+  ),
+};
+
+function ResumeParsedCard({
+  resumeStats,
+  loading,
+}: {
+  resumeStats: ResumeStats | undefined;
+  loading: boolean;
+}) {
+  const [dim, setDim] = useState<ResumeDim>('department');
+  const [popup, setPopup] = useState<{ id: string; name: string } | null>(null);
+
+  const dimItems: { id: string; name: string; count: number }[] =
+    dim === 'department'
+      ? (resumeStats?.byDepartment ?? [])
+      : dim === 'teamLead'
+        ? (resumeStats?.byTeamLead ?? [])
+        : (resumeStats?.byBusinessUnit ?? []);
+
+  const popupPeople = popup
+    ? (resumeStats?.byRecruiter ?? [])
+        .filter(r =>
+          dim === 'department'
+            ? r.departmentId === popup.id
+            : dim === 'teamLead'
+              ? r.teamLeadId === popup.id
+              : r.buId === popup.id
+        )
+        .sort((a, b) => b.count - a.count)
+    : [];
+
+  const popupTotal = popupPeople.reduce((s, r) => s + r.count, 0);
+  const popupMax = popupPeople[0]?.count ?? 1;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {loading ? '—' : (resumeStats?.total ?? 0)} total
+          </p>
+        </div>
+        <Select
+          value={dim}
+          onValueChange={v => {
+            setDim(v as ResumeDim);
+            setPopup(null);
+          }}
+        >
+          <SelectTrigger className="h-7 w-40 text-[11px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="department">By department</SelectItem>
+            <SelectItem value="teamLead">By team lead</SelectItem>
+            <SelectItem value="businessUnit">By business unit</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* ── Source pills ── */}
+      {!loading && (resumeStats?.bySource ?? []).length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {resumeStats!.bySource.map(s => {
+            const style = sourceStyle(s.source);
+            return (
+              <span
+                key={s.source}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
+                  style.bg,
+                  style.text
+                )}
+              >
+                {s.source}
+                <span className="opacity-50">·</span>
+                {s.count}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Chart + popup ── */}
+      {/*
+        FIX 2: overflow-visible so the popup (taller than the 200px chart)
+        isn't clipped by this container. The popup uses top-0/left-0/right-0
+        without bottom-0 and max-h-72, letting it grow as needed.
+      */}
+      <div className="relative" style={{ overflow: 'visible' }}>
+        <ResumeDimBarChart
+          items={dimItems}
+          loading={loading}
+          onBarClick={setPopup}
+          emptyMessage={DIM_EMPTY[dim]}
         />
-        <Bar dataKey="count" fill="var(--color-count)" radius={[0, 4, 4, 0]}>
-          {data.map((_, i) => (
-            <Cell key={i} fill="#10B981" fillOpacity={1 - i * 0.12} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ChartContainer>
+
+        {popup && (
+          <div
+            className={cn(
+              'absolute top-0 left-0 right-0 z-20',
+              'bg-card border border-emerald-500/20 rounded-lg shadow-xl',
+              'flex flex-col overflow-hidden'
+            )}
+            style={{ height: '350px' }}
+          >
+            {/* Popup header */}
+            <div
+              className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0"
+              style={{ borderLeftColor: '#10B981', borderLeftWidth: 3 }}
+            >
+              <div>
+                <p className="text-[12px] font-semibold text-foreground">{popup.name}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {popupPeople.length} person{popupPeople.length !== 1 ? 's' : ''}
+                  &nbsp;&middot;&nbsp;
+                  {popupTotal} resumes
+                </p>
+              </div>
+              <button
+                onClick={() => setPopup(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted"
+                aria-label="Close"
+              >
+                <X size={13} />
+              </button>
+            </div>
+
+            {/* Scrollable people list — min-h-0 is required for flex+scroll */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-4 py-2 space-y-0.5">
+                {popupPeople.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground py-6 text-center">
+                    No data available for this group
+                  </p>
+                ) : (
+                  popupPeople.map((r, i) => (
+                    <div
+                      key={r.recruiterId}
+                      className="flex items-center gap-2.5 py-1.5 px-1 rounded-md hover:bg-muted/50 transition-colors"
+                    >
+                      {/* rank */}
+                      <span className="text-[10px] text-muted-foreground/40 tabular-nums w-4 text-right shrink-0 font-mono">
+                        {i + 1}
+                      </span>
+
+                      {/* initials avatar */}
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
+                        style={{
+                          background: `hsl(${(i * 53 + 140) % 360}deg 55% 92%)`,
+                          color: `hsl(${(i * 53 + 140) % 360}deg 45% 35%)`,
+                        }}
+                      >
+                        {nameInitials(r.name)}
+                      </div>
+
+                      {/* name */}
+                      <p className="flex-1 text-[11.5px] font-medium text-foreground truncate">
+                        {r.name}
+                      </p>
+
+                      {/* mini bar */}
+                      <div className="w-14 h-0.75 bg-muted rounded-full overflow-hidden shrink-0">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full"
+                          style={{ width: `${(r.count / popupMax) * 100}%` }}
+                        />
+                      </div>
+
+                      {/* count */}
+                      <span className="text-[12px] font-semibold tabular-nums text-foreground shrink-0 w-7 text-right">
+                        {r.count}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer hint */}
+      {!popup && dimItems.length > 0 && !loading && (
+        <p className="text-[10px] text-muted-foreground/40 mt-3 pt-2 border-t border-border">
+          Click anywhere on a row to see who parsed resumes
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -2120,7 +2395,7 @@ function StageCard({
           className="text-muted-foreground/30 group-hover:text-muted-foreground transition-colors mt-px"
         />
       </div>
-      <p className="text-[11.5px] text-muted-foreground leading-tight mb-3 min-h-[30px] line-clamp-2">
+      <p className="text-[11.5px] text-muted-foreground leading-tight mb-3 min-h-7.5 line-clamp-2">
         {stage.label}
       </p>
       <p
@@ -2129,7 +2404,7 @@ function StageCard({
       >
         {stage.total}
       </p>
-      <div className="h-[3px] rounded-full bg-muted overflow-hidden mb-2">
+      <div className="h-0.75 rounded-full bg-muted overflow-hidden mb-2">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${pct}%`, backgroundColor: color }}
@@ -2160,7 +2435,7 @@ function AssignmentRow({ a }: { a: Assignment }) {
       onClick={() => router.push(`/requirements/${a.requirement.id}`)}
       className={cn(
         'px-4 py-3.5 border-b border-border/60 hover:bg-muted/40 cursor-pointer transition-colors',
-        isBreached && 'border-l-2 border-l-destructive pl-[14px]'
+        isBreached && 'border-l-2 border-l-destructive pl-3.5'
       )}
     >
       <div className="flex items-center gap-2 mb-1">
@@ -2175,7 +2450,7 @@ function AssignmentRow({ a }: { a: Assignment }) {
 
       <p className="text-[13px] font-semibold text-foreground leading-tight mb-1.5 flex items-center gap-1.5">
         <span
-          className="inline-block w-[6px] h-[6px] rounded-full shrink-0"
+          className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
           style={{ backgroundColor: priorityColor }}
         />
         {a.requirement.title}
@@ -2187,7 +2462,7 @@ function AssignmentRow({ a }: { a: Assignment }) {
       </p>
 
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-[3px] bg-muted rounded-full overflow-hidden">
+        <div className="flex-1 h-0.75 bg-muted rounded-full overflow-hidden">
           <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${fillPct}%` }} />
         </div>
         <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
@@ -2198,7 +2473,7 @@ function AssignmentRow({ a }: { a: Assignment }) {
   );
 }
 
-// ─── Recruiter Hero (shown instead of stat grid for recruiters) ───────────────
+// ─── Recruiter Hero ───────────────────────────────────────────────────────────
 
 function RecruiterHero({ assignments, loading }: { assignments: Assignment[]; loading: boolean }) {
   const total = assignments.length;
@@ -2247,11 +2522,12 @@ function RecruiterHero({ assignments, loading }: { assignments: Assignment[]; lo
 }
 
 // ─── Utility functions ───────────────────────────────────────────────────────
+
 function fullName(u: HierarchyUser) {
   return `${u.firstName} ${u.lastName}`.trim();
 }
 
-// ─── Filter Bar (all dropdown filters, top of page) ──────────────────────────
+// ─── Filter Bar ──────────────────────────────────────────────────────────────
 
 function FilterBar({
   dateRange,
@@ -2308,7 +2584,7 @@ function FilterBar({
 
       {!isRecruiter && busData && busData.length > 0 && (
         <Select value={buId || '_all'} onValueChange={v => onBuChange(v === '_all' ? '' : v)}>
-          <SelectTrigger className="h-8 w-[150px] text-xs gap-1.5">
+          <SelectTrigger className="h-8 w-37.5 text-xs gap-1.5">
             <Building2 size={12} className="text-muted-foreground shrink-0" />
             <SelectValue placeholder="All BUs" />
           </SelectTrigger>
@@ -2325,7 +2601,7 @@ function FilterBar({
 
       {deptsData && deptsData.length > 0 && (
         <Select value={deptId || '_all'} onValueChange={v => onDeptChange(v === '_all' ? '' : v)}>
-          <SelectTrigger className="h-8 w-[170px] text-xs gap-1.5">
+          <SelectTrigger className="h-8 w-42.5 text-xs gap-1.5">
             <Building2 size={12} className="text-muted-foreground shrink-0" />
             <SelectValue placeholder="All departments" />
           </SelectTrigger>
@@ -2345,7 +2621,7 @@ function FilterBar({
           value={teamLeadId || '_all'}
           onValueChange={v => onTeamLeadChange(v === '_all' ? '' : v)}
         >
-          <SelectTrigger className="h-8 w-[170px] text-xs gap-1.5">
+          <SelectTrigger className="h-8 w-42.5 text-xs gap-1.5">
             <Users size={12} className="text-muted-foreground shrink-0" />
             <SelectValue placeholder="All team leads" />
           </SelectTrigger>
@@ -2365,7 +2641,7 @@ function FilterBar({
           value={reportingToId || '_all'}
           onValueChange={v => onReportingToChange(v === '_all' ? '' : v)}
         >
-          <SelectTrigger className="h-8 w-[180px] text-xs gap-1.5">
+          <SelectTrigger className="h-8 w-45 text-xs gap-1.5">
             <Users size={12} className="text-muted-foreground shrink-0" />
             <SelectValue placeholder="All managers" />
           </SelectTrigger>
@@ -2385,7 +2661,7 @@ function FilterBar({
           value={serviceLineId || '_all'}
           onValueChange={v => onSlChange(v === '_all' ? '' : v)}
         >
-          <SelectTrigger className="h-8 w-[160px] text-xs">
+          <SelectTrigger className="h-8 w-40 text-xs">
             <SelectValue placeholder="All service lines" />
           </SelectTrigger>
           <SelectContent>
@@ -2422,31 +2698,13 @@ function StatusTabs({
   onStatusChange: (v: string) => void;
   byStatus: Record<string, number>;
 }) {
-  const total = Object.values(byStatus).reduce((s, n) => s + n, 0);
-  const tabs = [
-    { key: '_all', label: 'All', count: total },
-    ...SIDEBAR_STATUSES.map(s => ({ key: s.key, label: s.label, count: byStatus[s.key] ?? 0 })),
-  ];
+  // const total = Object.values(byStatus).reduce((s, n) => s + n, 0);
+  // const tabs = [
+  //   { key: '_all', label: 'All', count: total },
+  //   ...SIDEBAR_STATUSES.map(s => ({ key: s.key, label: s.label, count: byStatus[s.key] ?? 0 })),
+  // ];
 
-  return (
-    <div className="px-5 pt-3 shrink-0">
-      {/* <Tabs
-        value={statusFilter || '_all'}
-        onValueChange={v => onStatusChange(v === '_all' ? '' : v)}
-      >
-        <TabsList className="h-9 bg-muted/50">
-          {tabs.map(t => (
-            <TabsTrigger key={t.key} value={t.key} className="text-[12px] gap-1.5">
-              {t.label}
-              {t.count > 0 && (
-                <span className="text-[10px] tabular-nums text-muted-foreground">{t.count}</span>
-              )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs> */}
-    </div>
-  );
+  return <div className="px-5 pt-3 shrink-0" />;
 }
 
 // ─── Right Panel ──────────────────────────────────────────────────────────────
@@ -2466,7 +2724,6 @@ function RightPanel({
     a => a.requirement.isRespondByBreached || !!a.breachedAt
   ).length;
 
-  // Sort: breached first, then by assigned date desc
   const sorted = [...assignments].sort((a, b) => {
     const aB = a.requirement.isRespondByBreached || !!a.breachedAt ? 1 : 0;
     const bB = b.requirement.isRespondByBreached || !!b.breachedAt ? 1 : 0;
@@ -2478,7 +2735,6 @@ function RightPanel({
       className="bg-card border-l border-border flex flex-col"
       style={{ height: '100%', overflow: 'hidden' }}
     >
-      {/* Header */}
       <div className="px-4 py-5 border-b border-border shrink-0">
         <div className="flex items-start justify-between mb-1">
           <div>
@@ -2501,7 +2757,6 @@ function RightPanel({
         </div>
       </div>
 
-      {/* Mini date range */}
       <div className="px-4 py-3 border-b border-border shrink-0">
         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-2">
           Date range
@@ -2546,7 +2801,6 @@ function RightPanel({
         )}
       </div>
 
-      {/* Assignment list */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-4 space-y-3">
@@ -2567,7 +2821,7 @@ function RightPanel({
   );
 }
 
-// ─── Main content ─────────────────────────────────────────────────────────────
+// ─── Main Content ─────────────────────────────────────────────────────────────
 
 function MainContent({
   stats,
@@ -2596,9 +2850,6 @@ function MainContent({
   resumeStats: ResumeStats | undefined;
   resumeStatsLoading: boolean;
 }) {
-  const [resumeBreakdownDim, setResumeBreakdownDim] = useState<
-    'department' | 'teamLead' | 'businessUnit'
-  >('department');
   return (
     <div className="flex flex-col overflow-y-auto bg-background" style={{ height: '100%' }}>
       {/* ── Recruiter hero OR admin stat cards ── */}
@@ -2653,114 +2904,14 @@ function MainContent({
       )}
 
       {/* ── Charts (non-recruiter) ── */}
-      {/* {!isRecruiter && (
-        <div className="grid grid-cols-2 gap-3 px-5 pb-4 shrink-0"> */}
-      {/* Pipeline funnel */}
-      {/* <div className="bg-card border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[13px] font-semibold text-foreground">Pipeline funnel</p>
-              <p className="text-[11px] text-muted-foreground">candidates by stage</p>
-            </div>
-            <div className="flex gap-4 mb-3">
-              {[
-                { color: '#378ADD', label: 'Active' },
-                { color: '#EF9F27', label: 'On hold' },
-                { color: '#e2e8f0', label: 'Inactive', border: true },
-              ].map(l => (
-                <span
-                  key={l.label}
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-                >
-                  <span
-                    className="w-2 h-2 rounded-sm shrink-0"
-                    style={{
-                      backgroundColor: l.color,
-                      border: l.border ? '0.5px solid #cbd5e1' : undefined,
-                    }}
-                  />
-                  {l.label}
-                </span>
-              ))}
-            </div>
-            <PipelineFunnelChart stages={stages} loading={pipelineLoading} />
-          </div> */}
-
-      {/* Resume stats */}
-      {/* {!isRecruiter && (
-            <div className="px-5 pb-4 shrink-0">
-              <div className="bg-card border border-border rounded-xl p-5">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
-                  <Select
-                    value={resumeBreakdownDim}
-                    onValueChange={v => setResumeBreakdownDim(v as typeof resumeBreakdownDim)}
-                  >
-                    <SelectTrigger className="h-7 w-36 text-[11px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="department">By department</SelectItem>
-                      <SelectItem value="teamLead">By team lead</SelectItem>
-                      <SelectItem value="businessUnit">By business unit</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-4 mb-3">
-                  <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <span
-                      className="w-2 h-2 rounded-sm shrink-0"
-                      style={{ backgroundColor: '#10B981' }}
-                    />
-                    Resumes
-                  </span>
-                  <span className="text-[11px] text-muted-foreground ml-auto">
-                    {resumeStats?.total ?? 0} total
-                  </span>
-                </div>
-                <ResumeBreakdownChart
-                  items={
-                    resumeBreakdownDim === 'department'
-                      ? (resumeStats?.byDepartment ?? [])
-                      : resumeBreakdownDim === 'teamLead'
-                        ? (resumeStats?.byTeamLead ?? [])
-                        : (resumeStats?.byBusinessUnit ?? [])
-                  }
-                  loading={resumeStatsLoading}
-                />
-              </div>
-            </div>
-          )} */}
-
-      {/* BU breakdown */}
-      {/* <div className="bg-card border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[13px] font-semibold text-foreground">By business unit</p>
-              <p className="text-[11px] text-muted-foreground">active requirements</p>
-            </div>
-            <div className="flex gap-4 mb-3">
-              <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span
-                  className="w-2 h-2 rounded-sm shrink-0"
-                  style={{ backgroundColor: '#7F77DD' }}
-                />
-                Requirements
-              </span>
-            </div>
-            <BUBreakdownChart items={stats?.buBreakdown ?? []} loading={statsLoading} />
-          </div>
-        </div>
-      )} */}
-
       {!isRecruiter && (
         <div className="px-5 pb-4 shrink-0 space-y-3">
-          {/* ========================= FIRST ROW ========================= */}
           {/* Pipeline funnel */}
           <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[13px] font-semibold text-foreground">Pipeline funnel</p>
               <p className="text-[11px] text-muted-foreground">candidates by stage</p>
             </div>
-
             <div className="flex gap-4 mb-3">
               {[
                 { color: '#378ADD', label: 'Active' },
@@ -2782,67 +2933,20 @@ function MainContent({
                 </span>
               ))}
             </div>
-
             <PipelineFunnelChart stages={stages} loading={pipelineLoading} />
           </div>
 
-          {/* ========================= SECOND ROW ========================= */}
+          {/* Second row: Resume card + BU breakdown */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Resume stats */}
-            <div className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
-
-                <Select
-                  value={resumeBreakdownDim}
-                  onValueChange={v => setResumeBreakdownDim(v as typeof resumeBreakdownDim)}
-                >
-                  <SelectTrigger className="h-7 w-36 text-[11px]">
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <SelectItem value="department">By department</SelectItem>
-                    <SelectItem value="teamLead">By team lead</SelectItem>
-                    <SelectItem value="businessUnit">By business unit</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex gap-4 mb-3">
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span
-                    className="w-2 h-2 rounded-sm shrink-0"
-                    style={{ backgroundColor: '#10B981' }}
-                  />
-                  Resumes
-                </span>
-
-                <span className="text-[11px] text-muted-foreground ml-auto">
-                  {resumeStats?.total ?? 0} total
-                </span>
-              </div>
-
-              <ResumeBreakdownChart
-                items={
-                  resumeBreakdownDim === 'department'
-                    ? (resumeStats?.byDepartment ?? [])
-                    : resumeBreakdownDim === 'teamLead'
-                      ? (resumeStats?.byTeamLead ?? [])
-                      : (resumeStats?.byBusinessUnit ?? [])
-                }
-                loading={resumeStatsLoading}
-              />
-            </div>
+            {/* ── REPLACED: ResumeParsedCard handles all resume breakdown logic ── */}
+            <ResumeParsedCard resumeStats={resumeStats} loading={resumeStatsLoading} />
 
             {/* BU breakdown */}
             <div className="bg-card border border-border rounded-xl p-5">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-[13px] font-semibold text-foreground">By business unit</p>
-
                 <p className="text-[11px] text-muted-foreground">active requirements</p>
               </div>
-
               <div className="flex gap-4 mb-3">
                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span
@@ -2852,7 +2956,6 @@ function MainContent({
                   Requirements
                 </span>
               </div>
-
               <BUBreakdownChart items={stats?.buBreakdown ?? []} loading={statsLoading} />
             </div>
           </div>
@@ -2888,7 +2991,7 @@ function MainContent({
   );
 }
 
-// ─── Dashboard content ────────────────────────────────────────────────────────
+// ─── Dashboard Content ────────────────────────────────────────────────────────
 
 function DashboardContent() {
   const { user } = useAuth();
@@ -2915,9 +3018,6 @@ function DashboardContent() {
     if (dateTo) p.set('dateTo', dateTo);
     if (teamLeadId) p.set('teamLeadId', teamLeadId);
     if (reportingToId) p.set('reportingToId', reportingToId);
-    // if (buId) p.set('buId', buId);
-    // if (deptId) p.set('deptId', deptId);
-    // Department filter overrides BU filter
     if (deptId) {
       p.set('deptId', deptId);
     } else if (buId) {
@@ -2973,12 +3073,10 @@ function DashboardContent() {
     staleTime: 5 * 60 * 1000,
   });
 
-  console.log('slData:', slData);
-
   const { data: deptsData } = useQuery({
     queryKey: ['departments-filter'],
     queryFn: async () => (await axios.get('/departments?isActive=true')).data?.data as Department[],
-    enabled: isSuperAdmin, // ← only superadmin fetches/sees this
+    enabled: isSuperAdmin,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -3053,7 +3151,7 @@ function DashboardContent() {
         isRecruiter={isRecruiter}
       />
 
-      {/* ── Status tabs (non-recruiter only) ── */}
+      {/* ── Status tabs placeholder ── */}
       {!isRecruiter && (
         <StatusTabs
           statusFilter={statusFilter}
@@ -3062,7 +3160,7 @@ function DashboardContent() {
         />
       )}
 
-      {/* ── 2-column layout: main + right panel ── */}
+      {/* ── 2-column layout ── */}
       <div
         style={{
           display: 'grid',
