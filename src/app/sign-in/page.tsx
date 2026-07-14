@@ -193,7 +193,7 @@
 //               className="text-[22px] font-bold text-foreground tracking-tight mb-1"
 //               style={{ letterSpacing: '-0.025em' }}
 //             >
-//               Welcome back
+//               Welcome back!!!!!!!
 //             </h1>
 //             <p className="text-sm text-muted-foreground">Sign in to your workspace</p>
 //           </div>
@@ -557,7 +557,7 @@ function SignInForm() {
       setResetOpen(false);
       setNewPassword('');
       setConfirmPassword('');
-      router.replace('/login');
+      router.replace('/sign-in');
     } catch (error: any) {
       toast.error(error?.response?.data?.message ?? 'Unable to reset password.');
     } finally {
