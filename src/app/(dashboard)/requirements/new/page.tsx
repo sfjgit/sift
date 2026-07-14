@@ -1222,6 +1222,7 @@ export default function NewRequirementPage() {
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
   const jdInputRef = useRef<HTMLInputElement>(null!);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const userClearedSpoc = useRef(false); // ← add this
 
   // 1. Add two state vars next to isParsing in NewRequirementPage:
   // const [parsedFileName, setParsedFileName] = useState<string | null>(null);
@@ -1409,6 +1410,7 @@ export default function NewRequirementPage() {
 
   // Reset SPOC on client change
   useEffect(() => {
+    userClearedSpoc.current = false;
     setSelectedSpoc(null);
     setValue('clientSpocId', '');
     setDraft({ clientSpocId: '' });
@@ -1418,6 +1420,7 @@ export default function NewRequirementPage() {
   // Auto-select primary/only SPOC
   useEffect(() => {
     if (!spocs.length) return;
+    if (userClearedSpoc.current) return;
     const primary = spocs.find(s => s.isPrimary);
     const autoSelect = primary ?? (spocs.length === 1 ? spocs[0] : null);
     if (autoSelect && !getValues('clientSpocId')) {
@@ -2189,9 +2192,8 @@ export default function NewRequirementPage() {
                         SPOCs with tagged DMs shown first
                       </p>
                     )}
-                    {(spocs.length === 1 ||
-                      (spocs.find(s => s.isPrimary) && getValues('clientSpocId'))) &&
-                    selectedSpoc ? (
+                    {spocs.length === 1 && selectedSpoc ? (
+                      // Only one SPOC — lock it, no change option
                       <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
                         <CheckCircle size={14} className="text-emerald-500 shrink-0" />
                         {selectedSpoc.firstName} {selectedSpoc.lastName}
@@ -2200,20 +2202,31 @@ export default function NewRequirementPage() {
                             Primary
                           </span>
                         )}
-                        {spocs.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedSpoc(null);
-                              setValue('clientSpocId', '');
-                            }}
-                            className="ml-auto text-[11px] text-primary underline underline-offset-2"
-                          >
-                            Change
-                          </button>
+                      </div>
+                    ) : selectedSpoc && !userClearedSpoc.current ? (
+                      // Auto-selected primary, user can still change
+                      <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
+                        <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+                        {selectedSpoc.firstName} {selectedSpoc.lastName}
+                        {selectedSpoc.isPrimary && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold ml-1">
+                            Primary
+                          </span>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            userClearedSpoc.current = true;
+                            setSelectedSpoc(null);
+                            setValue('clientSpocId', '');
+                          }}
+                          className="ml-auto text-[11px] text-primary underline underline-offset-2"
+                        >
+                          Change
+                        </button>
                       </div>
                     ) : (
+                      // Full dropdown
                       <Controller
                         control={control}
                         name="clientSpocId"
@@ -2221,6 +2234,7 @@ export default function NewRequirementPage() {
                           <Select
                             value={field.value || ''}
                             onValueChange={val => {
+                              userClearedSpoc.current = false;
                               field.onChange(val);
                               setSelectedSpoc(spocs.find(s => s.id === val) ?? null);
                             }}

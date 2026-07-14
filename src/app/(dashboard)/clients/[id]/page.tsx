@@ -1887,7 +1887,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         {/* ── Left sidebar ────────────────────────────────────────────── */}
         <ScrollArea className="w-[220px] shrink-0 border-r">
           <div className="p-4 flex flex-col gap-3">
@@ -2057,7 +2057,7 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Tab content */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 h-0">
             <div className="p-6">
               {activeTab === 'spocs' && (
                 <SpocTab
