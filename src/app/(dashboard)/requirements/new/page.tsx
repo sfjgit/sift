@@ -319,7 +319,7 @@ const SECTION_COLORS: Record<string, string> = {
 function UnfilledPanel({
   control,
   primarySkills,
-  keySkills,
+  // keySkills,
   onGoTo,
 }: {
   control: any;
@@ -364,7 +364,7 @@ function UnfilledPanel({
   });
 
   return (
-    <div className="w-[220px] shrink-0 hidden xl:flex flex-col sticky top-0 h-fit pt-8 pr-6">
+    <div className="w-55 shrink-0 hidden xl:flex flex-col sticky top-0 h-fit pt-8 pr-6">
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-slate-100">
@@ -1694,7 +1694,7 @@ export default function NewRequirementPage() {
       {/* Body */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left sidebar — sections nav */}
-        <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
+        <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
           <div className="flex-1 overflow-y-auto py-6 px-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-3">
               Sections
@@ -1710,7 +1710,7 @@ export default function NewRequirementPage() {
                     key={sec.id}
                     type="button"
                     onClick={() => scrollToSection(sec.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${isActive ? 'bg-primary/[0.08] border border-primary/20' : 'hover:bg-slate-50'}`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${isActive ? 'bg-primary/8 border border-primary/20' : 'hover:bg-slate-50'}`}
                   >
                     <div
                       className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${hasError ? 'bg-red-500 text-white' : isActive ? 'bg-primary text-white shadow-sm shadow-primary/30' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}

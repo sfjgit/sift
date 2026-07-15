@@ -1,13 +1,12 @@
-/* eslint-disable react-hooks/set-state-in-render */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // File: page.tsx
 // Path: src/app/(dashboard)/requirements/page.tsx
 
 'use client';
 
-import { useState, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useState, useMemo, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Search,
   Plus,
@@ -24,8 +23,6 @@ import {
   CheckCircle2,
   FileText,
   AlertCircle,
-  UserX,
-  SlidersHorizontal,
   X,
   ChevronDown,
   ChevronUp,
@@ -35,9 +32,11 @@ import {
   UserCheck,
   UsersRound,
   Network,
-  Filter,
   ChevronRight,
   UserPlus,
+  Trash2,
+  Pencil,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +53,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
+import { STATUS_FLOW } from '@/components/requirements/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -414,6 +414,238 @@ function AssigneesPopover({
               Assign
             </button>
           </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+// ─── DeleteRequirementButton ──────────────────────────────────────────────────
+
+function DeleteRequirementButton({ req, canDelete }: { req: Requirement; canDelete: boolean }) {
+  const axios = useAxios();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => (await axios.delete(`/requirements/${req.id}`)).data,
+    onSuccess: () => {
+      setOpen(false);
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+      queryClient.invalidateQueries({ queryKey: ['requirement-stats'] });
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? 'Failed to delete requirement. Please try again.');
+    },
+  });
+
+  if (!canDelete) return null;
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={o => {
+        setOpen(o);
+        if (!o) setError(null);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          onClick={e => e.stopPropagation()}
+          title="Delete requirement"
+          className="w-7 h-7 flex items-center justify-center rounded-md text-red-600 hover:text-red-500 hover:bg-red-50 transition-colors"
+        >
+          <Trash2 size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        onClick={e => e.stopPropagation()}
+        className="w-64 p-3 shadow-xl border border-slate-200 rounded-xl"
+      >
+        <p className="text-[13px] font-semibold text-slate-800 mb-0.5">Delete requirement?</p>
+        <p className="text-[12px] text-slate-500 leading-snug mb-2">
+          <span className="font-mono text-slate-400">{req.reqCode}</span> — {req.title}
+        </p>
+        {error && (
+          <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-1.5 mb-2">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={() => setOpen(false)}
+            disabled={isPending}
+            className="px-2.5 py-1.5 text-[12px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => mutate()}
+            disabled={isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isPending ? (
+              <span className="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Trash2 size={12} />
+            )}
+            Delete
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── EditRequirementButton ────────────────────────────────────────────────────
+
+function EditRequirementButton({ req, canEdit }: { req: Requirement; canEdit: boolean }) {
+  const router = useRouter();
+  const idOrSlug = req.slug ?? req.id;
+  if (!canEdit) return null;
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        router.push(`/requirements/${idOrSlug}/edit`);
+      }}
+      title="Edit requirement"
+      className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+    >
+      <Pencil size={13} />
+    </button>
+  );
+}
+
+// ─── StatusChangeButton ───────────────────────────────────────────────────────
+
+function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boolean }) {
+  const axios = useAxios();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [toStatus, setToStatus] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  // const nextStatuses = STATUS_FLOW[req.status] ?? [];
+  const nextStatuses = STATUS_FLOW[req.status as keyof typeof STATUS_FLOW] ?? [];
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () =>
+      (
+        await axios.patch(`/requirements/${req.id}/status`, {
+          status: toStatus,
+          reason: reason || undefined,
+        })
+      ).data,
+    onSuccess: () => {
+      close();
+      queryClient.invalidateQueries({ queryKey: ['requirements'] });
+      queryClient.invalidateQueries({ queryKey: ['requirement-stats'] });
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.message ?? 'Failed to change status.');
+    },
+  });
+
+  function close() {
+    setOpen(false);
+    setToStatus(null);
+    setReason('');
+    setError(null);
+  }
+
+  if (!canEdit || nextStatuses.length === 0) return null;
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={o => {
+        setOpen(o);
+        if (!o) {
+          setToStatus(null);
+          setReason('');
+          setError(null);
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          onClick={e => e.stopPropagation()}
+          title="Change status"
+          className="flex items-center gap-0.5 h-7 px-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+        >
+          <RefreshCw size={12} />
+          <ChevronDown size={11} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        onClick={e => e.stopPropagation()}
+        className="w-60 p-2 shadow-xl border border-slate-200 rounded-xl"
+      >
+        {!toStatus ? (
+          <>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-1 pb-1.5">
+              Change status
+            </p>
+            {nextStatuses.map(s => (
+              <button
+                key={s}
+                onClick={() => setToStatus(s)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] text-slate-700 hover:bg-slate-50 transition-colors text-left"
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    ALL_STATUSES.find(x => x.key === s)?.dot ?? 'bg-slate-400'
+                  }`}
+                />
+                {STATUS_LABEL[s] ?? s}
+              </button>
+            ))}
+          </>
+        ) : (
+          <>
+            <p className="text-[13px] font-semibold text-slate-800 mb-0.5">
+              Change to {STATUS_LABEL[toStatus] ?? toStatus}?
+            </p>
+            <p className="text-[11px] text-slate-500 mb-2">Reason (optional)</p>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Why is this status changing?"
+              rows={2}
+              className="w-full text-[12px] border border-slate-200 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2"
+            />
+            {error && (
+              <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-1.5 mb-2">
+                {error}
+              </p>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setToStatus(null)}
+                disabled={isPending}
+                className="px-2.5 py-1.5 text-[12px] font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => mutate()}
+                disabled={isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+              >
+                {isPending && (
+                  <span className="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                )}
+                Confirm
+              </button>
+            </div>
+          </>
         )}
       </PopoverContent>
     </Popover>
@@ -957,6 +1189,8 @@ function RequirementsTable({
   onStageClick,
   allStages,
   canAdd,
+  canDelete,
+  canEdit,
   onAssign,
 }: {
   requirements: Requirement[];
@@ -969,6 +1203,8 @@ function RequirementsTable({
   onStageClick: (req: Requirement, stageId: string) => void;
   allStages: PipelineStage[];
   canAdd: boolean;
+  canDelete: boolean;
+  canEdit: boolean;
   onAssign: (req: Requirement) => void;
 }) {
   const router = useRouter();
@@ -981,8 +1217,11 @@ function RequirementsTable({
       >
         <thead className="sticky top-0 z-10">
           <tr className="bg-slate-50 border-b-2 border-slate-200">
-            <th className="w-9 px-3 py-3">
+            {/* <th className="w-9 px-3 py-3">
               <Checkbox checked={allSelected} onCheckedChange={onSelectAll} />
+            </th> */}
+            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
+              Action
             </th>
             <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
               Code
@@ -1048,7 +1287,7 @@ function RequirementsTable({
                 onClick={() => router.push(`/requirements/${idOrSlug}`)}
               >
                 {/* Checkbox */}
-                <td
+                {/* <td
                   className="px-3 py-3"
                   onClick={e => {
                     e.stopPropagation();
@@ -1056,6 +1295,14 @@ function RequirementsTable({
                   }}
                 >
                   <Checkbox checked={isSelected} />
+                </td> */}
+                {/* Action column */}
+                <td className="px-2 py-3" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-0.5">
+                    <EditRequirementButton req={req} canEdit={canEdit} />
+                    <StatusChangeButton req={req} canEdit={canEdit} />
+                    <DeleteRequirementButton req={req} canDelete={canDelete} />
+                  </div>
                 </td>
 
                 {/* Code */}
@@ -1945,6 +2192,8 @@ function RequirementsPageInner() {
   const total = reqData?.meta?.total ?? 0;
   const totalPages = reqData?.meta?.pages ?? 0;
   const canAdd = reqData?.permissions?.canAdd ?? false;
+  const canDelete = reqData?.permissions?.canDelete ?? false;
+  const canEdit = reqData?.permissions?.canEdit ?? false;
   const isSuperAdmin = reqData?.scope?.isSuperAdmin ?? false;
 
   const canonicalKeys = useMemo(() => canonicalMeta.map(s => s.key), [canonicalMeta]);
@@ -2025,6 +2274,13 @@ function RequirementsPageInner() {
               <Plus size={14} /> Add New Job
             </Button>
           )}
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
+            onClick={() => router.push('/requirements/bulk')}
+          >
+            <Plus size={14} /> Bulk Upload Requirement
+          </Button>
         </div>
         <div className="px-4 pb-2.5 overflow-x-auto scrollbar-none">
           <FilterBar
@@ -2097,6 +2353,8 @@ function RequirementsPageInner() {
                 onStageClick={(req, stageId) => openDrawer(req, stageId)}
                 allStages={allStages}
                 canAdd={canAdd}
+                canDelete={canDelete}
+                canEdit={canEdit}
                 onAssign={handleAssign}
               />
             )}
