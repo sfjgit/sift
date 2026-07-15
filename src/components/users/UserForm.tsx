@@ -44,6 +44,7 @@ const baseSchema = z.object({
   roleId: z.string().min(1, 'Role is required'),
   departmentId: z.string().optional().nullable(),
   reportingToId: z.string().optional().nullable(),
+  teamLeadId: z.string().optional().nullable(),
   isSuperAdmin: z.boolean().default(false),
 });
 
@@ -399,6 +400,21 @@ export function UserForm({
                 value={field.value}
                 onChange={field.onChange}
                 placeholder="Select manager"
+                options={users}
+              />
+            )}
+          />
+        </Field>
+
+        <Field label="Team Lead" error={errors.teamLeadId?.message as string}>
+          <Controller
+            control={control}
+            name="teamLeadId"
+            render={({ field }) => (
+              <UserSelect
+                value={field.value}
+                onChange={field.onChange}
+                placeholder="Select Team Lead"
                 options={users}
               />
             )}
