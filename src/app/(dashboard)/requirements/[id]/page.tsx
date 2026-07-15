@@ -517,7 +517,7 @@ function UploadResumeModal({
                   <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
                     <FileText className="w-6 h-6 text-emerald-600" />
                   </div>
-                  <p className="text-sm font-bold text-emerald-800 truncate max-w-[240px]">
+                  <p className="text-sm font-bold text-emerald-800 truncate max-w-60">
                     {file.name}
                   </p>
                   <p className="text-xs text-emerald-600 mt-1">
