@@ -952,10 +952,8 @@ function BulkUploadModal({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {r.status === 'success' && r.candidateName ? (
-                          <span className="text-xs font-semibold text-slate-800">
-                            {r.candidateName}
-                          </span>
+                        {r.status === 'success' ? (
+                          <span className="text-xs font-semibold text-slate-800">{r.status}</span>
                         ) : r.status === 'duplicate' ? (
                           <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                             Duplicate
