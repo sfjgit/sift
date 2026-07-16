@@ -778,7 +778,7 @@ export default function BulkRequirementUploadPage() {
 
   const handleDownloadTemplate = useCallback(() => {
     const link = document.createElement('a');
-    link.href = '/templates/bulk_requirement.xlsx';
+    link.href = '/templates/Talentos_BulkRequirement_Template.xlsx';
     link.setAttribute('download', 'TalentOS_BulkRequirement_Template.xlsx');
     document.body.appendChild(link);
     link.click();
