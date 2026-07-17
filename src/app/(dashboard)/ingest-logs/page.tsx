@@ -1,0 +1,1402 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+'use client';
+
+// =============================================================================
+// /ingest-logs  —  Resume ingestion log viewer
+// Consumes:  GET /ingestion-logs?include=list,stats&<filters>&page&pageSize&sortBy&sortDir
+// Matches the dashboard design system (same tokens, shadcn components, react-query).
+//
+// Filters supported directly by the backend today:
+//   recruiterId, requirementId, reqCode, source, status, duplicateType,
+//   failedStep, isDuplicate, needsManualReview, from, to, search
+//
+// Hierarchy filters (teamLeadId / reportingToId) are wired into the query string
+// so they "just work" the moment buildWhere() resolves them to a recruiter set
+// server-side — same way the dashboard endpoints already do. See note at bottom.
+// =============================================================================
+
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { format, subDays, startOfMonth, endOfMonth, startOfYear } from 'date-fns';
+import { DateRange } from 'react-day-picker';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
+import {
+  CalendarIcon,
+  X,
+  Search,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Users,
+  Building2,
+  FileText,
+  CheckCircle2,
+  Copy,
+  AlertTriangle,
+  Sparkles,
+  FileEdit,
+  Cpu,
+  Hash,
+  Mail,
+  Briefcase,
+  UserSearch,
+  Info,
+} from 'lucide-react';
+import { useAxios } from '@/hooks/useAxios';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type IngestionStatus = 'SUCCESS' | 'DUPLICATE' | 'MANUAL_REVIEW' | 'FAILED' | 'DRAFT';
+
+interface LogRow {
+  id: string;
+  uploadedById: string | null;
+  recruiterId: string | null;
+  recruiterName?: string | null; // used if backend enriches; else resolved client-side
+  source: string;
+  inputType: string | null;
+  reqCode: string | null;
+  requirementId: string | null;
+  assignmentId: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  fileSizeKb: number | null;
+  checksum: string | null;
+  textChecksum: string | null;
+  extractedEmail: string | null;
+  extractedPhone: string | null;
+  parsedEmail: string | null;
+  parsedName: string | null;
+  status: IngestionStatus;
+  failedStep: string | null;
+  httpStatus: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  isDuplicate: boolean;
+  duplicateType: string | null;
+  existingResumeId: string | null;
+  existingCandidateId: string | null;
+  modelUsed: string | null;
+  tokensUsed: number | null;
+  confidence: number | null;
+  needsManualReview: boolean;
+  escalationReasons: string[];
+  candidateId: string | null;
+  resumeId: string | null;
+  isDraft: boolean;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+interface LogStats {
+  total: number;
+  successRate: number;
+  byStatus: Record<string, number>;
+  bySource: Record<string, number>;
+  duplicatesByType: Record<string, number>;
+  failuresByStep: Record<string, number>;
+  tokensUsed: number;
+  avgDurationMs: number;
+  avgConfidence: number | null;
+}
+
+interface Pagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+}
+
+interface ListResponse {
+  success: boolean;
+  rows: LogRow[];
+  pagination: Pagination;
+  stats?: LogStats;
+}
+
+interface HierarchyUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeId?: string | null;
+}
+
+interface RecruiterLite {
+  id: string;
+  name: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const STATUS_META: Record<
+  IngestionStatus,
+  { label: string; color: string; bg: string; text: string; icon: React.ElementType }
+> = {
+  SUCCESS: {
+    label: 'Success',
+    color: '#10B981',
+    bg: 'bg-emerald-500/10',
+    text: 'text-emerald-600 dark:text-emerald-400',
+    icon: CheckCircle2,
+  },
+  DUPLICATE: {
+    label: 'Duplicate',
+    color: '#EF9F27',
+    bg: 'bg-amber-500/10',
+    text: 'text-amber-600 dark:text-amber-500',
+    icon: Copy,
+  },
+  MANUAL_REVIEW: {
+    label: 'Manual review',
+    color: '#7F77DD',
+    bg: 'bg-violet-500/10',
+    text: 'text-violet-600 dark:text-violet-400',
+    icon: UserSearch,
+  },
+  FAILED: {
+    label: 'Failed',
+    color: '#E24B4A',
+    bg: 'bg-red-500/10',
+    text: 'text-red-600 dark:text-red-400',
+    icon: AlertTriangle,
+  },
+  DRAFT: {
+    label: 'Draft',
+    color: '#94a3b8',
+    bg: 'bg-slate-500/10',
+    text: 'text-slate-500 dark:text-slate-400',
+    icon: FileEdit,
+  },
+};
+
+const SOURCE_META: Record<string, { label: string; bg: string; text: string }> = {
+  MANUAL_UPLOAD: {
+    label: 'Manual',
+    bg: 'bg-violet-500/10',
+    text: 'text-violet-600 dark:text-violet-400',
+  },
+  PORTAL: { label: 'Portal', bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400' },
+  CHROME_EXTENSION: {
+    label: 'Extension',
+    bg: 'bg-sky-500/10',
+    text: 'text-sky-600 dark:text-sky-400',
+  },
+  BATCH: { label: 'Batch', bg: 'bg-teal-500/10', text: 'text-teal-600 dark:text-teal-400' },
+  UNKNOWN: { label: 'Unknown', bg: 'bg-slate-500/10', text: 'text-slate-500 dark:text-slate-400' },
+};
+
+const DUP_LABEL: Record<string, string> = {
+  BINARY_CHECKSUM: 'Binary (same file)',
+  TEXT_CHECKSUM: 'Text (re-encoded)',
+  EMAIL_PHONE: 'Email / phone',
+};
+
+const STEP_LABEL: Record<string, string> = {
+  NORMALIZE_INPUT: 'Normalize input',
+  EXTRACT_TEXT: 'Extract text',
+  EMAIL_PRECHECK: 'Email pre-check',
+  DUPLICATE_CHECK: 'Duplicate check',
+  S3_UPLOAD: 'S3 upload',
+  AI_PARSE: 'AI parse',
+  PERSIST: 'Persist',
+  CORE_SYNC: 'Core sync',
+};
+
+const STATUS_OPTIONS: IngestionStatus[] = [
+  'SUCCESS',
+  'DUPLICATE',
+  'MANUAL_REVIEW',
+  'FAILED',
+  'DRAFT',
+];
+const SOURCE_OPTIONS = ['MANUAL_UPLOAD', 'PORTAL', 'CHROME_EXTENSION', 'BATCH', 'UNKNOWN'];
+const DUP_OPTIONS = ['BINARY_CHECKSUM', 'TEXT_CHECKSUM', 'EMAIL_PHONE'];
+
+const PRESETS = [
+  { label: 'Today', from: () => new Date(), to: () => new Date() },
+  { label: 'Last 7 days', from: () => subDays(new Date(), 6), to: () => new Date() },
+  { label: 'Last 30 days', from: () => subDays(new Date(), 29), to: () => new Date() },
+  { label: 'This month', from: () => startOfMonth(new Date()), to: () => endOfMonth(new Date()) },
+  { label: 'This year', from: () => startOfYear(new Date()), to: () => new Date() },
+];
+
+const PAGE_SIZES = [20, 50, 100];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function timeAgo(iso: string): string {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
+  return format(d, 'dd MMM');
+}
+
+function nameInitials(name: string) {
+  const parts = name.trim().split(' ');
+  return parts.length >= 2
+    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
+
+function userName(u: { firstName?: string; lastName?: string; name?: string }) {
+  if (u.name) return u.name;
+  return `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
+}
+
+function useDebounced<T>(value: T, delay = 350): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return v;
+}
+
+// ─── Date Range Picker (same as dashboard) ────────────────────────────────────
+
+function DateRangePicker({
+  range,
+  onChange,
+}: {
+  range: DateRange | undefined;
+  onChange: (r: DateRange | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label =
+    range?.from && range?.to
+      ? `${format(range.from, 'dd MMM yy')} – ${format(range.to, 'dd MMM yy')}`
+      : range?.from
+        ? `From ${format(range.from, 'dd MMM yy')}`
+        : 'All time';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            'h-8 gap-1.5 text-xs font-medium',
+            range?.from && 'border-primary/40 bg-primary/5 text-primary'
+          )}
+        >
+          <CalendarIcon size={13} />
+          {label}
+          {range?.from && (
+            <span
+              role="button"
+              aria-label="Clear date range"
+              onClick={e => {
+                e.stopPropagation();
+                onChange(undefined);
+              }}
+              className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
+            >
+              <X size={11} />
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="flex">
+          <div className="flex flex-col gap-0.5 border-r border-border p-3 w-32">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1 px-1">
+              Quick select
+            </p>
+            {PRESETS.map(p => (
+              <button
+                key={p.label}
+                onClick={() => {
+                  onChange({ from: p.from(), to: p.to() });
+                  setOpen(false);
+                }}
+                className="text-left px-2 py-1.5 rounded-md text-[12px] text-foreground hover:bg-muted transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="p-3">
+            <Calendar
+              mode="range"
+              selected={range}
+              onSelect={onChange}
+              numberOfMonths={2}
+              disabled={{ after: new Date() }}
+              initialFocus
+            />
+            <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onChange(undefined);
+                  setOpen(false);
+                }}
+              >
+                Clear
+              </Button>
+              <Button size="sm" onClick={() => setOpen(false)}>
+                Apply
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Searchable recruiter picker (Popover-based, no Command dependency) ────────
+
+function RecruiterPicker({
+  recruiters,
+  value,
+  onChange,
+  loading,
+}: {
+  recruiters: RecruiterLite[];
+  value: string;
+  onChange: (id: string) => void;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+
+  const selected = recruiters.find(r => r.id === value);
+  const filtered = q.trim()
+    ? recruiters.filter(r => r.name.toLowerCase().includes(q.toLowerCase()))
+    : recruiters;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            'h-8 gap-1.5 text-xs font-medium w-44 justify-between',
+            value && 'border-primary/40 bg-primary/5 text-primary'
+          )}
+        >
+          <span className="flex items-center gap-1.5 truncate">
+            <UserSearch size={12} className="shrink-0 text-muted-foreground" />
+            <span className="truncate">{selected ? selected.name : 'All users'}</span>
+          </span>
+          {value ? (
+            <span
+              role="button"
+              aria-label="Clear recruiter"
+              onClick={e => {
+                e.stopPropagation();
+                onChange('');
+              }}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X size={11} />
+            </span>
+          ) : (
+            <ChevronDown size={12} className="text-muted-foreground shrink-0" />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="start">
+        <div className="p-2 border-b border-border">
+          <div className="relative">
+            <Search
+              size={12}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search recruiter…"
+              className="w-full h-7 pl-7 pr-2 text-xs bg-muted/50 rounded-md outline-none focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {loading ? (
+            <div className="p-2 space-y-1">
+              {[1, 2, 3, 4].map(i => (
+                <Skeleton key={i} className="h-7 w-full" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground text-center py-4">
+              No recruiters found
+            </p>
+          ) : (
+            filtered.slice(0, 200).map(r => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  onChange(r.id);
+                  setOpen(false);
+                  setQ('');
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-[12px] hover:bg-muted transition-colors',
+                  r.id === value && 'bg-primary/5 text-primary'
+                )}
+              >
+                <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[8px] font-bold shrink-0">
+                  {nameInitials(r.name)}
+                </span>
+                <span className="truncate">{r.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Small badges ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }: { status: IngestionStatus }) {
+  const m = STATUS_META[status];
+  const Icon = m.icon;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
+        m.bg,
+        m.text
+      )}
+    >
+      <Icon size={10} />
+      {m.label}
+    </span>
+  );
+}
+
+function SourceBadge({ source }: { source: string }) {
+  const m = SOURCE_META[source] ?? SOURCE_META.UNKNOWN;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium',
+        m.bg,
+        m.text
+      )}
+    >
+      {m.label}
+    </span>
+  );
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  accentColor,
+  loading,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  icon: React.ElementType;
+  accentColor: string;
+  loading?: boolean;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{ borderLeftColor: accentColor, borderLeftWidth: 3 }}
+      className={cn(
+        'bg-card border border-border rounded-xl p-4 flex flex-col gap-1.5 relative overflow-hidden',
+        onClick && 'cursor-pointer hover:shadow-sm hover:border-border/80 transition-all',
+        active && 'ring-1 ring-primary/40'
+      )}
+    >
+      <div
+        className="absolute right-3 top-3 opacity-[0.07]"
+        style={{ color: accentColor }}
+        aria-hidden
+      >
+        <Icon size={34} />
+      </div>
+      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+        {label}
+      </p>
+      {loading ? (
+        <Skeleton className="h-8 w-14 mt-1" />
+      ) : (
+        <p className="text-[30px] font-semibold tabular-nums leading-none">{value}</p>
+      )}
+      {sub && <p className="text-[10.5px] text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+// ─── Detail drawer ────────────────────────────────────────────────────────────
+
+function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        {label}
+      </p>
+      <p className={cn('text-[12px] text-foreground break-all', mono && 'font-mono text-[11px]')}>
+        {value ?? '—'}
+      </p>
+    </div>
+  );
+}
+
+function DetailDrawer({
+  row,
+  recruiterName,
+  onClose,
+}: {
+  row: LogRow | null;
+  recruiterName: (id: string | null) => string;
+  onClose: () => void;
+}) {
+  if (!row) return null;
+  const m = STATUS_META[row.status];
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40 animate-in fade-in" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 w-110 max-w-[90vw] bg-card border-l border-border z-50 flex flex-col shadow-2xl animate-in slide-in-from-right">
+        {/* header */}
+        <div
+          className="px-5 py-4 border-b border-border flex items-start justify-between shrink-0"
+          style={{ borderLeftColor: m.color, borderLeftWidth: 3 }}
+        >
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <StatusBadge status={row.status} />
+              {row.httpStatus && (
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  HTTP {row.httpStatus}
+                </span>
+              )}
+            </div>
+            <p className="text-[14px] font-semibold text-foreground truncate">
+              {row.parsedName ?? row.fileName ?? 'Ingestion attempt'}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {format(new Date(row.createdAt), 'dd MMM yyyy, HH:mm:ss')} ·{' '}
+              {fmtDuration(row.durationMs)}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground p-1.5 rounded-md hover:bg-muted shrink-0"
+            aria-label="Close"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Outcome / error */}
+          {(row.errorCode ||
+            row.errorMessage ||
+            row.failedStep ||
+            row.escalationReasons?.length > 0) && (
+            <section className="space-y-2">
+              <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                <AlertTriangle size={12} className="text-red-500" /> Outcome
+              </p>
+              <div className="bg-muted/40 rounded-lg p-3 space-y-2">
+                {row.failedStep && (
+                  <Field label="Failed step" value={STEP_LABEL[row.failedStep] ?? row.failedStep} />
+                )}
+                {row.errorCode && <Field label="Error code" value={row.errorCode} mono />}
+                {row.errorMessage && <Field label="Message" value={row.errorMessage} />}
+                {row.escalationReasons?.length > 0 && (
+                  <Field label="Escalation reasons" value={row.escalationReasons.join(', ')} mono />
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Duplicate */}
+          {row.isDuplicate && (
+            <section className="space-y-2">
+              <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                <Copy size={12} className="text-amber-500" /> Duplicate
+              </p>
+              <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-lg p-3">
+                <Field
+                  label="Type"
+                  value={
+                    row.duplicateType ? (DUP_LABEL[row.duplicateType] ?? row.duplicateType) : '—'
+                  }
+                />
+                <Field label="Existing candidate" value={row.existingCandidateId} mono />
+                <Field label="Existing resume" value={row.existingResumeId} mono />
+              </div>
+            </section>
+          )}
+
+          {/* Identity */}
+          <section className="space-y-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+              <Mail size={12} className="text-sky-500" /> Identity
+            </p>
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-lg p-3">
+              <Field label="Parsed name" value={row.parsedName} />
+              <Field label="Parsed email" value={row.parsedEmail} />
+              <Field label="Regex email" value={row.extractedEmail} />
+              <Field label="Regex phone" value={row.extractedPhone} />
+            </div>
+          </section>
+
+          {/* File */}
+          <section className="space-y-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+              <FileText size={12} className="text-violet-500" /> File
+            </p>
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-lg p-3">
+              <Field label="File name" value={row.fileName} />
+              <Field label="MIME" value={row.mimeType} mono />
+              <Field label="Size" value={row.fileSizeKb ? `${row.fileSizeKb} KB` : '—'} />
+              <Field label="Input type" value={row.inputType} />
+              <Field label="Binary checksum" value={row.checksum} mono />
+              <Field label="Text checksum" value={row.textChecksum} mono />
+            </div>
+          </section>
+
+          {/* Routing */}
+          <section className="space-y-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+              <Briefcase size={12} className="text-emerald-500" /> Routing
+            </p>
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-lg p-3">
+              <Field label="Source" value={<SourceBadge source={row.source} />} />
+              <Field label="Recruiter" value={recruiterName(row.recruiterId)} />
+              <Field label="Uploaded by" value={recruiterName(row.uploadedById)} />
+              <Field label="Req code" value={row.reqCode} mono />
+              <Field label="Requirement id" value={row.requirementId} mono />
+              <Field label="Assignment id" value={row.assignmentId} mono />
+            </div>
+          </section>
+
+          {/* AI */}
+          <section className="space-y-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+              <Cpu size={12} className="text-indigo-500" /> AI parse
+            </p>
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-lg p-3">
+              <Field label="Model" value={row.modelUsed} mono />
+              <Field label="Tokens" value={row.tokensUsed?.toLocaleString() ?? '—'} />
+              <Field
+                label="Confidence"
+                value={row.confidence != null ? row.confidence.toFixed(2) : '—'}
+              />
+              <Field label="Needs manual review" value={row.needsManualReview ? 'Yes' : 'No'} />
+            </div>
+          </section>
+
+          {/* Result */}
+          <section className="space-y-2">
+            <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+              <CheckCircle2 size={12} className="text-emerald-500" /> Result
+            </p>
+            <div className="grid grid-cols-2 gap-3 bg-muted/40 rounded-lg p-3">
+              <Field label="Candidate id" value={row.candidateId} mono />
+              <Field label="Resume id" value={row.resumeId} mono />
+              <Field label="Is draft" value={row.isDraft ? 'Yes' : 'No'} />
+              <Field label="Log id" value={row.id} mono />
+            </div>
+          </section>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Table ────────────────────────────────────────────────────────────────────
+
+type SortKey = 'createdAt' | 'durationMs' | 'tokensUsed';
+
+function SortHeader({
+  label,
+  col,
+  sortBy,
+  sortDir,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  col: SortKey;
+  sortBy: string;
+  sortDir: 'asc' | 'desc';
+  onSort: (c: SortKey) => void;
+  align?: 'left' | 'right';
+}) {
+  const activeSort = sortBy === col;
+  return (
+    <button
+      onClick={() => onSort(col)}
+      className={cn(
+        'inline-flex items-center gap-1 hover:text-foreground transition-colors',
+        align === 'right' && 'flex-row-reverse'
+      )}
+    >
+      {label}
+      {activeSort && (sortDir === 'desc' ? <ChevronDown size={11} /> : <ChevronUp size={11} />)}
+    </button>
+  );
+}
+
+function LogTable({
+  rows,
+  loading,
+  recruiterName,
+  onRowClick,
+  sortBy,
+  sortDir,
+  onSort,
+}: {
+  rows: LogRow[];
+  loading: boolean;
+  recruiterName: (id: string | null) => string;
+  onRowClick: (r: LogRow) => void;
+  sortBy: string;
+  sortDir: 'asc' | 'desc';
+  onSort: (c: SortKey) => void;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      {/* header */}
+      <div className="grid grid-cols-[110px_1fr_90px_130px_90px_1fr_80px_90px] gap-3 px-4 py-2.5 border-b border-border bg-muted/30 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <div>Status</div>
+        <div>Candidate</div>
+        <div>Source</div>
+        <div>Recruiter</div>
+        <div>Req</div>
+        <div>Detail</div>
+        <div className="text-right">
+          <SortHeader
+            label="Tokens"
+            col="tokensUsed"
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSort={onSort}
+            align="right"
+          />
+        </div>
+        <div className="text-right">
+          <SortHeader
+            label="When"
+            col="createdAt"
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSort={onSort}
+            align="right"
+          />
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="divide-y divide-border/60">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="px-4 py-3">
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
+          <Info size={22} className="opacity-40" />
+          <p className="text-[13px]">No ingestion logs match these filters</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-border/60">
+          {rows.map(row => {
+            const detail =
+              row.status === 'DUPLICATE' && row.duplicateType
+                ? (DUP_LABEL[row.duplicateType] ?? row.duplicateType)
+                : row.status === 'FAILED' && row.failedStep
+                  ? `${STEP_LABEL[row.failedStep] ?? row.failedStep}${row.errorCode ? ` · ${row.errorCode}` : ''}`
+                  : row.status === 'MANUAL_REVIEW'
+                    ? 'No email found'
+                    : (row.modelUsed ?? '—');
+
+            return (
+              <div
+                key={row.id}
+                onClick={() => onRowClick(row)}
+                className="grid grid-cols-[110px_1fr_90px_130px_90px_1fr_80px_90px] gap-3 px-4 py-3 items-center hover:bg-muted/40 cursor-pointer transition-colors text-[12px]"
+              >
+                <div>
+                  <StatusBadge status={row.status} />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground truncate">
+                    {row.parsedName ?? row.fileName ?? '—'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {row.parsedEmail ?? row.extractedEmail ?? '—'}
+                  </p>
+                </div>
+                <div>
+                  <SourceBadge source={row.source} />
+                </div>
+                <div className="truncate text-muted-foreground">
+                  {recruiterName(row.recruiterId)}
+                </div>
+                <div className="font-mono text-[11px] text-muted-foreground truncate">
+                  {row.reqCode ?? '—'}
+                </div>
+                <div className="truncate text-muted-foreground">{detail}</div>
+                <div className="text-right tabular-nums text-muted-foreground">
+                  {row.tokensUsed ? row.tokensUsed.toLocaleString() : '—'}
+                </div>
+                <div
+                  className="text-right text-muted-foreground"
+                  title={format(new Date(row.createdAt), 'dd MMM yyyy HH:mm:ss')}
+                >
+                  {timeAgo(row.createdAt)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+function IngestLogsContent() {
+  const axios = useAxios();
+
+  // ── Filter state ──
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [status, setStatus] = useState('');
+  const [source, setSource] = useState('');
+  const [duplicateType, setDuplicateType] = useState('');
+  const [recruiterId, setRecruiterId] = useState('');
+  const [teamLeadId, setTeamLeadId] = useState('');
+  const [reportingToId, setReportingToId] = useState('');
+  const [reqCode, setReqCode] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const search = useDebounced(searchInput, 350);
+  const reqCodeDebounced = useDebounced(reqCode, 350);
+
+  // ── Pagination + sort ──
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [sortBy, setSortBy] = useState<SortKey>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const [selected, setSelected] = useState<LogRow | null>(null);
+
+  const dateFrom = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
+  const dateTo = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
+
+  // Reset to page 1 whenever a filter changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [
+    dateFrom,
+    dateTo,
+    status,
+    source,
+    duplicateType,
+    recruiterId,
+    teamLeadId,
+    reportingToId,
+    reqCodeDebounced,
+    search,
+    pageSize,
+  ]);
+
+  const qs = useMemo(() => {
+    const p = new URLSearchParams();
+    p.set('include', 'list,stats');
+    p.set('page', String(page));
+    p.set('pageSize', String(pageSize));
+    p.set('sortBy', sortBy);
+    p.set('sortDir', sortDir);
+    if (dateFrom) p.set('from', dateFrom);
+    if (dateTo) p.set('to', dateTo);
+    if (status) p.set('status', status);
+    if (source) p.set('source', source);
+    if (duplicateType) {
+      p.set('duplicateType', duplicateType);
+      p.set('isDuplicate', 'true');
+    }
+    if (recruiterId) p.set('recruiterId', recruiterId);
+    if (teamLeadId) p.set('teamLeadId', teamLeadId);
+    if (reportingToId) p.set('reportingToId', reportingToId);
+    if (reqCodeDebounced.trim()) p.set('reqCode', reqCodeDebounced.trim());
+    if (search.trim()) p.set('search', search.trim());
+    return p.toString();
+  }, [
+    page,
+    pageSize,
+    sortBy,
+    sortDir,
+    dateFrom,
+    dateTo,
+    status,
+    source,
+    duplicateType,
+    recruiterId,
+    teamLeadId,
+    reportingToId,
+    reqCodeDebounced,
+    search,
+  ]);
+
+  // ── Main data ──
+  const { data, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['ingestion-logs', qs],
+    queryFn: async () =>
+      (
+        await axios.get(`/candidate/api/resume/ingestion-logs?${qs}`, {
+          baseURL: '/api/proxy',
+          withCredentials: true,
+          headers: { 'Content-Type': undefined },
+          transformRequest: (data: any) => data,
+        })
+      ).data as ListResponse,
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const rows = data?.rows ?? [];
+  const stats = data?.stats;
+  const pagination = data?.pagination;
+
+  // ── Filter option data (same endpoints the dashboard uses) ──
+  const { data: hierarchyData } = useQuery({
+    queryKey: ['hierarchy-filters'],
+    queryFn: async () =>
+      (await axios.get('/users/hierarchy-filters')).data?.data as {
+        teamLeads: HierarchyUser[];
+        reportingTo: HierarchyUser[];
+      },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Recruiter roster → names for both the dropdown AND resolving row.recruiterId.
+  // ⚠️ Point this at YOUR recruiter/users list endpoint (see note in chat).
+  const { data: recruitersRaw, isLoading: recruitersLoading } = useQuery({
+    queryKey: ['ingest-recruiters'],
+    queryFn: async () => (await axios.get('/users?limit=1000')).data?.data as any[],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const recruiters: RecruiterLite[] = useMemo(
+    () =>
+      (recruitersRaw ?? [])
+        .map(u => ({ id: u.id, name: userName(u) || u.employeeId || u.id }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [recruitersRaw]
+  );
+
+  const recruiterMap = useMemo(() => {
+    const m = new Map<string, string>();
+    recruiters.forEach(r => m.set(r.id, r.name));
+    return m;
+  }, [recruiters]);
+
+  // Prefer backend-enriched name → client map → short id
+  const recruiterName = (id: string | null) => {
+    if (!id) return '—';
+    return recruiterMap.get(id) ?? `${id.slice(0, 8)}…`;
+  };
+
+  function handleSort(col: SortKey) {
+    if (sortBy === col) {
+      setSortDir(d => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortBy(col);
+      setSortDir('desc');
+    }
+  }
+
+  const hasAnyFilter =
+    !!dateRange?.from ||
+    !!status ||
+    !!source ||
+    !!duplicateType ||
+    !!recruiterId ||
+    !!teamLeadId ||
+    !!reportingToId ||
+    !!reqCode.trim() ||
+    !!searchInput.trim();
+
+  function clearAll() {
+    setDateRange(undefined);
+    setStatus('');
+    setSource('');
+    setDuplicateType('');
+    setRecruiterId('');
+    setTeamLeadId('');
+    setReportingToId('');
+    setReqCode('');
+    setSearchInput('');
+  }
+
+  const dupSub =
+    stats && (stats.duplicatesByType.TEXT_CHECKSUM || stats.duplicatesByType.BINARY_CHECKSUM)
+      ? `${stats.duplicatesByType.TEXT_CHECKSUM ?? 0} text · ${stats.duplicatesByType.BINARY_CHECKSUM ?? 0} binary`
+      : 'no duplicates';
+
+  const topFailStep = stats
+    ? Object.entries(stats.failuresByStep).sort((a, b) => b[1] - a[1])[0]?.[0]
+    : undefined;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'calc(100vh - 64px)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-background shrink-0">
+        <div>
+          <p className="text-[18px] font-semibold text-foreground leading-tight flex items-center gap-2">
+            <FileText size={18} className="text-emerald-500" />
+            Ingestion logs
+          </p>
+          <p className="text-[12px] text-muted-foreground mt-1">
+            Every resume ingestion attempt — success, duplicate, manual review and failure — across
+            manual uploads and portal pulls.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 text-xs"
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+          Refresh
+        </Button>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border bg-background shrink-0">
+        <DateRangePicker range={dateRange} onChange={setDateRange} />
+
+        <Select value={status || '_all'} onValueChange={v => setStatus(v === '_all' ? '' : v)}>
+          <SelectTrigger className="h-8 w-36 text-xs">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">All statuses</SelectItem>
+            {STATUS_OPTIONS.map(s => (
+              <SelectItem key={s} value={s}>
+                {STATUS_META[s].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={source || '_all'} onValueChange={v => setSource(v === '_all' ? '' : v)}>
+          <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectValue placeholder="All sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">All sources</SelectItem>
+            {SOURCE_OPTIONS.map(s => (
+              <SelectItem key={s} value={s}>
+                {SOURCE_META[s]?.label ?? s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={duplicateType || '_all'}
+          onValueChange={v => setDuplicateType(v === '_all' ? '' : v)}
+        >
+          <SelectTrigger className="h-8 w-40 text-xs">
+            <SelectValue placeholder="Dup. type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">Any duplicate type</SelectItem>
+            {DUP_OPTIONS.map(d => (
+              <SelectItem key={d} value={d}>
+                {DUP_LABEL[d]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <RecruiterPicker
+          recruiters={recruiters}
+          value={recruiterId}
+          onChange={setRecruiterId}
+          loading={recruitersLoading}
+        />
+
+        {hierarchyData?.teamLeads && hierarchyData.teamLeads.length > 0 && (
+          <Select
+            value={teamLeadId || '_all'}
+            onValueChange={v => setTeamLeadId(v === '_all' ? '' : v)}
+          >
+            <SelectTrigger className="h-8 w-40 text-xs gap-1.5">
+              <Users size={12} className="text-muted-foreground shrink-0" />
+              <SelectValue placeholder="All team leads" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">All team leads</SelectItem>
+              {hierarchyData.teamLeads.map(t => (
+                <SelectItem key={t.id} value={t.id}>
+                  {userName(t)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {hierarchyData?.reportingTo && hierarchyData.reportingTo.length > 0 && (
+          <Select
+            value={reportingToId || '_all'}
+            onValueChange={v => setReportingToId(v === '_all' ? '' : v)}
+          >
+            <SelectTrigger className="h-8 w-40 text-xs gap-1.5">
+              <Building2 size={12} className="text-muted-foreground shrink-0" />
+              <SelectValue placeholder="All managers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_all">All managers</SelectItem>
+              {hierarchyData.reportingTo.map(r => (
+                <SelectItem key={r.id} value={r.id}>
+                  {userName(r)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Req code */}
+        <div className="relative">
+          <Hash
+            size={12}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={reqCode}
+            onChange={e => setReqCode(e.target.value)}
+            placeholder="Req code"
+            className="h-8 w-28 pl-7 text-xs"
+          />
+        </div>
+
+        {/* Free-text search */}
+        <div className="relative">
+          <Search
+            size={12}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Name, email, file…"
+            className="h-8 w-48 pl-7 text-xs"
+          />
+        </div>
+
+        {hasAnyFilter && (
+          <button
+            onClick={clearAll}
+            className="text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1 ml-1"
+          >
+            <X size={11} /> Clear all
+          </button>
+        )}
+      </div>
+
+      {/* ── Scroll area ── */}
+      <div className="flex-1 overflow-y-auto bg-background">
+        {/* Stat cards */}
+        <div className="grid grid-cols-6 gap-3 px-5 py-4">
+          <StatCard
+            label="Total"
+            value={stats?.total ?? 0}
+            sub="attempts in range"
+            icon={FileText}
+            accentColor="#378ADD"
+            loading={isLoading}
+          />
+          <StatCard
+            label="Success rate"
+            value={stats ? `${stats.successRate}%` : '—'}
+            sub={`${(stats?.byStatus.SUCCESS ?? 0) + (stats?.byStatus.DRAFT ?? 0)} ingested`}
+            icon={CheckCircle2}
+            accentColor="#10B981"
+            loading={isLoading}
+          />
+          <StatCard
+            label="Duplicates"
+            value={stats?.byStatus.DUPLICATE ?? 0}
+            sub={dupSub}
+            icon={Copy}
+            accentColor="#EF9F27"
+            loading={isLoading}
+            active={status === 'DUPLICATE'}
+            onClick={() => setStatus(status === 'DUPLICATE' ? '' : 'DUPLICATE')}
+          />
+          <StatCard
+            label="Manual review"
+            value={stats?.byStatus.MANUAL_REVIEW ?? 0}
+            sub="no email found"
+            icon={UserSearch}
+            accentColor="#7F77DD"
+            loading={isLoading}
+            active={status === 'MANUAL_REVIEW'}
+            onClick={() => setStatus(status === 'MANUAL_REVIEW' ? '' : 'MANUAL_REVIEW')}
+          />
+          <StatCard
+            label="Failed"
+            value={stats?.byStatus.FAILED ?? 0}
+            sub={topFailStep ? `most at ${STEP_LABEL[topFailStep] ?? topFailStep}` : 'no failures'}
+            icon={AlertTriangle}
+            accentColor="#E24B4A"
+            loading={isLoading}
+            active={status === 'FAILED'}
+            onClick={() => setStatus(status === 'FAILED' ? '' : 'FAILED')}
+          />
+          <StatCard
+            label="Tokens used"
+            value={stats ? stats.tokensUsed.toLocaleString() : 0}
+            sub={stats ? `avg ${fmtDuration(stats.avgDurationMs)} / parse` : ''}
+            icon={Sparkles}
+            accentColor="#6366f1"
+            loading={isLoading}
+          />
+        </div>
+
+        {/* Table */}
+        <div className="px-5 pb-5">
+          <LogTable
+            rows={rows}
+            loading={isLoading}
+            recruiterName={recruiterName}
+            onRowClick={setSelected}
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSort={handleSort}
+          />
+
+          {/* Pagination */}
+          {pagination && pagination.total > 0 && (
+            <div className="flex items-center justify-between mt-3 px-1">
+              <p className="text-[11px] text-muted-foreground">
+                Showing{' '}
+                <span className="font-medium text-foreground">
+                  {(pagination.page - 1) * pagination.pageSize + 1}–
+                  {Math.min(pagination.page * pagination.pageSize, pagination.total)}
+                </span>{' '}
+                of{' '}
+                <span className="font-medium text-foreground">
+                  {pagination.total.toLocaleString()}
+                </span>
+              </p>
+
+              <div className="flex items-center gap-3">
+                <Select value={String(pageSize)} onValueChange={v => setPageSize(Number(v))}>
+                  <SelectTrigger className="h-7 w-24 text-[11px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZES.map(s => (
+                      <SelectItem key={s} value={String(s)}>
+                        {s} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    disabled={pagination.page <= 1 || isFetching}
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft size={14} />
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground px-1 tabular-nums">
+                    {pagination.page} / {pagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    disabled={!pagination.hasNext || isFetching}
+                    onClick={() => setPage(p => p + 1)}
+                  >
+                    <ChevronRight size={14} />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Detail drawer */}
+      <DetailDrawer
+        row={selected}
+        recruiterName={recruiterName}
+        onClose={() => setSelected(null)}
+      />
+    </div>
+  );
+}
+
+export default function IngestLogsPage() {
+  return (
+    <Suspense fallback={null}>
+      <IngestLogsContent />
+    </Suspense>
+  );
+}
