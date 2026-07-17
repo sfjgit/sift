@@ -3,16 +3,19 @@
 
 // =============================================================================
 // /ingest-logs  —  Resume ingestion log viewer
-// Consumes:  GET /ingestion-logs?include=list,stats&<filters>&page&pageSize&sortBy&sortDir
-// Matches the dashboard design system (same tokens, shadcn components, react-query).
+// Consumes:  GET /candidate/api/resume/ingestion-logs?include=list,stats&<filters>
 //
-// Filters supported directly by the backend today:
+// Backend filters used directly (NO backend change needed for these):
 //   recruiterId, requirementId, reqCode, source, status, duplicateType,
 //   failedStep, isDuplicate, needsManualReview, from, to, search
 //
-// Hierarchy filters (teamLeadId / reportingToId) are wired into the query string
-// so they "just work" the moment buildWhere() resolves them to a recruiter set
-// server-side — same way the dashboard endpoints already do. See note at bottom.
+// NOTE: Requirement lives in a different microservice — the log only stores
+// requirementId + reqCode. So titles are resolved on the CLIENT from
+// /dashboard/my-assignments (same source the dashboard uses). The table shows
+// reqCode straight from the row (no lookup); the dropdown + drawer show titles.
+//
+// teamLeadId / reportingToId are sent in the query string but only narrow results
+// once buildWhere() resolves them to a recruiter set server-side.
 // =============================================================================
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -66,7 +69,7 @@ interface LogRow {
   id: string;
   uploadedById: string | null;
   recruiterId: string | null;
-  recruiterName?: string | null; // used if backend enriches; else resolved client-side
+  recruiterName?: string | null;
   source: string;
   inputType: string | null;
   reqCode: string | null;
@@ -139,6 +142,12 @@ interface HierarchyUser {
 interface RecruiterLite {
   id: string;
   name: string;
+}
+
+interface RequirementLite {
+  id: string;
+  reqCode: string;
+  title: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -374,7 +383,7 @@ function DateRangePicker({
   );
 }
 
-// ─── Searchable recruiter picker (Popover-based, no Command dependency) ────────
+// ─── Searchable recruiter picker ───────────────────────────────────────────────
 
 function RecruiterPicker({
   recruiters,
@@ -472,6 +481,111 @@ function RecruiterPicker({
                   {nameInitials(r.name)}
                 </span>
                 <span className="truncate">{r.name}</span>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Searchable requirement picker ─────────────────────────────────────────────
+
+function RequirementPicker({
+  requirements,
+  value,
+  onChange,
+  loading,
+}: {
+  requirements: RequirementLite[];
+  value: string;
+  onChange: (id: string) => void;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+
+  const selected = requirements.find(r => r.id === value);
+  const filtered = q.trim()
+    ? requirements.filter(r => `${r.reqCode} ${r.title}`.toLowerCase().includes(q.toLowerCase()))
+    : requirements;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            'h-8 gap-1.5 text-xs font-medium w-52 justify-between',
+            value && 'border-primary/40 bg-primary/5 text-primary'
+          )}
+        >
+          <span className="flex items-center gap-1.5 truncate">
+            <Briefcase size={12} className="shrink-0 text-muted-foreground" />
+            <span className="truncate">{selected ? selected.reqCode : 'All requirements'}</span>
+          </span>
+          {value ? (
+            <span
+              role="button"
+              aria-label="Clear requirement"
+              onClick={e => {
+                e.stopPropagation();
+                onChange('');
+              }}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X size={11} />
+            </span>
+          ) : (
+            <ChevronDown size={12} className="text-muted-foreground shrink-0" />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0" align="start">
+        <div className="p-2 border-b border-border">
+          <div className="relative">
+            <Search
+              size={12}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              autoFocus
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search req code or title…"
+              className="w-full h-7 pl-7 pr-2 text-xs bg-muted/50 rounded-md outline-none focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+        <div className="max-h-64 overflow-y-auto p-1">
+          {loading ? (
+            <div className="p-2 space-y-1">
+              {[1, 2, 3].map(i => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground text-center py-4">
+              No requirements found
+            </p>
+          ) : (
+            filtered.slice(0, 200).map(r => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  onChange(r.id);
+                  setOpen(false);
+                  setQ('');
+                }}
+                className={cn(
+                  'w-full flex flex-col items-start px-2 py-1.5 rounded-md text-left hover:bg-muted transition-colors',
+                  r.id === value && 'bg-primary/5'
+                )}
+              >
+                <span className="text-[11px] font-mono text-muted-foreground">{r.reqCode}</span>
+                <span className="text-[12px] text-foreground truncate w-full">{r.title}</span>
               </button>
             ))
           )}
@@ -584,10 +698,12 @@ function Field({ label, value, mono }: { label: string; value: React.ReactNode; 
 function DetailDrawer({
   row,
   recruiterName,
+  requirementLabel,
   onClose,
 }: {
   row: LogRow | null;
   recruiterName: (id: string | null) => string;
+  requirementLabel: (id: string | null) => string;
   onClose: () => void;
 }) {
   if (!row) return null;
@@ -708,6 +824,7 @@ function DetailDrawer({
               <Field label="Source" value={<SourceBadge source={row.source} />} />
               <Field label="Recruiter" value={recruiterName(row.recruiterId)} />
               <Field label="Uploaded by" value={recruiterName(row.uploadedById)} />
+              <Field label="Requirement" value={requirementLabel(row.requirementId)} />
               <Field label="Req code" value={row.reqCode} mono />
               <Field label="Requirement id" value={row.requirementId} mono />
               <Field label="Assignment id" value={row.assignmentId} mono />
@@ -787,6 +904,7 @@ function LogTable({
   loading,
   recruiterName,
   onRowClick,
+  requirementLabel,
   sortBy,
   sortDir,
   onSort,
@@ -796,6 +914,7 @@ function LogTable({
   recruiterName: (id: string | null) => string;
   onRowClick: (r: LogRow) => void;
   sortBy: string;
+  requirementLabel: (id: string | null, reqCode?: string | null) => string;
   sortDir: 'asc' | 'desc';
   onSort: (c: SortKey) => void;
 }) {
@@ -877,10 +996,14 @@ function LogTable({
                   <SourceBadge source={row.source} />
                 </div>
                 <div className="truncate text-muted-foreground">
-                  {recruiterName(row.recruiterId)}
+                  {row.recruiterName ?? recruiterName(row.recruiterId)}
                 </div>
-                <div className="font-mono text-[11px] text-muted-foreground truncate">
-                  {row.reqCode ?? '—'}
+                <div
+                  className="truncate text-muted-foreground"
+                  title={requirementLabel(row.requirementId, row.reqCode)}
+                >
+                  {/* {requirementLabel(row.requirementId)} */}
+                  {requirementLabel(row.requirementId, row.reqCode)}
                 </div>
                 <div className="truncate text-muted-foreground">{detail}</div>
                 <div className="text-right tabular-nums text-muted-foreground">
@@ -901,52 +1024,75 @@ function LogTable({
   );
 }
 
+// ─── Filters model (single source of truth → fixes setState-in-effect) ─────────
+
+interface Filters {
+  dateRange: DateRange | undefined;
+  status: string;
+  source: string;
+  duplicateType: string;
+  recruiterId: string;
+  teamLeadId: string;
+  reportingToId: string;
+  requirementId: string;
+  reqCode: string;
+  searchInput: string;
+}
+
+const EMPTY_FILTERS: Filters = {
+  dateRange: undefined,
+  status: '',
+  source: '',
+  duplicateType: '',
+  recruiterId: '',
+  teamLeadId: '',
+  reportingToId: '',
+  requirementId: '',
+  reqCode: '',
+  searchInput: '',
+};
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 function IngestLogsContent() {
   const axios = useAxios();
 
-  // ── Filter state ──
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [status, setStatus] = useState('');
-  const [source, setSource] = useState('');
-  const [duplicateType, setDuplicateType] = useState('');
-  const [recruiterId, setRecruiterId] = useState('');
-  const [teamLeadId, setTeamLeadId] = useState('');
-  const [reportingToId, setReportingToId] = useState('');
-  const [reqCode, setReqCode] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const search = useDebounced(searchInput, 350);
-  const reqCodeDebounced = useDebounced(reqCode, 350);
-
-  // ── Pagination + sort ──
+  // One filters object → any edit resets page in the SAME render (no effect).
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [sortBy, setSortBy] = useState<SortKey>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-
   const [selected, setSelected] = useState<LogRow | null>(null);
 
-  const dateFrom = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
-  const dateTo = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
+  function patchFilters(patch: Partial<Filters>) {
+    setFilters(f => ({ ...f, ...patch }));
+    setPage(1); // synchronous with the filter change → single render, no cascade
+  }
 
-  // Reset to page 1 whenever a filter changes
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  function changePageSize(size: number) {
+    setPageSize(size);
     setPage(1);
-  }, [
-    dateFrom,
-    dateTo,
+  }
+
+  const {
+    dateRange,
     status,
     source,
     duplicateType,
     recruiterId,
     teamLeadId,
     reportingToId,
-    reqCodeDebounced,
-    search,
-    pageSize,
-  ]);
+    requirementId,
+    reqCode,
+    searchInput,
+  } = filters;
+
+  const search = useDebounced(searchInput, 350);
+  const reqCodeDebounced = useDebounced(reqCode, 350);
+
+  const dateFrom = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
+  const dateTo = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
@@ -966,6 +1112,7 @@ function IngestLogsContent() {
     if (recruiterId) p.set('recruiterId', recruiterId);
     if (teamLeadId) p.set('teamLeadId', teamLeadId);
     if (reportingToId) p.set('reportingToId', reportingToId);
+    if (requirementId) p.set('requirementId', requirementId);
     if (reqCodeDebounced.trim()) p.set('reqCode', reqCodeDebounced.trim());
     if (search.trim()) p.set('search', search.trim());
     return p.toString();
@@ -982,6 +1129,7 @@ function IngestLogsContent() {
     recruiterId,
     teamLeadId,
     reportingToId,
+    requirementId,
     reqCodeDebounced,
     search,
   ]);
@@ -995,7 +1143,7 @@ function IngestLogsContent() {
           baseURL: '/api/proxy',
           withCredentials: true,
           headers: { 'Content-Type': undefined },
-          transformRequest: (data: any) => data,
+          transformRequest: (d: any) => d,
         })
       ).data as ListResponse,
     staleTime: 15_000,
@@ -1006,7 +1154,7 @@ function IngestLogsContent() {
   const stats = data?.stats;
   const pagination = data?.pagination;
 
-  // ── Filter option data (same endpoints the dashboard uses) ──
+  // ── Filter option data (core service — same endpoints the dashboard uses) ──
   const { data: hierarchyData } = useQuery({
     queryKey: ['hierarchy-filters'],
     queryFn: async () =>
@@ -1017,11 +1165,21 @@ function IngestLogsContent() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Recruiter roster → names for both the dropdown AND resolving row.recruiterId.
-  // ⚠️ Point this at YOUR recruiter/users list endpoint (see note in chat).
+  // Recruiter roster → names for the dropdown AND resolving row.recruiterId.
+  // ⚠️ Point this at YOUR users/recruiter-list endpoint if the path differs.
   const { data: recruitersRaw, isLoading: recruitersLoading } = useQuery({
     queryKey: ['ingest-recruiters'],
     queryFn: async () => (await axios.get('/users?limit=1000')).data?.data as any[],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Requirements → titles for the dropdown + drawer. Requirement lives in the
+  // core service, so we resolve titles here (NOT in the log service).
+  // Sourced from /dashboard/my-assignments (scoped to the current user's
+  // assignments). Swap to an org-wide /requirements list endpoint if you have one.
+  const { data: assignmentsRaw, isLoading: reqsLoading } = useQuery({
+    queryKey: ['ingest-requirements'],
+    queryFn: async () => (await axios.get('/dashboard/my-assignments')).data?.data as any[],
     staleTime: 5 * 60 * 1000,
   });
 
@@ -1039,10 +1197,40 @@ function IngestLogsContent() {
     return m;
   }, [recruiters]);
 
-  // Prefer backend-enriched name → client map → short id
   const recruiterName = (id: string | null) => {
     if (!id) return '—';
     return recruiterMap.get(id) ?? `${id.slice(0, 8)}…`;
+  };
+
+  const requirements: RequirementLite[] = useMemo(() => {
+    const map = new Map<string, RequirementLite>();
+    (assignmentsRaw ?? []).forEach(a => {
+      const r = a?.requirement;
+      if (r && !map.has(r.id)) map.set(r.id, { id: r.id, reqCode: r.reqCode, title: r.title });
+    });
+    return [...map.values()].sort((a, b) => a.reqCode.localeCompare(b.reqCode));
+  }, [assignmentsRaw]);
+
+  const reqMap = useMemo(() => {
+    const m = new Map<string, RequirementLite>();
+    requirements.forEach(r => m.set(r.id, r));
+    return m;
+  }, [requirements]);
+
+  //   const requirementLabel = (id: string | null) => {
+  //     console.log('lookup id:', id);
+  //     if (!id) return '—';
+  //     const r = reqMap.get(id);
+  //     console.log('lookup result:', r);
+
+  //     return r ? r.title : '—';
+  //   };
+  const requirementLabel = (id: string | null, reqCode?: string | null) => {
+    if (!id) return reqCode ?? '—';
+
+    const r = reqMap.get(id);
+
+    return r?.title ?? reqCode ?? 'Unknown Requirement';
   };
 
   function handleSort(col: SortKey) {
@@ -1062,19 +1250,13 @@ function IngestLogsContent() {
     !!recruiterId ||
     !!teamLeadId ||
     !!reportingToId ||
+    !!requirementId ||
     !!reqCode.trim() ||
     !!searchInput.trim();
 
   function clearAll() {
-    setDateRange(undefined);
-    setStatus('');
-    setSource('');
-    setDuplicateType('');
-    setRecruiterId('');
-    setTeamLeadId('');
-    setReportingToId('');
-    setReqCode('');
-    setSearchInput('');
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
   }
 
   const dupSub =
@@ -1121,9 +1303,12 @@ function IngestLogsContent() {
 
       {/* ── Filter bar ── */}
       <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border bg-background shrink-0">
-        <DateRangePicker range={dateRange} onChange={setDateRange} />
+        <DateRangePicker range={dateRange} onChange={r => patchFilters({ dateRange: r })} />
 
-        <Select value={status || '_all'} onValueChange={v => setStatus(v === '_all' ? '' : v)}>
+        <Select
+          value={status || '_all'}
+          onValueChange={v => patchFilters({ status: v === '_all' ? '' : v })}
+        >
           <SelectTrigger className="h-8 w-36 text-xs">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
@@ -1137,7 +1322,10 @@ function IngestLogsContent() {
           </SelectContent>
         </Select>
 
-        <Select value={source || '_all'} onValueChange={v => setSource(v === '_all' ? '' : v)}>
+        <Select
+          value={source || '_all'}
+          onValueChange={v => patchFilters({ source: v === '_all' ? '' : v })}
+        >
           <SelectTrigger className="h-8 w-32 text-xs">
             <SelectValue placeholder="All sources" />
           </SelectTrigger>
@@ -1153,7 +1341,7 @@ function IngestLogsContent() {
 
         <Select
           value={duplicateType || '_all'}
-          onValueChange={v => setDuplicateType(v === '_all' ? '' : v)}
+          onValueChange={v => patchFilters({ duplicateType: v === '_all' ? '' : v })}
         >
           <SelectTrigger className="h-8 w-40 text-xs">
             <SelectValue placeholder="Dup. type" />
@@ -1171,14 +1359,21 @@ function IngestLogsContent() {
         <RecruiterPicker
           recruiters={recruiters}
           value={recruiterId}
-          onChange={setRecruiterId}
+          onChange={id => patchFilters({ recruiterId: id })}
           loading={recruitersLoading}
+        />
+
+        <RequirementPicker
+          requirements={requirements}
+          value={requirementId}
+          onChange={id => patchFilters({ requirementId: id })}
+          loading={reqsLoading}
         />
 
         {hierarchyData?.teamLeads && hierarchyData.teamLeads.length > 0 && (
           <Select
             value={teamLeadId || '_all'}
-            onValueChange={v => setTeamLeadId(v === '_all' ? '' : v)}
+            onValueChange={v => patchFilters({ teamLeadId: v === '_all' ? '' : v })}
           >
             <SelectTrigger className="h-8 w-40 text-xs gap-1.5">
               <Users size={12} className="text-muted-foreground shrink-0" />
@@ -1198,7 +1393,7 @@ function IngestLogsContent() {
         {hierarchyData?.reportingTo && hierarchyData.reportingTo.length > 0 && (
           <Select
             value={reportingToId || '_all'}
-            onValueChange={v => setReportingToId(v === '_all' ? '' : v)}
+            onValueChange={v => patchFilters({ reportingToId: v === '_all' ? '' : v })}
           >
             <SelectTrigger className="h-8 w-40 text-xs gap-1.5">
               <Building2 size={12} className="text-muted-foreground shrink-0" />
@@ -1223,7 +1418,7 @@ function IngestLogsContent() {
           />
           <Input
             value={reqCode}
-            onChange={e => setReqCode(e.target.value)}
+            onChange={e => patchFilters({ reqCode: e.target.value })}
             placeholder="Req code"
             className="h-8 w-28 pl-7 text-xs"
           />
@@ -1237,7 +1432,7 @@ function IngestLogsContent() {
           />
           <Input
             value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
+            onChange={e => patchFilters({ searchInput: e.target.value })}
             placeholder="Name, email, file…"
             className="h-8 w-48 pl-7 text-xs"
           />
@@ -1281,7 +1476,7 @@ function IngestLogsContent() {
             accentColor="#EF9F27"
             loading={isLoading}
             active={status === 'DUPLICATE'}
-            onClick={() => setStatus(status === 'DUPLICATE' ? '' : 'DUPLICATE')}
+            onClick={() => patchFilters({ status: status === 'DUPLICATE' ? '' : 'DUPLICATE' })}
           />
           <StatCard
             label="Manual review"
@@ -1291,7 +1486,9 @@ function IngestLogsContent() {
             accentColor="#7F77DD"
             loading={isLoading}
             active={status === 'MANUAL_REVIEW'}
-            onClick={() => setStatus(status === 'MANUAL_REVIEW' ? '' : 'MANUAL_REVIEW')}
+            onClick={() =>
+              patchFilters({ status: status === 'MANUAL_REVIEW' ? '' : 'MANUAL_REVIEW' })
+            }
           />
           <StatCard
             label="Failed"
@@ -1301,7 +1498,7 @@ function IngestLogsContent() {
             accentColor="#E24B4A"
             loading={isLoading}
             active={status === 'FAILED'}
-            onClick={() => setStatus(status === 'FAILED' ? '' : 'FAILED')}
+            onClick={() => patchFilters({ status: status === 'FAILED' ? '' : 'FAILED' })}
           />
           <StatCard
             label="Tokens used"
@@ -1319,6 +1516,7 @@ function IngestLogsContent() {
             rows={rows}
             loading={isLoading}
             recruiterName={recruiterName}
+            requirementLabel={requirementLabel}
             onRowClick={setSelected}
             sortBy={sortBy}
             sortDir={sortDir}
@@ -1341,7 +1539,7 @@ function IngestLogsContent() {
               </p>
 
               <div className="flex items-center gap-3">
-                <Select value={String(pageSize)} onValueChange={v => setPageSize(Number(v))}>
+                <Select value={String(pageSize)} onValueChange={v => changePageSize(Number(v))}>
                   <SelectTrigger className="h-7 w-24 text-[11px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -1387,6 +1585,7 @@ function IngestLogsContent() {
       <DetailDrawer
         row={selected}
         recruiterName={recruiterName}
+        requirementLabel={requirementLabel}
         onClose={() => setSelected(null)}
       />
     </div>
