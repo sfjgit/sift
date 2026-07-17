@@ -744,6 +744,7 @@ function BulkUploadModal({
   assignmentId: string;
 }) {
   const axios = useAxios();
+
   const qc = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -1141,6 +1142,7 @@ function AddCandidateModal({
   const [portalExpanded, setPortalExpanded] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const router = useRouter();
   if (!open) return null;
   return (
     <>
@@ -1171,6 +1173,10 @@ function AddCandidateModal({
                 icon: <Pencil className="w-4 h-4 text-rose-600" />,
                 title: 'Enter Manually',
                 desc: 'Type in candidate details',
+                onClickOverride: () => {
+                  router.push(`/assignments/${assignmentId}/candidates/manualUpload`);
+                  onClose();
+                },
               },
               {
                 iconBg: 'bg-emerald-100',
