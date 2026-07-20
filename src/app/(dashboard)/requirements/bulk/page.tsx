@@ -1147,7 +1147,7 @@ export default function BulkRequirementUploadPage() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
+        <div className="max-w-7xl mx-auto px-4 py-8 space-y-5">
           {/* Step 1 — Client & SPOC */}
           {!done && (
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
