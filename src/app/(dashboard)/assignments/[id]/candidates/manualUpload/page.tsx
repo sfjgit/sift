@@ -492,7 +492,7 @@ export default function ManualUploadCandidatePage() {
           <SectionTitle icon={LinkIcon} label="Links" color="bg-blue-100 text-blue-600" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <FieldLabel required>LinkedIn</FieldLabel>
+              <FieldLabel>LinkedIn</FieldLabel>
               <Input
                 className={inputCls}
                 placeholder="https://linkedin.com/in/…"
