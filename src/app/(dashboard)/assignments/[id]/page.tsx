@@ -1853,7 +1853,21 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
 }
 
 // ── Joining tab ──────────────────────────────────────────────────────────────
+// ── Joining tab ──────────────────────────────────────────────────────────────
 function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
+  const NOTICE_PRESETS = [
+    'Immediate Joiner',
+    '15 days',
+    '30 days',
+    '45 days',
+    '60 days',
+    '90 days',
+    'Not Sure',
+  ];
+
+  const initialNp: string = pipeline.noticePeriod ?? '';
+  const isPreset = initialNp !== '' && NOTICE_PRESETS.includes(initialNp);
+
   const [lastWorkingDate, setLastWorkingDate] = useState(
     pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : ''
   );
@@ -1861,12 +1875,25 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
     pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : ''
   );
 
+  // notice period — preset pill OR manual free text
+  const [noticePeriod, setNoticePeriod] = useState(isPreset ? initialNp : '');
+  const [isManual, setIsManual] = useState(initialNp !== '' && !isPreset);
+  const [manualValue, setManualValue] = useState(!isPreset ? initialNp : '');
+
+  const isImmediate = noticePeriod === 'Immediate Joiner';
+
   const mut = useMutation({
-    mutationFn: async () =>
-      axios.patch(`/pipeline/${pipeline.id}/details`, {
-        lastWorkingDate: lastWorkingDate || null,
+    mutationFn: async () => {
+      // resolve final notice period value — manual overrides preset when active
+      const resolvedNotice = isManual ? manualValue.trim() : noticePeriod.trim();
+
+      return axios.patch(`/pipeline/${pipeline.id}/details`, {
+        // Immediate joiners have no LWD — force it null regardless of input
+        lastWorkingDate: isImmediate ? null : lastWorkingDate || null,
         actualJoiningDate: actualJoiningDate || null,
-      }),
+        noticePeriod: resolvedNotice || null,
+      });
+    },
     onSuccess: () => {
       toast.success('Joining details saved');
       onDone();
@@ -1877,6 +1904,56 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
   return (
     <div className="space-y-4">
+      {/* ── Notice Period ── */}
+      <div>
+        <Label className="text-xs font-semibold text-slate-600 mb-2 block">Notice Period</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {NOTICE_PRESETS.map(opt => {
+            const selected = !isManual && noticePeriod === opt;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  setIsManual(false);
+                  setManualValue('');
+                  setNoticePeriod(prev => (prev === opt ? '' : opt));
+                }}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                  selected
+                    ? 'bg-primary/10 text-primary border-primary'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              setIsManual(prev => !prev);
+              setNoticePeriod('');
+            }}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              isManual
+                ? 'bg-primary/10 text-primary border-primary'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            Custom
+          </button>
+        </div>
+        {isManual && (
+          <Input
+            value={manualValue}
+            onChange={e => setManualValue(e.target.value)}
+            placeholder="Enter notice period (e.g. 2 months, serving NP till 12 Aug)"
+            className="h-9 text-sm mt-2"
+          />
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
@@ -1885,9 +1962,13 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
           <Input
             type="date"
             value={lastWorkingDate}
+            disabled={isImmediate}
             onChange={e => setLastWorkingDate(e.target.value)}
-            className="h-9 text-sm"
+            className="h-9 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           />
+          {isImmediate && (
+            <p className="text-[10px] text-slate-400 mt-1">Not required for immediate joiners</p>
+          )}
         </div>
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
