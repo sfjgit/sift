@@ -356,76 +356,105 @@ export function ClientForm({ mode, defaultValues, onSubmit, isPending, onCancel 
             <FieldError message={(errors.bands as any)?.message} />
 
             {fields.map((row, index) => (
-              <div
-                key={row.id}
-                className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end rounded-md border p-3"
-              >
-                <div className="flex flex-col gap-1.5 sm:col-span-3">
-                  <Label required>Code</Label>
-                  <Input placeholder="B1" {...register(`bands.${index}.code`)} />
-                  <FieldError message={errors.bands?.[index]?.code?.message} />
-                </div>
-
-                <div className="flex flex-col gap-1.5 sm:col-span-3">
-                  <Label>Name</Label>
-                  <Input placeholder="e.g. Senior" {...register(`bands.${index}.name`)} />
-                </div>
-
-                <div className="flex flex-col gap-1.5 sm:col-span-2">
-                  <Label>Exp (yrs)</Label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    min={0}
-                    placeholder="0"
-                    {...register(`bands.${index}.experience`, { setValueAs: numberOrNull })}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5 sm:col-span-1">
-                  <Label>From</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    placeholder="0"
-                    {...register(`bands.${index}.rangeFrom`, { setValueAs: numberOrNull })}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5 sm:col-span-1">
-                  <Label>To</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    placeholder="0"
-                    {...register(`bands.${index}.rangeTo`, { setValueAs: numberOrNull })}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5 sm:col-span-1">
-                  <Label>Value</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    placeholder="0"
-                    {...register(`bands.${index}.value`, { setValueAs: numberOrNull })}
-                  />
-                </div>
-
-                <div className="sm:col-span-1 flex justify-end">
+              <div key={row.id} className="rounded-lg border bg-card p-4 flex flex-col gap-4">
+                {/* Card header */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Band {index + 1}
+                  </span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
+                    className="h-7 w-7"
                     onClick={() => remove(index)}
                     disabled={fields.length === 1}
                     aria-label="Remove band"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
+                </div>
+
+                {/* Identity row */}
+                <div className="grid grid-cols-2 sm:grid-cols-12 gap-3">
+                  <div className="flex flex-col gap-1.5 sm:col-span-3">
+                    <Label required>Code</Label>
+                    <Input placeholder="B1" {...register(`bands.${index}.code`)} />
+                    <FieldError message={errors.bands?.[index]?.code?.message} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 sm:col-span-6">
+                    <Label>Name</Label>
+                    <Input placeholder="e.g. Senior" {...register(`bands.${index}.name`)} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 sm:col-span-3">
+                    <Label>Experience (yrs)</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      placeholder="0"
+                      {...register(`bands.${index}.experience`, { setValueAs: numberOrNull })}
+                    />
+                  </div>
+                </div>
+
+                {/* Compensation row — the money fields, given room */}
+                <div className="grid grid-cols-2 sm:grid-cols-12 gap-3">
+                  <div className="flex flex-col gap-1.5 sm:col-span-4">
+                    <Label>Range from</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        ₹
+                      </span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="0.00"
+                        className="h-11 pl-7 text-base tabular-nums"
+                        {...register(`bands.${index}.rangeFrom`, { setValueAs: numberOrNull })}
+                      />
+                    </div>
+                    <FieldError message={errors.bands?.[index]?.rangeFrom?.message} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 sm:col-span-4">
+                    <Label>Range to</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        ₹
+                      </span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="0.00"
+                        className="h-11 pl-7 text-base tabular-nums"
+                        {...register(`bands.${index}.rangeTo`, { setValueAs: numberOrNull })}
+                      />
+                    </div>
+                    <FieldError message={errors.bands?.[index]?.rangeTo?.message} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 sm:col-span-4">
+                    <Label>Value</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        ₹
+                      </span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        placeholder="0.00"
+                        className="h-11 pl-7 text-base tabular-nums"
+                        {...register(`bands.${index}.value`, { setValueAs: numberOrNull })}
+                      />
+                    </div>
+                    <FieldError message={errors.bands?.[index]?.value?.message} />
+                  </div>
                 </div>
               </div>
             ))}
