@@ -45,73 +45,122 @@
   --radius-xl: calc(var(--radius) * 1.4);
 }
 
+/* ============================================
+   LIGHT MODE - Standard LMS Professional Theme
+   ============================================ */
 :root {
-  --background: oklch(0.972 0.002 264);
-  --foreground: oklch(0.13 0.02 264);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.13 0.02 264);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.13 0.02 264);
-  --primary: oklch(0.48 0.22 264);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.94 0.005 264);
-  --secondary-foreground: oklch(0.25 0.02 264);
-  --muted: oklch(0.93 0.006 264);
-  --muted-foreground: oklch(0.52 0.022 264);
-  --accent: oklch(0.54 0.24 284);
-  --accent-foreground: oklch(0.99 0 0);
-  --destructive: oklch(0.56 0.22 25);
-  --border: oklch(0.88 0.007 264);
-  --input: oklch(0.88 0.007 264);
-  --ring: oklch(0.48 0.22 264);
-  --chart-1: oklch(0.48 0.22 264);
-  --chart-2: oklch(0.58 0.18 210);
-  --chart-3: oklch(0.55 0.18 155);
-  --chart-4: oklch(0.7 0.17 72);
-  --chart-5: oklch(0.6 0.21 355);
-  --radius: 0.5rem;
-  --sidebar: oklch(0.965 0.004 264);
-  --sidebar-foreground: oklch(0.13 0.02 264);
-  --sidebar-primary: oklch(0.48 0.22 264);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.9 0.007 264);
-  --sidebar-accent-foreground: oklch(0.25 0.02 264);
-  --sidebar-border: oklch(0.88 0.007 264);
-  --sidebar-ring: oklch(0.48 0.22 264);
+  --radius: 0.75rem;
+
+  /* Base Colors - Clean Professional */
+  --background: #f8fafc; /* Slate-50 - Light background */
+  --foreground: #0f172a; /* Slate-900 - Dark text */
+
+  /* Card - Pure White */
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+
+  /* Popover */
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  /* Primary - Professional Blue (Standard LMS color) */
+  --primary: #1a3b25; /* Blue-600 - Classic LMS blue */
+  --primary-foreground: #ffffff;
+
+  /* Secondary - Light Gray */
+  --secondary: #f1f5f9; /* Slate-100 */
+  --secondary-foreground: #475569; /* Slate-600 */
+
+  /* Muted - Subtle Background */
+  --muted: #f1f5f9; /* Slate-100 */
+  --muted-foreground: #64748b; /* Slate-500 */
+
+  /* Accent - Success Green (for progress/achievements) */
+  --accent: #10b981; /* Emerald-500 - Success/Progress color */
+  --accent-foreground: #ffffff;
+
+  /* Destructive - Red */
+  --destructive: #ef4444; /* Red-500 */
+
+  /* Borders & Input */
+  --border: #e2e8f0; /* Slate-200 */
+  --input: #e2e8f0;
+  --ring: #2563eb; /* Matches primary */
+
+  /* Charts - Professional Color Palette */
+  --chart-1: #2563eb; /* Blue - Primary */
+  --chart-2: #10b981; /* Emerald - Success */
+  --chart-3: #f59e0b; /* Amber - Warning */
+  --chart-4: #8b5cf6; /* Violet - Info */
+  --chart-5: #06b6d4; /* Cyan - Secondary */
+
+  /* Sidebar - Clean Light Background */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #475569;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #2563eb;
 }
 
+/* ============================================
+     DARK MODE - Clean Professional Dark (Original)
+     ============================================ */
 .dark {
-  --background: oklch(0.133 0 0); /* #1e1e1e — VS Code editor bg */
-  --foreground: oklch(0.83 0 0); /* #cccccc — primary text */
-  --card: oklch(0.153 0 0); /* #252526 — card/sidebar */
-  --card-foreground: oklch(0.83 0 0);
-  --popover: oklch(0.168 0.004 264); /* #2a2d2e — popovers/dropdowns */
-  --popover-foreground: oklch(0.83 0 0);
-  --primary: oklch(0.62 0.22 264); /* #4f7cff — keep your blue */
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.168 0.004 264); /* #2a2d2e */
-  --secondary-foreground: oklch(0.83 0 0);
-  --muted: oklch(0.188 0 0); /* #2e2e2e */
-  --muted-foreground: oklch(0.54 0 0); /* #858585 */
-  --accent: oklch(0.76 0.1 178); /* #4ec9b0 — VS Code teal */
-  --accent-foreground: oklch(0.13 0 0);
-  --destructive: oklch(0.63 0.22 25);
-  --border: oklch(1 0 0 / 7%); /* #3e3e3e equivalent */
-  --input: oklch(1 0 0 / 9%);
-  --ring: oklch(0.62 0.22 264);
-  --chart-1: oklch(0.64 0.22 264);
-  --chart-2: oklch(0.76 0.1 178);
-  --chart-3: oklch(0.72 0.15 55); /* #ce9178 warm orange */
-  --chart-4: oklch(0.75 0.17 72);
-  --chart-5: oklch(0.67 0.21 355);
-  --sidebar: oklch(0.153 0 0); /* #252526 — slightly lighter than editor */
-  --sidebar-foreground: oklch(0.83 0 0);
-  --sidebar-primary: oklch(0.62 0.22 264);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.168 0.004 264);
-  --sidebar-accent-foreground: oklch(0.83 0 0);
-  --sidebar-border: oklch(1 0 0 / 7%);
-  --sidebar-ring: oklch(0.62 0.22 264);
+  /* Base - Deep Dark Blue/Gray */
+  --background: #0f172a; /* Slate-900 */
+  --foreground: #f1f5f9; /* Slate-100 */
+
+  /* Card - Slightly Lighter Dark */
+  --card: #1e293b; /* Slate-800 */
+  --card-foreground: #f1f5f9;
+
+  /* Popover */
+  --popover: #1e293b;
+  --popover-foreground: #f1f5f9;
+
+  /* Primary - Bright Indigo (Clean) */
+  --primary: #818cf8; /* Indigo-400 - Brighter for dark mode */
+  --primary-foreground: #0f172a;
+
+  /* Secondary */
+  --secondary: #334155; /* Slate-700 */
+  --secondary-foreground: #f1f5f9;
+
+  /* Muted */
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8; /* Slate-400 */
+
+  /* Accent - Bright Cyan */
+  --accent: #22d3ee; /* Cyan-400 */
+  --accent-foreground: #0f172a;
+
+  /* Destructive */
+  --destructive: #f87171; /* Red-400 */
+
+  /* Borders & Input - Subtle in Dark */
+  --border: #334155;
+  --input: #334155;
+  --ring: #818cf8;
+
+  /* Charts - Bright Colors for Dark Background */
+  --chart-1: #818cf8; /* Bright Indigo */
+  --chart-2: #22d3ee; /* Bright Cyan */
+  --chart-3: #a78bfa; /* Bright Violet */
+  --chart-4: #f472b6; /* Bright Pink */
+  --chart-5: #34d399; /* Bright Emerald */
+
+  /* Sidebar - Dark with Contrast */
+  --sidebar: #1e293b; /* Slate-800 */
+  --sidebar-foreground: #f1f5f9;
+  --sidebar-primary: #818cf8;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: #334155;
+  --sidebar-ring: #818cf8;
 }
 
 /* globals.css */

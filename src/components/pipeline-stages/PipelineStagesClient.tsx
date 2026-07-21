@@ -31,11 +31,23 @@ import { cn } from '@/lib/utils';
 // types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type LocalStage = PipelineStage & { isNew?: boolean };
+// Locally widen PipelineStage so the new columns type-check even if the shared
+// hook type hasn't been updated yet. (Update usePipelineStages.ts too — see notes.)
+type LocalStage = PipelineStage & {
+  isNew?: boolean;
+  isStandard?: boolean;
+  serviceLineId?: string | null;
+  serviceLine?: ServiceLineMeta | null;
+};
 
 interface CanonicalStageMeta {
   value: string;
   label: string;
+}
+
+interface ServiceLineMeta {
+  id: string;
+  name: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,6 +77,43 @@ const SLOT_COLORS = [
   'bg-orange-50 text-orange-700 border-orange-200',
   'bg-green-50 text-green-700 border-green-200',
 ];
+
+const NONE = '__none__';
+const COMMON = '__common__';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// flag chip — compact clickable toggle used for Standard / Terminal / Mandatory
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FlagChip({
+  active,
+  activeClass,
+  label,
+  title,
+  onClick,
+}: {
+  active: boolean;
+  activeClass: string;
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={cn(
+        'text-[10px] leading-none px-1.5 py-1 rounded border transition-colors shrink-0',
+        active
+          ? activeClass
+          : 'text-muted-foreground/40 border-transparent hover:border-border hover:text-muted-foreground'
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // insert row
@@ -152,9 +201,14 @@ function StageRow({
   idx,
   originalStages,
   canonicalStages,
+  serviceLines,
   onLabelChange,
   onCodeChange,
   onCanonicalChange,
+  onServiceLineChange,
+  onStandardToggle,
+  onMandatoryToggle,
+  onTerminalToggle,
   onToggle,
   onDelete,
   onDragStart,
@@ -167,9 +221,14 @@ function StageRow({
   idx: number;
   originalStages: PipelineStage[];
   canonicalStages: CanonicalStageMeta[];
+  serviceLines: ServiceLineMeta[];
   onLabelChange: (id: string, label: string) => void;
   onCodeChange: (id: string, code: string) => void;
   onCanonicalChange: (id: string, val: CanonicalStage | null) => void;
+  onServiceLineChange: (id: string, val: string | null) => void;
+  onStandardToggle: (id: string, val: boolean) => void;
+  onMandatoryToggle: (id: string, val: boolean) => void;
+  onTerminalToggle: (id: string, val: boolean) => void;
   onToggle: (id: string, val: boolean) => void;
   onDelete: (stage: LocalStage) => void;
   onDragStart: () => void;
@@ -216,7 +275,7 @@ function StageRow({
       </span>
 
       {/* Code — inline editable */}
-      <div className="shrink-0 w-20">
+      <div className="shrink-0 w-16">
         {editingCode ? (
           <Input
             autoFocus
@@ -307,19 +366,48 @@ function StageRow({
         )}
       </div>
 
-      {/* Canonical */}
+      {/* Service line — null == common/shared */}
       <div className="shrink-0 w-36">
         <Select
-          value={stage.canonicalStage ?? '__none__'}
+          value={stage.serviceLineId ?? COMMON}
+          onValueChange={v => onServiceLineChange(stage.id, v === COMMON ? null : v)}
+        >
+          <SelectTrigger
+            className={cn(
+              'h-7 text-xs px-2 w-full',
+              stage.serviceLineId
+                ? 'border-teal-300 bg-teal-50/60 text-teal-800'
+                : 'text-muted-foreground'
+            )}
+          >
+            <SelectValue placeholder="Service line" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={COMMON}>
+              <span className="text-muted-foreground">Common (all lines)</span>
+            </SelectItem>
+            {serviceLines.map(sl => (
+              <SelectItem key={sl.id} value={sl.id}>
+                {sl.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Canonical */}
+      <div className="shrink-0 w-32">
+        <Select
+          value={stage.canonicalStage ?? NONE}
           onValueChange={v =>
-            onCanonicalChange(stage.id, v === '__none__' ? null : (v as CanonicalStage))
+            onCanonicalChange(stage.id, v === NONE ? null : (v as CanonicalStage))
           }
         >
           <SelectTrigger className="h-7 text-xs px-2 w-full">
             <SelectValue placeholder="Map to…" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">
+            <SelectItem value={NONE}>
               <span className="text-muted-foreground">Unmapped</span>
             </SelectItem>
             {canonicalStages.map(cs => (
@@ -331,21 +419,33 @@ function StageRow({
         </Select>
       </div>
 
-      {/* Badges */}
-      <div className="shrink-0 flex items-center gap-1 w-24">
-        {stage.isTerminal && (
-          <Badge
-            variant="outline"
-            className="text-[10px] px-1.5 py-0 bg-green-50 text-green-700 border-green-200"
-          >
-            Terminal
-          </Badge>
-        )}
-        {!stage.isMandatory && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
-            Optional
-          </Badge>
-        )}
+      {/* Editable flags */}
+      <div className="shrink-0 flex items-center gap-1 w-[210px]">
+        <FlagChip
+          active={!!stage.isStandard}
+          activeClass="bg-indigo-50 text-indigo-700 border-indigo-200"
+          label="Standard"
+          title="Mark as a standard stage (used for the reduced/standard set)"
+          onClick={() => onStandardToggle(stage.id, !stage.isStandard)}
+        />
+        <FlagChip
+          active={stage.isTerminal}
+          activeClass="bg-green-50 text-green-700 border-green-200"
+          label="Terminal"
+          title="Terminal stage — no further transitions"
+          onClick={() => onTerminalToggle(stage.id, !stage.isTerminal)}
+        />
+        <FlagChip
+          active={!stage.isMandatory}
+          activeClass="bg-amber-50 text-amber-700 border-amber-200"
+          label={stage.isMandatory ? 'Required' : 'Optional'}
+          title="Toggle whether recruiters must pass through this stage"
+          onClick={() => onMandatoryToggle(stage.id, !stage.isMandatory)}
+        />
+      </div>
+
+      {/* Status badges (new / moved) */}
+      <div className="shrink-0 flex items-center gap-1 w-16 justify-end">
         {stage.isNew && (
           <Badge className="text-[10px] px-1.5 py-0 bg-blue-500 text-white border-0">New</Badge>
         )}
@@ -383,6 +483,53 @@ function StageRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// service-line tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TabButton({
+  active,
+  label,
+  count,
+  dotClass,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count?: number;
+  dotClass?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors',
+        active
+          ? 'border-primary text-foreground'
+          : 'border-transparent text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {dotClass && <span className={cn('h-1.5 w-1.5 rounded-full', dotClass)} />}
+      {label}
+      {count !== undefined && (
+        <span
+          className={cn(
+            'text-[11px] rounded-full px-1.5 py-0.5 leading-none',
+            active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground/70'
+          )}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+const VIEW_ALL = '__all__';
+const VIEW_COMMON = '__common_only__';
+
+// ─────────────────────────────────────────────────────────────────────────────
 // main
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -403,12 +550,47 @@ export default function PipelineStagesClient() {
     staleTime: 10 * 60 * 1000,
   });
 
+  // Service lines for the per-stage selector. Adjust the route/shape to match
+  // your core service (assumes { success, data: [{ id, name }] }).
+  const { data: serviceLines = [] } = useQuery<ServiceLineMeta[]>({
+    queryKey: ['service-lines'],
+    queryFn: async () => {
+      const res = await axios.get('/service-lines');
+      return res.data.data as ServiceLineMeta[];
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+
   const [local, setLocal] = useState<LocalStage[] | null>(null);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [insertAt, setInsertAt] = useState<number | null>(null);
 
+  // Active tab: VIEW_ALL | VIEW_COMMON | <serviceLineId>. View-only — never
+  // touches the underlying array, so save/drag/reorder are unaffected.
+  const [view, setView] = useState<string>(VIEW_ALL);
+
   const stages: LocalStage[] = local ?? serverStages;
   const isDirty = local !== null || deletedIds.length > 0;
+
+  // A line tab shows that line's stages PLUS common (null) — merged in global
+  // order, i.e. exactly what a recruiter on that line steps through.
+  const isLineView = view !== VIEW_ALL && view !== VIEW_COMMON;
+  const visible = stages.filter(s => {
+    if (view === VIEW_ALL) return true;
+    if (view === VIEW_COMMON) return !s.serviceLineId;
+    return s.serviceLineId === view || !s.serviceLineId;
+  });
+
+  const commonCount = stages.filter(s => !s.serviceLineId).length;
+  const lineOwnCount = (id: string) => stages.filter(s => s.serviceLineId === id).length;
+
+  // Real (global) array index → used for insert / append so ordering stays sound.
+  const realIndexOf = (stage: LocalStage) => stages.indexOf(stage);
+  const appendRealIdx = visible.length
+    ? realIndexOf(visible[visible.length - 1]) + 1
+    : stages.length;
+  // New stages created inside a line tab default to that line; else common.
+  const defaultLineId = isLineView ? view : null;
 
   const dragId = useRef<string | null>(null);
   const dragOverId = useRef<string | null>(null);
@@ -456,9 +638,10 @@ export default function PipelineStagesClient() {
       isMandatory: true,
       isTerminal: false,
       isActive: true,
+      isStandard: false,
       canonicalStage: null,
-      // @ts-expect-error err
-      serviceLineId: null,
+      serviceLineId: defaultLineId,
+      serviceLine: null,
       isNew: true,
     };
     patchStages(prev => {
@@ -494,6 +677,8 @@ export default function PipelineStagesClient() {
         isMandatory: s.isMandatory,
         isTerminal: s.isTerminal,
         isActive: s.isActive,
+        isStandard: s.isStandard ?? false,
+        serviceLineId: s.serviceLineId ?? null,
         isNew: s.isNew ?? false,
         canonicalStage: s.canonicalStage ?? null,
       })),
@@ -522,7 +707,19 @@ export default function PipelineStagesClient() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight">Pipeline stages</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Drag to reorder · recruiter picks whichever stages apply
+              {isLineView ? (
+                <>
+                  Showing <span className="text-teal-700 font-medium">this line</span> +{' '}
+                  <span className="font-medium">Common</span> — the sequence recruiters step through
+                </>
+              ) : view === VIEW_COMMON ? (
+                <>
+                  <span className="font-medium">Common</span> stages — shared across every service
+                  line
+                </>
+              ) : (
+                <>Drag to reorder · recruiter picks whichever stages apply</>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -540,14 +737,43 @@ export default function PipelineStagesClient() {
           </div>
         </div>
 
+        {/* Service-line tabs */}
+        <div className="flex items-center gap-1 overflow-x-auto border-b -mx-6 px-6">
+          <TabButton
+            active={view === VIEW_ALL}
+            label="All"
+            count={stages.length}
+            onClick={() => setView(VIEW_ALL)}
+          />
+          <TabButton
+            active={view === VIEW_COMMON}
+            label="Common"
+            count={commonCount}
+            dotClass="bg-slate-400"
+            onClick={() => setView(VIEW_COMMON)}
+          />
+          {serviceLines.map(sl => (
+            <TabButton
+              key={sl.id}
+              active={view === sl.id}
+              label={sl.name}
+              count={lineOwnCount(sl.id)}
+              dotClass="bg-teal-500"
+              onClick={() => setView(sl.id)}
+            />
+          ))}
+        </div>
+
         {/* Column headers */}
-        <div className="flex items-center gap-3 px-3 pb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="flex items-center gap-3 px-3 pt-2 pb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
           <span className="w-4 shrink-0" />
           <span className="w-8 shrink-0">#</span>
-          <span className="w-20 shrink-0">Code</span>
+          <span className="w-16 shrink-0">Code</span>
           <span className="flex-1">Label</span>
-          <span className="w-36 shrink-0">Maps to</span>
-          <span className="w-24 shrink-0">Badges</span>
+          <span className="w-36 shrink-0">Service line</span>
+          <span className="w-32 shrink-0">Maps to</span>
+          <span className="w-[210px] shrink-0">Flags</span>
+          <span className="w-16 shrink-0 text-right">Status</span>
           <span className="w-10 shrink-0">Active</span>
           <span className="w-5 shrink-0" />
         </div>
@@ -564,51 +790,77 @@ export default function PipelineStagesClient() {
 
       {/* Stage list */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
-        <div className="max-w-4xl space-y-0">
-          {stages.map((stage, idx) => (
-            <div key={stage.id}>
-              {insertAt === idx ? (
-                <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
-              ) : (
-                <InsertTrigger
-                  label={idx === 0 ? 'insert at start' : 'insert before'}
-                  onClick={() => setInsertAt(idx)}
+        <div className="max-w-6xl space-y-0">
+          {visible.map((stage, vIdx) => {
+            const realIdx = realIndexOf(stage);
+            return (
+              <div key={stage.id}>
+                {insertAt === realIdx ? (
+                  <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
+                ) : (
+                  <InsertTrigger
+                    label={vIdx === 0 ? 'insert at start' : 'insert before'}
+                    onClick={() => setInsertAt(realIdx)}
+                  />
+                )}
+
+                <StageRow
+                  stage={stage}
+                  idx={vIdx}
+                  originalStages={serverStages}
+                  canonicalStages={canonicalStages}
+                  serviceLines={serviceLines}
+                  onLabelChange={(id, label) => patchStage(id, { label })}
+                  onCodeChange={(id, code) => patchStage(id, { code })}
+                  onCanonicalChange={(id, val) => patchStage(id, { canonicalStage: val })}
+                  onServiceLineChange={(id, val) => patchStage(id, { serviceLineId: val })}
+                  onStandardToggle={(id, val) => patchStage(id, { isStandard: val })}
+                  onMandatoryToggle={(id, val) => patchStage(id, { isMandatory: val })}
+                  onTerminalToggle={(id, val) => patchStage(id, { isTerminal: val })}
+                  onToggle={(id, val) => patchStage(id, { isActive: val })}
+                  onDelete={handleDelete}
+                  onDragStart={() => onDragStart(stage.id)}
+                  onDragEnter={() => onDragEnter(stage.id)}
+                  onDragOver={onDragOver}
+                  onDragEnd={onDragEnd}
+                  isDragOver={dragOverStageId === stage.id}
                 />
-              )}
+              </div>
+            );
+          })}
 
-              <StageRow
-                stage={stage}
-                idx={idx}
-                originalStages={serverStages}
-                canonicalStages={canonicalStages}
-                onLabelChange={(id, label) => patchStage(id, { label })}
-                onCodeChange={(id, code) => patchStage(id, { code })}
-                onCanonicalChange={(id, val) => patchStage(id, { canonicalStage: val })}
-                onToggle={(id, val) => patchStage(id, { isActive: val })}
-                onDelete={handleDelete}
-                onDragStart={() => onDragStart(stage.id)}
-                onDragEnter={() => onDragEnter(stage.id)}
-                onDragOver={onDragOver}
-                onDragEnd={onDragEnd}
-                isDragOver={dragOverStageId === stage.id}
+          {visible.length > 0 &&
+            (insertAt === appendRealIdx ? (
+              <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
+            ) : (
+              <InsertTrigger
+                label={isLineView ? 'append to this line' : 'append at end'}
+                onClick={() => setInsertAt(appendRealIdx)}
               />
-            </div>
-          ))}
+            ))}
 
-          {insertAt === stages.length ? (
-            <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
-          ) : (
-            <InsertTrigger label="append at end" onClick={() => setInsertAt(stages.length)} />
-          )}
-
-          {stages.length === 0 && insertAt === null && (
-            <div className="flex flex-col items-center justify-center py-20 border rounded-lg border-dashed">
-              <p className="text-sm text-muted-foreground">No pipeline stages yet</p>
-              <Button variant="link" size="sm" className="mt-1" onClick={() => setInsertAt(0)}>
-                Add first stage
-              </Button>
-            </div>
-          )}
+          {visible.length === 0 &&
+            (insertAt === appendRealIdx ? (
+              <InsertRow onCommit={commitInsert} onCancel={() => setInsertAt(null)} />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 border rounded-lg border-dashed">
+                <p className="text-sm text-muted-foreground">
+                  {isLineView
+                    ? 'No stages for this service line yet (and no common stages)'
+                    : view === VIEW_COMMON
+                      ? 'No common stages yet'
+                      : 'No pipeline stages yet'}
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-1"
+                  onClick={() => setInsertAt(appendRealIdx)}
+                >
+                  Add {isLineView ? 'a stage here' : 'first stage'}
+                </Button>
+              </div>
+            ))}
         </div>
       </div>
     </div>
