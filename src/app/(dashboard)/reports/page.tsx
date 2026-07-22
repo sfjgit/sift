@@ -11,7 +11,7 @@ import {
   BarChart2,
   Users,
   FileText,
-  Briefcase,
+  LayoutDashboard,
   Download,
   Filter,
   TrendingUp,
@@ -22,9 +22,10 @@ import {
   ChevronDown,
   ChevronRight,
   FileDown,
-  Calendar,
+  Clock,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -48,16 +49,11 @@ interface StageMeta {
   code: string;
   label: string;
   order: number;
+  isStandard: boolean;
+  isTerminal: boolean;
   canonicalStage: string | null;
-}
-
-interface StageBreakdown {
-  stageId: string;
-  code: string;
-  label: string;
-  order: number;
-  canonicalStage: string | null;
-  count: number;
+  serviceLineId: string | null;
+  serviceLine: { id: string; name: string } | null;
 }
 
 interface RequirementBreakdown {
@@ -67,14 +63,15 @@ interface RequirementBreakdown {
   status: string;
   totalOpenings: number;
   client: { id: string; name: string } | null;
+  serviceLine: { id: string; name: string } | null;
+  businessUnit: { id: string; name: string } | null;
   sourced: number;
   submitted: number;
-  shortlisted: number;
   offered: number;
   joined: number;
   dropped: number;
   active: number;
-  canonicalStageCounts: Record<string, number>;
+  stageCounts: Record<string, number>;
 }
 
 interface RecruiterStat {
@@ -83,7 +80,6 @@ interface RecruiterStat {
   email: string;
   sourced: number;
   submitted: number;
-  shortlisted: number;
   offered: number;
   joined: number;
   dropped: number;
@@ -92,8 +88,7 @@ interface RecruiterStat {
   offerRate: number;
   joinRate: number;
   avgTimeToSubmitDays: number | null;
-  canonicalStageCounts: Record<string, number>;
-  stageBreakdown: StageBreakdown[];
+  stageCounts: Record<string, number>;
   requirementBreakdown: RequirementBreakdown[];
 }
 
@@ -101,7 +96,7 @@ interface RecruiterResponse {
   success: boolean;
   data: RecruiterStat[];
   total: number;
-  meta: { stages: StageMeta[]; canonicalKeys: string[]; scope: string };
+  meta: { stages: StageMeta[]; scope: string; window: string; standardOnly: boolean };
 }
 
 interface RequirementRow {
@@ -119,55 +114,58 @@ interface RequirementRow {
   respondBy: string | null;
   isRespondByBreached: boolean;
   createdAt: string;
+  deletedAt: string | null;
   client: { id: string; name: string } | null;
+  clientSpoc: { id: string; firstName: string; lastName: string; email: string } | null;
   businessUnit: { id: string; name: string } | null;
   serviceLine: { id: string; name: string } | null;
   createdBy: { id: string; firstName: string; lastName: string };
-  canonicalStageCounts: Record<string, number>;
+  stageCounts: Record<string, number>;
 }
 
 interface RequirementReportResponse {
   success: boolean;
   data: RequirementRow[];
-  meta: { total: number; page: number; limit: number; pages: number };
-  canonicalKeys: string[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+    stages: StageMeta[];
+    window: string;
+  };
 }
 
-interface AssignmentRow {
-  id: string;
-  depth: number;
-  status: string;
-  allocatedOpenings: number | null;
-  totalCandidates: number;
-  assignedAt: string;
-  deadline: string | null;
-  assignedTo: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    employeeId: string | null;
-    role: { name: string };
-  };
-  assignedBy: { id: string; firstName: string; lastName: string };
-  requirement: {
-    id: string;
-    reqCode: string;
-    title: string;
-    status: string;
-    totalOpenings: number;
-    client: { id: string; name: string } | null;
-  };
-  canonicalStageCounts: Record<string, number>;
-}
-
-interface AssignmentReportResponse {
+interface OverviewResponse {
   success: boolean;
-  data: AssignmentRow[];
-  meta: { total: number; page: number; limit: number; pages: number };
-  canonicalKeys: string[];
+  data: {
+    kpis: {
+      total: number;
+      submitted: number;
+      offered: number;
+      joined: number;
+      dropped: number;
+      active: number;
+      submissionRate: number;
+      offerRate: number;
+      joinRate: number;
+    };
+    funnel: {
+      stageId: string;
+      code: string;
+      label: string;
+      order: number;
+      isStandard: boolean;
+      serviceLine: { id: string; name: string } | null;
+      count: number;
+    }[];
+    dispositionCounts: Record<string, number>;
+    timeSeries: { bucket: string; count: number }[];
+    timeGranularity: 'hour' | 'day';
+    leaderboard: { id: string; name: string; sourced: number; joined: number }[];
+  };
+  meta: { window: string; granularity: string; scope: string };
 }
-
-type StageView = 'summary' | 'funnel' | 'pipeline';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -215,10 +213,56 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
-function fmtCtc(v: number | null | undefined) {
-  if (v == null) return '—';
-  if (v >= 100000) return `₹${(v / 100000).toFixed(1)}L`;
-  return `₹${v.toLocaleString('en-IN')}`;
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE / TIME WINDOW STATE
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WindowMode = 'preset' | 'hours' | 'range';
+
+interface WinState {
+  mode: WindowMode;
+  range: 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth';
+  hours: number;
+  fromDate: string;
+  toDate: string;
+}
+
+const DEFAULT_WIN: WinState = {
+  mode: 'preset',
+  range: 'today',
+  hours: 8,
+  fromDate: '',
+  toDate: '',
+};
+
+const PRESETS: { k: WinState['range']; l: string }[] = [
+  { k: 'today', l: 'Today' },
+  { k: 'yesterday', l: 'Yesterday' },
+  { k: 'last7', l: 'Last 7 Days' },
+  { k: 'last30', l: 'Last 30 Days' },
+  { k: 'thisMonth', l: 'This Month' },
+];
+
+const HOUR_OPTS = [8, 12, 24, 48, 72];
+
+function winToParams(w: WinState): Record<string, string> {
+  if (w.mode === 'hours') return { hours: String(w.hours) };
+  if (w.mode === 'range') {
+    const p: Record<string, string> = {};
+    if (w.fromDate) p.fromDate = w.fromDate;
+    if (w.toDate) p.toDate = w.toDate;
+    return p;
+  }
+  return { range: w.range };
+}
+
+function winLabel(w: WinState): string {
+  if (w.mode === 'hours') return `Last ${w.hours} hours`;
+  if (w.mode === 'range') {
+    if (!w.fromDate && !w.toDate) return 'All time';
+    return `${w.fromDate || 'start'} → ${w.toDate || 'now'}`;
+  }
+  return PRESETS.find(p => p.k === w.range)?.l ?? 'Today';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +279,7 @@ function downloadBlob(data: Blob, filename: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHARED COMPONENTS
+// SHARED PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
 function KPI({
@@ -273,41 +317,6 @@ function KPI({
   );
 }
 
-function HBar({
-  label,
-  count,
-  max,
-  color,
-}: {
-  label: string;
-  count: number;
-  max: number;
-  color: string;
-}) {
-  const pct = max > 0 ? Math.round((count / max) * 100) : 0;
-  return (
-    <div className="flex items-center gap-3 py-1">
-      <span className="text-[12px] font-semibold text-slate-600 w-36 shrink-0 truncate">
-        {label}
-      </span>
-      <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden relative">
-        <div
-          className="h-full rounded transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
-        {count > 0 && (
-          <span
-            className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-white"
-            style={{ mixBlendMode: 'multiply', color: '#1e293b' }}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function Skel({ rows = 4 }: { rows?: number }) {
   return (
     <div className="space-y-3">
@@ -327,18 +336,220 @@ function Empty({ msg }: { msg: string }) {
   );
 }
 
+function Card({
+  title,
+  children,
+  action,
+}: {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[13px] font-bold text-slate-700 uppercase tracking-wider">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// FILTERS BAR
+// CHARTS (dependency-free)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Horizontal funnel — stages ordered, width proportional to max count
+function FunnelChart({ items }: { items: { label: string; count: number }[] }) {
+  const max = Math.max(1, ...items.map(i => i.count));
+  if (!items.length) return <Empty msg="No stage data." />;
+  return (
+    <div className="space-y-2">
+      {items.map((it, i) => {
+        const pct = Math.round((it.count / max) * 100);
+        const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+        return (
+          <div key={it.label} className="flex items-center gap-3">
+            <span className="text-[12px] font-semibold text-slate-600 w-40 shrink-0 truncate text-right">
+              {it.label}
+            </span>
+            <div className="flex-1 h-6 bg-slate-100 rounded-md overflow-hidden relative">
+              <div
+                className="h-full rounded-md transition-all duration-500 flex items-center justify-end px-2"
+                style={{ width: `${Math.max(pct, 6)}%`, backgroundColor: color }}
+              >
+                <span className="text-[11px] font-black text-white">{it.count}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// SVG area/line time-series
+function TimeSeriesChart({
+  points,
+  granularity,
+}: {
+  points: { bucket: string; count: number }[];
+  granularity: 'hour' | 'day';
+}) {
+  if (points.length < 2) {
+    return (
+      <div className="h-40 flex items-center justify-center text-sm text-slate-400">
+        Not enough data points to plot.
+      </div>
+    );
+  }
+  const W = 640;
+  const H = 160;
+  const pad = 24;
+  const max = Math.max(1, ...points.map(p => p.count));
+  const stepX = (W - pad * 2) / (points.length - 1);
+  const xy = points.map((p, i) => {
+    const x = pad + i * stepX;
+    const y = H - pad - (p.count / max) * (H - pad * 2);
+    return [x, y] as const;
+  });
+  const line = xy.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x},${y}`).join(' ');
+  const area = `${line} L${xy[xy.length - 1][0]},${H - pad} L${xy[0][0]},${H - pad} Z`;
+  const fmtBucket = (b: string) =>
+    granularity === 'hour' ? format(new Date(b), 'dd MMM HH:mm') : format(new Date(b), 'dd MMM');
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H + 24}`} className="w-full min-w-[520px]">
+        <defs>
+          <linearGradient id="tsGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4F46E5" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#4F46E5" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#tsGrad)" />
+        <path d={line} fill="none" stroke="#4F46E5" strokeWidth="2.5" strokeLinejoin="round" />
+        {xy.map(([x, y], i) => (
+          <g key={i}>
+            <circle cx={x} cy={y} r="3" fill="#4F46E5" />
+            <title>
+              {fmtBucket(points[i].bucket)}: {points[i].count}
+            </title>
+          </g>
+        ))}
+        {points.map((p, i) =>
+          i % Math.ceil(points.length / 8) === 0 ? (
+            <text
+              key={`t-${i}`}
+              x={pad + i * stepX}
+              y={H + 14}
+              fontSize="9"
+              fill="#94a3b8"
+              textAnchor="middle"
+            >
+              {fmtBucket(p.bucket)}
+            </text>
+          ) : null
+        )}
+      </svg>
+    </div>
+  );
+}
+
+// disposition split bars
+function DispositionBars({ counts }: { counts: Record<string, number> }) {
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  if (!total) return <Empty msg="No disposition data." />;
+  return (
+    <div className="space-y-3">
+      <div className="flex h-4 w-full rounded-full overflow-hidden">
+        {entries.map(([k, v], i) => (
+          <div
+            key={k}
+            style={{
+              width: `${(v / total) * 100}%`,
+              backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+            }}
+            title={`${humanKey(k)}: ${v}`}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {entries.map(([k, v], i) => (
+          <div key={k} className="flex items-center gap-1.5">
+            <span
+              className="w-2.5 h-2.5 rounded-sm"
+              style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
+            />
+            <span className="text-[12px] font-semibold text-slate-600">{humanKey(k)}</span>
+            <span className="text-[12px] font-black text-slate-900">{v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// recruiter leaderboard bars
+function Leaderboard({
+  items,
+}: {
+  items: { id: string; name: string; sourced: number; joined: number }[];
+}) {
+  const max = Math.max(1, ...items.map(i => i.sourced));
+  if (!items.length) return <Empty msg="No recruiter activity." />;
+  return (
+    <div className="space-y-2.5">
+      {items.map((r, i) => (
+        <div key={r.id} className="flex items-center gap-3">
+          <span className="text-[11px] font-black text-slate-300 w-4">{i + 1}</span>
+          <span className="text-[12px] font-semibold text-slate-700 w-36 shrink-0 truncate">
+            {r.name}
+          </span>
+          <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden">
+            <div
+              className="h-full rounded bg-indigo-500 transition-all"
+              style={{ width: `${Math.max((r.sourced / max) * 100, 4)}%` }}
+            />
+          </div>
+          <span className="text-[12px] font-black text-slate-900 w-8 text-right">{r.sourced}</span>
+          {r.joined > 0 && (
+            <span className="text-[11px] font-bold text-emerald-600 w-16 text-right">
+              {r.joined} joined
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTERS BAR  (window picker + client + service line)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Filters {
   clientId?: string;
   serviceLineId?: string;
-  fromDate?: string;
-  toDate?: string;
 }
 
-function FiltersBar({ filters, onChange }: { filters: Filters; onChange: (f: Filters) => void }) {
+function FiltersBar({
+  filters,
+  onChange,
+  win,
+  onWin,
+  standardOnly,
+  onStandardOnly,
+}: {
+  filters: Filters;
+  onChange: (f: Filters) => void;
+  win: WinState;
+  onWin: (w: WinState) => void;
+  standardOnly: boolean;
+  onStandardOnly: (v: boolean) => void;
+}) {
   const axios = useAxios();
   const { data: clientsRes } = useQuery({
     queryKey: ['rf-clients'],
@@ -355,114 +566,375 @@ function FiltersBar({ filters, onChange }: { filters: Filters; onChange: (f: Fil
   const sls: any[] = slRes ?? [];
   const set = (k: keyof Filters, v: string) =>
     onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
-  const hasActive = filters.clientId || filters.serviceLineId || filters.fromDate || filters.toDate;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap gap-2 items-center">
-      <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-3">
+      {/* Row 1: window mode */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Clock className="w-4 h-4 text-slate-400 shrink-0" />
 
-      <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
-        <SelectTrigger className="h-8 w-40 text-xs font-medium border-slate-200">
-          <SelectValue placeholder="All Clients" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">All Clients</SelectItem>
-          {clients.map(c => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.name}
-            </SelectItem>
+        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+          {(
+            [
+              { k: 'preset', l: 'Quick' },
+              { k: 'hours', l: 'By Hours' },
+              { k: 'range', l: 'Custom Range' },
+            ] as { k: WindowMode; l: string }[]
+          ).map(m => (
+            <button
+              key={m.k}
+              onClick={() => onWin({ ...win, mode: m.k })}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${win.mode === m.k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {m.l}
+            </button>
           ))}
-        </SelectContent>
-      </Select>
+        </div>
 
-      <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
-        <SelectTrigger className="h-8 w-40 text-xs font-medium border-slate-200">
-          <SelectValue placeholder="All Service Lines" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ALL">All Service Lines</SelectItem>
-          {sls.map(s => (
-            <SelectItem key={s.id} value={s.id}>
-              {s.name}
-            </SelectItem>
+        {win.mode === 'preset' &&
+          PRESETS.map(p => (
+            <button
+              key={p.k}
+              onClick={() => onWin({ ...win, range: p.k })}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${win.range === p.k ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+            >
+              {p.l}
+            </button>
           ))}
-        </SelectContent>
-      </Select>
 
-      <div className="flex items-center gap-1.5 border border-slate-200 bg-white rounded-lg px-2 h-8">
-        <Calendar className="w-3 h-3 text-slate-400" />
-        <input
-          type="date"
-          value={filters.fromDate ?? ''}
-          onChange={e => set('fromDate', e.target.value)}
-          className="text-xs text-slate-700 bg-transparent outline-none w-28"
-        />
-      </div>
-      <div className="flex items-center gap-1.5 border border-slate-200 bg-white rounded-lg px-2 h-8">
-        <span className="text-[10px] font-bold text-slate-400">TO</span>
-        <input
-          type="date"
-          value={filters.toDate ?? ''}
-          onChange={e => set('toDate', e.target.value)}
-          className="text-xs text-slate-700 bg-transparent outline-none w-28"
-        />
+        {win.mode === 'hours' && (
+          <div className="flex items-center gap-2">
+            {HOUR_OPTS.map(h => (
+              <button
+                key={h}
+                onClick={() => onWin({ ...win, hours: h })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${win.hours === h ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+              >
+                {h}h
+              </button>
+            ))}
+            <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 h-8">
+              <span className="text-[10px] font-bold text-slate-400">CUSTOM</span>
+              <input
+                type="number"
+                min={1}
+                value={win.hours}
+                onChange={e => onWin({ ...win, hours: Math.max(1, Number(e.target.value) || 1) })}
+                className="w-14 text-xs text-slate-700 bg-transparent outline-none"
+              />
+              <span className="text-[10px] font-bold text-slate-400">hrs</span>
+            </div>
+          </div>
+        )}
+
+        {win.mode === 'range' && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 h-8">
+              <span className="text-[10px] font-bold text-slate-400">FROM</span>
+              <input
+                type="date"
+                value={win.fromDate}
+                onChange={e => onWin({ ...win, fromDate: e.target.value })}
+                className="text-xs text-slate-700 bg-transparent outline-none w-28"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 h-8">
+              <span className="text-[10px] font-bold text-slate-400">TO</span>
+              <input
+                type="date"
+                value={win.toDate}
+                onChange={e => onWin({ ...win, toDate: e.target.value })}
+                className="text-xs text-slate-700 bg-transparent outline-none w-28"
+              />
+            </div>
+          </div>
+        )}
+
+        <span className="ml-auto text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+          {winLabel(win)}
+        </span>
       </div>
 
-      {hasActive && (
+      {/* Row 2: entity filters */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+        <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+
+        <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
+          <SelectTrigger className="h-8 w-40 text-xs font-medium border-slate-200">
+            <SelectValue placeholder="All Clients" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All Clients</SelectItem>
+            {clients.map(c => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
+          <SelectTrigger className="h-8 w-44 text-xs font-medium border-slate-200">
+            <SelectValue placeholder="All Service Lines" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All Service Lines</SelectItem>
+            {sls.map(s => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <button
-          onClick={() => onChange({})}
-          className="flex items-center gap-1 h-8 px-2.5 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+          onClick={() => onStandardOnly(!standardOnly)}
+          className={`flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border transition-colors ${standardOnly ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
         >
-          <X className="w-3 h-3" /> Clear
+          {standardOnly ? (
+            <CheckSquare className="w-3.5 h-3.5" />
+          ) : (
+            <Square className="w-3.5 h-3.5" />
+          )}
+          Standard stages only
         </button>
-      )}
+
+        {(filters.clientId || filters.serviceLineId) && (
+          <button
+            onClick={() => onChange({})}
+            className="flex items-center gap-1 h-8 px-2.5 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+          >
+            <X className="w-3 h-3" /> Clear
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RECRUITER TABLE
+// OVERVIEW SECTION
 // ─────────────────────────────────────────────────────────────────────────────
+
+function OverviewSection({ data, loading }: { data?: OverviewResponse; loading: boolean }) {
+  if (loading)
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-56 rounded-xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
+      </div>
+    );
+
+  const d = data?.data;
+  if (!d || d.kpis.total === 0) return <Empty msg="No activity in this window." />;
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <KPI label="Candidates" value={d.kpis.total} color="#4F46E5" />
+        <KPI
+          label="Submitted"
+          value={d.kpis.submitted}
+          color="#2563EB"
+          sub={`${d.kpis.submissionRate}% of sourced`}
+        />
+        <KPI
+          label="Offered"
+          value={d.kpis.offered}
+          color="#D97706"
+          sub={`${d.kpis.offerRate}% of submitted`}
+        />
+        <KPI
+          label="Joined"
+          value={d.kpis.joined}
+          color="#059669"
+          trend="up"
+          sub={`${d.kpis.joinRate}% of offered`}
+        />
+        <KPI label="Active" value={d.kpis.active} color="#0891B2" />
+        <KPI
+          label="Dropped"
+          value={d.kpis.dropped}
+          color="#DC2626"
+          trend={d.kpis.dropped > 0 ? 'down' : undefined}
+        />
+      </div>
+
+      <Card title={`Candidates Added (${d.timeGranularity === 'hour' ? 'hourly' : 'daily'})`}>
+        <TimeSeriesChart points={d.timeSeries} granularity={d.timeGranularity} />
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card title="Stage Funnel">
+          <FunnelChart items={d.funnel.map(f => ({ label: f.label, count: f.count }))} />
+        </Card>
+        <div className="space-y-4">
+          <Card title="Disposition Split">
+            <DispositionBars counts={d.dispositionCounts} />
+          </Card>
+          <Card title="Top Recruiters">
+            <Leaderboard items={d.leaderboard} />
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SELECTION HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function useSelection() {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setSelected(p => {
+      const n = new Set(p);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  const toggleAll = (ids: string[]) =>
+    setSelected(p => (p.size === ids.length ? new Set() : new Set(ids)));
+  const clear = () => setSelected(new Set());
+  return { selected, toggle, toggleAll, clear };
+}
+
+function SelectHeader({
+  allIds,
+  selected,
+  toggleAll,
+}: {
+  allIds: string[];
+  selected: Set<string>;
+  toggleAll: (ids: string[]) => void;
+}) {
+  const all = allIds.length > 0 && selected.size === allIds.length;
+  return (
+    <button
+      onClick={() => toggleAll(allIds)}
+      className="text-slate-400 hover:text-indigo-500 transition-colors"
+    >
+      {all ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+    </button>
+  );
+}
+
+function SelectCell({
+  id,
+  selected,
+  toggle,
+}: {
+  id: string;
+  selected: Set<string>;
+  toggle: (id: string) => void;
+}) {
+  return (
+    <button
+      onClick={() => toggle(id)}
+      className="text-slate-300 hover:text-indigo-500 transition-colors"
+    >
+      {selected.has(id) ? (
+        <CheckSquare className="w-4 h-4 text-indigo-500" />
+      ) : (
+        <Square className="w-4 h-4" />
+      )}
+    </button>
+  );
+}
+
+function DownloadBar({
+  count,
+  onSelected,
+  onAll,
+  label,
+}: {
+  count: number;
+  onSelected: () => void;
+  onAll: () => void;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-semibold text-slate-600">{label}</span>
+      <div className="ml-auto flex items-center gap-2">
+        {count > 0 && (
+          <button
+            onClick={onSelected}
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" /> Download Selected ({count})
+          </button>
+        )}
+        <button
+          onClick={onAll}
+          className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+        >
+          <Download className="w-3.5 h-3.5" /> Download All
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECRUITER SECTION  (real stages + within-requirement filter + selection)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StageCell({ count, sourced, color }: { count: number; sourced: number; color: string }) {
+  const pct = sourced > 0 ? Math.round((count / sourced) * 100) : 0;
+  if (count <= 0) return <span className="text-slate-200 text-xs">—</span>;
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-[14px] font-black" style={{ color }}>
+        {count}
+      </span>
+      <span className="text-[10px] font-semibold text-slate-400">{pct}%</span>
+    </div>
+  );
+}
 
 function RecruiterSection({
   data,
   loading,
   stages,
-  canonicalKeys,
-  qs,
-  onExport,
+  reqFilter,
+  onReqFilter,
+  onDownloadSelected,
+  onDownloadAll,
 }: {
   data: RecruiterStat[];
   loading: boolean;
   stages: StageMeta[];
-  canonicalKeys: string[];
-  qs: string;
-  onExport: (view: StageView) => void;
+  reqFilter: string;
+  onReqFilter: (v: string) => void;
+  onDownloadSelected: (ids: string[]) => void;
+  onDownloadAll: () => void;
 }) {
-  const [view, setView] = useState<StageView>('summary');
+  const { selected, toggle, toggleAll, clear } = useSelection();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [reqExp, setReqExp] = useState<Set<string>>(new Set());
-  const toggle = (id: string) =>
+  const toggleExp = (id: string) =>
     setExpanded(p => {
       const n = new Set(p);
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-  const toggleReq = (k: string) =>
-    setReqExp(p => {
-      const n = new Set(p);
-      n.has(k) ? n.delete(k) : n.add(k);
-      return n;
-    });
 
-  // Pipeline columns: only stages with data across ANY recruiter
-  const activeStageIds = useMemo(() => {
-    const totals: Record<string, number> = {};
+  // requirement dropdown options — union across all recruiters
+  const reqOptions = useMemo(() => {
+    const m = new Map<string, string>();
     for (const r of data)
-      for (const s of r.stageBreakdown) totals[s.stageId] = (totals[s.stageId] ?? 0) + s.count;
-    return new Set(stages.filter(s => (totals[s.id] ?? 0) > 0).map(s => s.id));
-  }, [data, stages]);
-  const activeStages = stages.filter(s => activeStageIds.has(s.id));
+      for (const rq of r.requirementBreakdown)
+        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
+    return [...m.entries()].map(([id, label]) => ({ id, label }));
+  }, [data]);
 
   const totals = useMemo(
     () => ({
@@ -486,11 +958,12 @@ function RecruiterSection({
         <Skel rows={6} />
       </div>
     );
-  if (!data.length) return <Empty msg="No recruiter data for these filters." />;
+  if (!data.length) return <Empty msg="No recruiter data for this window." />;
+
+  const allIds = data.map(r => r.id);
 
   return (
     <div className="space-y-5">
-      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <KPI label="Recruiters" value={data.length} color="#4F46E5" />
         <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
@@ -502,7 +975,7 @@ function RecruiterSection({
           trend="up"
           sub={
             totals.sourced > 0
-              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}% of sourced`
+              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
               : undefined
           }
         />
@@ -514,107 +987,102 @@ function RecruiterSection({
         />
       </div>
 
-      {/* View switcher + download */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
-          {(
-            [
-              { k: 'summary', l: 'Summary' },
-              { k: 'funnel', l: 'Stage Funnel' },
-              { k: 'pipeline', l: 'All Stages' },
-            ] as { k: StageView; l: string }[]
-          ).map(v => (
+      {/* within-requirement filter + download */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            Within Requirement
+          </span>
+          <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
+            <SelectTrigger className="h-8 w-72 text-xs font-medium border-slate-200">
+              <SelectValue placeholder="All requirements" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All requirements</SelectItem>
+              {reqOptions.map(o => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {reqFilter && (
             <button
-              key={v.k}
-              onClick={() => setView(v.k)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${view === v.k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={() => onReqFilter('')}
+              className="flex items-center gap-1 h-8 px-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg"
             >
-              {v.l}
+              <X className="w-3 h-3" /> Clear
             </button>
-          ))}
+          )}
         </div>
-        <button
-          onClick={() => onExport(view)}
-          className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
-        >
-          <Download className="w-3.5 h-3.5" /> Download{' '}
-          {view === 'pipeline' ? 'All Stages' : view === 'funnel' ? 'Stage Funnel' : 'Summary'}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {selected.size > 0 && (
+            <button
+              onClick={() => onDownloadSelected([...selected])}
+              className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" /> Download Selected ({selected.size})
+            </button>
+          )}
+          <button
+            onClick={onDownloadAll}
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+          >
+            <Download className="w-3.5 h-3.5" /> Download All
+          </button>
+        </div>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="w-8 px-3 py-3" />
+              <th className="w-8 px-3 py-3">
+                <SelectHeader allIds={allIds} selected={selected} toggleAll={toggleAll} />
+              </th>
+              <th className="w-8 px-1 py-3" />
               <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                 Recruiter
               </th>
               <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                 Jobs
               </th>
-
-              {view === 'summary' && (
-                <>
-                  <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    Sourced
-                  </th>
-                  {/* All canonical stages from API */}
-                  {canonicalKeys.map((k, i) => (
-                    <th
-                      key={k}
-                      className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap"
-                    >
-                      <div className="flex flex-col items-center gap-0.5">
-                        <div
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                        />
-                        {humanKey(k)}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    Active
-                  </th>
-                  <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    Avg Days
-                  </th>
-                </>
-              )}
-
-              {view === 'funnel' &&
-                canonicalKeys.map((k, i) => (
-                  <th
-                    key={k}
-                    className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap"
-                  >
-                    <div className="flex flex-col items-center gap-0.5">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                      />
-                      {humanKey(k)}
-                    </div>
-                  </th>
-                ))}
-
-              {view === 'pipeline' &&
-                activeStages.map(s => (
-                  <th
-                    key={s.id}
-                    className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap max-w-[80px]"
-                    title={s.label}
-                  >
-                    <span className="block truncate">{s.label}</span>
-                  </th>
-                ))}
+              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                Sourced
+              </th>
+              {stages.map((s, i) => (
+                <th
+                  key={s.id}
+                  className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap max-w-[90px]"
+                  title={s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : s.label}
+                >
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
+                    />
+                    <span className="block truncate max-w-[80px]">{s.label}</span>
+                  </div>
+                </th>
+              ))}
+              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                Active
+              </th>
+              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                Avg Days
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {data.map(r => {
               const isExp = expanded.has(r.id);
+              // when a requirement filter is active, show that requirement's numbers
+              const rq = reqFilter
+                ? r.requirementBreakdown.find(x => x.requirementId === reqFilter)
+                : null;
+              const shownSourced = rq ? rq.sourced : r.sourced;
+              const shownActive = rq ? rq.active : r.active;
+              const shownStageCounts = rq ? rq.stageCounts : r.stageCounts;
               return (
                 <>
                   <tr
@@ -622,8 +1090,11 @@ function RecruiterSection({
                     className={`hover:bg-slate-50/60 transition-colors ${isExp ? 'bg-indigo-50/20' : ''}`}
                   >
                     <td className="px-3 py-3">
+                      <SelectCell id={r.id} selected={selected} toggle={toggle} />
+                    </td>
+                    <td className="px-1 py-3">
                       <button
-                        onClick={() => toggle(r.id)}
+                        onClick={() => toggleExp(r.id)}
                         className="text-slate-300 hover:text-indigo-500 transition-colors"
                       >
                         {isExp ? (
@@ -638,198 +1109,103 @@ function RecruiterSection({
                       <div className="text-[11px] text-slate-400">{r.email}</div>
                     </td>
                     <td className="px-3 py-3 text-center text-[12px] font-semibold text-slate-600">
-                      {r.requirementBreakdown?.length ?? 0}
+                      {rq ? 1 : r.requirementBreakdown.length}
                     </td>
-
-                    {view === 'summary' && (
-                      <>
-                        <td className="px-3 py-3 text-center">
-                          <span className="text-[15px] font-black text-slate-900">{r.sourced}</span>
-                        </td>
-                        {canonicalKeys.map((k, i) => {
-                          const count = r.canonicalStageCounts[k] ?? 0;
-                          const pct = r.sourced > 0 ? Math.round((count / r.sourced) * 100) : 0;
-                          return (
-                            <td key={k} className="px-2 py-3 text-center">
-                              {count > 0 ? (
-                                <div className="flex flex-col items-center gap-0.5">
-                                  <span
-                                    className="text-[14px] font-black"
-                                    style={{ color: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                                  >
-                                    {count}
-                                  </span>
-                                  <span className="text-[10px] font-semibold text-slate-400">
-                                    {pct}%
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-200 text-xs">—</span>
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="px-3 py-3 text-center">
-                          <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold">
-                            {r.active}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-center text-[12px] font-medium text-slate-500">
-                          {r.avgTimeToSubmitDays != null ? `${r.avgTimeToSubmitDays}d` : '—'}
-                        </td>
-                      </>
-                    )}
-
-                    {view === 'funnel' &&
-                      canonicalKeys.map((k, i) => {
-                        const count = r.canonicalStageCounts[k] ?? 0;
-                        const pct = r.sourced > 0 ? Math.round((count / r.sourced) * 100) : 0;
-                        return (
-                          <td key={k} className="px-2 py-3 text-center">
-                            {count > 0 ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span
-                                  className="text-[14px] font-black"
-                                  style={{ color: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                                >
-                                  {count}
-                                </span>
-                                <span className="text-[10px] font-semibold text-slate-400">
-                                  {pct}%
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-200 text-xs">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
-
-                    {view === 'pipeline' &&
-                      activeStages.map(s => {
-                        const item = r.stageBreakdown.find(b => b.stageId === s.id);
-                        const count = item?.count ?? 0;
-                        const pct = r.sourced > 0 ? Math.round((count / r.sourced) * 100) : 0;
-                        return (
-                          <td key={s.id} className="px-2 py-3 text-center">
-                            {count > 0 ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className="text-[14px] font-black text-slate-800">
-                                  {count}
-                                </span>
-                                <span className="text-[10px] font-semibold text-slate-400">
-                                  {pct}%
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-200 text-xs">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
+                    <td className="px-3 py-3 text-center">
+                      <span className="text-[15px] font-black text-slate-900">{shownSourced}</span>
+                    </td>
+                    {stages.map((s, i) => (
+                      <td key={s.id} className="px-2 py-3 text-center">
+                        <StageCell
+                          count={shownStageCounts[s.id] ?? 0}
+                          sourced={shownSourced}
+                          color={FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-3 py-3 text-center">
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold">
+                        {shownActive}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-center text-[12px] font-medium text-slate-500">
+                      {r.avgTimeToSubmitDays != null ? `${r.avgTimeToSubmitDays}d` : '—'}
+                    </td>
                   </tr>
 
-                  {/* Expanded: requirement breakdown */}
                   {isExp && (
                     <tr key={`${r.id}-exp`} className="bg-slate-50/40">
-                      <td />
+                      <td colSpan={2} />
                       <td colSpan={100} className="px-5 py-4">
-                        {r.requirementBreakdown?.length > 0 ? (
+                        {r.requirementBreakdown.length > 0 ? (
                           <div className="space-y-1.5">
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                               Per Requirement
                             </p>
-                            {r.requirementBreakdown.map(rq => {
-                              const rqKey = `${r.id}-${rq.requirementId}`;
-                              const rqExp = reqExp.has(rqKey);
-                              return (
+                            {r.requirementBreakdown
+                              .filter(rq => !reqFilter || rq.requirementId === reqFilter)
+                              .map(rqi => (
                                 <div
-                                  key={rq.requirementId}
-                                  className="rounded-lg border border-slate-200 bg-white overflow-hidden"
+                                  key={rqi.requirementId}
+                                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5"
                                 >
-                                  <button
-                                    onClick={() => toggleReq(rqKey)}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 text-left transition-colors"
-                                  >
-                                    {rqExp ? (
-                                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                    ) : (
-                                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                    )}
-                                    <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 bg-slate-100 px-1.5 py-0.5 rounded">
-                                      {rq.reqCode}
+                                  <div className="flex items-center gap-3 flex-wrap">
+                                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                      {rqi.reqCode}
                                     </span>
-                                    <span className="text-[12px] font-semibold text-slate-800 truncate flex-1">
-                                      {rq.title}
+                                    <span className="text-[12px] font-semibold text-slate-800 truncate flex-1 min-w-[120px]">
+                                      {rqi.title}
                                     </span>
                                     <span
-                                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_STYLE[rq.status] ?? 'bg-slate-100 text-slate-500'}`}
+                                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[rqi.status] ?? 'bg-slate-100 text-slate-500'}`}
                                     >
-                                      {rq.status.replace(/_/g, ' ')}
+                                      {rqi.status.replace(/_/g, ' ')}
                                     </span>
-                                    <div className="flex items-center gap-3 shrink-0 ml-2">
-                                      <span className="text-[11px] font-bold text-slate-800">
-                                        {rq.sourced} sourced
+                                    {rqi.client && (
+                                      <span className="text-[11px] text-slate-400">
+                                        {rqi.client.name}
                                       </span>
-                                      <span
-                                        className={`text-[11px] font-bold ${rq.active > 0 ? 'text-indigo-600' : 'text-slate-400'}`}
-                                      >
-                                        {rq.active} active
+                                    )}
+                                    {rqi.serviceLine && (
+                                      <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
+                                        {rqi.serviceLine.name}
                                       </span>
-                                      {rq.joined > 0 && (
-                                        <span className="text-[11px] font-bold text-emerald-600">
-                                          {rq.joined} joined
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-4 mt-2.5 pt-2.5 border-t border-slate-100">
+                                    {[
+                                      { l: 'Sourced', v: rqi.sourced, c: 'text-slate-800' },
+                                      { l: 'Submitted', v: rqi.submitted, c: 'text-blue-700' },
+                                      { l: 'Offered', v: rqi.offered, c: 'text-amber-700' },
+                                      { l: 'Joined', v: rqi.joined, c: 'text-emerald-700' },
+                                      { l: 'Dropped', v: rqi.dropped, c: 'text-red-500' },
+                                      { l: 'Active', v: rqi.active, c: 'text-indigo-700' },
+                                    ].map(it => (
+                                      <div key={it.l} className="flex flex-col items-center">
+                                        <span className={`text-lg font-black ${it.c}`}>{it.v}</span>
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                                          {it.l}
                                         </span>
-                                      )}
-                                    </div>
-                                  </button>
-                                  {rqExp && (
-                                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/60">
-                                      <div className="flex flex-wrap gap-4">
-                                        {[
-                                          { l: 'Sourced', v: rq.sourced, c: 'text-slate-800' },
-                                          { l: 'Submitted', v: rq.submitted, c: 'text-blue-700' },
-                                          {
-                                            l: 'Shortlisted',
-                                            v: rq.shortlisted,
-                                            c: 'text-violet-700',
-                                          },
-                                          { l: 'Offered', v: rq.offered, c: 'text-amber-700' },
-                                          { l: 'Joined', v: rq.joined, c: 'text-emerald-700' },
-                                          { l: 'Dropped', v: rq.dropped, c: 'text-red-500' },
-                                          { l: 'Active', v: rq.active, c: 'text-indigo-700' },
-                                        ].map(item => (
-                                          <div key={item.l} className="flex flex-col items-center">
-                                            <span className={`text-xl font-black ${item.c}`}>
-                                              {item.v}
-                                            </span>
-                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                                              {item.l}
-                                            </span>
-                                          </div>
-                                        ))}
                                       </div>
-                                      {Object.entries(rq.canonicalStageCounts).filter(
-                                        ([, v]) => v > 0
-                                      ).length > 0 && (
-                                        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100">
-                                          {Object.entries(rq.canonicalStageCounts)
-                                            .filter(([, v]) => v > 0)
-                                            .map(([k, v]) => (
-                                              <span
-                                                key={k}
-                                                className="text-[11px] font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full"
-                                              >
-                                                {humanKey(k)}: {v}
-                                              </span>
-                                            ))}
-                                        </div>
-                                      )}
+                                    ))}
+                                  </div>
+                                  {Object.entries(rqi.stageCounts).filter(([, v]) => v > 0).length >
+                                    0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-slate-100">
+                                      {stages
+                                        .filter(s => (rqi.stageCounts[s.id] ?? 0) > 0)
+                                        .map(s => (
+                                          <span
+                                            key={s.id}
+                                            className="text-[11px] font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full"
+                                          >
+                                            {s.label}: {rqi.stageCounts[s.id]}
+                                          </span>
+                                        ))}
                                     </div>
                                   )}
                                 </div>
-                              );
-                            })}
+                              ))}
                           </div>
                         ) : (
                           <p className="text-xs text-slate-400">No requirement data.</p>
@@ -848,25 +1224,27 @@ function RecruiterSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REQUIREMENT TABLE
-// Each row has inline Download Excel button
+// REQUIREMENT SECTION  (real stages + selection + per-row export)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RequirementSection({
   data,
   loading,
-  canonicalKeys,
+  stages,
   onDownloadRow,
+  onDownloadSelected,
   onDownloadAll,
 }: {
   data: RequirementRow[];
   loading: boolean;
-  canonicalKeys: string[];
+  stages: StageMeta[];
   onDownloadRow: (id: string, reqCode: string) => void;
+  onDownloadSelected: (ids: string[]) => void;
   onDownloadAll: () => void;
 }) {
+  const { selected, toggle, toggleAll } = useSelection();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggle = (id: string) =>
+  const toggleExp = (id: string) =>
     setExpanded(p => {
       const n = new Set(p);
       n.has(id) ? n.delete(id) : n.add(id);
@@ -874,25 +1252,40 @@ function RequirementSection({
     });
 
   if (loading) return <Skel rows={6} />;
-  if (!data.length) return <Empty msg="No requirements found." />;
+  if (!data.length) return <Empty msg="No requirements found for this window." />;
+
+  const allIds = data.map(r => r.id);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm font-semibold text-slate-600">{data.length} requirements</span>
-        <button
-          onClick={onDownloadAll}
-          className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
-        >
-          <Download className="w-3.5 h-3.5" /> Download All
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {selected.size > 0 && (
+            <button
+              onClick={() => onDownloadSelected([...selected])}
+              className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" /> Download Selected ({selected.size})
+            </button>
+          )}
+          <button
+            onClick={onDownloadAll}
+            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
+          >
+            <Download className="w-3.5 h-3.5" /> Download All
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="w-8 px-3 py-3" />
+              <th className="w-8 px-3 py-3">
+                <SelectHeader allIds={allIds} selected={selected} toggleAll={toggleAll} />
+              </th>
+              <th className="w-8 px-1 py-3" />
               <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                 Requirement
               </th>
@@ -905,18 +1298,18 @@ function RequirementSection({
               <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
                 Total
               </th>
-              {/* All canonical stages from API */}
-              {canonicalKeys.map((k, i) => (
+              {stages.map((s, i) => (
                 <th
-                  key={k}
-                  className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap"
+                  key={s.id}
+                  className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap max-w-[90px]"
+                  title={s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : s.label}
                 >
                   <div className="flex flex-col items-center gap-0.5">
                     <div
                       className="w-1.5 h-1.5 rounded-full"
                       style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
                     />
-                    {humanKey(k)}
+                    <span className="block truncate max-w-[80px]">{s.label}</span>
                   </div>
                 </th>
               ))}
@@ -936,8 +1329,11 @@ function RequirementSection({
                     className={`hover:bg-slate-50/60 transition-colors ${r.isRespondByBreached ? 'border-l-2 border-l-red-400' : ''}`}
                   >
                     <td className="px-3 py-3">
+                      <SelectCell id={r.id} selected={selected} toggle={toggle} />
+                    </td>
+                    <td className="px-1 py-3">
                       <button
-                        onClick={() => toggle(r.id)}
+                        onClick={() => toggleExp(r.id)}
                         className="text-slate-300 hover:text-indigo-500 transition-colors"
                       >
                         {isExp ? (
@@ -951,12 +1347,17 @@ function RequirementSection({
                       <div className="font-bold text-slate-900 text-[13px] leading-tight">
                         {r.title}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                           {r.reqCode}
                         </span>
                         {r.client && (
                           <span className="text-[11px] text-slate-400">{r.client.name}</span>
+                        )}
+                        {r.serviceLine && (
+                          <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
+                            {r.serviceLine.name}
+                          </span>
                         )}
                       </div>
                     </td>
@@ -975,30 +1376,15 @@ function RequirementSection({
                         {r.totalCandidates}
                       </span>
                     </td>
-                    {canonicalKeys.map((k, i) => {
-                      const count = r.canonicalStageCounts[k] ?? 0;
-                      const pct =
-                        r.totalCandidates > 0 ? Math.round((count / r.totalCandidates) * 100) : 0;
-                      return (
-                        <td key={k} className="px-2 py-3 text-center">
-                          {count > 0 ? (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span
-                                className="text-[13px] font-black"
-                                style={{ color: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                              >
-                                {count}
-                              </span>
-                              <span className="text-[10px] font-semibold text-slate-400">
-                                {pct}%
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-200 text-xs">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                    {stages.map((s, i) => (
+                      <td key={s.id} className="px-2 py-3 text-center">
+                        <StageCell
+                          count={r.stageCounts[s.id] ?? 0}
+                          sourced={r.totalCandidates}
+                          color={FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
+                        />
+                      </td>
+                    ))}
                     <td className="px-3 py-3 text-center text-[11px] text-slate-400 font-medium whitespace-nowrap">
                       {fmtDate(r.createdAt)}
                     </td>
@@ -1012,12 +1398,27 @@ function RequirementSection({
                     </td>
                   </tr>
 
-                  {/* Expanded: details */}
                   {isExp && (
                     <tr key={`${r.id}-exp`} className="bg-slate-50/40">
-                      <td />
+                      <td colSpan={2} />
                       <td colSpan={100} className="px-5 py-3">
                         <div className="flex flex-wrap gap-6 text-[12px]">
+                          {r.clientSpoc && (
+                            <div>
+                              <span className="text-slate-400">SPOC: </span>
+                              <span className="font-semibold text-slate-700">
+                                {r.clientSpoc.firstName} {r.clientSpoc.lastName}
+                              </span>
+                            </div>
+                          )}
+                          {r.businessUnit && (
+                            <div>
+                              <span className="text-slate-400">BU: </span>
+                              <span className="font-semibold text-slate-700">
+                                {r.businessUnit.name}
+                              </span>
+                            </div>
+                          )}
                           {r.city && (
                             <div>
                               <span className="text-slate-400">City: </span>
@@ -1038,6 +1439,10 @@ function RequirementSection({
                             <span className="text-slate-400">Remote: </span>
                             <span className="font-semibold text-slate-700">{r.remoteType}</span>
                           </div>
+                          <div>
+                            <span className="text-slate-400">Priority: </span>
+                            <span className="font-semibold text-slate-700">{r.priority}</span>
+                          </div>
                           {r.respondBy && (
                             <div>
                               <span className="text-slate-400">Respond By: </span>
@@ -1049,32 +1454,20 @@ function RequirementSection({
                               </span>
                             </div>
                           )}
-                          {r.businessUnit && (
-                            <div>
-                              <span className="text-slate-400">BU: </span>
-                              <span className="font-semibold text-slate-700">
-                                {r.businessUnit.name}
-                              </span>
-                            </div>
-                          )}
-                          {r.serviceLine && (
-                            <div>
-                              <span className="text-slate-400">Service Line: </span>
-                              <span className="font-semibold text-slate-700">
-                                {r.serviceLine.name}
-                              </span>
-                            </div>
-                          )}
-                          <div>
-                            <span className="text-slate-400">Priority: </span>
-                            <span className="font-semibold text-slate-700">{r.priority}</span>
-                          </div>
                           <div>
                             <span className="text-slate-400">Created By: </span>
                             <span className="font-semibold text-slate-700">
                               {r.createdBy.firstName} {r.createdBy.lastName}
                             </span>
                           </div>
+                          {r.deletedAt && (
+                            <div>
+                              <span className="text-slate-400">Deleted: </span>
+                              <span className="font-semibold text-red-500">
+                                {fmtDate(r.deletedAt)}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1090,168 +1483,10 @@ function RequirementSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ASSIGNMENT TABLE
-// Same pattern — per-row Excel download
-// ─────────────────────────────────────────────────────────────────────────────
-
-function AssignmentSection({
-  data,
-  loading,
-  canonicalKeys,
-  onDownloadRow,
-  onDownloadAll,
-}: {
-  data: AssignmentRow[];
-  loading: boolean;
-  canonicalKeys: string[];
-  onDownloadRow: (id: string) => void;
-  onDownloadAll: () => void;
-}) {
-  if (loading) return <Skel rows={6} />;
-  if (!data.length) return <Empty msg="No assignments found." />;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-600">{data.length} assignments</span>
-        <button
-          onClick={onDownloadAll}
-          className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
-        >
-          <Download className="w-3.5 h-3.5" /> Download All
-        </button>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="px-4 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Assignment
-              </th>
-              <th className="px-3 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Recruiter
-              </th>
-              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Status
-              </th>
-              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Allocated
-              </th>
-              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Candidates
-              </th>
-              {canonicalKeys.map((k, i) => (
-                <th
-                  key={k}
-                  className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap"
-                >
-                  <div className="flex flex-col items-center gap-0.5">
-                    <div
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                    />
-                    {humanKey(k)}
-                  </div>
-                </th>
-              ))}
-              <th className="px-3 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                Deadline
-              </th>
-              <th className="px-3 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-widest" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {data.map(a => (
-              <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
-                <td className="px-4 py-3 min-w-[220px]">
-                  <div className="font-bold text-slate-900 text-[13px] leading-tight">
-                    {a.requirement?.title ?? '—'}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                      {a.requirement?.reqCode}
-                    </span>
-                    {a.requirement?.client && (
-                      <span className="text-[11px] text-slate-400">
-                        {a.requirement.client.name}
-                      </span>
-                    )}
-                    <span className="text-[10px] text-slate-400">Depth {a.depth}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-3">
-                  <div className="font-semibold text-slate-800 text-[12px]">
-                    {a.assignedTo.firstName} {a.assignedTo.lastName}
-                  </div>
-                  <div className="text-[11px] text-slate-400">{a.assignedTo.role?.name}</div>
-                </td>
-                <td className="px-3 py-3 text-center">
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[a.status] ?? 'bg-slate-100 text-slate-500'}`}
-                  >
-                    {a.status}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-center text-[13px] font-bold text-slate-700">
-                  {a.allocatedOpenings ?? '—'}
-                </td>
-                <td className="px-3 py-3 text-center">
-                  <span className="text-[14px] font-black text-slate-900">{a.totalCandidates}</span>
-                </td>
-                {canonicalKeys.map((k, i) => {
-                  const count = a.canonicalStageCounts[k] ?? 0;
-                  const pct =
-                    a.totalCandidates > 0 ? Math.round((count / a.totalCandidates) * 100) : 0;
-                  return (
-                    <td key={k} className="px-2 py-3 text-center">
-                      {count > 0 ? (
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span
-                            className="text-[13px] font-black"
-                            style={{ color: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-                          >
-                            {count}
-                          </span>
-                          <span className="text-[10px] font-semibold text-slate-400">{pct}%</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-200 text-xs">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-                <td className="px-3 py-3 text-center text-[11px] font-medium whitespace-nowrap">
-                  {a.deadline ? (
-                    <span
-                      className={`${new Date(a.deadline) < new Date() ? 'text-red-500' : 'text-slate-500'}`}
-                    >
-                      {fmtDate(a.deadline)}
-                    </span>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="px-3 py-3">
-                  <button
-                    onClick={() => onDownloadRow(a.id)}
-                    className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    <FileDown className="w-3 h-3" /> Excel
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
+
+type TabKey = 'overview' | 'recruiters' | 'requirements';
 
 export default function ReportsPage() {
   const axios = useAxios();
@@ -1259,47 +1494,55 @@ export default function ReportsPage() {
   const { canView } = usePermission('reports');
   const hasAccess = user?.isSuperAdmin || canView;
 
-  const [activeTab, setActiveTab] = useState<'recruiters' | 'requirements' | 'assignments'>(
-    'recruiters'
-  );
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [filters, setFilters] = useState<Filters>({});
+  const [win, setWin] = useState<WinState>(DEFAULT_WIN);
+  const [standardOnly, setStandardOnly] = useState(false);
+  const [recReqFilter, setRecReqFilter] = useState('');
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  const qs = useMemo(() => {
+  // shared query string (window + entity filters + standardOnly)
+  const baseParams = useMemo(() => {
     const p = new URLSearchParams();
+    Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
     if (filters.clientId) p.set('clientId', filters.clientId);
     if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
-    if (filters.fromDate) p.set('fromDate', filters.fromDate);
-    if (filters.toDate) p.set('toDate', filters.toDate);
-    return p.toString();
-  }, [filters]);
+    if (standardOnly) p.set('standardOnly', 'true');
+    return p;
+  }, [win, filters, standardOnly]);
 
-  const qStr = qs ? `?${qs}` : '';
+  const baseQs = baseParams.toString();
+
+  // recruiter query gets the within-requirement filter folded in
+  const recParams = useMemo(() => {
+    const p = new URLSearchParams(baseQs);
+    if (recReqFilter) p.set('requirementId', recReqFilter);
+    return p.toString();
+  }, [baseQs, recReqFilter]);
+
+  const overviewQuery = useQuery({
+    queryKey: ['report-overview', baseQs],
+    queryFn: async () => (await axios.get(`/reports/overview?${baseQs}`)).data as OverviewResponse,
+    enabled: hasAccess && activeTab === 'overview',
+    staleTime: 60000,
+  });
 
   const recruiterQuery = useQuery({
-    queryKey: ['report-recruiters', qs],
-    queryFn: async () => (await axios.get(`/reports/recruiters${qStr}`)).data as RecruiterResponse,
+    queryKey: ['report-recruiters', recParams],
+    queryFn: async () =>
+      (await axios.get(`/reports/recruiters?${recParams}`)).data as RecruiterResponse,
     enabled: hasAccess && activeTab === 'recruiters',
-    staleTime: 120000,
+    staleTime: 60000,
   });
 
   const requirementQuery = useQuery({
-    queryKey: ['report-requirements', qs],
+    queryKey: ['report-requirements', baseQs],
     queryFn: async () =>
-      (await axios.get(`/reports/requirements${qStr}`)).data as RequirementReportResponse,
+      (await axios.get(`/reports/requirements?${baseQs}`)).data as RequirementReportResponse,
     enabled: hasAccess && activeTab === 'requirements',
-    staleTime: 120000,
+    staleTime: 60000,
   });
 
-  const assignmentQuery = useQuery({
-    queryKey: ['report-assignments', qs],
-    queryFn: async () =>
-      (await axios.get(`/reports/assignments${qStr}`)).data as AssignmentReportResponse,
-    enabled: hasAccess && activeTab === 'assignments',
-    staleTime: 120000,
-  });
-
-  // ── Download handlers
   const download = useCallback(
     async (url: string, filename: string, key: string) => {
       if (downloading) return;
@@ -1316,52 +1559,61 @@ export default function ReportsPage() {
     [axios, downloading]
   );
 
-  const handleRecruiterExport = useCallback(
-    (view: StageView) => {
-      const p = new URLSearchParams(qs);
-      p.set('view', view);
-      const dateStr = new Date().toISOString().split('T')[0];
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  // ── recruiter exports
+  const handleRecruiterAll = useCallback(() => {
+    download(
+      `/reports/recruiters/export?${recParams}`,
+      `recruiter-report-all-${dateStr}.xlsx`,
+      'rec-all'
+    );
+  }, [recParams, download, dateStr]);
+
+  const handleRecruiterSelected = useCallback(
+    (ids: string[]) => {
+      const p = new URLSearchParams(recParams);
+      p.set('ids', ids.join(','));
       download(
         `/reports/recruiters/export?${p.toString()}`,
-        `recruiter-report-${view}-${dateStr}.xlsx`,
-        'rec-export'
+        `recruiter-report-selected-${dateStr}.xlsx`,
+        'rec-sel'
       );
     },
-    [qs, download]
+    [recParams, download, dateStr]
   );
 
+  // ── requirement exports
   const handleRequirementAll = useCallback(() => {
-    const dateStr = new Date().toISOString().split('T')[0];
-    download(`/reports/requirements/export${qStr}`, `requirements-all-${dateStr}.xlsx`, 'req-all');
-  }, [qStr, download]);
+    download(
+      `/reports/requirements/export?${baseQs}`,
+      `requirements-all-${dateStr}.xlsx`,
+      'req-all'
+    );
+  }, [baseQs, download, dateStr]);
+
+  const handleRequirementSelected = useCallback(
+    (ids: string[]) => {
+      const p = new URLSearchParams(baseQs);
+      p.set('ids', ids.join(','));
+      download(
+        `/reports/requirements/export?${p.toString()}`,
+        `requirements-selected-${dateStr}.xlsx`,
+        'req-sel'
+      );
+    },
+    [baseQs, download, dateStr]
+  );
 
   const handleRequirementRow = useCallback(
     (id: string, reqCode: string) => {
-      const dateStr = new Date().toISOString().split('T')[0];
       download(
         `/reports/requirements/${id}/export`,
         `requirement-${reqCode}-${dateStr}.xlsx`,
         `req-${id}`
       );
     },
-    [download]
-  );
-
-  const handleAssignmentAll = useCallback(() => {
-    const dateStr = new Date().toISOString().split('T')[0];
-    download(`/reports/assignments/export${qStr}`, `assignments-all-${dateStr}.xlsx`, 'asgn-all');
-  }, [qStr, download]);
-
-  const handleAssignmentRow = useCallback(
-    (id: string) => {
-      const dateStr = new Date().toISOString().split('T')[0];
-      download(
-        `/reports/assignments/${id}/export`,
-        `assignment-${id}-${dateStr}.xlsx`,
-        `asgn-${id}`
-      );
-    },
-    [download]
+    [download, dateStr]
   );
 
   if (!hasAccess)
@@ -1374,15 +1626,11 @@ export default function ReportsPage() {
 
   const recData = recruiterQuery.data?.data ?? [];
   const recStages = recruiterQuery.data?.meta?.stages ?? [];
-  const recCanonical = recruiterQuery.data?.meta?.canonicalKeys ?? [];
   const reqData = requirementQuery.data?.data ?? [];
-  const reqCanonical = requirementQuery.data?.canonicalKeys ?? [];
-  const asgData = assignmentQuery.data?.data ?? [];
-  const asgCanonical = assignmentQuery.data?.canonicalKeys ?? [];
+  const reqStages = requirementQuery.data?.meta?.stages ?? [];
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-slate-50 min-h-screen">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -1392,7 +1640,7 @@ export default function ReportsPage() {
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">Reports</h1>
           </div>
           <p className="text-sm text-slate-500 font-medium">
-            Recruiter performance · Requirement analytics · Assignment tracking
+            Live monitoring · Recruiter performance · Requirement analytics
           </p>
         </div>
         {downloading && (
@@ -1402,12 +1650,23 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <FiltersBar filters={filters} onChange={setFilters} />
+      <FiltersBar
+        filters={filters}
+        onChange={setFilters}
+        win={win}
+        onWin={setWin}
+        standardOnly={standardOnly}
+        onStandardOnly={setStandardOnly}
+      />
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
+      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as TabKey)}>
         <TabsList className="h-10 bg-white border border-slate-200 rounded-xl shadow-sm p-1 gap-0.5">
+          <TabsTrigger
+            value="overview"
+            className="gap-1.5 text-xs font-semibold rounded-lg data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" /> Overview
+          </TabsTrigger>
           <TabsTrigger
             value="recruiters"
             className="gap-1.5 text-xs font-semibold rounded-lg data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
@@ -1420,45 +1679,32 @@ export default function ReportsPage() {
           >
             <FileText className="w-3.5 h-3.5" /> Requirements
           </TabsTrigger>
-          <TabsTrigger
-            value="assignments"
-            className="gap-1.5 text-xs font-semibold rounded-lg data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
-          >
-            <Briefcase className="w-3.5 h-3.5" /> Assignments
-          </TabsTrigger>
         </TabsList>
 
-        {/* ── RECRUITERS */}
+        <TabsContent value="overview" className="mt-5">
+          <OverviewSection data={overviewQuery.data} loading={overviewQuery.isLoading} />
+        </TabsContent>
+
         <TabsContent value="recruiters" className="mt-5">
           <RecruiterSection
             data={recData}
             loading={recruiterQuery.isLoading}
             stages={recStages}
-            canonicalKeys={recCanonical}
-            qs={qStr}
-            onExport={handleRecruiterExport}
+            reqFilter={recReqFilter}
+            onReqFilter={setRecReqFilter}
+            onDownloadSelected={handleRecruiterSelected}
+            onDownloadAll={handleRecruiterAll}
           />
         </TabsContent>
 
-        {/* ── REQUIREMENTS */}
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
             data={reqData}
             loading={requirementQuery.isLoading}
-            canonicalKeys={reqCanonical}
+            stages={reqStages}
             onDownloadRow={handleRequirementRow}
+            onDownloadSelected={handleRequirementSelected}
             onDownloadAll={handleRequirementAll}
-          />
-        </TabsContent>
-
-        {/* ── ASSIGNMENTS */}
-        <TabsContent value="assignments" className="mt-5">
-          <AssignmentSection
-            data={asgData}
-            loading={assignmentQuery.isLoading}
-            canonicalKeys={asgCanonical}
-            onDownloadRow={handleAssignmentRow}
-            onDownloadAll={handleAssignmentAll}
           />
         </TabsContent>
       </Tabs>
