@@ -25,6 +25,8 @@ import {
   X,
   Plus,
   Sparkles,
+  CheckCircle,
+  Tag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,6 +85,36 @@ function computeTurnaround(start?: string | null, target?: string | null): numbe
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TYPES (client / spoc — same shapes as the create page)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MyClient {
+  id: string;
+  name: string;
+  vmsName?: string;
+}
+interface SpocDMUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+interface SpocDM {
+  id: string;
+  dm: SpocDMUser;
+}
+interface ClientSpoc {
+  id: string;
+  firstName: string;
+  lastName: string;
+  isPrimary: boolean;
+  designation?: string | null;
+  handler: { id: string; firstName: string; lastName: string };
+  serviceLine: { id: string; name: string };
+  businessUnit: { id: string; name: string };
+  clientSpocDms?: SpocDM[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SCHEMA
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -117,6 +149,8 @@ const schema = z.object({
   noPoachCompanies: z.array(z.string().trim().min(1)),
   startDate: z.string().optional().nullable(),
   targetDate: z.string().optional().nullable(),
+  // client/spoc — only clientSpocId is sent; backend re-derives client/SL/BU
+  clientSpocId: z.string().optional().nullable(),
 });
 
 type EditFormValues = z.infer<typeof schema>;
@@ -155,6 +189,7 @@ function reqToFormValues(req: any): EditFormValues {
     noPoachCompanies: req.noPoachCompanies ?? [],
     startDate: toDateInput(req.startDate),
     targetDate: toDateInput(req.targetDate),
+    clientSpocId: req.clientSpoc?.id ?? null,
   };
 }
 
@@ -232,69 +267,286 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAG INPUT
+// SPOC SELECT ITEM — copied from the create page
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TagInput({
-  values,
-  onChange,
-  placeholder,
-  colorClass = 'bg-blue-50 text-blue-700 border-blue-200',
-}: {
-  values: string[];
-  onChange: (v: string[]) => void;
-  placeholder: string;
-  colorClass?: string;
-}) {
-  const [input, setInput] = useState('');
-  function add() {
-    const t = input.trim();
-    if (!t || values.includes(t)) return;
-    onChange([...values, t]);
-    setInput('');
-  }
+function SpocSelectItem({ spoc }: { spoc: ClientSpoc }) {
+  const dms = spoc.clientSpocDms ?? [];
   return (
-    <div className="space-y-2.5">
-      <div className="flex gap-2">
-        <Input
-          className={`${inputCls} flex-1`}
-          placeholder={placeholder}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              add();
-            }
-          }}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-11 px-4 shrink-0 rounded-xl border-slate-200"
-          onClick={add}
-        >
-          <Plus size={14} />
-        </Button>
+    <div className="flex flex-col gap-0.5 py-0.5">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-[13px]">
+          {spoc.firstName} {spoc.lastName}
+        </span>
+        {spoc.isPrimary && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
+            Primary
+          </span>
+        )}
+        {dms.length > 0 && (
+          <span className="flex items-center gap-1 text-[10px] text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full font-medium">
+            <Tag size={9} />
+            {dms.length} DM{dms.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
-      {values.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {values.map(s => (
-            <span
-              key={s}
-              className={`flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-full border ${colorClass}`}
-            >
-              {s}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[11px] text-slate-400">{spoc.serviceLine.name}</span>
+        {spoc.designation && (
+          <span className="text-[11px] text-slate-400">· {spoc.designation}</span>
+        )}
+        {dms.length > 0 && (
+          <span className="text-[11px] text-slate-500">
+            ·{' '}
+            {dms
+              .slice(0, 2)
+              .map(d => `${d.dm.firstName} ${d.dm.lastName}`)
+              .join(', ')}
+            {dms.length > 2 ? ` +${dms.length - 2}` : ''}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT & SPOC EDITOR
+//   Lifted verbatim from the create page (same queries, same behaviour), wrapped
+//   for the edit page: local state instead of the draft store. Only emits
+//   clientSpocId via onChange — the backend re-derives client/SL/BU from it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ClientSpocEditor({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (spocId: string) => void;
+}) {
+  const axios = useAxios();
+
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [selectedSpoc, setSelectedSpoc] = useState<ClientSpoc | null>(null);
+  const userClearedSpoc = useRef(false);
+  const backfilledClient = useRef(false);
+
+  const { data: clientsRes } = useQuery<{ data: MyClient[] }>({
+    queryKey: ['my-clients'],
+    queryFn: async () => (await axios.get('/clients/mine')).data,
+    staleTime: 60_000,
+  });
+
+  const { data: spocsRes } = useQuery<{ data: ClientSpoc[] }>({
+    queryKey: ['client-spocs', selectedClientId],
+    queryFn: async () => (await axios.get(`/clients/${selectedClientId}/spocs?mine=true`)).data,
+    enabled: !!selectedClientId,
+    staleTime: 30_000,
+  });
+
+  const clients = clientsRes?.data ?? [];
+  const rawSpocs = spocsRes?.data ?? [];
+  const spocs = [...rawSpocs].sort((a, b) => {
+    const ad = a.clientSpocDms?.length ?? 0,
+      bd = b.clientSpocDms?.length ?? 0;
+    if (ad !== bd) return bd - ad;
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    return 0;
+  });
+
+  // Auto-select single client (only when nothing chosen yet)
+  useEffect(() => {
+    if (clients.length === 1 && !selectedClientId) setSelectedClientId(clients[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients]);
+
+  // Reset SPOC when the user actively changes the client (skip the first
+  // programmatic set that comes from auto-select / no client yet)
+  const prevClientRef = useRef<string>('');
+  useEffect(() => {
+    if (prevClientRef.current && prevClientRef.current !== selectedClientId) {
+      userClearedSpoc.current = false;
+      setSelectedSpoc(null);
+      onChange('');
+    }
+    prevClientRef.current = selectedClientId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId]);
+
+  // Auto-select primary / only SPOC once the list loads
+  useEffect(() => {
+    if (!spocs.length) return;
+    if (userClearedSpoc.current) return;
+    // if the incoming value already matches a spoc in this list, adopt it
+    const existing = value ? spocs.find(s => s.id === value) : null;
+    if (existing) {
+      setSelectedSpoc(existing);
+      return;
+    }
+    const primary = spocs.find(s => s.isPrimary);
+    const autoSelect = primary ?? (spocs.length === 1 ? spocs[0] : null);
+    if (autoSelect && !value) {
+      setSelectedSpoc(autoSelect);
+      onChange(autoSelect.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spocs]);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-5">
+        <div>
+          <FieldLabel required>Client</FieldLabel>
+          {clients.length === 1 ? (
+            <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
+              <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+              {clients[0].name}
+              {clients[0].vmsName ? ` (${clients[0].vmsName})` : ''}
+            </div>
+          ) : (
+            <Select value={selectedClientId} onValueChange={id => setSelectedClientId(id)}>
+              <SelectTrigger className={selectCls}>
+                <SelectValue placeholder="Select client…" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                    {c.vmsName ? ` (${c.vmsName})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        <div>
+          <FieldLabel required>SPOC</FieldLabel>
+          {spocs.length > 0 && (
+            <p className="text-[11px] text-slate-400 mb-2 flex items-center gap-1">
+              <Tag size={10} className="text-violet-400" />
+              SPOCs with tagged DMs shown first
+            </p>
+          )}
+          {spocs.length === 1 && selectedSpoc ? (
+            // Only one SPOC — lock it, no change option
+            <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
+              <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+              {selectedSpoc.firstName} {selectedSpoc.lastName}
+              {selectedSpoc.isPrimary && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold ml-1">
+                  Primary
+                </span>
+              )}
+            </div>
+          ) : selectedSpoc && !userClearedSpoc.current ? (
+            // Auto-selected primary, user can still change
+            <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
+              <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+              {selectedSpoc.firstName} {selectedSpoc.lastName}
+              {selectedSpoc.isPrimary && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold ml-1">
+                  Primary
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => onChange(values.filter(x => x !== s))}
-                className="opacity-50 hover:opacity-100"
+                onClick={() => {
+                  userClearedSpoc.current = true;
+                  setSelectedSpoc(null);
+                  onChange('');
+                }}
+                className="ml-auto text-[11px] text-primary underline underline-offset-2"
               >
-                <X size={11} />
+                Change
               </button>
-            </span>
+            </div>
+          ) : (
+            // Full dropdown
+            <Select
+              value={value || ''}
+              onValueChange={val => {
+                userClearedSpoc.current = false;
+                onChange(val);
+                setSelectedSpoc(spocs.find(s => s.id === val) ?? null);
+              }}
+              disabled={!selectedClientId}
+            >
+              <SelectTrigger className={selectCls}>
+                <SelectValue
+                  placeholder={!selectedClientId ? 'Select client first' : 'Select SPOC…'}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(() => {
+                  const withDMs = spocs.filter(s => (s.clientSpocDms?.length ?? 0) > 0);
+                  const withoutDMs = spocs.filter(s => (s.clientSpocDms?.length ?? 0) === 0);
+                  return (
+                    <>
+                      {withDMs.length > 0 && (
+                        <>
+                          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-violet-500 flex items-center gap-1">
+                            <Tag size={9} />
+                            DMs assigned
+                          </div>
+                          {withDMs.map(s => (
+                            <SelectItem key={s.id} value={s.id} className="py-2">
+                              <SpocSelectItem spoc={s} />
+                            </SelectItem>
+                          ))}
+                          {withoutDMs.length > 0 && (
+                            <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-1">
+                              No DMs assigned
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {withoutDMs.map(s => (
+                        <SelectItem key={s.id} value={s.id} className="py-2">
+                          <SpocSelectItem spoc={s} />
+                        </SelectItem>
+                      ))}
+                    </>
+                  );
+                })()}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+
+      {selectedSpoc && (
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          {[
+            { label: 'Business Unit', value: selectedSpoc.businessUnit.name },
+            { label: 'Service Line', value: selectedSpoc.serviceLine.name },
+          ].map(f => (
+            <div key={f.label}>
+              <FieldLabel>{f.label}</FieldLabel>
+              <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-medium text-slate-600">
+                {f.value}
+              </div>
+            </div>
           ))}
+          {(selectedSpoc.clientSpocDms?.length ?? 0) > 0 && (
+            <div className="col-span-2">
+              <FieldLabel>Tagged Delivery Managers</FieldLabel>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {selectedSpoc.clientSpocDms!.map(dm => (
+                  <span
+                    key={dm.id}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-50 border border-violet-200 text-[12px] font-medium text-violet-700"
+                  >
+                    <div className="w-4 h-4 rounded-full bg-violet-200 flex items-center justify-center text-[9px] font-bold">
+                      {dm.dm.firstName[0]}
+                      {dm.dm.lastName[0]}
+                    </div>
+                    {dm.dm.firstName} {dm.dm.lastName}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -585,7 +837,7 @@ const SECTIONS = [
   { id: 'edit-location', label: 'Location', icon: MapPin, sub: 'City, state, country' },
   { id: 'edit-skills', label: 'Skills', icon: Briefcase, sub: 'Primary & key skills' },
   { id: 'edit-compensation', label: 'Compensation', icon: DollarSign, sub: 'Salary, bonus' },
-  { id: 'edit-client', label: 'Client & SPOC', icon: UserCheck, sub: 'Read-only context' },
+  { id: 'edit-client', label: 'Client & SPOC', icon: UserCheck, sub: 'Client, SPOC, SL & BU' },
   { id: 'edit-timeline', label: 'Timeline', icon: Calendar, sub: 'Dates & turnaround' },
 ];
 
@@ -594,7 +846,7 @@ const SECTION_FIELDS: Record<string, (keyof EditFormValues)[]> = {
   'edit-location': [],
   'edit-skills': [],
   'edit-compensation': [],
-  'edit-client': [],
+  'edit-client': ['clientSpocId'],
   'edit-timeline': [],
 };
 
@@ -610,6 +862,7 @@ export default function EditRequirementPage() {
 
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
   const [isReady, setIsReady] = useState(false);
+  const [changingClient, setChangingClient] = useState(false);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const { data: reqRes, isLoading } = useQuery({
@@ -642,6 +895,7 @@ export default function EditRequirementPage() {
       jobOpenFor: 'EXTERNAL',
       totalOpenings: 1,
       bonusAmount: null,
+      clientSpocId: null,
     },
   });
 
@@ -678,7 +932,7 @@ export default function EditRequirementPage() {
       observers.push(obs);
     });
     return () => observers.forEach(o => o.disconnect());
-  }, [req]);
+  }, [req, changingClient]);
 
   const scrollToSection = useCallback((sid: string) => {
     document.getElementById(sid)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -707,6 +961,12 @@ export default function EditRequirementPage() {
 
     if (Object.keys(payload).length === 0) {
       toast.info('No changes to save');
+      return;
+    }
+
+    // if the change flow was opened but no SPOC picked, block instead of sending empty
+    if ('clientSpocId' in payload && !payload.clientSpocId) {
+      toast.error('Select a SPOC before saving the client change');
       return;
     }
 
@@ -1231,30 +1491,78 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* Client & SPOC — read only */}
+            {/* Client & SPOC — editable via Change button */}
             <SectionCard id="edit-client">
               <SectionTitle
                 icon={UserCheck}
                 label="Client & SPOC"
                 color="bg-indigo-100 text-indigo-600"
               />
-              <p className="text-[11.5px] text-slate-400 -mt-2 flex items-center gap-1.5">
-                <Sparkles size={11} className="text-slate-400" />
-                Client and SPOC cannot be changed after creation.
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <ReadonlyField label="Client" value={req.client?.name ?? '—'} />
-                <ReadonlyField
-                  label="SPOC Handler"
-                  value={
-                    req.clientSpoc
-                      ? `${req.clientSpoc.handler.firstName} ${req.clientSpoc.handler.lastName}`
-                      : '—'
-                  }
-                />
-                <ReadonlyField label="Service Line" value={req.serviceLine?.name ?? '—'} />
-                <ReadonlyField label="Business Unit" value={req.businessUnit?.name ?? '—'} />
-              </div>
+
+              {!changingClient ? (
+                <>
+                  <div className="flex items-center justify-between -mt-1">
+                    <p className="text-[11.5px] text-slate-400 flex items-center gap-1.5">
+                      <Sparkles size={11} className="text-slate-400" />
+                      Service Line & Business Unit follow the SPOC.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setChangingClient(true)}
+                      className="text-[11px] font-semibold text-primary underline underline-offset-2"
+                    >
+                      Change
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <ReadonlyField label="Client" value={req.client?.name ?? '—'} />
+                    <ReadonlyField
+                      label="SPOC"
+                      value={
+                        req.clientSpoc
+                          ? `${req.clientSpoc.firstName ?? req.clientSpoc.handler?.firstName ?? ''} ${req.clientSpoc.lastName ?? req.clientSpoc.handler?.lastName ?? ''}`.trim() ||
+                            '—'
+                          : '—'
+                      }
+                    />
+                    <ReadonlyField label="Service Line" value={req.serviceLine?.name ?? '—'} />
+                    <ReadonlyField label="Business Unit" value={req.businessUnit?.name ?? '—'} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between -mt-1">
+                    <p className="text-[11.5px] text-slate-400">
+                      Pick a client, then a SPOC. SL &amp; BU update automatically.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChangingClient(false);
+                        setValue('clientSpocId', req.clientSpoc?.id ?? null, {
+                          shouldDirty: false,
+                          shouldValidate: false,
+                        });
+                      }}
+                      className="text-[11px] text-slate-400 hover:text-red-500 flex items-center gap-1"
+                    >
+                      <X size={11} />
+                      Cancel
+                    </button>
+                  </div>
+                  <Controller
+                    control={control}
+                    name="clientSpocId"
+                    render={({ field }) => (
+                      <ClientSpocEditor
+                        value={field.value ?? null}
+                        onChange={v => field.onChange(v)}
+                      />
+                    )}
+                  />
+                  <FieldError msg={(errors as any).clientSpocId?.message} />
+                </>
+              )}
             </SectionCard>
 
             {/* Timeline */}
@@ -1308,6 +1616,76 @@ export default function EditRequirementPage() {
           </form>
         </main>
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAG INPUT
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TagInput({
+  values,
+  onChange,
+  placeholder,
+  colorClass = 'bg-blue-50 text-blue-700 border-blue-200',
+}: {
+  values: string[];
+  onChange: (v: string[]) => void;
+  placeholder: string;
+  colorClass?: string;
+}) {
+  const [input, setInput] = useState('');
+  function add() {
+    const t = input.trim();
+    if (!t || values.includes(t)) return;
+    onChange([...values, t]);
+    setInput('');
+  }
+  return (
+    <div className="space-y-2.5">
+      <div className="flex gap-2">
+        <Input
+          className={`${inputCls} flex-1`}
+          placeholder={placeholder}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-11 px-4 shrink-0 rounded-xl border-slate-200"
+          onClick={add}
+        >
+          <Plus size={14} />
+        </Button>
+      </div>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {values.map(s => (
+            <span
+              key={s}
+              className={`flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-full border ${colorClass}`}
+            >
+              {s}
+              <button
+                type="button"
+                onClick={() => onChange(values.filter(x => x !== s))}
+                className="opacity-50 hover:opacity-100"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
