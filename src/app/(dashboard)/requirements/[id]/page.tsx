@@ -1453,6 +1453,19 @@ function CandidateCard({
   const raw = snap.rawSnapshot ?? {};
   const c = SC(p.currentStage.code);
   const isTerminated = p.isRejected || p.isWithdrawn;
+
+  // coerce any rawSnapshot field to a safe renderable string (or null).
+  // objects/arrays from the parser (e.g. location: {}) are NOT renderable — drop them.
+  const rawStr = (v: unknown): string | null => {
+    if (v == null) return null;
+    if (typeof v === 'string') return v.trim() || null;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    return null;
+  };
+  const noticePeriod = rawStr(raw?.noticePeriod);
+  const currentSalary = rawStr(raw?.currentSalary);
+  const location = rawStr(raw?.location);
+
   const agingColor =
     p.aging.minutes > 43200
       ? 'text-rose-600 bg-rose-50 border-rose-200'
@@ -1544,22 +1557,22 @@ function CandidateCard({
               {Math.floor(snap.totalExpYears)}y {Math.round((snap.totalExpYears % 1) * 12)}m exp
             </span>
           )}
-          {raw?.noticePeriod && (
+          {noticePeriod && (
             <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
               <Clock className="w-3.5 h-3.5 text-blue-400" />
-              {raw.noticePeriod}
+              {noticePeriod}
             </span>
           )}
-          {raw?.currentSalary && (
+          {currentSalary && (
             <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
               <span className="text-slate-400 font-bold">₹</span>
-              {raw.currentSalary}
+              {currentSalary}
             </span>
           )}
-          {raw?.location && (
+          {location && (
             <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
               <MapPin className="w-3.5 h-3.5 text-slate-400" />
-              {raw.location}
+              {location}
             </span>
           )}
         </div>
@@ -1679,7 +1692,6 @@ function CandidateCard({
     </div>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // SKELETON
 // ─────────────────────────────────────────────────────────────────────────────
