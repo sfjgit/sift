@@ -25,6 +25,7 @@ import {
   Clock,
   CheckSquare,
   Square,
+  Layers,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -92,11 +93,22 @@ interface RecruiterStat {
   requirementBreakdown: RequirementBreakdown[];
 }
 
-interface RecruiterResponse {
-  success: boolean;
+interface ServiceLineRef {
+  id: string;
+  name: string;
+}
+
+interface RecruiterGroup {
+  serviceLine: ServiceLineRef | null;
+  stages: StageMeta[];
   data: RecruiterStat[];
   total: number;
-  meta: { stages: StageMeta[]; scope: string; window: string; standardOnly: boolean };
+}
+
+interface RecruiterResponse {
+  success: boolean;
+  groups: RecruiterGroup[];
+  meta: { scope?: string; window: string; standardOnly?: boolean; multiLine?: boolean };
 }
 
 interface RequirementRow {
@@ -123,17 +135,17 @@ interface RequirementRow {
   stageCounts: Record<string, number>;
 }
 
+interface RequirementGroup {
+  serviceLine: ServiceLineRef | null;
+  stages: StageMeta[];
+  data: RequirementRow[];
+  total: number;
+}
+
 interface RequirementReportResponse {
   success: boolean;
-  data: RequirementRow[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-    stages: StageMeta[];
-    window: string;
-  };
+  groups: RequirementGroup[];
+  meta: { total?: number; window: string; standardOnly?: boolean; multiLine?: boolean };
 }
 
 interface OverviewResponse {
@@ -150,21 +162,28 @@ interface OverviewResponse {
       offerRate: number;
       joinRate: number;
     };
-    funnel: {
-      stageId: string;
-      code: string;
-      label: string;
-      order: number;
-      isStandard: boolean;
-      serviceLine: { id: string; name: string } | null;
-      count: number;
+    funnel: { stageId: string; label: string; count: number }[];
+    byServiceLine: {
+      serviceLineId: string | null;
+      name: string;
+      total: number;
+      submitted: number;
+      offered: number;
+      joined: number;
+      funnel: { stageId: string; label: string; order: number; count: number }[];
+    }[];
+    byBusinessUnit: {
+      businessUnitId: string | null;
+      name: string;
+      total: number;
+      joined: number;
     }[];
     dispositionCounts: Record<string, number>;
     timeSeries: { bucket: string; count: number }[];
     timeGranularity: 'hour' | 'day';
     leaderboard: { id: string; name: string; sourced: number; joined: number }[];
   };
-  meta: { window: string; granularity: string; scope: string };
+  meta: { window: string; granularity: string; scope: string; multiLine: boolean };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,7 +279,7 @@ function winLabel(w: WinState): string {
   if (w.mode === 'hours') return `Last ${w.hours} hours`;
   if (w.mode === 'range') {
     if (!w.fromDate && !w.toDate) return 'All time';
-    return `${w.fromDate || 'start'} → ${w.toDate || 'now'}`;
+    return `${w.fromDate || 'start'} to ${w.toDate || 'now'}`;
   }
   return PRESETS.find(p => p.k === w.range)?.l ?? 'Today';
 }
@@ -279,7 +298,7 @@ function downloadBlob(data: Blob, filename: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHARED PRIMITIVES
+// PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
 function KPI({
@@ -356,11 +375,27 @@ function Card({
   );
 }
 
+function MiniStat({ l, v, c = 'text-slate-800' }: { l: string; v: number; c?: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className={`text-lg font-black ${c}`}>{v}</span>
+      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{l}</span>
+    </div>
+  );
+}
+
+function LinePill({ name }: { name: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[12px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 px-2.5 py-1 rounded-lg">
+      <Layers className="w-3.5 h-3.5" /> {name}
+    </span>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CHARTS (dependency-free)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Horizontal funnel — stages ordered, width proportional to max count
 function FunnelChart({ items }: { items: { label: string; count: number }[] }) {
   const max = Math.max(1, ...items.map(i => i.count));
   if (!items.length) return <Empty msg="No stage data." />;
@@ -370,7 +405,7 @@ function FunnelChart({ items }: { items: { label: string; count: number }[] }) {
         const pct = Math.round((it.count / max) * 100);
         const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
         return (
-          <div key={it.label} className="flex items-center gap-3">
+          <div key={it.label + i} className="flex items-center gap-3">
             <span className="text-[12px] font-semibold text-slate-600 w-40 shrink-0 truncate text-right">
               {it.label}
             </span>
@@ -389,7 +424,6 @@ function FunnelChart({ items }: { items: { label: string; count: number }[] }) {
   );
 }
 
-// SVG area/line time-series
 function TimeSeriesChart({
   points,
   granularity,
@@ -397,13 +431,12 @@ function TimeSeriesChart({
   points: { bucket: string; count: number }[];
   granularity: 'hour' | 'day';
 }) {
-  if (points.length < 2) {
+  if (points.length < 2)
     return (
       <div className="h-40 flex items-center justify-center text-sm text-slate-400">
         Not enough data points to plot.
       </div>
     );
-  }
   const W = 640;
   const H = 160;
   const pad = 24;
@@ -418,7 +451,6 @@ function TimeSeriesChart({
   const area = `${line} L${xy[xy.length - 1][0]},${H - pad} L${xy[0][0]},${H - pad} Z`;
   const fmtBucket = (b: string) =>
     granularity === 'hour' ? format(new Date(b), 'dd MMM HH:mm') : format(new Date(b), 'dd MMM');
-
   return (
     <div className="w-full overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H + 24}`} className="w-full min-w-[520px]">
@@ -457,7 +489,6 @@ function TimeSeriesChart({
   );
 }
 
-// disposition split bars
 function DispositionBars({ counts }: { counts: Record<string, number> }) {
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const total = entries.reduce((s, [, v]) => s + v, 0);
@@ -492,7 +523,6 @@ function DispositionBars({ counts }: { counts: Record<string, number> }) {
   );
 }
 
-// recruiter leaderboard bars
 function Leaderboard({
   items,
 }: {
@@ -526,8 +556,43 @@ function Leaderboard({
   );
 }
 
+// BU chart — total bar with joined overlaid
+function BUBarChart({
+  items,
+}: {
+  items: { businessUnitId: string | null; name: string; total: number; joined: number }[];
+}) {
+  const max = Math.max(1, ...items.map(i => i.total));
+  if (!items.length) return <Empty msg="No business unit data." />;
+  return (
+    <div className="space-y-3">
+      {items.map((b, i) => (
+        <div key={b.businessUnitId ?? `bu-${i}`}>
+          <div className="flex justify-between text-[12px] mb-1">
+            <span className="font-semibold text-slate-700">{b.name}</span>
+            <span className="text-slate-400">
+              {b.total} total ·{' '}
+              <span className="text-emerald-600 font-bold">{b.joined} joined</span>
+            </span>
+          </div>
+          <div className="h-5 bg-slate-100 rounded overflow-hidden relative">
+            <div
+              className="h-full bg-indigo-500 rounded"
+              style={{ width: `${(b.total / max) * 100}%` }}
+            />
+            <div
+              className="h-full bg-emerald-500 rounded absolute top-0 left-0"
+              style={{ width: `${(b.joined / max) * 100}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// FILTERS BAR  (window picker + client + service line)
+// FILTERS BAR
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Filters {
@@ -569,10 +634,8 @@ function FiltersBar({
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-3">
-      {/* Row 1: window mode */}
       <div className="flex flex-wrap items-center gap-2">
         <Clock className="w-4 h-4 text-slate-400 shrink-0" />
-
         <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
           {(
             [
@@ -603,7 +666,7 @@ function FiltersBar({
           ))}
 
         {win.mode === 'hours' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {HOUR_OPTS.map(h => (
               <button
                 key={h}
@@ -628,7 +691,7 @@ function FiltersBar({
         )}
 
         {win.mode === 'range' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 h-8">
               <span className="text-[10px] font-bold text-slate-400">FROM</span>
               <input
@@ -655,10 +718,8 @@ function FiltersBar({
         </span>
       </div>
 
-      {/* Row 2: entity filters */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
         <Filter className="w-4 h-4 text-slate-400 shrink-0" />
-
         <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
           <SelectTrigger className="h-8 w-40 text-xs font-medium border-slate-200">
             <SelectValue placeholder="All Clients" />
@@ -695,7 +756,7 @@ function FiltersBar({
             <CheckSquare className="w-3.5 h-3.5" />
           ) : (
             <Square className="w-3.5 h-3.5" />
-          )}
+          )}{' '}
           Standard stages only
         </button>
 
@@ -707,13 +768,18 @@ function FiltersBar({
             <X className="w-3 h-3" /> Clear
           </button>
         )}
+        {!filters.serviceLineId && (
+          <span className="text-[11px] font-medium text-slate-400 ml-1">
+            Tables split by service line — pick one above to see it flat.
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// OVERVIEW SECTION
+// OVERVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
 function OverviewSection({ data, loading }: { data?: OverviewResponse; loading: boolean }) {
@@ -735,6 +801,8 @@ function OverviewSection({ data, loading }: { data?: OverviewResponse; loading: 
 
   const d = data?.data;
   if (!d || d.kpis.total === 0) return <Empty msg="No activity in this window." />;
+
+  const multiLine = d.byServiceLine.length > 1;
 
   return (
     <div className="space-y-5">
@@ -772,25 +840,51 @@ function OverviewSection({ data, loading }: { data?: OverviewResponse; loading: 
         <TimeSeriesChart points={d.timeSeries} granularity={d.timeGranularity} />
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {multiLine ? (
+        <>
+          <Card title="By Business Unit">
+            <BUBarChart items={d.byBusinessUnit} />
+          </Card>
+
+          <div>
+            <h3 className="text-[13px] font-bold text-slate-700 uppercase tracking-wider mb-3">
+              Service Line Funnels
+            </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {d.byServiceLine.map(line => (
+                <Card key={line.serviceLineId ?? 'none'} title={line.name}>
+                  <div className="flex flex-wrap gap-5 mb-4">
+                    <MiniStat l="Total" v={line.total} />
+                    <MiniStat l="Submitted" v={line.submitted} c="text-blue-700" />
+                    <MiniStat l="Offered" v={line.offered} c="text-amber-700" />
+                    <MiniStat l="Joined" v={line.joined} c="text-emerald-700" />
+                  </div>
+                  <FunnelChart items={line.funnel.map(f => ({ label: f.label, count: f.count }))} />
+                </Card>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
         <Card title="Stage Funnel">
           <FunnelChart items={d.funnel.map(f => ({ label: f.label, count: f.count }))} />
         </Card>
-        <div className="space-y-4">
-          <Card title="Disposition Split">
-            <DispositionBars counts={d.dispositionCounts} />
-          </Card>
-          <Card title="Top Recruiters">
-            <Leaderboard items={d.leaderboard} />
-          </Card>
-        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card title="Disposition Split">
+          <DispositionBars counts={d.dispositionCounts} />
+        </Card>
+        <Card title="Top Recruiters">
+          <Leaderboard items={d.leaderboard} />
+        </Card>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SELECTION HELPERS
+// SELECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function useSelection() {
@@ -803,8 +897,7 @@ function useSelection() {
     });
   const toggleAll = (ids: string[]) =>
     setSelected(p => (p.size === ids.length ? new Set() : new Set(ids)));
-  const clear = () => setSelected(new Set());
-  return { selected, toggle, toggleAll, clear };
+  return { selected, toggle, toggleAll };
 }
 
 function SelectHeader({
@@ -850,46 +943,53 @@ function SelectCell({
   );
 }
 
-function DownloadBar({
+function GroupHeader({
+  title,
   count,
+  countLabel,
+  selectedCount,
   onSelected,
   onAll,
-  label,
 }: {
+  title: string | null;
   count: number;
+  countLabel: string;
+  selectedCount: number;
   onSelected: () => void;
   onAll: () => void;
-  label: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm font-semibold text-slate-600">{label}</span>
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex-wrap">
+      {title ? (
+        <LinePill name={title} />
+      ) : (
+        <span className="text-sm font-bold text-slate-700">All</span>
+      )}
+      <span className="text-[12px] font-semibold text-slate-500">
+        {count} {countLabel}
+      </span>
       <div className="ml-auto flex items-center gap-2">
-        {count > 0 && (
+        {selectedCount > 0 && (
           <button
             onClick={onSelected}
             className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            <Download className="w-3.5 h-3.5" /> Download Selected ({count})
+            <Download className="w-3.5 h-3.5" /> Download Selected ({selectedCount})
           </button>
         )}
         <button
           onClick={onAll}
           className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
         >
-          <Download className="w-3.5 h-3.5" /> Download All
+          <Download className="w-3.5 h-3.5" /> Download {title ? 'Line' : 'All'}
         </button>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RECRUITER SECTION  (real stages + within-requirement filter + selection)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function StageCell({ count, sourced, color }: { count: number; sourced: number; color: string }) {
-  const pct = sourced > 0 ? Math.round((count / sourced) * 100) : 0;
+function StageCell({ count, base, color }: { count: number; base: number; color: string }) {
+  const pct = base > 0 ? Math.round((count / base) * 100) : 0;
   if (count <= 0) return <span className="text-slate-200 text-xs">—</span>;
   return (
     <div className="flex flex-col items-center gap-0.5">
@@ -901,24 +1001,26 @@ function StageCell({ count, sourced, color }: { count: number; sourced: number; 
   );
 }
 
-function RecruiterSection({
+// ─────────────────────────────────────────────────────────────────────────────
+// RECRUITER TABLE (one per service line group)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RecruiterTable({
+  title,
+  serviceLineId,
   data,
-  loading,
   stages,
-  reqFilter,
-  onReqFilter,
-  onDownloadSelected,
   onDownloadAll,
+  onDownloadSelected,
 }: {
+  title: string | null;
+  serviceLineId?: string;
   data: RecruiterStat[];
-  loading: boolean;
   stages: StageMeta[];
-  reqFilter: string;
-  onReqFilter: (v: string) => void;
-  onDownloadSelected: (ids: string[]) => void;
-  onDownloadAll: () => void;
+  onDownloadAll: (slId?: string) => void;
+  onDownloadSelected: (ids: string[], slId?: string) => void;
 }) {
-  const { selected, toggle, toggleAll, clear } = useSelection();
+  const { selected, toggle, toggleAll } = useSelection();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExp = (id: string) =>
     setExpanded(p => {
@@ -926,114 +1028,19 @@ function RecruiterSection({
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-
-  // requirement dropdown options — union across all recruiters
-  const reqOptions = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of data)
-      for (const rq of r.requirementBreakdown)
-        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
-    return [...m.entries()].map(([id, label]) => ({ id, label }));
-  }, [data]);
-
-  const totals = useMemo(
-    () => ({
-      sourced: data.reduce((s, r) => s + r.sourced, 0),
-      submitted: data.reduce((s, r) => s + r.submitted, 0),
-      joined: data.reduce((s, r) => s + r.joined, 0),
-      active: data.reduce((s, r) => s + r.active, 0),
-      dropped: data.reduce((s, r) => s + r.dropped, 0),
-    }),
-    [data]
-  );
-
-  if (loading)
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
-        <Skel rows={6} />
-      </div>
-    );
-  if (!data.length) return <Empty msg="No recruiter data for this window." />;
-
   const allIds = data.map(r => r.id);
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <KPI label="Recruiters" value={data.length} color="#4F46E5" />
-        <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
-        <KPI label="Active" value={totals.active} color="#059669" />
-        <KPI
-          label="Joined"
-          value={totals.joined}
-          color="#7C3AED"
-          trend="up"
-          sub={
-            totals.sourced > 0
-              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
-              : undefined
-          }
-        />
-        <KPI
-          label="Dropped"
-          value={totals.dropped}
-          color="#DC2626"
-          trend={totals.dropped > 0 ? 'down' : undefined}
-        />
-      </div>
-
-      {/* within-requirement filter + download */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            Within Requirement
-          </span>
-          <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
-            <SelectTrigger className="h-8 w-72 text-xs font-medium border-slate-200">
-              <SelectValue placeholder="All requirements" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All requirements</SelectItem>
-              {reqOptions.map(o => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {reqFilter && (
-            <button
-              onClick={() => onReqFilter('')}
-              className="flex items-center gap-1 h-8 px-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg"
-            >
-              <X className="w-3 h-3" /> Clear
-            </button>
-          )}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {selected.size > 0 && (
-            <button
-              onClick={() => onDownloadSelected([...selected])}
-              className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" /> Download Selected ({selected.size})
-            </button>
-          )}
-          <button
-            onClick={onDownloadAll}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
-          >
-            <Download className="w-3.5 h-3.5" /> Download All
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <GroupHeader
+        title={title}
+        count={data.length}
+        countLabel="recruiters"
+        selectedCount={selected.size}
+        onSelected={() => onDownloadSelected([...selected], serviceLineId)}
+        onAll={() => onDownloadAll(serviceLineId)}
+      />
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
@@ -1054,7 +1061,9 @@ function RecruiterSection({
                 <th
                   key={s.id}
                   className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap max-w-[90px]"
-                  title={s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : s.label}
+                  title={
+                    s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`
+                  }
                 >
                   <div className="flex flex-col items-center gap-0.5">
                     <div
@@ -1076,13 +1085,6 @@ function RecruiterSection({
           <tbody className="divide-y divide-slate-50">
             {data.map(r => {
               const isExp = expanded.has(r.id);
-              // when a requirement filter is active, show that requirement's numbers
-              const rq = reqFilter
-                ? r.requirementBreakdown.find(x => x.requirementId === reqFilter)
-                : null;
-              const shownSourced = rq ? rq.sourced : r.sourced;
-              const shownActive = rq ? rq.active : r.active;
-              const shownStageCounts = rq ? rq.stageCounts : r.stageCounts;
               return (
                 <>
                   <tr
@@ -1109,23 +1111,23 @@ function RecruiterSection({
                       <div className="text-[11px] text-slate-400">{r.email}</div>
                     </td>
                     <td className="px-3 py-3 text-center text-[12px] font-semibold text-slate-600">
-                      {rq ? 1 : r.requirementBreakdown.length}
+                      {r.requirementBreakdown.length}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <span className="text-[15px] font-black text-slate-900">{shownSourced}</span>
+                      <span className="text-[15px] font-black text-slate-900">{r.sourced}</span>
                     </td>
                     {stages.map((s, i) => (
                       <td key={s.id} className="px-2 py-3 text-center">
                         <StageCell
-                          count={shownStageCounts[s.id] ?? 0}
-                          sourced={shownSourced}
+                          count={r.stageCounts[s.id] ?? 0}
+                          base={r.sourced}
                           color={FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
                         />
                       </td>
                     ))}
                     <td className="px-3 py-3 text-center">
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold">
-                        {shownActive}
+                        {r.active}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center text-[12px] font-medium text-slate-500">
@@ -1142,70 +1144,54 @@ function RecruiterSection({
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                               Per Requirement
                             </p>
-                            {r.requirementBreakdown
-                              .filter(rq => !reqFilter || rq.requirementId === reqFilter)
-                              .map(rqi => (
-                                <div
-                                  key={rqi.requirementId}
-                                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-                                >
-                                  <div className="flex items-center gap-3 flex-wrap">
-                                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                                      {rqi.reqCode}
+                            {r.requirementBreakdown.map(rqi => (
+                              <div
+                                key={rqi.requirementId}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                              >
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <span className="font-mono text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    {rqi.reqCode}
+                                  </span>
+                                  <span className="text-[12px] font-semibold text-slate-800 truncate flex-1 min-w-[120px]">
+                                    {rqi.title}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[rqi.status] ?? 'bg-slate-100 text-slate-500'}`}
+                                  >
+                                    {rqi.status.replace(/_/g, ' ')}
+                                  </span>
+                                  {rqi.client && (
+                                    <span className="text-[11px] text-slate-400">
+                                      {rqi.client.name}
                                     </span>
-                                    <span className="text-[12px] font-semibold text-slate-800 truncate flex-1 min-w-[120px]">
-                                      {rqi.title}
-                                    </span>
-                                    <span
-                                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[rqi.status] ?? 'bg-slate-100 text-slate-500'}`}
-                                    >
-                                      {rqi.status.replace(/_/g, ' ')}
-                                    </span>
-                                    {rqi.client && (
-                                      <span className="text-[11px] text-slate-400">
-                                        {rqi.client.name}
-                                      </span>
-                                    )}
-                                    {rqi.serviceLine && (
-                                      <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
-                                        {rqi.serviceLine.name}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-wrap gap-4 mt-2.5 pt-2.5 border-t border-slate-100">
-                                    {[
-                                      { l: 'Sourced', v: rqi.sourced, c: 'text-slate-800' },
-                                      { l: 'Submitted', v: rqi.submitted, c: 'text-blue-700' },
-                                      { l: 'Offered', v: rqi.offered, c: 'text-amber-700' },
-                                      { l: 'Joined', v: rqi.joined, c: 'text-emerald-700' },
-                                      { l: 'Dropped', v: rqi.dropped, c: 'text-red-500' },
-                                      { l: 'Active', v: rqi.active, c: 'text-indigo-700' },
-                                    ].map(it => (
-                                      <div key={it.l} className="flex flex-col items-center">
-                                        <span className={`text-lg font-black ${it.c}`}>{it.v}</span>
-                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-                                          {it.l}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  {Object.entries(rqi.stageCounts).filter(([, v]) => v > 0).length >
-                                    0 && (
-                                    <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-slate-100">
-                                      {stages
-                                        .filter(s => (rqi.stageCounts[s.id] ?? 0) > 0)
-                                        .map(s => (
-                                          <span
-                                            key={s.id}
-                                            className="text-[11px] font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full"
-                                          >
-                                            {s.label}: {rqi.stageCounts[s.id]}
-                                          </span>
-                                        ))}
-                                    </div>
                                   )}
                                 </div>
-                              ))}
+                                <div className="flex flex-wrap gap-4 mt-2.5 pt-2.5 border-t border-slate-100">
+                                  <MiniStat l="Sourced" v={rqi.sourced} />
+                                  <MiniStat l="Submitted" v={rqi.submitted} c="text-blue-700" />
+                                  <MiniStat l="Offered" v={rqi.offered} c="text-amber-700" />
+                                  <MiniStat l="Joined" v={rqi.joined} c="text-emerald-700" />
+                                  <MiniStat l="Dropped" v={rqi.dropped} c="text-red-500" />
+                                  <MiniStat l="Active" v={rqi.active} c="text-indigo-700" />
+                                </div>
+                                {stages.filter(s => (rqi.stageCounts[s.id] ?? 0) > 0).length >
+                                  0 && (
+                                  <div className="flex flex-wrap gap-2 mt-2.5 pt-2.5 border-t border-slate-100">
+                                    {stages
+                                      .filter(s => (rqi.stageCounts[s.id] ?? 0) > 0)
+                                      .map(s => (
+                                        <span
+                                          key={s.id}
+                                          className="text-[11px] font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full"
+                                        >
+                                          {s.label}: {rqi.stageCounts[s.id]}
+                                        </span>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <p className="text-xs text-slate-400">No requirement data.</p>
@@ -1224,23 +1210,189 @@ function RecruiterSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REQUIREMENT SECTION  (real stages + selection + per-row export)
+// SERVICE LINE TABS  (switch one line at a time — never mixed)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RequirementSection({
-  data,
-  loading,
-  stages,
-  onDownloadRow,
-  onDownloadSelected,
-  onDownloadAll,
+const keyOf = (g: { serviceLine: ServiceLineRef | null }) => g.serviceLine?.id ?? '__none__';
+const nameOf = (g: { serviceLine: ServiceLineRef | null }) => g.serviceLine?.name ?? 'Unassigned';
+
+function LineTabs({
+  groups,
+  activeKey,
+  onSelect,
 }: {
-  data: RequirementRow[];
+  groups: { serviceLine: ServiceLineRef | null; total: number }[];
+  activeKey: string;
+  onSelect: (k: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto">
+      {groups.map(g => {
+        const k = keyOf(g);
+        const active = k === activeKey;
+        return (
+          <button
+            key={k}
+            onClick={() => onSelect(k)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
+            <Layers className={`w-3.5 h-3.5 ${active ? 'text-indigo-500' : 'text-slate-300'}`} />
+            {nameOf(g)}
+            <span
+              className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}
+            >
+              {g.total}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECRUITER SECTION — service-line tab bar, one line at a time
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RecruiterSection({
+  resp,
+  loading,
+  reqFilter,
+  onReqFilter,
+  onDownloadAll,
+  onDownloadSelected,
+}: {
+  resp?: RecruiterResponse;
   loading: boolean;
+  reqFilter: string;
+  onReqFilter: (v: string) => void;
+  onDownloadAll: (slId?: string) => void;
+  onDownloadSelected: (ids: string[], slId?: string) => void;
+}) {
+  const [activeKey, setActiveKey] = useState<string>('');
+
+  if (loading)
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-5 gap-3">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skel rows={6} />
+      </div>
+    );
+
+  const groups: RecruiterGroup[] = resp?.groups ?? [];
+  if (!groups.length) return <Empty msg="No recruiter data for this window." />;
+
+  // active group falls back to the first tab if current selection is gone
+  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+
+  const rows = active.data;
+  const reqOptions = (() => {
+    const m = new Map<string, string>();
+    for (const r of rows)
+      for (const rq of r.requirementBreakdown)
+        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
+    return [...m.entries()].map(([id, label]) => ({ id, label }));
+  })();
+
+  const totals = {
+    sourced: rows.reduce((s, r) => s + r.sourced, 0),
+    joined: rows.reduce((s, r) => s + r.joined, 0),
+    active: rows.reduce((s, r) => s + r.active, 0),
+    dropped: rows.reduce((s, r) => s + r.dropped, 0),
+    recruiters: new Set(rows.map(r => r.id)).size,
+  };
+
+  return (
+    <div className="space-y-5">
+      <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
+        <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
+        <KPI label="Active" value={totals.active} color="#059669" />
+        <KPI
+          label="Joined"
+          value={totals.joined}
+          color="#7C3AED"
+          trend="up"
+          sub={
+            totals.sourced > 0
+              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
+              : undefined
+          }
+        />
+        <KPI
+          label="Dropped"
+          value={totals.dropped}
+          color="#DC2626"
+          trend={totals.dropped > 0 ? 'down' : undefined}
+        />
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+          Within Requirement
+        </span>
+        <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
+          <SelectTrigger className="h-8 w-72 text-xs font-medium border-slate-200">
+            <SelectValue placeholder="All requirements" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All requirements</SelectItem>
+            {reqOptions.map(o => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {reqFilter && (
+          <button
+            onClick={() => onReqFilter('')}
+            className="flex items-center gap-1 h-8 px-2 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg"
+          >
+            <X className="w-3 h-3" /> Clear
+          </button>
+        )}
+      </div>
+
+      <RecruiterTable
+        key={keyOf(active)}
+        title={active.serviceLine?.name ?? null}
+        serviceLineId={active.serviceLine?.id}
+        data={active.data}
+        stages={active.stages}
+        onDownloadAll={onDownloadAll}
+        onDownloadSelected={onDownloadSelected}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUIREMENT TABLE (one per service line group)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RequirementTable({
+  title,
+  serviceLineId,
+  data,
+  stages,
+  onDownloadAll,
+  onDownloadSelected,
+  onDownloadRow,
+}: {
+  title: string | null;
+  serviceLineId?: string;
+  data: RequirementRow[];
   stages: StageMeta[];
+  onDownloadAll: (slId?: string) => void;
+  onDownloadSelected: (ids: string[], slId?: string) => void;
   onDownloadRow: (id: string, reqCode: string) => void;
-  onDownloadSelected: (ids: string[]) => void;
-  onDownloadAll: () => void;
 }) {
   const { selected, toggle, toggleAll } = useSelection();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -1250,35 +1402,19 @@ function RequirementSection({
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
-
-  if (loading) return <Skel rows={6} />;
-  if (!data.length) return <Empty msg="No requirements found for this window." />;
-
   const allIds = data.map(r => r.id);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-slate-600">{data.length} requirements</span>
-        <div className="ml-auto flex items-center gap-2">
-          {selected.size > 0 && (
-            <button
-              onClick={() => onDownloadSelected([...selected])}
-              className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" /> Download Selected ({selected.size})
-            </button>
-          )}
-          <button
-            onClick={onDownloadAll}
-            className="flex items-center gap-1.5 h-8 px-3 text-xs font-semibold border border-slate-200 bg-white rounded-lg hover:bg-slate-50 transition-colors text-slate-700"
-          >
-            <Download className="w-3.5 h-3.5" /> Download All
-          </button>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <GroupHeader
+        title={title}
+        count={data.length}
+        countLabel="requirements"
+        selectedCount={selected.size}
+        onSelected={() => onDownloadSelected([...selected], serviceLineId)}
+        onAll={() => onDownloadAll(serviceLineId)}
+      />
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
@@ -1302,7 +1438,9 @@ function RequirementSection({
                 <th
                   key={s.id}
                   className="px-2 py-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap max-w-[90px]"
-                  title={s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : s.label}
+                  title={
+                    s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`
+                  }
                 >
                   <div className="flex flex-col items-center gap-0.5">
                     <div
@@ -1354,11 +1492,6 @@ function RequirementSection({
                         {r.client && (
                           <span className="text-[11px] text-slate-400">{r.client.name}</span>
                         )}
-                        {r.serviceLine && (
-                          <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded">
-                            {r.serviceLine.name}
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td className="px-3 py-3 text-center">
@@ -1380,7 +1513,7 @@ function RequirementSection({
                       <td key={s.id} className="px-2 py-3 text-center">
                         <StageCell
                           count={r.stageCounts[s.id] ?? 0}
-                          sourced={r.totalCandidates}
+                          base={r.totalCandidates}
                           color={FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
                         />
                       </td>
@@ -1419,16 +1552,18 @@ function RequirementSection({
                               </span>
                             </div>
                           )}
+                          {r.serviceLine && (
+                            <div>
+                              <span className="text-slate-400">Service Line: </span>
+                              <span className="font-semibold text-slate-700">
+                                {r.serviceLine.name}
+                              </span>
+                            </div>
+                          )}
                           {r.city && (
                             <div>
                               <span className="text-slate-400">City: </span>
                               <span className="font-semibold text-slate-700">{r.city}</span>
-                            </div>
-                          )}
-                          {r.country && (
-                            <div>
-                              <span className="text-slate-400">Country: </span>
-                              <span className="font-semibold text-slate-700">{r.country}</span>
                             </div>
                           )}
                           <div>
@@ -1483,6 +1618,49 @@ function RequirementSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// REQUIREMENT SECTION (grouped / flat wrapper)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RequirementSection({
+  resp,
+  loading,
+  onDownloadRow,
+  onDownloadAll,
+  onDownloadSelected,
+}: {
+  resp?: RequirementReportResponse;
+  loading: boolean;
+  onDownloadRow: (id: string, reqCode: string) => void;
+  onDownloadAll: (slId?: string) => void;
+  onDownloadSelected: (ids: string[], slId?: string) => void;
+}) {
+  const [activeKey, setActiveKey] = useState<string>('');
+
+  if (loading) return <Skel rows={6} />;
+
+  const groups: RequirementGroup[] = resp?.groups ?? [];
+  if (!groups.length) return <Empty msg="No requirements found for this window." />;
+
+  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+
+  return (
+    <div className="space-y-5">
+      <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
+      <RequirementTable
+        key={keyOf(active)}
+        title={active.serviceLine?.name ?? null}
+        serviceLineId={active.serviceLine?.id}
+        data={active.data}
+        stages={active.stages}
+        onDownloadAll={onDownloadAll}
+        onDownloadSelected={onDownloadSelected}
+        onDownloadRow={onDownloadRow}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1501,7 +1679,6 @@ export default function ReportsPage() {
   const [recReqFilter, setRecReqFilter] = useState('');
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  // shared query string (window + entity filters + standardOnly)
   const baseParams = useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
@@ -1513,7 +1690,6 @@ export default function ReportsPage() {
 
   const baseQs = baseParams.toString();
 
-  // recruiter query gets the within-requirement filter folded in
   const recParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (recReqFilter) p.set('requirementId', recReqFilter);
@@ -1561,18 +1737,23 @@ export default function ReportsPage() {
 
   const dateStr = new Date().toISOString().split('T')[0];
 
-  // ── recruiter exports
-  const handleRecruiterAll = useCallback(() => {
-    download(
-      `/reports/recruiters/export?${recParams}`,
-      `recruiter-report-all-${dateStr}.xlsx`,
-      'rec-all'
-    );
-  }, [recParams, download, dateStr]);
+  const handleRecruiterAll = useCallback(
+    (slId?: string) => {
+      const p = new URLSearchParams(recParams);
+      if (slId) p.set('serviceLineId', slId);
+      download(
+        `/reports/recruiters/export?${p.toString()}`,
+        `recruiter-report-${slId ? 'line' : 'all'}-${dateStr}.xlsx`,
+        'rec-all'
+      );
+    },
+    [recParams, download, dateStr]
+  );
 
   const handleRecruiterSelected = useCallback(
-    (ids: string[]) => {
+    (ids: string[], slId?: string) => {
       const p = new URLSearchParams(recParams);
+      if (slId) p.set('serviceLineId', slId);
       p.set('ids', ids.join(','));
       download(
         `/reports/recruiters/export?${p.toString()}`,
@@ -1583,18 +1764,23 @@ export default function ReportsPage() {
     [recParams, download, dateStr]
   );
 
-  // ── requirement exports
-  const handleRequirementAll = useCallback(() => {
-    download(
-      `/reports/requirements/export?${baseQs}`,
-      `requirements-all-${dateStr}.xlsx`,
-      'req-all'
-    );
-  }, [baseQs, download, dateStr]);
+  const handleRequirementAll = useCallback(
+    (slId?: string) => {
+      const p = new URLSearchParams(baseQs);
+      if (slId) p.set('serviceLineId', slId);
+      download(
+        `/reports/requirements/export?${p.toString()}`,
+        `requirements-${slId ? 'line' : 'all'}-${dateStr}.xlsx`,
+        'req-all'
+      );
+    },
+    [baseQs, download, dateStr]
+  );
 
   const handleRequirementSelected = useCallback(
-    (ids: string[]) => {
+    (ids: string[], slId?: string) => {
       const p = new URLSearchParams(baseQs);
+      if (slId) p.set('serviceLineId', slId);
       p.set('ids', ids.join(','));
       download(
         `/reports/requirements/export?${p.toString()}`,
@@ -1623,11 +1809,6 @@ export default function ReportsPage() {
         <p className="text-sm font-medium">You don't have access to reports.</p>
       </div>
     );
-
-  const recData = recruiterQuery.data?.data ?? [];
-  const recStages = recruiterQuery.data?.meta?.stages ?? [];
-  const reqData = requirementQuery.data?.data ?? [];
-  const reqStages = requirementQuery.data?.meta?.stages ?? [];
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-slate-50 min-h-screen">
@@ -1687,24 +1868,22 @@ export default function ReportsPage() {
 
         <TabsContent value="recruiters" className="mt-5">
           <RecruiterSection
-            data={recData}
+            resp={recruiterQuery.data}
             loading={recruiterQuery.isLoading}
-            stages={recStages}
             reqFilter={recReqFilter}
             onReqFilter={setRecReqFilter}
-            onDownloadSelected={handleRecruiterSelected}
             onDownloadAll={handleRecruiterAll}
+            onDownloadSelected={handleRecruiterSelected}
           />
         </TabsContent>
 
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
-            data={reqData}
+            resp={requirementQuery.data}
             loading={requirementQuery.isLoading}
-            stages={reqStages}
             onDownloadRow={handleRequirementRow}
-            onDownloadSelected={handleRequirementSelected}
             onDownloadAll={handleRequirementAll}
+            onDownloadSelected={handleRequirementSelected}
           />
         </TabsContent>
       </Tabs>
