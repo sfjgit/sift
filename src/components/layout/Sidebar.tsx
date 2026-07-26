@@ -49,6 +49,7 @@ const NAV = [
   { label: 'Extension', href: '/extension', icon: Puzzle },
   { label: 'Settings', href: '/settings', icon: Settings },
   { label: 'Ingest Logs', href: '/ingest-logs', icon: ClipboardList, module: 'ingest-logs' },
+  { label: 'Naukri Logs', href: '/naukri-logs', icon: ClipboardList, module: 'Naukri-logs' },
   { label: 'Login Activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
 ];
 
