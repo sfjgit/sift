@@ -24,6 +24,7 @@ export interface RoleListItem {
   isSystem: boolean;
   createdAt: string;
   updatedAt: string;
+  canonical: string;
   permissions: RolePermission[];
   _count: {
     users: number;
@@ -128,7 +129,20 @@ export function formatModule(module: string): string {
 
 // File: role.types.ts
 // Path: src/types/role.types.ts
+// File: role.types.ts
+// Path: src/types/role.types.ts
 
+export interface CanonicalOption {
+  value: string;
+  label: string;
+}
+
+export interface CanonicalOptionsResponse {
+  data: CanonicalOption[];
+}
+
+// add to RoleListItem:
+//   canonical: string;
 // ─────────────────────────────────────────────────────────────────────────────
 // PermissionScope — string union, NOT a hardcoded enum
 // Values come from GET /roles/scopes at runtime — never hardcode here

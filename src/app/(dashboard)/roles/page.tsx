@@ -38,6 +38,15 @@ import { usePermission } from '@/hooks/usePermission';
 import { formatModule } from '@/types/role.types';
 import type { RolesListResponse, RoleListItem } from '@/types/role.types';
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { CanonicalOptionsResponse } from '@/types/role.types';
+
 export default function RolesPage() {
   const router = useRouter();
   const axios = useAxios();
@@ -46,6 +55,27 @@ export default function RolesPage() {
 
   const [search, setSearch] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<RoleListItem | null>(null);
+
+  // ── Canonical options (dynamic, from backend) ───────────────────────────────
+  const canonicalQuery = useQuery<CanonicalOptionsResponse>({
+    queryKey: ['role-canonical-options'],
+    queryFn: async () => {
+      const res = await axios.get<CanonicalOptionsResponse>('/roles/canonical-options');
+      return res.data;
+    },
+    staleTime: Infinity, // enum rarely changes within a session
+  });
+
+  const canonicalOptions = canonicalQuery.data?.data ?? [];
+
+  // ── Update canonical mapping ─────────────────────────────────────────────────
+  const canonicalMutation = useMutation({
+    mutationFn: async ({ id, canonical }: { id: string; canonical: string }) => {
+      const res = await axios.patch(`/roles/${id}/canonical`, { canonical });
+      return res.data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['roles'] }),
+  });
 
   // ── Fetch roles ───────────────────────────────────────────────────────────
   const rolesQuery = useQuery<RolesListResponse>({
@@ -134,6 +164,7 @@ export default function RolesPage() {
                 <TableHead>Role</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Modules</TableHead>
+                <TableHead>Canonical</TableHead>
                 <TableHead className="text-center">Users</TableHead>
                 <TableHead className="text-center">Type</TableHead>
                 <TableHead className="w-[48px]" />
@@ -192,6 +223,27 @@ export default function RolesPage() {
                         </Badge>
                       )}
                     </div>
+                  </TableCell>
+
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    <Select
+                      value={role.canonical}
+                      disabled={!permission.canEdit || canonicalMutation.isPending}
+                      onValueChange={value =>
+                        canonicalMutation.mutate({ id: role.id, canonical: value })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-[170px] text-xs">
+                        <SelectValue placeholder="Unmapped" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {canonicalOptions.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
 
                   <TableCell className="text-center text-sm tabular-nums">
