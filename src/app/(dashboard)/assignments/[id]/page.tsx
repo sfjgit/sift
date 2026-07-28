@@ -68,6 +68,7 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ca } from 'date-fns/locale';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -474,6 +475,11 @@ const humanizeCanonical = (key: string) =>
     .split('_')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
+
+// Canonical stages that reveal the interview-scheduling form (mirrors backend config)
+const INTERVIEW_SCHEDULING_CANONICAL = ['INTERVIEW_SCHEDULED', 'INTERVIEW_RESCHEDULED'];
+const needsInterviewSchedule = (canonical: string | null | undefined) =>
+  !!canonical && INTERVIEW_SCHEDULING_CANONICAL.includes(canonical);
 
 const PORTAL_APPS = [
   {
@@ -1303,6 +1309,11 @@ function MoveStageDialog({
   const [stageId, setStageId] = useState('');
   const [note, setNote] = useState('');
 
+  // ── interview form state ──
+  const [ivDate, setIvDate] = useState('');
+  const [ivTime, setIvTime] = useState('');
+  const [ivMode, setIvMode] = useState<'ONLINE' | 'OFFLINE' | 'TELEPHONIC'>('ONLINE');
+  const [ivDuration, setIvDuration] = useState('');
   const currentOrder = pipeline.currentStage.order;
 
   const selectableStages = useMemo(
@@ -1311,19 +1322,41 @@ function MoveStageDialog({
   );
 
   const selected = stages.find(s => s.id === stageId) ?? null;
+  const showInterview = needsInterviewSchedule(selected?.canonicalStage);
+  const isReschedule = selected?.canonicalStage === 'INTERVIEW_RESCHEDULED';
+  const interviewValid = !showInterview || (!!ivDate && !!ivTime);
+
   const cc = SC(pipeline.currentStage.code);
   const tc = selected ? SC(selected.code) : null;
 
   const reset = () => {
     setStageId('');
     setNote('');
+    setIvDate('');
+    setIvTime('');
+    setIvMode('ONLINE');
+    setIvDuration('');
   };
 
   const mut = useMutation({
-    mutationFn: async () =>
-      axios.patch(`/pipeline/${pipeline.id}/stage`, { stageId, note: note.trim() || undefined }),
+    mutationFn: async () => {
+      const body: any = { stageId, note: note.trim() || undefined };
+      if (showInterview) {
+        body.interview = {
+          // local date + time → ISO (UTC) for the backend DateTime column
+          scheduledAt: new Date(`${ivDate}T${ivTime}`).toISOString(),
+          mode: ivMode,
+          durationMins: ivDuration ? parseInt(ivDuration, 10) : undefined,
+        };
+      }
+      return axios.patch(`/pipeline/${pipeline.id}/stage`, body);
+    },
     onSuccess: () => {
-      toast.success(`Moved to ${selected?.label}`);
+      toast.success(
+        showInterview
+          ? `Interview ${isReschedule ? 'rescheduled' : 'scheduled'} · moved to ${selected?.label}`
+          : `Moved to ${selected?.label}`
+      );
       onDone();
       onClose();
       reset();
@@ -1481,22 +1514,82 @@ function MoveStageDialog({
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 space-y-3">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
-              Note{' '}
-              <span className="font-normal lowercase tracking-normal text-slate-400">
-                (optional)
-              </span>
-            </Label>
-            <Textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder="Add context for this move…"
-              rows={2}
-              className="resize-none text-sm"
-            />
+        {/* ── Interview scheduling form (only when target requires it) ── */}
+        {showInterview && (
+          <div className="px-6 py-4 border-t border-slate-100 bg-indigo-50/40 space-y-3">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-indigo-600" />
+              <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">
+                {isReschedule ? 'Reschedule interview' : 'Interview details'}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">Date *</Label>
+                <Input
+                  type="date"
+                  value={ivDate}
+                  onChange={e => setIvDate(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">Time *</Label>
+                <Input
+                  type="time"
+                  value={ivTime}
+                  onChange={e => setIvTime(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">Mode *</Label>
+                <Select value={ivMode} onValueChange={(v: any) => setIvMode(v)}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['ONLINE', 'OFFLINE', 'TELEPHONIC'].map(m => (
+                      <SelectItem key={m} value={m} className="text-sm">
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+                  Duration (mins)
+                </Label>
+                <Input
+                  type="number"
+                  value={ivDuration}
+                  onChange={e => setIvDuration(e.target.value)}
+                  placeholder="e.g. 45"
+                  className="h-9 text-sm"
+                />
+              </div>
+            </div>
           </div>
+        )}
+        <div className="px-6 py-4 border-t border-slate-100 space-y-3">
+          {!showInterview && (
+            <div>
+              <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
+                Note{' '}
+                <span className="font-normal lowercase tracking-normal text-slate-400">
+                  (optional)
+                </span>
+              </Label>
+              <Textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                placeholder="Add context for this move…"
+                rows={2}
+                className="resize-none text-sm"
+              />
+            </div>
+          )}
           <div className="flex items-center justify-end gap-2">
             <Button
               variant="outline"
@@ -1508,7 +1601,7 @@ function MoveStageDialog({
               Cancel
             </Button>
             <Button
-              disabled={!stageId || mut.isPending}
+              disabled={!stageId || !interviewValid || mut.isPending}
               onClick={() => mut.mutate()}
               className="gap-2 min-w-32.5"
             >
@@ -1517,7 +1610,7 @@ function MoveStageDialog({
               ) : (
                 <ArrowUpDown className="w-3.5 h-3.5" />
               )}
-              {mut.isPending ? 'Moving…' : 'Move Stage'}
+              {mut.isPending ? 'Moving…' : showInterview ? 'Schedule & Move' : 'Move Stage'}
             </Button>
           </div>
         </div>
@@ -1525,6 +1618,51 @@ function MoveStageDialog({
     </Dialog>
   );
 }
+
+//       <div className="px-6 py-4 border-t border-slate-100 space-y-3">
+//         <div>
+//           <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
+//             Note{' '}
+//             <span className="font-normal lowercase tracking-normal text-slate-400">
+//               (optional)
+//             </span>
+//           </Label>
+//           <Textarea
+//             value={note}
+//             onChange={e => setNote(e.target.value)}
+//             placeholder="Add context for this move…"
+//             rows={2}
+//             className="resize-none text-sm"
+//           />
+//         </div>
+//         <div className="flex items-center justify-end gap-2">
+//           <Button
+//             variant="outline"
+//             onClick={() => {
+//               onClose();
+//               reset();
+//             }}
+//           >
+//             Cancel
+//           </Button>
+//           <Button
+//             disabled={!stageId || mut.isPending}
+//             onClick={() => mut.mutate()}
+//             className="gap-2 min-w-32.5"
+//           >
+//             {mut.isPending ? (
+//               <Loader2 className="w-3.5 h-3.5 animate-spin" />
+//             ) : (
+//               <ArrowUpDown className="w-3.5 h-3.5" />
+//             )}
+//             {mut.isPending ? 'Moving…' : 'Move Stage'}
+//           </Button>
+//         </div>
+//       </div>
+//     </DialogContent>
+//   </Dialog>
+// );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CANDIDATE DETAILS MODAL — replaces SubmitDialog / OfferDialog / SimpleActionDialog
