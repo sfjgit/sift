@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import ClientProviders from '@/components/ClientProviders';
 import HomeNav from '@/components/home/HomeNav';
+// import NaukriDailyCheckin from '@/components/layout/NaukriDailyCheckin';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -31,6 +32,7 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ClientProviders>
+          {/* <NaukriDailyCheckin /> */}
           {/* <HomeNav /> */}
           {children}
         </ClientProviders>

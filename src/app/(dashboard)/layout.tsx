@@ -1,4 +1,5 @@
 // import AuthGate from '@/components/AuthGate';
+import NaukriDailyCheckin from '@/components/layout/NaukriDailyCheckin';
 import ScrollingGreetingBar from '@/components/layout/ScrollingGreetingBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
@@ -8,6 +9,7 @@ import type { ReactNode } from 'react';
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <AuthGate>
+      <NaukriDailyCheckin />
       <ScrollingGreetingBar />
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar />
