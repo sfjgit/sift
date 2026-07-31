@@ -42,6 +42,20 @@ export interface ColumnDef<T> {
   /** Groups columns in the picker, e.g. 'Pipeline stages'. */
   group?: string;
   cell: (row: T, index: number) => ReactNode;
+  /**
+   * Plain value for local (client-side) exports. Columns without this — checkboxes,
+   * chevrons, action buttons — are simply skipped when exporting.
+   */
+  exportValue?: (row: T, index: number) => string | number | boolean | null | undefined;
+  /**
+   * For cells that render several facts at once (name + email, code + title + client).
+   * Takes precedence over `exportValue` and expands into one spreadsheet column each,
+   * so the export can be granular without duplicating columns in the UI.
+   */
+  exportFields?: {
+    label: string;
+    value: (row: T, index: number) => string | number | boolean | null | undefined;
+  }[];
 }
 
 const FALLBACK_FROZEN_WIDTH = 120;
@@ -73,6 +87,14 @@ export function hidableColumns<T>(columns: ColumnDef<T>[]) {
   return columns.filter(c => !c.locked && !c.frozen);
 }
 
+/**
+ * Single source of truth for what is on screen. The exporter uses this too, so
+ * "download this view" can never disagree with what the user is looking at.
+ */
+export function visibleColumns<T>(columns: ColumnDef<T>[], hidden: string[]) {
+  return columns.filter(c => c.locked || c.frozen || !hidden.includes(c.id));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TABLE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +105,13 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string;
   /** Column ids to hide. Anything not listed here is visible — new columns default to on. */
   hiddenColumns?: string[];
-  /** Height of the scroll region. The table scrolls inside the page instead of pushing it. */
+  /**
+   * Fill the parent flex column (the default). The scroll region takes whatever
+   * height is left after the toolbar, so capping height belongs on the parent
+   * card — no measuring, no scroll listeners.
+   */
+  fill?: boolean;
+  /** Only used when `fill` is false. */
   maxHeight?: string;
   minHeight?: string;
   rowClassName?: (row: T, index: number) => string;
@@ -99,6 +127,7 @@ export function DataTable<T>({
   rows,
   rowKey,
   hiddenColumns = [],
+  fill = true,
   maxHeight = 'calc(100vh - 340px)',
   minHeight = '200px',
   rowClassName,
@@ -107,10 +136,7 @@ export function DataTable<T>({
   renderExpanded,
   emptyMessage = 'Nothing to show for these filters.',
 }: DataTableProps<T>) {
-  const visible = useMemo(
-    () => columns.filter(c => c.locked || c.frozen || !hiddenColumns.includes(c.id)),
-    [columns, hiddenColumns]
-  );
+  const visible = useMemo(() => visibleColumns(columns, hiddenColumns), [columns, hiddenColumns]);
 
   const { offsets, lastFrozenId } = useMemo(() => computeFrozenLayout(visible), [visible]);
 
@@ -168,11 +194,11 @@ export function DataTable<T>({
       .join(' ');
 
   return (
-    <div className="dt-wrap">
+    <div className={`dt-wrap ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
       <div
         ref={scrollRef}
-        className="dt-scroll overflow-auto overscroll-x-contain"
-        style={{ maxHeight, minHeight }}
+        className={`dt-scroll overflow-auto overscroll-x-contain ${fill ? 'min-h-0 flex-1' : ''}`}
+        style={fill ? undefined : { maxHeight, minHeight }}
       >
         <table className="w-full border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-30">
