@@ -2,14 +2,14 @@
 // Path: src/components/naukri/NaukriDailyCheckin.tsx
 //
 // Mount ONCE in the (dashboard) layout. On the first ATS visit of the day it checks
-// yesterday's Naukri-vs-ATS gap. If there's an unexplained gap, it pops a blocking
-// dialog (no close, no escape, no outside-click) until the recruiter submits a reason.
+// yesterday's Naukri-vs-TalentOS gap. If there's an unexplained gap, it opens a blocking
+// dialog (no close, no escape, no outside-click) until the recruiter submits a comment.
 //
 // Shows only once per day:
 //   - a localStorage day-stamp short-circuits repeat pops within the day
 //   - the server is the real guard: once a reason is saved, `day.reason` is set and the
 //     dialog never qualifies again (even across devices / cleared storage)
-//   - a clean day (no gap) never blocks — nothing to justify
+//   - a clean day (no gap) never blocks — nothing to explain
 
 'use client';
 
@@ -17,7 +17,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { format, subDays } from 'date-fns';
-import { AlertTriangle, TrendingDown, Loader2, PartyPopper } from 'lucide-react';
+import { AlertTriangle, Loader2, CheckCircle2, Lock } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -68,8 +68,7 @@ export default function NaukriDailyCheckin() {
 
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
-  const [promise, setPromise] = useState(true);
-  const [done, setDone] = useState(false); // brief "thanks" state before closing
+  const [done, setDone] = useState(false); // brief confirmation state before closing
 
   const meQ = useQuery<MeResponse>({
     queryKey: ['naukri-me-checkin', yStr],
@@ -91,7 +90,7 @@ export default function NaukriDailyCheckin() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (needs) setOpen(true);
     else {
-      // nothing to justify → mark done so we don't re-check today
+      // nothing to explain → mark done so we don't re-check today
       localStorage.setItem(todayKey, 'done');
       setHandledToday(true);
     }
@@ -104,13 +103,6 @@ export default function NaukriDailyCheckin() {
         { reportDate: yStr, reason: reason.trim() },
         { baseURL: '/api/proxy' }
       );
-      if (promise) {
-        await axios.post(
-          '/core/api/naukri/promise',
-          { reportDate: yStr, promiseText: 'I will download every profile today.' },
-          { baseURL: '/api/proxy' }
-        );
-      }
     },
     onSuccess: () => {
       localStorage.setItem(todayKey, 'done');
@@ -118,7 +110,7 @@ export default function NaukriDailyCheckin() {
       setTimeout(() => {
         setOpen(false);
         setHandledToday(true);
-      }, 1600);
+      }, 1400);
     },
   });
 
@@ -129,7 +121,7 @@ export default function NaukriDailyCheckin() {
   return (
     <AlertDialog open={open}>
       <AlertDialogContent
-        className="max-w-lg"
+        className="max-w-lg overflow-hidden border-2 border-red-500 p-0 shadow-2xl shadow-red-900/30 ring-4 ring-red-500/20"
         // ── make it truly blocking ──
         onEscapeKeyDown={e => e.preventDefault()}
         // @ts-expect-error err
@@ -137,88 +129,93 @@ export default function NaukriDailyCheckin() {
         onInteractOutside={(e: any) => e.preventDefault()}
       >
         {done ? (
-          // ── thank-you flash ──
-          <div className="py-8 text-center">
-            <PartyPopper className="w-10 h-10 text-emerald-500 mx-auto" />
-            <p className="mt-3 text-lg font-black text-slate-900">Logged. Now go prove it. 💪</p>
-            <p className="text-sm text-slate-500 mt-1">
-              {promise ? "You promised — we're watching 👀" : 'Reason saved.'}
-            </p>
+          // ── confirmation flash ──
+          <div className="py-10 text-center">
+            <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
+            <p className="mt-3 text-lg font-semibold text-slate-900">Comments saved</p>
+            <p className="mt-1 text-sm text-slate-500">Thank you for the update.</p>
           </div>
         ) : (
           <>
-            <AlertDialogHeader>
-              <div className="flex items-center gap-2 text-rose-600">
-                <AlertTriangle className="w-5 h-5" />
-                <span className="text-xs font-bold uppercase tracking-wide">
-                  Yesterday · {format(yesterday, 'dd MMM yyyy')}
-                </span>
-              </div>
-
-              {/* ── BIG LETTER gap ── */}
-              <h2 className="mt-2 text-2xl font-black leading-tight text-slate-900">
-                YOU VISITED <span className="text-blue-600">{day.naukri}</span> PROFILES — ONLY{' '}
-                <span className="text-emerald-600">{day.ats}</span> MADE IT INTO THE ATS
-              </h2>
-
-              <div className="mt-2 flex items-center gap-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2">
-                <TrendingDown className="w-4 h-4 text-rose-600" />
-                <span className="text-sm font-bold text-rose-700">
-                  {gap} profile{gap === 1 ? '' : 's'} unaccounted for.
-                </span>
-              </div>
-
-              <p className="mt-2 text-sm text-slate-600">
-                {day.story?.detail || 'Tell us why they didn’t make it in — one honest line.'}
-              </p>
-            </AlertDialogHeader>
-
-            {/* meme / gif for the banter */}
-            {day.meme?.url && (
-              <img
-                src={day.meme.url}
-                alt={day.meme.caption ?? 'meme'}
-                className="w-full max-h-52 object-contain rounded-lg bg-slate-50 border border-slate-100"
-              />
-            )}
-
-            {/* reason (required) */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Why didn’t Naukri usage match your ATS uploads?
-              </label>
-              <textarea
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-                rows={3}
-                autoFocus
-                placeholder="e.g. 20 were irrelevant after opening, 5 duplicates already in ATS…"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-
-              {/* the promise */}
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={promise}
-                  onChange={e => setPromise(e.target.checked)}
-                  className="w-4 h-4 accent-primary"
-                />
-                I promise: today I’ll download <span className="text-primary">every</span> profile I
-                open. 🤞
-              </label>
+            {/* ── red alert bar ── */}
+            <div className="flex items-center gap-2 bg-red-600 px-5 py-3 text-white">
+              <AlertTriangle className="h-5 w-5 shrink-0 animate-pulse" />
+              <span className="text-sm font-bold uppercase tracking-widest">
+                Action required · Sourcing variance
+              </span>
             </div>
 
-            <AlertDialogFooter>
-              <Button
-                className="w-full gap-2 font-bold"
-                disabled={reason.trim().length < 3 || submitM.isPending}
-                onClick={() => submitM.mutate()}
-              >
-                {submitM.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                {submitM.isPending ? 'Saving…' : 'Submit & enter ATS'}
-              </Button>
-            </AlertDialogFooter>
+            <div className="px-5 pb-5 pt-4">
+              <AlertDialogHeader>
+                <h2 className="text-lg font-bold leading-snug text-slate-900">
+                  Date {format(yesterday, 'dd MMM yyyy')} · Naukri Source vs Sourced to TalentOS
+                </h2>
+
+                {/* ── numbers ── */}
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Naukri
+                    </p>
+                    <p className="text-2xl font-bold text-slate-900">{day.naukri}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      TalentOS
+                    </p>
+                    <p className="text-2xl font-bold text-slate-900">{day.ats}</p>
+                  </div>
+                  <div className="rounded-lg border-2 border-red-500 bg-red-50 px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                      Not accounted
+                    </p>
+                    <p className="text-2xl font-extrabold text-red-600">{gap}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-lg border-l-4 border-red-500 bg-red-50 px-3 py-2">
+                  <p className="text-sm font-medium text-red-800">
+                    {gap} profile{gap === 1 ? '' : 's'} viewed on Naukri{' '}
+                    {gap === 1 ? 'was' : 'were'} not added to TalentOS for this date. This variance
+                    is recorded and appears in the daily sourcing report.
+                  </p>
+                </div>
+
+                <p className="mt-3 text-sm text-slate-600">
+                  Please share your comments so the numbers can be reconciled.
+                </p>
+              </AlertDialogHeader>
+
+              {/* comments (required) */}
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Share your comments <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  rows={3}
+                  autoFocus
+                  placeholder="e.g. 20 profiles were not relevant after review, 5 were duplicates already in TalentOS…"
+                  className="w-full rounded-lg border-2 border-red-200 bg-red-50/40 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-red-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/25"
+                />
+                <p className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                  <Lock className="h-3 w-3" />
+                  Comments are required to continue into TalentOS.
+                </p>
+              </div>
+
+              <AlertDialogFooter className="mt-4">
+                <Button
+                  className="w-full gap-2 bg-red-600 font-bold text-white hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-red-300"
+                  disabled={reason.trim().length < 3 || submitM.isPending}
+                  onClick={() => submitM.mutate()}
+                >
+                  {submitM.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {submitM.isPending ? 'Saving…' : 'Submit & continue'}
+                </Button>
+              </AlertDialogFooter>
+            </div>
           </>
         )}
       </AlertDialogContent>
