@@ -3,15 +3,17 @@
 // File: RecruiterTable.tsx
 // Path: src/components/reports/RecruiterTable.tsx
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
 import {
+  DownloadMenu,
   FUNNEL_COLORS,
   GroupHeader,
   MiniStat,
   STATUS_STYLE,
   StageCell,
+  StickyTableCard,
   makeExpandColumn,
   makeSelectColumn,
   makeSrColumn,
@@ -19,6 +21,7 @@ import {
   useSelection,
 } from './reportUi';
 import { useReportViewStore, useReportViewsReady } from '@/stores/reportViewStore';
+import { exportViewToXlsx, resolveExportFields } from './exportTable';
 import type { RecruiterStat, StageMeta } from './types';
 
 interface RecruiterTableProps {
@@ -62,6 +65,10 @@ export function RecruiterTable({
         frozen: true,
         locked: true,
         width: 240,
+        exportFields: [
+          { label: 'Recruiter', value: r => r.name },
+          { label: 'Email', value: r => r.email },
+        ],
         cell: r => (
           <div className="overflow-hidden">
             <div className="truncate text-[13px] font-bold text-slate-900">{r.name}</div>
@@ -74,6 +81,7 @@ export function RecruiterTable({
         label: 'Jobs',
         align: 'center',
         group: 'Activity',
+        exportValue: r => r.requirementBreakdown.length,
         cell: r => (
           <span className="text-[12px] font-semibold text-slate-600">
             {r.requirementBreakdown.length}
@@ -85,6 +93,7 @@ export function RecruiterTable({
         label: 'Sourced',
         align: 'center',
         group: 'Activity',
+        exportValue: r => r.sourced,
         cell: r => <span className="text-[15px] font-black text-slate-900">{r.sourced}</span>,
       },
       ...stages.map<ColumnDef<RecruiterStat>>((s, i) => ({
@@ -94,6 +103,7 @@ export function RecruiterTable({
         group: 'Pipeline stages',
         dotColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
         headerTitle: s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`,
+        exportValue: r => r.stageCounts[s.id] ?? 0,
         cell: r => (
           <StageCell
             count={r.stageCounts[s.id] ?? 0}
@@ -107,6 +117,7 @@ export function RecruiterTable({
         label: 'Active',
         align: 'center',
         group: 'Outcome',
+        exportValue: r => r.active,
         cell: r => (
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-[11px] font-bold text-indigo-700">
             {r.active}
@@ -119,6 +130,7 @@ export function RecruiterTable({
         align: 'center',
         group: 'Outcome',
         headerTitle: 'Joined across every stage path — not the Joined stage count',
+        exportValue: r => r.joined,
         cell: r => <span className="text-[13px] font-black text-emerald-700">{r.joined}</span>,
       },
       {
@@ -126,6 +138,7 @@ export function RecruiterTable({
         label: 'Dropped (total)',
         align: 'center',
         group: 'Outcome',
+        exportValue: r => r.dropped,
         cell: r => (
           <span
             className={`text-[13px] font-bold ${r.dropped > 0 ? 'text-red-500' : 'text-slate-300'}`}
@@ -140,6 +153,7 @@ export function RecruiterTable({
         align: 'center',
         group: 'Outcome',
         headerTitle: 'Average days from sourcing to submission',
+        exportValue: r => r.avgTimeToSubmitDays ?? '',
         cell: r => (
           <span className="text-[12px] font-medium text-slate-500">
             {r.avgTimeToSubmitDays != null ? `${r.avgTimeToSubmitDays}d` : '—'}
@@ -150,16 +164,45 @@ export function RecruiterTable({
     [allIds, selected, toggle, toggleAll, expanded, toggleExp, stages]
   );
 
+  const exportLocal = useCallback(
+    async (onlySelected: boolean) => {
+      const rows = onlySelected ? data.filter(r => selected.has(r.id)) : data;
+      const scope = title ? title.replace(/\s+/g, '-').toLowerCase() : 'all';
+      const stamp = new Date().toISOString().split('T')[0];
+      await exportViewToXlsx({
+        columns,
+        rows,
+        hiddenColumns: hidden,
+        sheetName: title ?? 'Recruiters',
+        filename: `recruiters-${scope}${onlySelected ? '-selected' : ''}-${stamp}.xlsx`,
+      });
+    },
+    [columns, data, hidden, selected, title]
+  );
+
+  const visibleColumnCount = resolveExportFields(columns, hidden).length;
+
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <StickyTableCard>
       <GroupHeader
         title={title}
         count={data.length}
         countLabel="recruiters"
-        selectedCount={selected.size}
-        onSelected={() => onDownloadSelected([...selected], serviceLineId)}
-        onAll={() => onDownloadAll(serviceLineId)}
-        rightSlot={<ColumnViewMenu tableKey={tableKey} columns={columns} />}
+        rightSlot={
+          <>
+            <ColumnViewMenu tableKey={tableKey} columns={columns} />
+            <DownloadMenu
+              scopeLabel={title ? 'This line' : 'All'}
+              rowCount={data.length}
+              selectedCount={selected.size}
+              columnCount={visibleColumnCount}
+              onLocalAll={() => exportLocal(false)}
+              onLocalSelected={() => exportLocal(true)}
+              onServerAll={() => onDownloadAll(serviceLineId)}
+              onServerSelected={() => onDownloadSelected([...selected], serviceLineId)}
+            />
+          </>
+        }
       />
 
       <DataTable
@@ -167,7 +210,6 @@ export function RecruiterTable({
         rows={data}
         rowKey={getId}
         hiddenColumns={hidden}
-        maxHeight="calc(100vh - 380px)"
         emptyMessage="No recruiter activity in this window."
         isExpanded={r => expanded.has(r.id)}
         rowClassName={r => (expanded.has(r.id) ? 'bg-indigo-50' : 'hover:bg-slate-50')}
@@ -236,6 +278,6 @@ export function RecruiterTable({
           )
         }
       />
-    </div>
+    </StickyTableCard>
   );
 }

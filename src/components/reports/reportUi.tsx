@@ -3,7 +3,8 @@
 // File: reportUi.tsx
 // Path: src/components/reports/reportUi.tsx
 
-import { useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
 import {
   AlertCircle,
@@ -180,30 +181,259 @@ export function StageCell({ count, base, color }: { count: number; base: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GROUP HEADER (table toolbar)
+// ANCHORED PANEL
+// Dropdowns live inside StickyTableCard, which must clip (rounded corners +
+// sticky), so an absolutely-positioned panel gets cut off. This portals to
+// <body> and positions itself against the trigger with `fixed`, so no ancestor's
+// overflow or z-index can touch it. It also flips upward when space is short.
 // ─────────────────────────────────────────────────────────────────────────────
+
+export function AnchoredPanel({
+  anchorRef,
+  open,
+  onClose,
+  width = 320,
+  align = 'right',
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  open: boolean;
+  onClose: () => void;
+  width?: number;
+  align?: 'left' | 'right';
+  children: ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+    up: boolean;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const compute = () => {
+      const r = anchorRef.current?.getBoundingClientRect();
+      if (!r) return;
+
+      const gap = 8;
+      const edge = 12;
+      const below = window.innerHeight - r.bottom - gap - edge;
+      const above = r.top - gap - edge;
+      const up = below < 260 && above > below;
+
+      setPos({
+        top: up ? r.top - gap : r.bottom + gap,
+        left:
+          align === 'right'
+            ? Math.min(Math.max(edge, r.right - width), window.innerWidth - width - edge)
+            : Math.min(Math.max(edge, r.left), window.innerWidth - width - edge),
+        maxHeight: Math.max(220, up ? above : below),
+        up,
+      });
+    };
+
+    compute();
+    // `true` captures scroll from the table's own scroll container too.
+    window.addEventListener('scroll', compute, true);
+    window.addEventListener('resize', compute);
+    return () => {
+      window.removeEventListener('scroll', compute, true);
+      window.removeEventListener('resize', compute);
+    };
+  }, [open, align, width, anchorRef]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || anchorRef.current?.contains(t)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose, anchorRef]);
+
+  if (!open || !pos || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      className="fixed z-[100] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+      style={{
+        top: pos.top,
+        left: pos.left,
+        width,
+        maxHeight: pos.maxHeight,
+        transform: pos.up ? 'translateY(-100%)' : undefined,
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOWNLOAD MENU
+// Local = built in the browser from rows already loaded, visible columns only.
+// Server = the existing endpoint, every column.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DownloadItem({
+  label,
+  hint,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  hint: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex w-full flex-col items-start gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      <span className="text-[12px] font-semibold text-slate-700">{label}</span>
+      <span className="text-[10px] text-slate-400">{hint}</span>
+    </button>
+  );
+}
+
+export function DownloadMenu({
+  scopeLabel,
+  rowCount,
+  selectedCount,
+  columnCount,
+  onLocalAll,
+  onLocalSelected,
+  onServerAll,
+  onServerSelected,
+}: {
+  scopeLabel: string;
+  rowCount: number;
+  selectedCount: number;
+  columnCount: number;
+  onLocalAll: () => void;
+  onLocalSelected: () => void;
+  onServerAll: () => void;
+  onServerSelected: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const run = (fn: () => void) => () => {
+    fn();
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={() => setOpen(o => !o)}
+        className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
+          open
+            ? 'border-indigo-600 bg-indigo-600 text-white'
+            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+        }`}
+      >
+        <Download className="h-3.5 w-3.5" /> Download
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </button>
+
+      <AnchoredPanel anchorRef={triggerRef} open={open} onClose={() => setOpen(false)} width={290}>
+        <div className="overflow-y-auto p-1.5">
+          <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            This view · {columnCount} columns
+          </p>
+          <DownloadItem
+            label={`All rows (${rowCount})`}
+            hint="Built here, instantly — only the columns you can see"
+            onClick={run(onLocalAll)}
+            disabled={rowCount === 0}
+          />
+          <DownloadItem
+            label={`Selected rows (${selectedCount})`}
+            hint={selectedCount ? 'Your ticked rows, visible columns' : 'Tick some rows first'}
+            onClick={run(onLocalSelected)}
+            disabled={selectedCount === 0}
+          />
+
+          <div className="my-1 border-t border-slate-100" />
+
+          <p className="px-2.5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            Full export · every column
+          </p>
+          <DownloadItem
+            label={`${scopeLabel} — all rows`}
+            hint="Generated by the server, ignores column choices"
+            onClick={run(onServerAll)}
+          />
+          <DownloadItem
+            label={`Selected rows (${selectedCount})`}
+            hint={selectedCount ? 'Server export, every column' : 'Tick some rows first'}
+            onClick={run(onServerSelected)}
+            disabled={selectedCount === 0}
+          />
+        </div>
+      </AnchoredPanel>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STICKY TABLE CARD
+// The card pins to the top of the scroll area, so KPIs and filters above it
+// scroll away and the table takes the whole viewport. Height is capped here and
+// the inner scroll region fills what is left (flex + min-h-0) — no JS measuring.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function StickyTableCard({
+  children,
+  /** Raise this if your dashboard shell has its own fixed top bar. */
+  topOffset = 0,
+  bottomGap = 16,
+}: {
+  children: ReactNode;
+  topOffset?: number;
+  bottomGap?: number;
+}) {
+  return (
+    <div
+      className="sticky z-20 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+      style={{ top: topOffset, maxHeight: `calc(100vh - ${topOffset + bottomGap}px)` }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function GroupHeader({
   title,
   count,
   countLabel,
-  selectedCount,
-  onSelected,
-  onAll,
   leftSlot,
   rightSlot,
 }: {
   title: string | null;
   count: number;
   countLabel: string;
-  selectedCount: number;
-  onSelected: () => void;
-  onAll: () => void;
   leftSlot?: ReactNode;
   rightSlot?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
       {title ? (
         <LinePill name={title} />
       ) : (
@@ -213,23 +443,7 @@ export function GroupHeader({
         {count} {countLabel}
       </span>
       {leftSlot}
-      <div className="ml-auto flex items-center gap-2">
-        {rightSlot}
-        {selectedCount > 0 && (
-          <button
-            onClick={onSelected}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-semibold text-white transition-colors hover:bg-indigo-700"
-          >
-            <Download className="h-3.5 w-3.5" /> Download selected ({selectedCount})
-          </button>
-        )}
-        <button
-          onClick={onAll}
-          className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-        >
-          <Download className="h-3.5 w-3.5" /> Download {title ? 'line' : 'all'}
-        </button>
-      </div>
+      <div className="ml-auto flex items-center gap-2">{rightSlot}</div>
     </div>
   );
 }
@@ -352,6 +566,7 @@ export function makeSrColumn<T>(): ColumnDef<T> {
     locked: true,
     width: 52,
     align: 'center',
+    exportValue: (_row, index) => index + 1,
     cell: (_row, index) => (
       <span className="text-[12px] font-bold text-slate-400">{index + 1}</span>
     ),

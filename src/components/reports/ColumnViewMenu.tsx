@@ -3,7 +3,7 @@
 // File: ColumnViewMenu.tsx
 // Path: src/components/reports/ColumnViewMenu.tsx
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Bookmark,
   Check,
@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { hidableColumns, type ColumnDef } from './DataTable';
+import { AnchoredPanel } from './reportUi';
 import {
   MAX_SAVED_VIEWS,
   VIEW_NAME_MAX,
@@ -37,7 +38,7 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
   const [error, setError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
-  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const ready = useReportViewsReady();
   const hiddenRaw = useReportViewStore(s => s.hiddenColumns[tableKey]);
@@ -71,22 +72,6 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
 
   const visibleCount = hidable.length - hidden.filter(id => hidable.some(c => c.id === id)).length;
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!panelRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
   const handleSave = () => {
     const res = saveView(tableKey, name);
     if (!res.ok) return setError(res.error ?? 'Could not save that view.');
@@ -102,8 +87,9 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
   };
 
   return (
-    <div className="relative" ref={panelRef}>
+    <>
       <button
+        ref={triggerRef}
         onClick={() => setOpen(o => !o)}
         className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
           open
@@ -125,10 +111,10 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
         )}
       </button>
 
-      {open && (
-        <div className="absolute right-0 z-50 mt-2 flex w-[340px] flex-col rounded-xl border border-slate-200 bg-white shadow-xl">
+      <AnchoredPanel anchorRef={triggerRef} open={open} onClose={() => setOpen(false)} width={340}>
+        <div className="flex min-h-0 flex-col">
           {/* Saved views */}
-          <div className="border-b border-slate-100 p-3">
+          <div className="shrink-0 border-b border-slate-100 p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
                 Saved views
@@ -264,7 +250,7 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
           </div>
 
           {/* Column toggles */}
-          <div className="flex items-center justify-between px-3 py-2">
+          <div className="flex shrink-0 items-center justify-between px-3 py-2">
             <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
               Show columns
             </span>
@@ -289,7 +275,7 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
             </div>
           </div>
 
-          <div className="max-h-72 overflow-y-auto px-1.5 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
             {grouped.map(([group, cols]) => (
               <div key={group} className="mb-1">
                 <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-300">
@@ -328,11 +314,11 @@ export function ColumnViewMenu<T>({ tableKey, columns }: ColumnViewMenuProps<T>)
             ))}
           </div>
 
-          <p className="border-t border-slate-100 px-3 py-2 text-[10px] text-slate-400">
-            Views live in this browser only. Exports always include every column.
+          <p className="shrink-0 border-t border-slate-100 px-3 py-2 text-[10px] text-slate-400">
+            Views live in this browser only. The full export always includes every column.
           </p>
         </div>
-      )}
-    </div>
+      </AnchoredPanel>
+    </>
   );
 }
