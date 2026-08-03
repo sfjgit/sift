@@ -164,7 +164,7 @@ function ScopePill({
     if (!btn) return null;
 
     const rect = btn.getBoundingClientRect();
-    const estPopupHeight = scopeOptions.length * 52 + 8; // approx per-option height
+    const estPopupHeight = scopeOptions?.length * 52 + 8; // approx per-option height
 
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
@@ -183,7 +183,7 @@ function ScopePill({
     }
 
     return { top, left };
-  }, [scopeOptions.length]);
+  }, [scopeOptions?.length]);
 
   const handleOpen = () => {
     if (disabled) return;
