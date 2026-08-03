@@ -59,7 +59,7 @@ const NAV = [
 
 /** Timings — tweak in one place. */
 const REVEAL_DELAY_MS = 120; // pointer must linger on the edge this long before it slides in
-const HIDE_DELAY_MS = 2500; // stays visible this long after the pointer leaves
+const HIDE_DELAY_MS = 500; // stays visible this long after the pointer leaves
 const TRIGGER_WIDTH = 14; // px hot-zone hugging the left edge
 const HINT_AUTO_DISMISS_MS = 14000; // first-run coach mark gives up after this
 
