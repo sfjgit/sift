@@ -82,6 +82,7 @@ export interface RequirementRow {
   respondBy: string | null;
   isRespondByBreached: boolean;
   createdAt: string;
+  createdById: string;
   deletedAt: string | null;
   client: { id: string; name: string } | null;
   clientSpoc: { id: string; firstName: string; lastName: string; email: string } | null;
