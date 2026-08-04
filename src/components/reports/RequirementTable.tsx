@@ -3,15 +3,17 @@
 // File: RequirementTable.tsx
 // Path: src/components/reports/RequirementTable.tsx
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { FileDown } from 'lucide-react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
 import {
+  DownloadMenu,
   FUNNEL_COLORS,
   GroupHeader,
   STATUS_STYLE,
   StageCell,
+  StickyTableCard,
   fmtDate,
   makeExpandColumn,
   makeSelectColumn,
@@ -20,6 +22,7 @@ import {
   useSelection,
 } from './reportUi';
 import { useReportViewStore, useReportViewsReady } from '@/stores/reportViewStore';
+import { exportViewToXlsx, resolveExportFields } from './exportTable';
 import type { RequirementRow, StageMeta } from './types';
 
 interface RequirementTableProps {
@@ -73,6 +76,10 @@ export function RequirementTable({
         frozen: true,
         locked: true,
         width: 280,
+        exportFields: [
+          { label: 'Req code', value: r => r.reqCode },
+          { label: 'Title', value: r => r.title },
+        ],
         cell: r => (
           <div className="overflow-hidden">
             <div className="truncate text-[13px] font-bold leading-tight text-slate-900">
@@ -94,6 +101,7 @@ export function RequirementTable({
         label: 'Status',
         align: 'center',
         group: 'Requirement',
+        exportValue: r => r.status.replace(/_/g, ' '),
         cell: r => (
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -109,6 +117,7 @@ export function RequirementTable({
         label: 'Priority',
         align: 'center',
         group: 'Requirement',
+        exportValue: r => r.priority,
         cell: r => <span className="text-[12px] font-semibold text-slate-600">{r.priority}</span>,
       },
       {
@@ -116,6 +125,7 @@ export function RequirementTable({
         label: 'Openings',
         align: 'center',
         group: 'Requirement',
+        exportValue: r => r.totalOpenings,
         cell: r => <span className="text-[13px] font-bold text-slate-700">{r.totalOpenings}</span>,
       },
       {
@@ -124,6 +134,7 @@ export function RequirementTable({
         align: 'center',
         group: 'Requirement',
         headerTitle: 'Total candidates in this requirement',
+        exportValue: r => r.totalCandidates,
         cell: r => (
           <span className="text-[14px] font-black text-slate-900">{r.totalCandidates}</span>
         ),
@@ -135,6 +146,7 @@ export function RequirementTable({
         group: 'Pipeline stages',
         dotColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
         headerTitle: s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`,
+        exportValue: r => r.stageCounts[s.id] ?? 0,
         cell: r => (
           <StageCell
             count={r.stageCounts[s.id] ?? 0}
@@ -147,6 +159,7 @@ export function RequirementTable({
         id: 'client',
         label: 'Client',
         group: 'Ownership',
+        exportValue: r => r.client?.name ?? '',
         cell: r => (
           <span className="text-[12px] font-medium text-slate-600">{r.client?.name ?? '—'}</span>
         ),
@@ -155,6 +168,7 @@ export function RequirementTable({
         id: 'businessUnit',
         label: 'Business unit',
         group: 'Ownership',
+        exportValue: r => r.businessUnit?.name ?? '',
         cell: r => (
           <span className="text-[12px] font-medium text-slate-600">
             {r.businessUnit?.name ?? '—'}
@@ -166,6 +180,7 @@ export function RequirementTable({
         label: 'Respond by',
         align: 'center',
         group: 'Dates',
+        exportValue: r => fmtDate(r.respondBy),
         cell: r => (
           <span
             className={`whitespace-nowrap text-[11px] font-medium ${
@@ -182,6 +197,7 @@ export function RequirementTable({
         label: 'Created',
         align: 'center',
         group: 'Dates',
+        exportValue: r => fmtDate(r.createdAt),
         cell: r => (
           <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
             {fmtDate(r.createdAt)}
@@ -206,16 +222,45 @@ export function RequirementTable({
     [allIds, selected, toggle, toggleAll, expanded, toggleExp, stages, onDownloadRow]
   );
 
+  const exportLocal = useCallback(
+    async (onlySelected: boolean) => {
+      const rows = onlySelected ? data.filter(r => selected.has(r.id)) : data;
+      const scope = title ? title.replace(/\s+/g, '-').toLowerCase() : 'all';
+      const stamp = new Date().toISOString().split('T')[0];
+      await exportViewToXlsx({
+        columns,
+        rows,
+        hiddenColumns: hidden,
+        sheetName: title ?? 'Requirements',
+        filename: `requirements-${scope}${onlySelected ? '-selected' : ''}-${stamp}.xlsx`,
+      });
+    },
+    [columns, data, hidden, selected, title]
+  );
+
+  const visibleColumnCount = resolveExportFields(columns, hidden).length;
+
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <StickyTableCard>
       <GroupHeader
         title={title}
         count={data.length}
         countLabel="requirements"
-        selectedCount={selected.size}
-        onSelected={() => onDownloadSelected([...selected], serviceLineId)}
-        onAll={() => onDownloadAll(serviceLineId)}
-        rightSlot={<ColumnViewMenu tableKey={tableKey} columns={columns} />}
+        rightSlot={
+          <>
+            <ColumnViewMenu tableKey={tableKey} columns={columns} />
+            <DownloadMenu
+              scopeLabel={title ? 'This line' : 'All'}
+              rowCount={data.length}
+              selectedCount={selected.size}
+              columnCount={visibleColumnCount}
+              onLocalAll={() => exportLocal(false)}
+              onLocalSelected={() => exportLocal(true)}
+              onServerAll={() => onDownloadAll(serviceLineId)}
+              onServerSelected={() => onDownloadSelected([...selected], serviceLineId)}
+            />
+          </>
+        }
       />
 
       <DataTable
@@ -223,7 +268,6 @@ export function RequirementTable({
         rows={data}
         rowKey={getId}
         hiddenColumns={hidden}
-        maxHeight="calc(100vh - 340px)"
         emptyMessage="No requirements found for this window."
         isExpanded={r => expanded.has(r.id)}
         rowClassName={r =>
@@ -262,6 +306,6 @@ export function RequirementTable({
           </div>
         )}
       />
-    </div>
+    </StickyTableCard>
   );
 }
