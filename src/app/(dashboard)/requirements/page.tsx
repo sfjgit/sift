@@ -127,6 +127,12 @@ interface Client {
   status: string;
 }
 
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  // role?: { name: string };
+}
 interface RequirementsResponse {
   success: boolean;
   data: Requirement[];
@@ -669,6 +675,7 @@ function useFilters() {
   const viewMode = (searchParams.get('view') ?? 'table') as 'cards' | 'table';
   const page = Number(searchParams.get('page') ?? '1');
   const limit = Number(searchParams.get('limit') ?? '25');
+  const createdById = searchParams.get('createdById') ?? '';
 
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
@@ -693,6 +700,8 @@ function useFilters() {
   const setPage = (v: number) => setParams({ page: String(v) });
   const setLimit = (v: number) => setParams({ limit: String(v), page: null });
 
+  const setCreatedById = (v: string) => setParams({ createdById: v, page: null });
+
   const clearAll = () =>
     setParams({
       search: null,
@@ -702,9 +711,10 @@ function useFilters() {
       clientId: null,
       buId: null,
       page: null,
+      createdById: null,
     });
 
-  const activeFiltersCount = [status, priority, buId, serviceLineId, clientId].filter(
+  const activeFiltersCount = [status, priority, buId, serviceLineId, clientId, createdById].filter(
     Boolean
   ).length;
 
@@ -719,12 +729,14 @@ function useFilters() {
     viewMode,
     page,
     limit,
+    createdById,
     setSearch,
     setStatus,
     setPriority,
     setServiceLineId,
     setClientId,
     setBuId,
+    setCreatedById,
     setCreatedByScope,
     setViewMode,
     setPage,
@@ -820,6 +832,7 @@ function ExportButton({
     clientId: string;
     buId: string;
     createdByScope: string;
+    createdBy: string;
   };
 }) {
   const axios = useAxios();
@@ -836,6 +849,7 @@ function ExportButton({
       if (filters.serviceLineId) params.set('serviceLineId', filters.serviceLineId);
       if (filters.clientId) params.set('clientId', filters.clientId);
       if (filters.buId) params.set('buId', filters.buId);
+      if (filters.createdBy) params.set('createdBy', filters.createdBy);
       params.set('createdByScope', filters.createdByScope);
 
       const response = await axios.get(`/requirements/export?${params.toString()}`, {
@@ -886,13 +900,17 @@ function FilterBar({
   setServiceLineId,
   clientId,
   setClientId,
+  createdById,
+  setCreatedById,
   byStatus,
   busData,
   busLoading,
   slData,
   slLoading,
   clientsData,
+  createdByData,
   clientsLoading,
+  createdByLoading,
   activeFiltersCount,
   clearAll,
 }: {
@@ -906,13 +924,17 @@ function FilterBar({
   setServiceLineId: (v: string) => void;
   clientId: string;
   setClientId: (v: string) => void;
+  createdById: string;
+  setCreatedById: (v: string) => void;
   byStatus: Record<string, number>;
   busData: BusinessUnit[] | null | undefined;
   busLoading: boolean;
   slData: ServiceLine[] | null | undefined;
   slLoading: boolean;
   clientsData: Client[] | null | undefined;
+  createdByData: { id: string; name: string }[] | null | undefined;
   clientsLoading: boolean;
+  createdByLoading: boolean;
   activeFiltersCount: number;
   clearAll: () => void;
 }) {
@@ -1007,6 +1029,17 @@ function FilterBar({
         allLabel="All Priorities"
       />
 
+      {createdByData && createdByData.length > 0 && (
+        <DropdownFilter
+          label="Created By"
+          icon={<Users size={12} />}
+          value={createdById}
+          items={createdByData}
+          onSelect={setCreatedById}
+          loading={createdByLoading}
+          allLabel="Created By"
+        />
+      )}
       {activeFiltersCount > 0 && (
         <button
           onClick={clearAll}
@@ -1122,6 +1155,9 @@ function ActiveFilterChips({
   clientId,
   setClientId,
   clientsData,
+  createdById,
+  setCreatedById,
+  createdByData,
 }: {
   status: string;
   setStatus: (v: string) => void;
@@ -1136,6 +1172,9 @@ function ActiveFilterChips({
   clientId: string;
   setClientId: (v: string) => void;
   clientsData: Client[] | null | undefined;
+  createdById: string;
+  setCreatedById: (v: string) => void;
+  createdByData: { id: string; name: string }[] | null | undefined;
 }) {
   const chips = [
     status && { label: STATUS_LABEL[status] ?? status, clear: () => setStatus('') },
@@ -1154,6 +1193,11 @@ function ActiveFilterChips({
       clientsData && {
         label: clientsData.find(c => c.id === clientId)?.name ?? clientId,
         clear: () => setClientId(''),
+      },
+    createdById &&
+      createdByData && {
+        label: createdByData.find(u => u.id === createdById)?.name ?? createdById,
+        clear: () => setCreatedById(''),
       },
   ].filter(Boolean) as { label: string; clear: () => void }[];
 
@@ -1181,13 +1225,13 @@ function ActiveFilterChips({
 function RequirementsTable({
   requirements,
   selectedIds,
-  onSelect,
-  onSelectAll,
-  allSelected,
+  // onSelect,
+  // onSelectAll,
+  // allSelected,
   canonicalKeys,
   canonicalMeta,
   onStageClick,
-  allStages,
+  // allStages,
   canAdd,
   canDelete,
   canEdit,
@@ -1239,6 +1283,9 @@ function RequirementsTable({
               Priority
             </th>
             <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
+              Created By
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
               Client
             </th>
             <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16">
@@ -1260,9 +1307,7 @@ function RequirementsTable({
             <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36">
               Assigned To
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
-              Created By
-            </th>
+
             <th className="w-8 px-2 py-3" />
           </tr>
         </thead>
@@ -1368,6 +1413,20 @@ function RequirementsTable({
                   </span>
                 </td>
 
+                {/* Created by */}
+                <td className="px-3 py-3">
+                  {req.createdBy ? (
+                    <span
+                      className="text-[12px] text-slate-500 truncate block"
+                      style={{ maxWidth: 110 }}
+                    >
+                      {req.createdBy.firstName} {req.createdBy.lastName}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+
                 {/* Client */}
                 <td className="px-3 py-3">
                   <span
@@ -1427,20 +1486,6 @@ function RequirementsTable({
                 {/* Assigned to — popover */}
                 <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                   <AssigneesPopover req={req} canAdd={canAdd} onAssign={onAssign} />
-                </td>
-
-                {/* Created by */}
-                <td className="px-3 py-3">
-                  {req.createdBy ? (
-                    <span
-                      className="text-[12px] text-slate-500 truncate block"
-                      style={{ maxWidth: 110 }}
-                    >
-                      {req.createdBy.firstName} {req.createdBy.lastName}
-                    </span>
-                  ) : (
-                    <span className="text-slate-300">—</span>
-                  )}
                 </td>
 
                 {/* Arrow */}
@@ -2084,12 +2129,14 @@ function RequirementsPageInner() {
     viewMode,
     page,
     limit,
+    createdById,
     setSearch,
     setStatus,
     setPriority,
     setServiceLineId,
     setClientId,
     setBuId,
+    setCreatedById,
     setCreatedByScope,
     setViewMode,
     setPage,
@@ -2168,6 +2215,22 @@ function RequirementsPageInner() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: createdByData, isLoading: createdByLoading } = useQuery({
+    queryKey: ['requirement-creators'],
+    queryFn: () =>
+      safeFetch(async () => (await axios.get('/users?limit=200')).data?.data as User[]),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const createdByOptions = useMemo(
+    () =>
+      (createdByData ?? []).map(u => ({
+        id: u.id,
+        name: `${u.firstName} ${u.lastName}`.trim(),
+      })),
+    [createdByData]
+  );
+
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (search) p.set('search', search);
@@ -2176,11 +2239,23 @@ function RequirementsPageInner() {
     if (serviceLineId) p.set('serviceLineId', serviceLineId);
     if (clientId) p.set('clientId', clientId);
     if (buId) p.set('buId', buId);
+    if (createdById) p.set('createdById', createdById);
     p.set('createdByScope', createdByScope);
     p.set('page', String(page));
     p.set('limit', String(limit));
     return p.toString();
-  }, [search, status, priority, serviceLineId, clientId, buId, createdByScope, page, limit]);
+  }, [
+    search,
+    status,
+    priority,
+    serviceLineId,
+    clientId,
+    buId,
+    createdById,
+    createdByScope,
+    page,
+    limit,
+  ]);
 
   const { data: reqData, isLoading: reqLoading } = useQuery({
     queryKey: ['requirements', qs],
@@ -2219,7 +2294,16 @@ function RequirementsPageInner() {
     });
   }
 
-  const exportFilters = { search, status, priority, serviceLineId, clientId, buId, createdByScope };
+  const exportFilters = {
+    search,
+    status,
+    priority,
+    serviceLineId,
+    clientId,
+    buId,
+    createdBy: createdById,
+    createdByScope,
+  };
   const hasActiveFilters = activeFiltersCount > 0;
 
   return (
@@ -2294,6 +2378,8 @@ function RequirementsPageInner() {
             setServiceLineId={setServiceLineId}
             clientId={clientId}
             setClientId={setClientId}
+            createdById={createdById}
+            setCreatedById={setCreatedById}
             byStatus={byStatus}
             busData={busData}
             busLoading={busLoading}
@@ -2301,6 +2387,8 @@ function RequirementsPageInner() {
             slLoading={slLoading}
             clientsData={clientsData}
             clientsLoading={clientsLoading}
+            createdByData={createdByOptions}
+            createdByLoading={createdByLoading}
             activeFiltersCount={activeFiltersCount}
             clearAll={clearAll}
           />
@@ -2322,6 +2410,9 @@ function RequirementsPageInner() {
           clientId={clientId}
           setClientId={setClientId}
           clientsData={clientsData}
+          createdById={createdById}
+          setCreatedById={setCreatedById}
+          createdByData={createdByOptions}
         />
       )}
 

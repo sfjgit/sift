@@ -142,17 +142,17 @@ export function RequirementsTable({
                 <Th sticky className="w-32">
                   Job Code
                 </Th>
-                <Th className="min-w-[200px]">Job Title</Th>
+                <Th className="min-w-50">Job Title</Th>
                 <Th className="w-24">Status</Th>
                 <Th className="w-20">Priority</Th>
                 <Th className="w-14 text-center">Age</Th>
-                <Th className="min-w-[130px]">Client</Th>
-                <Th className="min-w-[130px]">BU</Th>
-                <Th className="min-w-[130px]">Service Line</Th>
-                <Th className="min-w-[120px]">Location</Th>
-                <Th className="min-w-[120px]">Created By</Th>
-                <Th className="min-w-[130px]">Assigned To</Th>
-                <Th className="min-w-[110px]">Salary</Th>
+                <Th className="min-w-32.5">Client</Th>
+                <Th className="min-w-32.5">BU</Th>
+                <Th className="min-w-32.5">Service Line</Th>
+                <Th className="min-w-32.5">Location</Th>
+                <Th className="min-w-32.5">Created By</Th>
+                <Th className="min-w-32.5">Assigned To</Th>
+                <Th className="min-w-32.5">Salary</Th>
                 <Th className="w-20 text-center">Openings</Th>
                 <Th className="w-24 text-center">Pipeline</Th>
                 <Th className="w-20 text-center">Interviews</Th>
@@ -275,7 +275,7 @@ export function RequirementsTable({
                     </td>
 
                     {/* Location */}
-                    <td className="px-3 py-2.5 max-w-[130px]">
+                    <td className="px-3 py-2.5 max-w-32.5">
                       <Tooltip>
                         <TooltipTrigger className="block truncate text-sm text-muted-foreground text-left w-full">
                           {req.location ?? '—'}
@@ -292,7 +292,7 @@ export function RequirementsTable({
                     </td>
 
                     {/* Assigned To */}
-                    <td className="px-3 py-2.5 max-w-[150px]">
+                    <td className="px-3 py-2.5 max-w-37.5">
                       <Tooltip>
                         <TooltipTrigger className="block truncate text-sm text-left w-full">
                           {assignedLabel}
