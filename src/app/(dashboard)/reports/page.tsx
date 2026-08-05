@@ -2208,6 +2208,7 @@ function BUBarChart({
 interface Filters {
   clientId?: string;
   serviceLineId?: string;
+  createdById?: string;
 }
 
 function FiltersBar({
@@ -2236,9 +2237,22 @@ function FiltersBar({
     queryFn: async () => (await axios.get('/service-lines')).data?.data ?? [],
     staleTime: 300000,
   });
+  const { data: createdByRes } = useQuery({
+    queryKey: ['rf-created-by'],
+    queryFn: async () => {
+      const rows = (await axios.get('/users?limit=100&isActive=true')).data?.data ?? [];
+      return rows.map((u: any) => ({
+        id: u.id,
+        label:
+          u.displayName?.trim() || `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email,
+      }));
+    },
+    staleTime: 300000,
+  });
 
   const clients: any[] = clientsRes ?? [];
   const sls: any[] = slRes ?? [];
+  const createdBys: { id: string; label: string }[] = createdByRes ?? [];
   const set = (k: keyof Filters, v: string) =>
     onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
 
@@ -2370,6 +2384,21 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
+        {/*Created by filter*/}
+        <Select value={filters.createdById ?? 'ALL'} onValueChange={v => set('createdById', v)}>
+          <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
+            <SelectValue placeholder="Created By" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Created By</SelectItem>
+            {createdBys.map(c => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <button
           onClick={() => onStandardOnly(!standardOnly)}
           className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
@@ -2386,7 +2415,7 @@ function FiltersBar({
           Standard stages only
         </button>
 
-        {(filters.clientId || filters.serviceLineId) && (
+        {(filters.clientId || filters.serviceLineId || filters.createdById) && (
           <button
             onClick={() => onChange({})}
             className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-50"
@@ -2745,6 +2774,7 @@ export default function ReportsPage() {
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
     if (filters.clientId) p.set('clientId', filters.clientId);
     if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
+    if (filters.createdById) p.set('createdById', filters.createdById);
     if (standardOnly) p.set('standardOnly', 'true');
     return p;
   }, [win, filters, standardOnly]);

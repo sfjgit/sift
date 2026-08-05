@@ -223,7 +223,7 @@ export function DataTable<T>({
                           style={{ backgroundColor: col.dotColor }}
                         />
                       )}
-                      <span className="block max-w-[110px] truncate">{col.label}</span>
+                      <span className="block max-w-27.5 truncate">{col.label}</span>
                     </div>
                   )}
                 </th>
