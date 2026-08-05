@@ -53,7 +53,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
-import { STATUS_FLOW } from '@/components/requirements/types';
+import { isReasonRequired, RequirementStatus, STATUS_FLOW } from '@/components/requirements/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -440,6 +440,7 @@ function DeleteRequirementButton({ req, canDelete }: { req: Requirement; canDele
       setError(null);
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
       queryClient.invalidateQueries({ queryKey: ['requirement-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['requirement', req.id] });
     },
     onError: (err: any) => {
       setError(err?.response?.data?.message ?? 'Failed to delete requirement. Please try again.');
@@ -539,6 +540,11 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
   // const nextStatuses = STATUS_FLOW[req.status] ?? [];
   const nextStatuses = STATUS_FLOW[req.status as keyof typeof STATUS_FLOW] ?? [];
 
+  const needsReason = toStatus
+    ? isReasonRequired(req.status as RequirementStatus, toStatus as RequirementStatus)
+    : false;
+  const reasonInvalid = needsReason && reason.trim().length < 5;
+
   const { mutate, isPending } = useMutation({
     mutationFn: async () =>
       (
@@ -616,16 +622,19 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
           </>
         ) : (
           <>
-            <p className="text-[13px] font-semibold text-slate-800 mb-0.5">
-              Change to {STATUS_LABEL[toStatus] ?? toStatus}?
+            <p className="text-[11px] text-slate-500 mb-2">
+              Reason {needsReason ? <span className="text-red-500">*</span> : '(optional)'}
             </p>
-            <p className="text-[11px] text-slate-500 mb-2">Reason (optional)</p>
             <textarea
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="Why is this status changing?"
+              placeholder={
+                needsReason ? 'Why is this being reopened?' : 'Why is this status changing?'
+              }
               rows={2}
-              className="w-full text-[12px] border border-slate-200 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2"
+              className={`w-full text-[12px] border rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2 ${
+                reasonInvalid ? 'border-red-300' : 'border-slate-200'
+              }`}
             />
             {error && (
               <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-1.5 mb-2">
@@ -642,7 +651,7 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
               </button>
               <button
                 onClick={() => mutate()}
-                disabled={isPending}
+                disabled={isPending || reasonInvalid}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
               >
                 {isPending && (

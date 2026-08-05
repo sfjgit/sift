@@ -265,10 +265,19 @@ export const STATUS_FLOW: Record<RequirementStatus, RequirementStatus[]> = {
   PENDING_APPROVAL: ['ACTIVE', 'DRAFT', 'CANCELLED'],
   ACTIVE: ['ON_HOLD', 'CLOSED', 'CANCELLED'],
   ON_HOLD: ['ACTIVE', 'CLOSED', 'CANCELLED'],
-  CLOSED: [],
-  CANCELLED: [],
+  CLOSED: ['ACTIVE', 'ON_HOLD'],
+  CANCELLED: ['DRAFT', 'ACTIVE'],
 };
 
+// Transitions that must carry an audit reason
+export const REASON_REQUIRED: Partial<Record<RequirementStatus, RequirementStatus[]>> = {
+  CLOSED: ['ACTIVE', 'ON_HOLD'],
+  CANCELLED: ['DRAFT', 'ACTIVE'],
+};
+
+export function isReasonRequired(from: RequirementStatus, to: RequirementStatus) {
+  return (REASON_REQUIRED[from] ?? []).includes(to);
+}
 export const STATUS_LABEL: Record<RequirementStatus, string> = {
   DRAFT: 'Draft',
   PENDING_APPROVAL: 'Pending Approval',
