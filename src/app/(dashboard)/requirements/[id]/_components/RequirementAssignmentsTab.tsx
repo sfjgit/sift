@@ -5,7 +5,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -22,12 +22,10 @@ import {
   X,
   UserPlus,
   TreePine,
-  Clock,
-  Briefcase,
-  AlertCircle,
+  CornerDownRight,
+  RotateCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,7 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
-import { daysRemaining, fullName } from './types';
+import { daysRemaining } from './types';
 import type { RequirementTree } from './types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,6 +61,15 @@ interface SubordinateUser {
   role: { id: string; name: string };
 }
 
+interface FlatRow {
+  node: any;
+  depth: number;
+  isLastChild: boolean;
+}
+
+/** Deepest level that may still receive a sub-assignment — mirrors the API tree rule. */
+const MAX_SUB_ASSIGN_DEPTH = 2;
+
 // ─── Avatar palette ───────────────────────────────────────────────────────────
 
 const AVATAR_PALETTE = [
@@ -75,9 +82,13 @@ const AVATAR_PALETTE = [
   'bg-indigo-100 text-indigo-700',
   'bg-orange-100 text-orange-700',
 ];
-const avatarColor = (seed: string) => AVATAR_PALETTE[seed.charCodeAt(0) % AVATAR_PALETTE.length];
+const avatarColor = (seed: string) =>
+  AVATAR_PALETTE[(seed?.charCodeAt(0) ?? 0) % AVATAR_PALETTE.length];
 
 const initials = (first = '', last = '') => `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
+
+const personName = (p?: { firstName?: string; lastName?: string } | null) =>
+  p ? [p.firstName, p.lastName].filter(Boolean).join(' ') || '—' : '—';
 
 // ─── Stage pill colors ────────────────────────────────────────────────────────
 
@@ -95,28 +106,64 @@ const STAGE_PILL: Record<string, string> = {
   '10': 'bg-green-50 text-green-700',
 };
 
-// Depth → connector + card accent colors
-const DEPTH_COLORS = [
-  {
-    connector: 'border-blue-300',
-    accent: 'border-l-blue-400',
-    dot: 'bg-blue-400',
-    badge: 'bg-blue-50 text-blue-700',
-  },
-  {
-    connector: 'border-violet-300',
-    accent: 'border-l-violet-400',
-    dot: 'bg-violet-400',
-    badge: 'bg-violet-50 text-violet-700',
-  },
-  {
-    connector: 'border-amber-300',
-    accent: 'border-l-amber-400',
-    dot: 'bg-amber-400',
-    badge: 'bg-amber-50 text-amber-700',
-  },
-];
-const depthColor = (depth: number) => DEPTH_COLORS[depth % DEPTH_COLORS.length];
+// ─── Tree helpers ─────────────────────────────────────────────────────────────
+
+const childrenOf = (n: any): any[] => n?.children ?? [];
+const pipelinesOf = (n: any): any[] => n?.pipelines ?? [];
+const isLive = (p: any) => !p?.isRejected && !p?.isWithdrawn;
+
+/** Depth-first flatten. Children are emitted only when the parent isn't collapsed. */
+function flatten(nodes: any[], collapsed: Set<string>, depth = 0, out: FlatRow[] = []): FlatRow[] {
+  nodes.forEach((node, i) => {
+    out.push({ node, depth, isLastChild: i === nodes.length - 1 });
+    const kids = childrenOf(node);
+    if (kids.length > 0 && !collapsed.has(node.id)) {
+      flatten(kids, collapsed, depth + 1, out);
+    }
+  });
+  return out;
+}
+
+interface Rollup {
+  people: number;
+  sourced: number;
+  live: number;
+  submitted: number;
+  interviews: number;
+  breached: number;
+}
+
+/** Subtree totals, self included. */
+function rollup(node: any): Rollup {
+  const pipelines = pipelinesOf(node);
+  const self: Rollup = {
+    people: 1,
+    sourced: pipelines.length,
+    live: pipelines.filter(isLive).length,
+    submitted: node.submissionsCount ?? 0,
+    interviews: node.interviewsCount ?? 0,
+    breached: node.breachedAt ? 1 : 0,
+  };
+  return childrenOf(node).reduce((acc: Rollup, child: any) => {
+    const r = rollup(child);
+    return {
+      people: acc.people + r.people,
+      sourced: acc.sourced + r.sourced,
+      live: acc.live + r.live,
+      submitted: acc.submitted + r.submitted,
+      interviews: acc.interviews + r.interviews,
+      breached: acc.breached + r.breached,
+    };
+  }, self);
+}
+
+function idsWithChildren(nodes: any[], out: string[] = []): string[] {
+  nodes.forEach(n => {
+    if (childrenOf(n).length > 0) out.push(n.id);
+    idsWithChildren(childrenOf(n), out);
+  });
+  return out;
+}
 
 // ─── Deadline badge ───────────────────────────────────────────────────────────
 
@@ -124,16 +171,17 @@ function DeadlineBadge({
   deadline,
   breachedAt,
 }: {
-  deadline: string | null;
-  breachedAt: string | null;
+  deadline?: string | null;
+  breachedAt?: string | null;
 }) {
-  if (!deadline) return null;
+  if (!deadline) return <span className="text-slate-300">—</span>;
   const days = daysRemaining(deadline);
   const breached = !!breachedAt || (days !== null && days < 0);
   return (
     <span
+      title={format(new Date(deadline), 'dd MMM yyyy')}
       className={cn(
-        'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold border',
+        'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold border whitespace-nowrap',
         breached
           ? 'bg-red-50 text-red-600 border-red-200'
           : days !== null && days <= 3
@@ -147,258 +195,104 @@ function DeadlineBadge({
   );
 }
 
-// ─── Candidate mini-row ───────────────────────────────────────────────────────
+// ─── Metric cell ──────────────────────────────────────────────────────────────
+// Own count in bold; subtree total appended in muted text when it's larger.
 
-function CandidateRow({ p }: { p: any }) {
-  const stageCls = STAGE_PILL[p.currentStage?.code] ?? 'bg-slate-100 text-slate-600';
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
-      <div
-        className={cn(
-          'w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0',
-          avatarColor(p.snapshot?.fullName ?? p.id)
-        )}
-      >
-        {(p.snapshot?.fullName ?? '?')[0]}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-semibold text-slate-800 truncate">
-          {p.snapshot?.fullName ?? '—'}
-        </p>
-        {(p.snapshot?.currentTitle || p.snapshot?.currentCompany) && (
-          <p className="text-[10px] text-slate-400 truncate">
-            {[p.snapshot.currentTitle, p.snapshot.currentCompany].filter(Boolean).join(' @ ')}
-          </p>
-        )}
-      </div>
-      <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-md shrink-0', stageCls)}>
-        {p.currentStage?.label ?? '—'}
+function MetricCell({
+  own,
+  total,
+  emphasis,
+  onClick,
+}: {
+  own: number;
+  total: number;
+  emphasis?: string;
+  onClick?: () => void;
+}) {
+  if (own === 0 && total === 0) return <span className="text-slate-300">—</span>;
+  const body = (
+    <>
+      <span className={cn('font-bold tabular-nums', own > 0 ? emphasis : 'text-slate-300')}>
+        {own}
       </span>
-    </div>
+      {total > own && (
+        <span className="text-[11px] font-medium text-slate-400 tabular-nums"> / {total}</span>
+      )}
+    </>
+  );
+  if (!onClick || own === 0) return <span>{body}</span>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded px-1 -mx-1 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+    >
+      {body}
+    </button>
   );
 }
 
-// ─── Assignment Node Card ─────────────────────────────────────────────────────
-// Compact card — name, dept, stats, candidates (collapsed), actions
+// ─── Candidate sub-table ──────────────────────────────────────────────────────
 
-function AssignmentNode({
-  node,
-  canEdit,
-  onSubAssign,
-  onRemove,
-  isLast,
-}: {
-  node: any;
-  canEdit: boolean;
-  onSubAssign: (parentId: string) => void;
-  onRemove: (assignmentId: string) => void;
-  isLast: boolean;
-}) {
-  const [showCandidates, setShowCandidates] = useState(false);
-  const [childrenExpanded, setChildrenExpanded] = useState(true);
-
-  const depth = node.depth ?? 0;
-  const dc = depthColor(depth);
-  const hasChildren = (node.children ?? []).length > 0;
-  const pipelines: any[] = node.pipelines ?? [];
-  const activePipelines = pipelines.filter((p: any) => !p.isRejected && !p.isWithdrawn);
-  const ac = avatarColor(node.assignedTo?.id ?? '');
-
+function CandidateSubTable({ pipelines }: { pipelines: any[] }) {
   return (
-    <div className="flex flex-col items-center">
-      {/* ── Card ── */}
-      <div
-        className={cn(
-          'w-64 rounded-xl border border-l-[3px] bg-white shadow-sm transition-shadow hover:shadow-md',
-          dc.accent
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-start gap-2.5 px-3.5 py-3">
-          <div
-            className={cn(
-              'w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
-              ac
-            )}
-          >
-            {initials(node.assignedTo?.firstName, node.assignedTo?.lastName)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-slate-900 leading-tight truncate">
-              {node.assignedTo?.firstName} {node.assignedTo?.lastName}
-            </p>
-            <p className="text-[10px] text-slate-400 truncate mt-0.5">
-              {node.assignedTo?.department?.name ?? 'No department'}
-            </p>
-            {node.assignedTo?.employeeId && (
-              <p className="text-[10px] font-mono text-slate-300 truncate">
-                {node.assignedTo.employeeId}
-              </p>
-            )}
-          </div>
-          {canEdit && (
-            <button
-              onClick={() => onRemove(node.id)}
-              className="text-slate-200 hover:text-red-400 transition-colors shrink-0 mt-0.5"
-              title="Remove assignment"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100">
-          {[
-            { label: 'Sourced', value: pipelines.length, color: 'text-blue-600' },
-            { label: 'Submitted', value: node.submissionsCount ?? 0, color: 'text-violet-600' },
-            { label: 'Interviews', value: node.interviewsCount ?? 0, color: 'text-emerald-600' },
-          ].map(s => (
-            <div key={s.label} className="flex flex-col items-center py-2.5">
-              <p className={cn('text-[18px] font-black tabular-nums leading-none', s.color)}>
-                {s.value}
-              </p>
-              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mt-1">
-                {s.label}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* Footer: deadline + meta + actions */}
-        <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <DeadlineBadge deadline={node.deadline} breachedAt={node.breachedAt} />
-          </div>
-          <div className="flex items-center gap-1">
-            {/* Candidates toggle */}
-            {pipelines.length > 0 && (
-              <button
-                onClick={() => setShowCandidates(v => !v)}
-                className={cn(
-                  'flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors',
-                  showCandidates
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                )}
-                title={showCandidates ? 'Hide candidates' : 'Show candidates'}
-              >
-                <Users className="w-3 h-3" />
-                {activePipelines.length}
-              </button>
-            )}
-            {/* Sub-assign */}
-            {canEdit && depth < 2 && (
-              <button
-                onClick={() => onSubAssign(node.id)}
-                className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md text-slate-400 hover:bg-slate-50 hover:text-slate-700 transition-colors"
-                title="Sub-assign"
-              >
-                <Plus className="w-3 h-3" />
-                Sub
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Assigned by */}
-        <div className="px-3.5 pb-2.5">
-          <p className="text-[10px] text-slate-300">
-            by {node.assignedBy?.firstName} {node.assignedBy?.lastName}
-            {' · '}
-            {formatDistanceToNow(new Date(node.assignedAt), { addSuffix: true })}
-          </p>
-        </div>
-
-        {/* Candidates list — collapsible */}
-        {showCandidates && pipelines.length > 0 && (
-          <div className="border-t border-slate-100 px-3 py-2.5 space-y-1.5 max-h-48 overflow-y-auto">
-            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-              Candidates ({activePipelines.length} active)
-            </p>
-            {activePipelines.slice(0, 8).map((p: any) => (
-              <CandidateRow key={p.id} p={p} />
-            ))}
-            {activePipelines.length > 8 && (
-              <p className="text-[10px] text-slate-400 text-center pt-1">
-                +{activePipelines.length - 8} more
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Connector down + children ── */}
-      {hasChildren && (
-        <>
-          {/* Vertical line down from card to children row */}
-          <div className={cn('w-px h-6 border-l-2 border-dashed', dc.connector)} />
-
-          {/* Collapse toggle */}
-          <button
-            onClick={() => setChildrenExpanded(e => !e)}
-            className={cn(
-              'flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors mb-1',
-              dc.badge,
-              'border-transparent hover:border-current'
-            )}
-          >
-            {childrenExpanded ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-            {node.children.length} sub-assignment{node.children.length !== 1 ? 's' : ''}
-          </button>
-
-          {childrenExpanded && (
-            <>
-              {/* Horizontal rail connecting children */}
-              <div className="flex items-start gap-0">
-                {node.children.map((child: any, ci: number) => {
-                  const isFirstChild = ci === 0;
-                  const isLastChild = ci === node.children.length - 1;
-                  const isOnlyChild = node.children.length === 1;
-                  return (
-                    <div key={child.id} className="flex flex-col items-center">
-                      {/* Top connector per child */}
-                      <div className="flex items-center w-full justify-center">
-                        {/* Left arm */}
-                        {!isOnlyChild && !isFirstChild && (
-                          <div
-                            className={cn('flex-1 h-px border-t-2 border-dashed', dc.connector)}
-                          />
-                        )}
-                        {isOnlyChild && <div className="w-8" />}
-                        {/* Down stub */}
-                        <div className={cn('w-px h-4 border-l-2 border-dashed', dc.connector)} />
-                        {/* Right arm */}
-                        {!isOnlyChild && !isLastChild && (
-                          <div
-                            className={cn('flex-1 h-px border-t-2 border-dashed', dc.connector)}
-                          />
-                        )}
-                        {isOnlyChild && <div className="w-8" />}
-                      </div>
-
-                      {/* Recursive child node */}
-                      <div className={cn(ci !== node.children.length - 1 ? 'mr-6' : '')}>
-                        <AssignmentNode
-                          node={child}
-                          canEdit={canEdit}
-                          onSubAssign={onSubAssign}
-                          onRemove={onRemove}
-                          isLast={isLastChild}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </>
-      )}
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-slate-50 text-left text-slate-500 border-b border-slate-200">
+            <th className="font-semibold px-3 py-1.5">Candidate</th>
+            <th className="font-semibold px-3 py-1.5">Current role</th>
+            <th className="font-semibold px-3 py-1.5">Stage</th>
+            <th className="font-semibold px-3 py-1.5 whitespace-nowrap">Added</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {pipelines.map(p => {
+            const name = p.snapshot?.fullName ?? '—';
+            const dropped = !isLive(p);
+            return (
+              <tr key={p.id} className={cn(dropped && 'opacity-50')}>
+                <td className="px-3 py-1.5">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0',
+                        avatarColor(name)
+                      )}
+                    >
+                      {name[0]}
+                    </span>
+                    <span className="font-semibold text-slate-800">{name}</span>
+                    {dropped && (
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                        {p.isRejected ? 'Rejected' : 'Withdrawn'}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-3 py-1.5 text-slate-500">
+                  {[p.snapshot?.currentTitle, p.snapshot?.currentCompany]
+                    .filter(Boolean)
+                    .join(' @ ') || '—'}
+                </td>
+                <td className="px-3 py-1.5">
+                  <span
+                    className={cn(
+                      'text-[10px] font-semibold px-1.5 py-0.5 rounded-md',
+                      STAGE_PILL[p.currentStage?.code] ?? 'bg-slate-100 text-slate-600'
+                    )}
+                  >
+                    {p.currentStage?.label ?? '—'}
+                  </span>
+                </td>
+                <td className="px-3 py-1.5 text-slate-400 whitespace-nowrap">
+                  {p.createdAt ? format(new Date(p.createdAt), 'dd MMM yy') : '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -501,7 +395,6 @@ function PersonPicker({
                       : 'hover:bg-slate-50'
                 )}
               >
-                {/* Checkbox */}
                 <div
                   className={cn(
                     'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all',
@@ -511,7 +404,6 @@ function PersonPicker({
                   {isSelected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
                 </div>
 
-                {/* Avatar */}
                 <div
                   className={cn(
                     'h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold',
@@ -521,7 +413,6 @@ function PersonPicker({
                   {initials(u.firstName, u.lastName)}
                 </div>
 
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p
                     className={cn(
@@ -578,6 +469,7 @@ function PersonPicker({
 function AssignDialog({
   open,
   parentAssignmentId,
+  parentName,
   requirementId,
   existingAssignedIds,
   req,
@@ -586,6 +478,7 @@ function AssignDialog({
 }: {
   open: boolean;
   parentAssignmentId: string | null;
+  parentName?: string | null;
   requirementId: string;
   existingAssignedIds: Set<string>;
   req?: Props['req'];
@@ -684,8 +577,8 @@ function AssignDialog({
               )}
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-slate-900">
-                {isTopLevel ? 'Assign Recruiters' : 'Sub-Assign'}
+              <h2 className="text-base font-bold text-slate-900 truncate">
+                {isTopLevel ? 'Assign recruiters' : `Sub-assign under ${parentName ?? 'assignee'}`}
               </h2>
               {req && (
                 <p className="text-xs text-slate-500 truncate mt-0.5">
@@ -704,7 +597,6 @@ function AssignDialog({
 
         {/* Body */}
         <div className="flex-1 min-h-0 flex gap-0 overflow-hidden">
-          {/* Left — person list */}
           <div className="flex-1 min-w-0 p-5 flex flex-col gap-3 border-r border-slate-100">
             <div className="flex items-center justify-between shrink-0">
               <Label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
@@ -722,9 +614,7 @@ function AssignDialog({
             />
           </div>
 
-          {/* Right — deadline + selected */}
           <div className="w-60 shrink-0 p-5 flex flex-col gap-5">
-            {/* Deadline */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
                 Deadline <span className="font-normal text-slate-400 normal-case">(optional)</span>
@@ -766,7 +656,6 @@ function AssignDialog({
               )}
             </div>
 
-            {/* Selected summary — top level only */}
             {isTopLevel && (
               <div className="flex-1 flex flex-col gap-2 min-h-0">
                 <div className="flex items-center justify-between">
@@ -855,7 +744,7 @@ function AssignDialog({
               </>
             ) : (
               <>
-                <TreePine className="w-3.5 h-3.5" /> Sub-Assign
+                <TreePine className="w-3.5 h-3.5" /> Sub-assign
               </>
             )}
           </Button>
@@ -870,32 +759,22 @@ function AssignDialog({
 export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props) {
   const axios = useAxios();
   const queryClient = useQueryClient();
-  const [assignParentId, setAssignParentId] = useState<string | null | undefined>(undefined);
 
-  // GET /requirements/:id/tree
+  const [assignParent, setAssignParent] = useState<
+    { id: string | null; name?: string | null } | undefined
+  >(undefined);
+  /** Inverted state: rows are expanded by default, so we track the collapsed ones. */
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [openCandidates, setOpenCandidates] = useState<Set<string>>(new Set());
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
   const treeQuery = useQuery<{ success: boolean; data: RequirementTree }>({
     queryKey: ['requirement-tree', requirementId],
     queryFn: async () => (await axios.get(`/requirements/${requirementId}/tree`)).data,
   });
 
-  // DELETE /requirements/:id/assignments/:assignmentId
-  const removeMutation = useMutation({
-    mutationFn: async (assignmentId: string) =>
-      (await axios.delete(`/requirements/${requirementId}/assignments/${assignmentId}`)).data,
-    onSuccess: () => {
-      toast.success('Assignment removed');
-      queryClient.invalidateQueries({ queryKey: ['requirement-tree', requirementId] });
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to remove'),
-  });
-
   const tree = treeQuery.data?.data;
-  const nodes: any[] = tree?.assignmentTree ?? [];
-
-  const activeTopLevelIds = useMemo<Set<string>>(
-    () => new Set(nodes.map((n: any) => n.assignedTo?.id).filter(Boolean)),
-    [nodes]
-  );
+  const nodes: any[] = (tree as any)?.assignmentTree ?? [];
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['requirement-tree', requirementId] });
@@ -903,54 +782,177 @@ export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props
     queryClient.invalidateQueries({ queryKey: ['requirements'] });
   }
 
-  const totalCandidates = nodes.reduce(
-    (sum: number, n: any) => sum + (n.pipelines?.length ?? 0),
-    0
+  const removeMutation = useMutation({
+    mutationFn: async (assignmentId: string) =>
+      (await axios.delete(`/requirements/${requirementId}/assignments/${assignmentId}`)).data,
+    onSuccess: () => {
+      toast.success('Assignment removed');
+      invalidate();
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? 'Could not remove assignment'),
+    onSettled: () => setRemovingId(null),
+  });
+
+  const activeTopLevelIds = useMemo<Set<string>>(
+    () => new Set(nodes.map((n: any) => n.assignedTo?.id).filter(Boolean)),
+    [nodes]
   );
 
+  const parentIds = useMemo(() => idsWithChildren(nodes), [nodes]);
+  const allCollapsed = parentIds.length > 0 && parentIds.every(id => collapsed.has(id));
+  const rows = useMemo(() => flatten(nodes, collapsed), [nodes, collapsed]);
+
+  /** Per-node subtree totals computed once per data change, not once per rendered cell. */
+  const rollups = useMemo(() => {
+    const map = new Map<string, Rollup>();
+    const walk = (list: any[]) =>
+      list.forEach(n => {
+        map.set(n.id, rollup(n));
+        walk(childrenOf(n));
+      });
+    walk(nodes);
+    return map;
+  }, [nodes]);
+
+  const totals = useMemo(
+    () =>
+      nodes.reduce(
+        (acc: Rollup, n: any) => {
+          const r = rollups.get(n.id);
+          if (!r) return acc;
+          return {
+            people: acc.people + r.people,
+            sourced: acc.sourced + r.sourced,
+            live: acc.live + r.live,
+            submitted: acc.submitted + r.submitted,
+            interviews: acc.interviews + r.interviews,
+            breached: acc.breached + r.breached,
+          };
+        },
+        { people: 0, sourced: 0, live: 0, submitted: 0, interviews: 0, breached: 0 }
+      ),
+    [nodes, rollups]
+  );
+
+  const toggleIn = (setter: typeof setCollapsed) => (id: string) =>
+    setter(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleRow = toggleIn(setCollapsed);
+  const toggleCandidates = toggleIn(setOpenCandidates);
+
+  const TH = 'h-9 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wide';
+
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">Assignment Tree</h3>
+    <div className="space-y-3">
+      {/* ── Summary bar ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-900 truncate">
+            {req?.title ?? 'Assignments'}
+          </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            {nodes.length} recruiter{nodes.length !== 1 ? 's' : ''} assigned
-            {totalCandidates > 0 && ` · ${totalCandidates} candidates sourced`}
+            {req?.reqCode && <span className="font-mono">{req.reqCode}</span>}
+            {req?.reqCode && ' · '}
+            {req?.totalOpenings ?? 0} openings · {totals.people}{' '}
+            {totals.people === 1 ? 'person' : 'people'} assigned
+            {totals.breached > 0 && (
+              <span className="text-red-600 font-semibold"> · {totals.breached} overdue</span>
+            )}
           </p>
         </div>
-        {canEdit && (
-          <Button size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setAssignParentId(null)}>
-            <UserPlus className="h-3.5 w-3.5" /> Assign
-          </Button>
-        )}
+
+        <div className="flex items-center gap-4">
+          {[
+            { label: 'Sourced', value: totals.sourced, color: 'text-blue-600' },
+            { label: 'Active', value: totals.live, color: 'text-slate-900' },
+            { label: 'Submitted', value: totals.submitted, color: 'text-violet-600' },
+            { label: 'Interviews', value: totals.interviews, color: 'text-emerald-600' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <p className={cn('text-lg font-black tabular-nums leading-none', s.color)}>
+                {s.value}
+              </p>
+              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide mt-1">
+                {s.label}
+              </p>
+            </div>
+          ))}
+
+          <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200">
+            {parentIds.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs text-slate-600"
+                onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(parentIds))}
+              >
+                {allCollapsed ? 'Expand all' : 'Collapse all'}
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                size="sm"
+                className="gap-1.5 h-8 text-xs"
+                onClick={() => setAssignParent({ id: null })}
+              >
+                <UserPlus className="h-3.5 w-3.5" /> Assign
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Loading */}
+      {/* ── Loading ── */}
       {treeQuery.isLoading && (
-        <div className="flex items-center justify-center gap-6 py-12">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="w-56 h-36 rounded-xl bg-slate-100 animate-pulse" />
+        <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+          <div className="h-9 bg-slate-50" />
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-12 bg-slate-50/50 animate-pulse" />
           ))}
         </div>
       )}
 
-      {/* Empty */}
-      {!treeQuery.isLoading && nodes.length === 0 && (
+      {/* ── Error ── */}
+      {treeQuery.isError && !treeQuery.isLoading && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center space-y-2">
+          <p className="text-sm font-semibold text-red-700">Assignments didn't load</p>
+          <p className="text-xs text-red-500">
+            {(treeQuery.error as any)?.response?.data?.message ?? 'The request failed.'}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs"
+            onClick={() => treeQuery.refetch()}
+          >
+            <RotateCw className="h-3.5 w-3.5" /> Try again
+          </Button>
+        </div>
+      )}
+
+      {/* ── Empty ── */}
+      {!treeQuery.isLoading && !treeQuery.isError && nodes.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-slate-200 p-12 text-center space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto">
             <Users className="h-6 w-6 text-slate-400" />
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-600">No assignments yet</p>
-            <p className="text-xs text-slate-400 mt-1">Assign recruiters to start sourcing</p>
+            <p className="text-sm font-bold text-slate-600">No one assigned yet</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Assign a manager or recruiter to start sourcing.
+            </p>
           </div>
           {canEdit && (
             <Button
               size="sm"
               variant="outline"
               className="gap-1.5 text-xs"
-              onClick={() => setAssignParentId(null)}
+              onClick={() => setAssignParent({ id: null })}
             >
               <UserPlus className="h-3.5 w-3.5" /> Make first assignment
             </Button>
@@ -958,86 +960,283 @@ export function RequirementAssignmentsTab({ requirementId, canEdit, req }: Props
         </div>
       )}
 
-      {/* ── Tree canvas ── */}
-      {!treeQuery.isLoading && nodes.length > 0 && (
-        <div className="w-full overflow-x-auto pb-4">
-          {/* Root node — the requirement itself */}
-          <div className="flex flex-col items-center">
-            {/* Requirement root pill */}
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl shadow-md mb-0">
-              <Briefcase className="w-4 h-4 opacity-70 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-xs font-bold truncate">{req?.title ?? 'Requirement'}</p>
-                {req?.reqCode && <p className="text-[10px] font-mono opacity-50">{req.reqCode}</p>}
-              </div>
-              <span className="text-[10px] font-bold bg-white/10 px-1.5 py-0.5 rounded-full shrink-0">
-                {req?.totalOpenings ?? 0} open
-              </span>
-            </div>
+      {/* ── Table ── */}
+      {!treeQuery.isLoading && rows.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] text-xs border-collapse">
+              <colgroup>
+                <col className="w-[26%]" />
+                <col className="w-[14%]" />
+                <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[72px]" />
+              </colgroup>
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-left">
+                  <th className={TH}>Assignee</th>
+                  <th className={TH}>Role · Department</th>
+                  <th className={cn(TH, 'text-center')}>Subs</th>
+                  <th className={cn(TH, 'text-center')}>Sourced</th>
+                  <th className={cn(TH, 'text-center')}>Submitted</th>
+                  <th className={cn(TH, 'text-center')}>Interviews</th>
+                  <th className={TH}>Deadline</th>
+                  <th className={TH}>Assigned by</th>
+                  <th className={cn(TH, 'text-right')}>Actions</th>
+                </tr>
+              </thead>
 
-            {/* Vertical line from root to children row */}
-            <div className="w-px h-6 bg-slate-300" />
+              <tbody className="divide-y divide-slate-100">
+                {rows.map(({ node, depth }) => {
+                  const kids = childrenOf(node);
+                  const pipelines = pipelinesOf(node);
+                  const sub = rollups.get(node.id);
+                  const isCollapsed = collapsed.has(node.id);
+                  const candidatesOpen = openCandidates.has(node.id);
+                  const name = personName(node.assignedTo);
+                  const indent = depth * 22;
+                  const overdue = !!node.breachedAt;
+                  const liveHere = pipelines.filter(isLive).length;
 
-            {/* Children rail */}
-            {nodes.length === 1 ? (
-              // Single node — just drop straight down
-              <AssignmentNode
-                node={nodes[0]}
-                canEdit={canEdit}
-                onSubAssign={id => setAssignParentId(id)}
-                onRemove={id => removeMutation.mutate(id)}
-                isLast
-              />
-            ) : (
-              // Multiple nodes — horizontal spread with connectors
-              <div className="flex items-start">
-                {nodes.map((node: any, i: number) => {
-                  const isFirst = i === 0;
-                  const isLast = i === nodes.length - 1;
                   return (
-                    <div key={node.id} className="flex flex-col items-center">
-                      {/* T-connector top */}
-                      <div className="flex items-center w-full">
-                        {/* Left arm: invisible for first, line for rest */}
-                        <div
-                          className={cn('flex-1 h-px', isFirst ? 'invisible' : 'bg-slate-300')}
-                        />
-                        {/* Down stub */}
-                        <div className="w-px h-6 bg-slate-300" />
-                        {/* Right arm: invisible for last, line for rest */}
-                        <div className={cn('flex-1 h-px', isLast ? 'invisible' : 'bg-slate-300')} />
-                      </div>
+                    <Fragment key={node.id}>
+                      <tr
+                        className={cn(
+                          'group transition-colors hover:bg-slate-50/80',
+                          depth === 1 && 'bg-slate-50/40',
+                          depth >= 2 && 'bg-slate-50/70'
+                        )}
+                      >
+                        {/* Assignee */}
+                        <td className="px-3 py-2 align-middle">
+                          <div
+                            className="flex items-center gap-1.5"
+                            style={{ paddingLeft: indent }}
+                          >
+                            {depth > 0 && (
+                              <CornerDownRight className="h-3 w-3 text-slate-300 shrink-0" />
+                            )}
 
-                      {/* Node */}
-                      <div className={cn(i !== nodes.length - 1 ? 'mr-5' : '')}>
-                        <AssignmentNode
-                          node={node}
-                          canEdit={canEdit}
-                          onSubAssign={id => setAssignParentId(id)}
-                          onRemove={id => removeMutation.mutate(id)}
-                          isLast={isLast}
-                        />
-                      </div>
-                    </div>
+                            {kids.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleRow(node.id)}
+                                aria-expanded={!isCollapsed}
+                                aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${name}`}
+                                className="h-5 w-5 rounded flex items-center justify-center text-slate-400 hover:bg-slate-200 hover:text-slate-700 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                              >
+                                {isCollapsed ? (
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            ) : (
+                              <span className="h-5 w-5 shrink-0" />
+                            )}
+
+                            <span
+                              className={cn(
+                                'w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                                avatarColor(node.assignedTo?.id ?? node.id)
+                              )}
+                            >
+                              {initials(node.assignedTo?.firstName, node.assignedTo?.lastName)}
+                            </span>
+
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 truncate leading-tight">
+                                {name}
+                                {overdue && (
+                                  <span className="ml-1.5 text-[9px] font-bold uppercase text-red-600">
+                                    overdue
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {node.assignedTo?.email ?? '—'}
+                                {node.assignedTo?.employeeId && (
+                                  <span className="ml-1.5 font-mono text-slate-300">
+                                    {node.assignedTo.employeeId}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Role · Department */}
+                        <td className="px-3 py-2 align-middle">
+                          <p className="font-semibold text-slate-700 truncate">
+                            {node.assignedTo?.role?.name ?? '—'}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {node.assignedTo?.department?.name ?? 'No department'}
+                          </p>
+                        </td>
+
+                        {/* Subs */}
+                        <td className="px-3 py-2 text-center align-middle">
+                          {kids.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleRow(node.id)}
+                              className="rounded px-1 hover:bg-slate-100"
+                            >
+                              <span className="font-bold text-slate-700 tabular-nums">
+                                {kids.length}
+                              </span>
+                              {sub && sub.people - 1 > kids.length && (
+                                <span className="text-[11px] text-slate-400 tabular-nums">
+                                  {' '}
+                                  / {sub.people - 1}
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+
+                        {/* Sourced — click reveals the candidate sub-table */}
+                        <td className="px-3 py-2 text-center align-middle">
+                          <MetricCell
+                            own={pipelines.length}
+                            total={sub?.sourced ?? pipelines.length}
+                            emphasis="text-blue-600"
+                            onClick={() => toggleCandidates(node.id)}
+                          />
+                        </td>
+
+                        {/* Submitted */}
+                        <td className="px-3 py-2 text-center align-middle">
+                          <MetricCell
+                            own={node.submissionsCount ?? 0}
+                            total={sub?.submitted ?? node.submissionsCount ?? 0}
+                            emphasis="text-violet-600"
+                          />
+                        </td>
+
+                        {/* Interviews */}
+                        <td className="px-3 py-2 text-center align-middle">
+                          <MetricCell
+                            own={node.interviewsCount ?? 0}
+                            total={sub?.interviews ?? node.interviewsCount ?? 0}
+                            emphasis="text-emerald-600"
+                          />
+                        </td>
+
+                        {/* Deadline */}
+                        <td className="px-3 py-2 align-middle">
+                          <DeadlineBadge deadline={node.deadline} breachedAt={node.breachedAt} />
+                        </td>
+
+                        {/* Assigned by */}
+                        <td className="px-3 py-2 align-middle">
+                          <p className="text-slate-600 truncate">{personName(node.assignedBy)}</p>
+                          {node.assignedAt && (
+                            <p className="text-[10px] text-slate-400 truncate">
+                              {formatDistanceToNow(new Date(node.assignedAt), { addSuffix: true })}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-2 py-2 align-middle">
+                          <div className="flex items-center justify-end gap-0.5">
+                            {canEdit && depth < MAX_SUB_ASSIGN_DEPTH && (
+                              <button
+                                type="button"
+                                onClick={() => setAssignParent({ id: node.id, name })}
+                                title={`Sub-assign under ${name}`}
+                                className="h-7 w-7 rounded-md flex items-center justify-center text-slate-300 hover:bg-slate-100 hover:text-slate-700 transition md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                disabled={removingId === node.id}
+                                onClick={() => {
+                                  setRemovingId(node.id);
+                                  removeMutation.mutate(node.id);
+                                }}
+                                title={
+                                  kids.length > 0 && sub
+                                    ? `Remove ${name} and ${sub.people - 1} sub-assignment(s)`
+                                    : 'Remove assignment'
+                                }
+                                className="h-7 w-7 rounded-md flex items-center justify-center text-slate-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 transition md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                {removingId === node.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Candidate sub-table for this assignee */}
+                      {candidatesOpen && pipelines.length > 0 && (
+                        <tr className="bg-slate-50/80">
+                          <td colSpan={9} className="p-0">
+                            <div style={{ paddingLeft: indent + 46 }} className="pr-4 py-2.5">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                                  Candidates sourced by {name} · {liveHere} active of{' '}
+                                  {pipelines.length}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCandidates(node.id)}
+                                  className="text-[10px] font-semibold text-slate-400 hover:text-slate-700"
+                                >
+                                  Hide
+                                </button>
+                              </div>
+                              <CandidateSubTable pipelines={pipelines} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
-              </div>
-            )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 border-t border-slate-100 bg-slate-50/60 text-[10px] text-slate-400">
+            <span>
+              <span className="font-bold text-slate-600">Bold</span> = this person ·{' '}
+              <span className="text-slate-500">/ n</span> = including everyone under them
+            </span>
+            <span>Click a Sourced count to see the candidates.</span>
           </div>
         </div>
       )}
 
       {/* Assign dialog */}
       <AssignDialog
-        open={assignParentId !== undefined}
-        parentAssignmentId={assignParentId ?? null}
+        open={assignParent !== undefined}
+        parentAssignmentId={assignParent?.id ?? null}
+        parentName={assignParent?.name}
         requirementId={requirementId}
         existingAssignedIds={activeTopLevelIds}
         req={req}
-        onClose={() => setAssignParentId(undefined)}
+        onClose={() => setAssignParent(undefined)}
         onSuccess={() => {
           invalidate();
-          setAssignParentId(undefined);
+          setAssignParent(undefined);
         }}
       />
     </div>

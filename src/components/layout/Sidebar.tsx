@@ -28,6 +28,8 @@ import {
   PinOff,
   MoveLeft,
   X,
+  LifeBuoy,
+  ShieldQuestion,
 } from 'lucide-react';
 
 const NAV = [
@@ -55,6 +57,15 @@ const NAV = [
   { label: 'Ingest Logs', href: '/ingest-logs', icon: ClipboardList, module: 'ingest-logs' },
   { label: 'Naukri Logs', href: '/naukri-logs', icon: ClipboardList, module: 'Naukri-logs' },
   { label: 'Login Activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
+  // visible to every authenticated user — no module gate
+  { label: 'My Tickets', href: '/my-tickets', icon: LifeBuoy },
+  // admin-only — driven by RolePermission, not a hardcoded role name
+  {
+    label: 'System Tickets',
+    href: '/system-tickets',
+    icon: ShieldQuestion,
+    module: 'system-tickets',
+  },
 ];
 
 /** Timings — tweak in one place. */
