@@ -60,6 +60,7 @@ export function RequirementTable({
 
   const ready = useReportViewsReady();
   const hiddenRaw = useReportViewStore(s => s.hiddenColumns[tableKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const hidden = ready ? (hiddenRaw ?? []) : [];
 
   const allIds = useMemo(() => data.map(r => r.id), [data]);
@@ -119,6 +120,18 @@ export function RequirementTable({
         group: 'Requirement',
         exportValue: r => r.priority,
         cell: r => <span className="text-[12px] font-semibold text-slate-600">{r.priority}</span>,
+      },
+      {
+        id: 'createdBy',
+        label: 'Created by',
+        align: 'center',
+        group: 'Dates',
+        exportValue: r => `${r.createdBy.firstName}${r.createdBy.lastName}.trim() || ''`,
+        cell: r => (
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+            {`${r.createdBy.firstName}${r.createdBy.lastName}`.trim() || '-'}
+          </span>
+        ),
       },
       {
         id: 'openings',
@@ -204,6 +217,7 @@ export function RequirementTable({
           </span>
         ),
       },
+
       {
         id: 'export',
         label: 'Export',
