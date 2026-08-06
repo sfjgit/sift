@@ -4,78 +4,32 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { format, subDays } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
+import { useAxios } from '@/hooks/useAxios';
 
-// ─── Quote config (data, not logic — swap for a DB/config feed later) ───────────
-//
-// Keyed by a lowercase keyword matched against the user's role name.
-// First matching keyword wins; `default` is the fallback.
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-const ROLE_QUOTES: Record<string, string[]> = {
-  lead: [
-    'Unblock one teammate before you touch your own branch.',
-    'The best architecture decision is the one you can explain in a sentence.',
-    'Review like you care, ship like you trust.',
-    'Clarity in the PR beats cleverness in the code.',
-  ],
-  architect: [
-    'The best abstraction is the one you didn\u2019t need to write.',
-    'Design for the schema you\u2019ll regret least.',
-    'Boundaries you draw today are the bugs you skip tomorrow.',
-  ],
-  manager: [
-    'A calm standup is a productive standup.',
-    'People first, tickets second.',
-    'Protect the makers\u2019 focus time.',
-  ],
-  recruiter: [
-    'Every profile is a person, not a row.',
-    'A fast, kind rejection beats a slow silence.',
-    'Great hires start with great listening.',
-  ],
-  admin: [
-    'Least privilege is a feature, not a friction.',
-    'Config over hardcode, always.',
-    'Boring infrastructure is happy infrastructure.',
-  ],
-  engineer: [
-    'Small, clean commits beat one heroic push.',
-    'Read the error. Then read it again.',
-    'Slow is smooth, smooth is fast.',
-  ],
-  developer: [
-    'Naming things well is half the design.',
-    'Delete more than you add today.',
-    'The bug is almost always where you swore it couldn\u2019t be.',
-  ],
-  default: [
-    'Great work compounds quietly.',
-    'Progress over polish, momentum over perfection.',
-    'Do the next right thing.',
-    'Ship, learn, sharpen, repeat.',
-  ],
-};
-
-function quotesForRole(roleName?: string | null): string[] {
-  const name = (roleName ?? '').toLowerCase();
-  for (const key of Object.keys(ROLE_QUOTES)) {
-    if (key !== 'default' && name.includes(key)) return ROLE_QUOTES[key];
-  }
-  return ROLE_QUOTES.default;
+interface MeDay {
+  reportDate: string;
+  naukri: number | null;
+  ats: number;
+  difference: number | null;
+  flags: string[];
+  reason: string | null;
+}
+interface MeResponse {
+  scope: string;
+  streak: { currentStreak: number; totalKept: number; totalBroken: number };
+  days: MeDay[];
 }
 
-// ─── Props ──────────────────────────────────────────────────────────────────
+// ─── THE quote — one, always, forever ────────────────────────────────────────
 
-interface ScrollingGreetingBarProps {
-  /** Override the auto role-based quotes entirely. */
-  quotes?: string[];
-  /** How long the big "pop" greeting stays before it merges into the bar (ms). */
-  popDurationMs?: number;
-  /** Seconds for one full marquee pass. Lower = faster. */
-  scrollSeconds?: number;
-}
+const THE_QUOTE = 'The downloaded CVs in Naukri and the parsed CVs should match in the ATS.';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getGreeting(date = new Date()): string {
   const h = date.getHours();
@@ -91,44 +45,104 @@ function resolveDisplayName(user: ReturnType<typeof useAuth>['user']): string {
   return user.displayName?.trim() || user.firstName?.trim() || user.email?.split('@')[0] || 'there';
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Stat chip — ALWAYS renders, zero or not ─────────────────────────────────
+
+interface ChipProps {
+  label: string;
+  value: number | null | undefined;
+  variant?: 'neutral' | 'danger' | 'good' | 'muted';
+}
+
+function Chip({ label, value, variant = 'neutral' }: ChipProps) {
+  // even if value is null/undefined we show "—" — never silently hide
+  const display = value == null ? '—' : String(value);
+  return (
+    <span className={`sgb-chip sgb-chip--${variant}`}>
+      <span className="sgb-chip__label">{label}</span>
+      <span className="sgb-chip__value">{display}</span>
+    </span>
+  );
+}
+
+// ─── Props ───────────────────────────────────────────────────────────────────
+
+interface ScrollingGreetingBarProps {
+  popDurationMs?: number;
+  scrollSeconds?: number;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ScrollingGreetingBar({
-  quotes,
   popDurationMs = 2200,
-  scrollSeconds = 13,
+  scrollSeconds = 16,
 }: ScrollingGreetingBarProps) {
   const { user } = useAuth();
+  const axios = useAxios();
 
   const [phase, setPhase] = useState<'pop' | 'bar'>('pop');
-  const [quoteIndex, setQuoteIndex] = useState(0);
 
   const greeting = useMemo(() => getGreeting(), []);
   const name = resolveDisplayName(user);
 
-  const roleQuotes = useMemo(
-    () => quotes ?? quotesForRole(user?.role?.name),
-    [quotes, user?.role?.name]
-  );
-  const quote = roleQuotes[quoteIndex % roleQuotes.length];
+  // ── dates ──
+  const today = useMemo(() => new Date(), []);
+  const yesterday = useMemo(() => subDays(today, 1), [today]);
+  const todayStr = format(today, 'yyyy-MM-dd');
+  const yStr = format(yesterday, 'yyyy-MM-dd');
 
+  // ── fetch BOTH days — from yesterday to today ──────────────────────────────
+  // Never skip. Always fetch. Show whatever comes back.
+  const meQ = useQuery<MeResponse>({
+    queryKey: ['naukri-me-bar', yStr, todayStr],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+    queryFn: async () =>
+      (
+        await axios.get(`/core/api/naukri/me?from=${yStr}&to=${todayStr}`, {
+          baseURL: '/api/proxy',
+        })
+      ).data,
+  });
+
+  // Pull days — if a day entry is missing entirely, substitute a zero-skeleton
+  // so the UI always has something to show.
+  const yesterdayDay: Partial<MeDay> = meQ.data?.days?.find(d => d.reportDate === yStr) ?? {
+    reportDate: yStr,
+    naukri: null,
+    ats: 0,
+    difference: null,
+  };
+
+  const todayDay: Partial<MeDay> = meQ.data?.days?.find(d => d.reportDate === todayStr) ?? {
+    reportDate: todayStr,
+    naukri: null,
+    ats: 0,
+    difference: null,
+  };
+
+  // ── gap logic ──
+  const yGap = yesterdayDay.difference ?? null;
+  const gapBad = yGap != null && yGap > 0;
+
+  // ── phase transitions ──
   useEffect(() => {
     if (phase !== 'pop') return;
     const t = setTimeout(() => setPhase('bar'), popDurationMs);
     return () => clearTimeout(t);
   }, [phase, popDurationMs]);
 
-  useEffect(() => {
-    if (phase !== 'bar') return;
-    const t = setInterval(() => setQuoteIndex(i => i + 1), scrollSeconds * 1000);
-    return () => clearInterval(t);
-  }, [phase, scrollSeconds]);
-
   if (!user) return null;
 
   return (
-    <div className={`sgb ${phase === 'pop' ? 'sgb--pop' : 'sgb--bar'}`}>
+    <div
+      className={['sgb', phase === 'pop' ? 'sgb--pop' : 'sgb--bar', gapBad ? 'sgb--alert' : '']
+        .filter(Boolean)
+        .join(' ')}
+    >
       {phase === 'pop' ? (
+        // ── POP ──────────────────────────────────────────────────────────────
         <div className="sgb__pop">
           <span className="sgb__dot" aria-hidden />
           <span className="sgb__pop-text">
@@ -136,65 +150,104 @@ export default function ScrollingGreetingBar({
           </span>
         </div>
       ) : (
+        // ── BAR ──────────────────────────────────────────────────────────────
         <div className="sgb__bar">
+          {/* LEFT — greeting */}
           <span className="sgb__label">
             <span className="sgb__dot sgb__dot--sm" aria-hidden />
             {greeting}, <strong>{name}</strong>
           </span>
-          <span className="sgb__divider" aria-hidden />
+
+          <span className="sgb__div" aria-hidden />
+
+          {/* CENTER — THE scrolling quote, always */}
           <div className="sgb__marquee">
-            <div
-              className="sgb__track"
-              style={{ animationDuration: `${scrollSeconds}s` }}
-              key={quoteIndex}
-            >
-              <span className="sgb__quote">{quote}</span>
+            <div className="sgb__track" style={{ animationDuration: `${scrollSeconds}s` }}>
+              <span className="sgb__quote">{THE_QUOTE}</span>
               <span className="sgb__quote" aria-hidden>
-                {quote}
+                {THE_QUOTE}
               </span>
+            </div>
+          </div>
+
+          <span className="sgb__div" aria-hidden />
+
+          {/* RIGHT — stats. Always rendered. Loading state shows skeletons. */}
+          <div className="sgb__stats">
+            {/* Yesterday */}
+            <div className="sgb__stat-col">
+              <span className="sgb__eyebrow">{format(yesterday, 'dd MMM')} · Yesterday</span>
+              <div className="sgb__chips">
+                <Chip label="Naukri" value={yesterdayDay.naukri} variant="neutral" />
+                <Chip label="ATS" value={yesterdayDay.ats} variant="neutral" />
+                <Chip
+                  label="Gap"
+                  value={yGap}
+                  variant={yGap == null ? 'muted' : yGap === 0 ? 'good' : 'danger'}
+                />
+              </div>
+            </div>
+
+            <span className="sgb__stat-sep" aria-hidden />
+
+            {/* Today */}
+            <div className="sgb__stat-col">
+              <span className="sgb__eyebrow">Today · Sourced so far</span>
+              <div className="sgb__chips">
+                <Chip label="ATS" value={todayDay.ats} variant="muted" />
+              </div>
             </div>
           </div>
         </div>
       )}
 
       <style jsx>{`
-        /* Theme-aware. Falls back gracefully if these vars aren't defined. */
+        /* ── Base ─────────────────────────────────────────────────────────── */
         .sgb {
-          --sgb-primary: var(--primary, #4f46e5);
-          --sgb-secondary: var(--secondary, #7c3aed);
-          --sgb-on: var(--primary-foreground, #ffffff);
+          --blue-dark: #1e3a8a; /* blue-900 */
+          --blue-mid: #1d4ed8; /* blue-700 */
+          --blue-light: #2563eb; /* blue-600 */
+          --white: #ffffff;
 
           position: relative;
           width: 100%;
           overflow: hidden;
-          /* colorful primary → secondary band */
-          background: linear-gradient(90deg, var(--sgb-primary) 0%, var(--sgb-secondary) 100%);
-          color: var(--sgb-on);
-          font-size: 16px; /* inherits app font-family, bigger size */
-          font-style: normal;
+          background: linear-gradient(
+            90deg,
+            var(--blue-dark) 0%,
+            var(--blue-mid) 60%,
+            var(--blue-light) 100%
+          );
+          color: var(--white);
+          font-size: 15px;
           line-height: 1.2;
           transition:
             height 380ms cubic-bezier(0.22, 1, 0.36, 1),
             padding 380ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
-        .sgb--pop {
-          height: 68px;
-          padding: 0 24px;
-        }
-        .sgb--bar {
-          height: 42px;
-          padding: 0 20px;
+        /* gap alert — keep blue but add a top red hairline */
+        .sgb--alert {
+          box-shadow: inset 0 -3px 0 0 #ef4444;
         }
 
-        /* accent pulse dot */
+        .sgb--pop {
+          height: 80px;
+          padding: 0 28px;
+        }
+        .sgb--bar {
+          height: 56px;
+          padding: 0 18px;
+        }
+
+        /* ── Dot ──────────────────────────────────────────────────────────── */
         .sgb__dot {
           flex: 0 0 auto;
-          width: 11px;
-          height: 11px;
+          width: 10px;
+          height: 10px;
           border-radius: 50%;
-          background: var(--sgb-on);
-          box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
+          background: rgba(255, 255, 255, 0.9);
+          box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
           animation: sgb-pulse 2.2s ease-out infinite;
         }
         .sgb__dot--sm {
@@ -203,81 +256,196 @@ export default function ScrollingGreetingBar({
           margin-right: 10px;
         }
 
+        /* ── Pop ──────────────────────────────────────────────────────────── */
         .sgb__pop {
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 14px;
           height: 100%;
-          font-size: 22px;
+          font-size: 24px;
           font-weight: 500;
-          letter-spacing: 0.2px;
           animation: sgb-pop-in 440ms cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .sgb__pop strong {
           font-weight: 800;
         }
 
+        /* ── Bar layout ───────────────────────────────────────────────────── */
         .sgb__bar {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 14px;
           height: 100%;
           animation: sgb-fade-in 380ms ease 100ms both;
         }
+
         .sgb__label {
           display: inline-flex;
           align-items: center;
           flex: 0 0 auto;
           white-space: nowrap;
-          font-size: 15px;
+          font-size: 14px;
           font-weight: 500;
         }
         .sgb__label strong {
           font-weight: 800;
-          margin-left: 5px;
-        }
-        .sgb__divider {
-          flex: 0 0 auto;
-          width: 1px;
-          height: 18px;
-          background: rgba(255, 255, 255, 0.4);
+          margin-left: 4px;
         }
 
+        .sgb__div {
+          flex: 0 0 auto;
+          width: 1px;
+          height: 22px;
+          background: rgba(255, 255, 255, 0.28);
+        }
+
+        /* ── Marquee ──────────────────────────────────────────────────────── */
         .sgb__marquee {
           flex: 1 1 auto;
+          min-width: 0;
           overflow: hidden;
           -webkit-mask-image: linear-gradient(
             90deg,
             transparent 0,
-            #000 32px,
-            #000 calc(100% - 32px),
+            #000 24px,
+            #000 calc(100% - 24px),
             transparent 100%
           );
           mask-image: linear-gradient(
             90deg,
             transparent 0,
-            #000 32px,
-            #000 calc(100% - 32px),
+            #000 24px,
+            #000 calc(100% - 24px),
             transparent 100%
           );
         }
         .sgb__track {
           display: inline-flex;
-          gap: 72px;
+          gap: 96px;
           white-space: nowrap;
           will-change: transform;
-          animation-name: sgb-scroll;
-          animation-timing-function: linear;
-          animation-iteration-count: infinite;
+          animation: sgb-scroll linear infinite;
         }
         .sgb__quote {
-          font-size: 15px;
-          font-weight: 500;
-          font-style: normal;
-          opacity: 0.95;
+          font-size: 13.5px;
+          font-weight: 600;
+          font-style: italic;
+          /* white glow behind text so it pops on the blue */
+          text-shadow:
+            0 0 18px rgba(255, 255, 255, 0.45),
+            0 1px 3px rgba(0, 0, 0, 0.35);
+          letter-spacing: 0.15px;
+          opacity: 0.97;
         }
 
+        /* ── Stats panel ──────────────────────────────────────────────────── */
+        .sgb__stats {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .sgb__stat-col {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 3px;
+        }
+        .sgb__eyebrow {
+          font-size: 9px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.09em;
+          opacity: 0.6;
+          white-space: nowrap;
+        }
+        .sgb__chips {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .sgb__stat-sep {
+          width: 1px;
+          height: 32px;
+          background: rgba(255, 255, 255, 0.2);
+          flex: 0 0 auto;
+        }
+
+        /* ── Chips ────────────────────────────────────────────────────────── */
+        .sgb-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          border-radius: 5px;
+          padding: 3px 8px;
+          white-space: nowrap;
+        }
+        .sgb-chip__label {
+          font-size: 9.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+          opacity: 0.75;
+        }
+        .sgb-chip__value {
+          font-size: 14px;
+          font-weight: 900;
+          /* WHITE box-shadow highlight behind every number */
+          text-shadow:
+            0 0 12px rgba(255, 255, 255, 0.8),
+            0 0 4px rgba(255, 255, 255, 0.6);
+        }
+
+        /* neutral — soft white glass */
+        .sgb-chip--neutral {
+          background: rgba(255, 255, 255, 0.14);
+          box-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.18) inset,
+            0 2px 8px rgba(0, 0, 0, 0.2);
+          color: #fff;
+        }
+
+        /* danger — white card, red number, throb */
+        .sgb-chip--danger {
+          background: #fff;
+          box-shadow:
+            0 0 0 1.5px #ef4444,
+            0 3px 10px rgba(239, 68, 68, 0.45);
+          color: #dc2626;
+          animation: sgb-throb 1.6s ease-in-out infinite;
+        }
+        .sgb-chip--danger .sgb-chip__label {
+          opacity: 0.6;
+        }
+        .sgb-chip--danger .sgb-chip__value {
+          text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+        }
+
+        /* good — green tinted glass */
+        .sgb-chip--good {
+          background: rgba(16, 185, 129, 0.2);
+          box-shadow:
+            0 0 0 1px rgba(16, 185, 129, 0.5),
+            0 2px 8px rgba(16, 185, 129, 0.25);
+          color: #d1fae5;
+        }
+        .sgb-chip--good .sgb-chip__value {
+          text-shadow: 0 0 10px rgba(52, 211, 153, 0.8);
+        }
+
+        /* muted — dimmer neutral for today / missing data */
+        .sgb-chip--muted {
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.7);
+          box-shadow: none;
+        }
+        .sgb-chip--muted .sgb-chip__value {
+          text-shadow: none;
+          font-size: 13px;
+        }
+
+        /* ── Animations ───────────────────────────────────────────────────── */
         @keyframes sgb-scroll {
           from {
             transform: translateX(0);
@@ -288,7 +456,7 @@ export default function ScrollingGreetingBar({
         }
         @keyframes sgb-pop-in {
           from {
-            transform: translateY(-10px) scale(0.97);
+            transform: translateY(-12px) scale(0.96);
             opacity: 0;
           }
           to {
@@ -315,11 +483,32 @@ export default function ScrollingGreetingBar({
             box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
           }
         }
+        @keyframes sgb-throb {
+          0%,
+          100% {
+            box-shadow:
+              0 0 0 1.5px #ef4444,
+              0 3px 10px rgba(239, 68, 68, 0.45);
+          }
+          50% {
+            box-shadow:
+              0 0 0 2.5px #ef4444,
+              0 4px 16px rgba(239, 68, 68, 0.7);
+          }
+        }
 
         @media (prefers-reduced-motion: reduce) {
           .sgb__track,
-          .sgb__dot {
+          .sgb__dot,
+          .sgb-chip--danger {
             animation: none;
+          }
+        }
+
+        /* hide stats panel only on very small phones */
+        @media (max-width: 560px) {
+          .sgb__stats {
+            display: none;
           }
         }
       `}</style>
