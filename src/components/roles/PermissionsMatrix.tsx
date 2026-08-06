@@ -266,7 +266,7 @@ function ScopePill({
             }}
             className="rounded-xl border border-border bg-popover shadow-lg overflow-hidden"
           >
-            {scopeOptions.map(opt => (
+            {scopeOptions?.map(opt => (
               <button
                 key={opt.value}
                 type="button"

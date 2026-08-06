@@ -3,13 +3,19 @@
 // Path: src/components/tickets/TicketWorkspace.tsx
 //
 // Everything for the ticket UI lives here on purpose: types, hooks, badges,
-// attachment previews, the expanded feed row, the wide reply sheet and the
-// full detail view. Two thin page files import from this one.
+// attachment previews, the thread composer, the expanded feed row, the wide
+// sheet, the full detail view and the dedicated ticket notification bell.
+//
+// Matches the backend where a single reply can carry text + files + a status
+// move, and every thread entry stamps the status it was posted at.
 
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowRight,
+  Bell,
+  CheckCheck,
   ChevronDown,
   ChevronUp,
   CornerDownRight,
@@ -21,6 +27,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  UserPlus,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,6 +36,8 @@ import { useAxios } from '@/hooks/useAxios';
 /* ========================================================================== */
 /*                                   TYPES                                    */
 /* ========================================================================== */
+
+export type TicketEventKind = 'MESSAGE' | 'STATUS_CHANGE' | 'ASSIGNMENT';
 
 export interface TicketAttachment {
   id: string;
@@ -42,9 +51,17 @@ export interface TicketAttachment {
 export interface TicketComment {
   id: string;
   ticketId: string;
+  kind: TicketEventKind;
+  body?: string | null;
   authorId: string;
-  body: string;
+  authorName?: string | null;
+  authorRole?: string | null;
+  statusAtPost: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  attachments?: TicketAttachment[];
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Ticket {
@@ -58,9 +75,12 @@ export interface Ticket {
   categoryId?: string | null;
   category?: { id: string; name: string } | null;
   raisedById: string;
+  raisedByName?: string | null;
   assignedToId?: string | null;
+  assignedToName?: string | null;
   resolvedAt?: string | null;
   closedAt?: string | null;
+  lastActivityAt: string;
   createdAt: string;
   updatedAt: string;
   attachments?: TicketAttachment[];
@@ -72,6 +92,21 @@ export interface TicketMeta {
   statuses: string[];
   priorities: string[];
   categories: { id: string; name: string }[];
+}
+
+export interface TicketNotification {
+  id: string;
+  ticketId: string;
+  ticketNumber: string;
+  commentId?: string | null;
+  actorId: string;
+  actorName?: string | null;
+  kind: TicketEventKind;
+  title: string;
+  preview?: string | null;
+  isRead: boolean;
+  createdAt: string;
+  ticket: { seq: number; title: string; status: string };
 }
 
 interface Filters {
@@ -87,7 +122,7 @@ interface Filters {
 /*                                  HELPERS                                   */
 /* ========================================================================== */
 
-const OPEN_STATUSES = ['OPEN', 'IN_PROGRESS', 'REOPENED'];
+const ACTIVE_STATUSES = ['OPEN', 'IN_PROGRESS', 'REOPENED'];
 
 const label = (v: string) => v.replace(/_/g, ' ');
 
@@ -103,8 +138,7 @@ const fmtDateTime = (iso: string) =>
   });
 
 const relative = (iso: string) => {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diff / 60000);
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);
@@ -120,6 +154,9 @@ const openInTab = (url?: string | null) => {
 };
 
 const errMsg = (err: any, fallback: string) => err?.response?.data?.message ?? fallback;
+
+const authorLabel = (c: TicketComment, currentUserId: string) =>
+  c.authorId === currentUserId ? 'You' : c.authorName || 'Support';
 
 /* ========================================================================== */
 /*                                   HOOKS                                    */
@@ -255,9 +292,17 @@ export const useTicketActions = () => {
     return res.data.data as Ticket;
   };
 
-  const reply = async (id: string, body: string) => {
-    const res = await axios.post(`/tickets/${id}/comments`, { body });
-    return res.data.data as TicketComment;
+  /** one call: message + files + optional status move, all on one thread entry */
+  const reply = async (id: string, args: { body?: string; status?: string; files?: File[] }) => {
+    const form = new FormData();
+    if (args.body?.trim()) form.append('body', args.body.trim());
+    if (args.status) form.append('status', args.status);
+    (args.files ?? []).forEach(f => form.append('files', f));
+
+    const res = await axios.post(`/tickets/${id}/comments`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.data as TicketComment & { ticketStatus: string };
   };
 
   const addFiles = async (id: string, files: File[]) => {
@@ -270,6 +315,65 @@ export const useTicketActions = () => {
   };
 
   return { createTicket, patchTicket, reply, addFiles };
+};
+
+/** dedicated ticket notification stream — separate from global notifications */
+export const useTicketNotifications = (pollMs = 45000) => {
+  const axios = useAxios();
+  const [items, setItems] = useState<TicketNotification[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get('/tickets/notifications', { params: { limit: 20 } });
+      setItems(res.data.data ?? []);
+      setUnread(res.data.meta?.unread ?? 0);
+    } catch {
+      /* silent — a failed bell poll should never toast */
+    } finally {
+      setLoading(false);
+    }
+  }, [axios]);
+
+  const pollCount = useCallback(async () => {
+    try {
+      const res = await axios.get('/tickets/notifications/count');
+      setUnread(res.data.data?.unread ?? 0);
+    } catch {
+      /* silent */
+    }
+  }, [axios]);
+
+  useEffect(() => {
+    pollCount();
+    if (!pollMs) return;
+    const t = setInterval(pollCount, pollMs);
+    return () => clearInterval(t);
+  }, [pollCount, pollMs]);
+
+  const markRead = async (id: string) => {
+    setItems(prev => prev.map(n => (n.id === id ? { ...n, isRead: true } : n)));
+    setUnread(u => Math.max(0, u - 1));
+    try {
+      await axios.patch(`/tickets/notifications/${id}/read`);
+    } catch {
+      await refetch();
+    }
+  };
+
+  const markAllRead = async () => {
+    setItems(prev => prev.map(n => ({ ...n, isRead: true })));
+    setUnread(0);
+    try {
+      await axios.post('/tickets/notifications/read-all');
+    } catch {
+      await refetch();
+    }
+  };
+
+  return { items, unread, loading, refetch, markRead, markAllRead };
 };
 
 /* ========================================================================== */
@@ -292,15 +396,30 @@ const PRIORITY_STYLE: Record<string, string> = {
   URGENT: 'bg-red-50 text-red-700 border-red-200',
 };
 
-const chip =
+const chipBase =
   'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap';
 
 export const StatusBadge = ({ value }: { value: string }) => (
-  <span className={`${chip} ${STATUS_STYLE[value] ?? STATUS_STYLE.CLOSED}`}>{label(value)}</span>
+  <span className={`${chipBase} ${STATUS_STYLE[value] ?? STATUS_STYLE.CLOSED}`}>
+    {label(value)}
+  </span>
 );
 
 export const PriorityBadge = ({ value }: { value: string }) => (
-  <span className={`${chip} ${PRIORITY_STYLE[value] ?? PRIORITY_STYLE.LOW}`}>{label(value)}</span>
+  <span className={`${chipBase} ${PRIORITY_STYLE[value] ?? PRIORITY_STYLE.LOW}`}>
+    {label(value)}
+  </span>
+);
+
+/** tiny inline "posted while X" marker used inside message bubbles */
+const StatusStamp = ({ value, onDark = false }: { value: string; onDark?: boolean }) => (
+  <span
+    className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+      onDark ? 'bg-white/15 text-white/80' : 'bg-gray-100 text-gray-500'
+    }`}
+  >
+    {label(value)}
+  </span>
 );
 
 /* ========================================================================== */
@@ -309,16 +428,18 @@ export const PriorityBadge = ({ value }: { value: string }) => (
 
 function AttachmentStrip({
   attachments,
-  compact = false,
+  size = 'md',
+  onDark = false,
 }: {
   attachments?: TicketAttachment[];
-  compact?: boolean;
+  size?: 'sm' | 'md';
+  onDark?: boolean;
 }) {
   if (!attachments?.length) return null;
 
   const images = attachments.filter(a => a.mimeType.startsWith('image/'));
   const docs = attachments.filter(a => !a.mimeType.startsWith('image/'));
-  const box = compact ? 'h-16 w-16' : 'h-24 w-24';
+  const box = size === 'sm' ? 'h-14 w-14' : 'h-24 w-24';
 
   return (
     <div className="space-y-2">
@@ -330,7 +451,9 @@ function AttachmentStrip({
               type="button"
               title={a.fileName}
               onClick={() => openInTab(a.url)}
-              className={`${box} overflow-hidden rounded-lg border bg-gray-50 transition hover:ring-2 hover:ring-gray-300`}
+              className={`${box} overflow-hidden rounded-lg border bg-gray-50 transition hover:ring-2 hover:ring-gray-300 ${
+                onDark ? 'border-white/20' : ''
+              }`}
             >
               {a.url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -357,11 +480,21 @@ function AttachmentStrip({
               key={a.id}
               type="button"
               onClick={() => openInTab(a.url)}
-              className="flex max-w-[220px] items-center gap-2 rounded-lg border bg-white px-2.5 py-1.5 text-left text-xs transition hover:border-gray-400"
+              className={`flex max-w-[220px] items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
+                onDark
+                  ? 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+                  : 'bg-white hover:border-gray-400'
+              }`}
             >
-              <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+              <FileText
+                className={`h-3.5 w-3.5 shrink-0 ${onDark ? 'text-white/60' : 'text-gray-400'}`}
+              />
               <span className="truncate">{a.fileName}</span>
-              <span className="shrink-0 text-[10px] text-gray-400">{fmtSize(a.sizeBytes)}</span>
+              <span
+                className={`shrink-0 text-[10px] ${onDark ? 'text-white/50' : 'text-gray-400'}`}
+              >
+                {fmtSize(a.sizeBytes)}
+              </span>
             </button>
           ))}
         </div>
@@ -379,11 +512,13 @@ function FilePicker({
   onChange,
   maxFiles = 10,
   maxSizeMb = 10,
+  compact = false,
 }: {
   files: File[];
   onChange: (f: File[]) => void;
   maxFiles?: number;
   maxSizeMb?: number;
+  compact?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -410,10 +545,14 @@ function FilePicker({
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 py-3 text-xs text-gray-500 hover:border-gray-400"
+        className={
+          compact
+            ? 'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-gray-500 hover:border-gray-400'
+            : 'flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 py-3 text-xs text-gray-500 hover:border-gray-400'
+        }
       >
         <Paperclip className="h-3.5 w-3.5" />
-        Attach files — up to {maxFiles}, {maxSizeMb}MB each
+        {compact ? 'Attach' : `Attach files — up to ${maxFiles}, ${maxSizeMb}MB each`}
       </button>
 
       <input
@@ -448,30 +587,51 @@ function FilePicker({
 }
 
 /* ========================================================================== */
-/*                                 QUICK REPLY                                */
+/*                              THREAD COMPOSER                               */
 /* ========================================================================== */
 
-function QuickReply({
+/**
+ * Text + files + an optional status move, sent as one thread entry.
+ * Admins get the status dropdown; everyone else just replies.
+ */
+function ThreadComposer({
   ticketId,
+  currentStatus,
+  statuses,
+  canChangeStatus,
   onPosted,
-  placeholder = 'Write a reply… (Ctrl+Enter to send)',
   autoFocus = false,
 }: {
   ticketId: string;
+  currentStatus: string;
+  statuses: string[];
+  canChangeStatus: boolean;
   onPosted: () => void | Promise<void>;
-  placeholder?: string;
   autoFocus?: boolean;
 }) {
   const { reply } = useTicketActions();
   const [body, setBody] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [nextStatus, setNextStatus] = useState(currentStatus);
   const [sending, setSending] = useState(false);
 
+  useEffect(() => setNextStatus(currentStatus), [currentStatus]);
+
+  const statusMoved = nextStatus !== currentStatus;
+  const canSend = !!body.trim() || files.length > 0 || statusMoved;
+
   const send = async () => {
-    if (!body.trim()) return;
+    if (!canSend) return;
     setSending(true);
     try {
-      await reply(ticketId, body.trim());
+      await reply(ticketId, {
+        body,
+        files,
+        ...(statusMoved ? { status: nextStatus } : {}),
+      });
       setBody('');
+      setFiles([]);
+      toast.success(statusMoved ? `Replied · status → ${label(nextStatus)}` : 'Reply posted');
       await onPosted();
     } catch (err: any) {
       toast.error(errMsg(err, 'Reply failed'));
@@ -481,7 +641,7 @@ function QuickReply({
   };
 
   return (
-    <div className="flex items-end gap-2">
+    <div className="space-y-2 rounded-xl border bg-white p-3">
       <textarea
         value={body}
         autoFocus={autoFocus}
@@ -489,20 +649,212 @@ function QuickReply({
         onKeyDown={e => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send();
         }}
-        rows={2}
-        placeholder={placeholder}
-        className="min-h-[44px] flex-1 resize-y rounded-lg border px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
+        rows={3}
+        placeholder="Write a reply… (Ctrl+Enter to send)"
+        className="w-full resize-y rounded-lg border px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
       />
-      <button
-        type="button"
-        onClick={send}
-        disabled={sending || !body.trim()}
-        className="flex h-[44px] shrink-0 items-center gap-1.5 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white disabled:opacity-40"
-      >
-        {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        Send
-      </button>
+
+      {files.length > 0 && (
+        <ul className="divide-y rounded-lg border text-xs">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${i}`} className="flex items-center justify-between px-2.5 py-1.5">
+              <span className="truncate">{f.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-400">{fmtSize(f.size)}</span>
+                <button
+                  type="button"
+                  onClick={() => setFiles(files.filter((_, x) => x !== i))}
+                  className="text-gray-400 hover:text-red-500"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <FilePicker files={[]} onChange={f => setFiles([...files, ...f])} maxFiles={5} compact />
+
+        {canChangeStatus && (
+          <label className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span className="whitespace-nowrap">Set status</span>
+            <select
+              value={nextStatus}
+              onChange={e => setNextStatus(e.target.value)}
+              className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                statusMoved ? 'border-gray-900 bg-gray-900 text-white' : 'bg-white'
+              }`}
+            >
+              {statuses.map(s => (
+                <option key={s} value={s} className="text-gray-900">
+                  {label(s)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        <button
+          type="button"
+          onClick={send}
+          disabled={sending || !canSend}
+          className="ml-auto flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {statusMoved ? 'Reply & update' : 'Send'}
+        </button>
+      </div>
+
+      {statusMoved && (
+        <p className="text-[11px] text-gray-500">
+          This reply will move the ticket {label(currentStatus)} → {label(nextStatus)}.
+        </p>
+      )}
     </div>
+  );
+}
+
+/* ========================================================================== */
+/*                              THREAD RENDERING                              */
+/* ========================================================================== */
+
+/** status moves and assignments render as centred system events, not bubbles */
+function SystemEvent({
+  comment,
+  currentUserId,
+}: {
+  comment: TicketComment;
+  currentUserId: string;
+}) {
+  const who = authorLabel(comment, currentUserId);
+
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <div className="h-px flex-1 bg-gray-200" />
+      <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-gray-500">
+        {comment.kind === 'ASSIGNMENT' ? (
+          <UserPlus className="h-3 w-3 text-gray-400" />
+        ) : (
+          <ArrowRight className="h-3 w-3 text-gray-400" />
+        )}
+        <span className="font-semibold text-gray-700">{who}</span>
+        {comment.kind === 'STATUS_CHANGE' && comment.fromStatus && comment.toStatus ? (
+          <>
+            <span>moved</span>
+            <StatusBadge value={comment.fromStatus} />
+            <ArrowRight className="h-3 w-3" />
+            <StatusBadge value={comment.toStatus} />
+          </>
+        ) : (
+          <span>{comment.body ?? 'updated the ticket'}</span>
+        )}
+        <span className="text-gray-400">· {fmtDateTime(comment.createdAt)}</span>
+      </div>
+      <div className="h-px flex-1 bg-gray-200" />
+    </div>
+  );
+}
+
+function MessageBubble({
+  comment,
+  currentUserId,
+}: {
+  comment: TicketComment;
+  currentUserId: string;
+}) {
+  const mine = comment.authorId === currentUserId;
+  const hasFiles = !!comment.attachments?.length;
+
+  return (
+    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[82%] space-y-2 rounded-2xl px-4 py-3 ${
+          mine ? 'bg-gray-900 text-white' : 'border bg-white text-gray-800'
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`text-[11px] font-bold ${mine ? 'text-white/85' : 'text-gray-700'}`}>
+            {authorLabel(comment, currentUserId)}
+          </span>
+          {comment.authorRole && (
+            <span className={`text-[10px] ${mine ? 'text-white/50' : 'text-gray-400'}`}>
+              {label(comment.authorRole)}
+            </span>
+          )}
+          <StatusStamp value={comment.statusAtPost} onDark={mine} />
+          <span className={`text-[10px] ${mine ? 'text-white/50' : 'text-gray-400'}`}>
+            {fmtDateTime(comment.createdAt)}
+          </span>
+        </div>
+
+        {comment.body && (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{comment.body}</p>
+        )}
+
+        {hasFiles && (
+          <div className={comment.body ? 'pt-1' : ''}>
+            <AttachmentStrip attachments={comment.attachments} size="sm" onDark={mine} />
+          </div>
+        )}
+
+        {/* a reply that also moved the status says so inline */}
+        {comment.fromStatus && comment.toStatus && (
+          <div
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+              mine ? 'bg-white/15 text-white/85' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {label(comment.fromStatus)}
+            <ArrowRight className="h-3 w-3" />
+            {label(comment.toStatus)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThreadList({
+  ticket,
+  comments,
+  currentUserId,
+}: {
+  ticket: Ticket;
+  comments: TicketComment[];
+  currentUserId: string;
+}) {
+  return (
+    <>
+      {/* the original request reads as the first entry */}
+      <div className="rounded-xl border bg-gray-50 p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-bold text-gray-700">
+            {ticket.raisedById === currentUserId ? 'You' : ticket.raisedByName || 'Requester'}
+          </span>
+          <span className="text-[10px] uppercase tracking-wide text-gray-400">
+            opened this · {fmtDateTime(ticket.createdAt)}
+          </span>
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+          {ticket.description || 'No description provided.'}
+        </p>
+        {!!ticket.attachments?.length && (
+          <div className="mt-3">
+            <AttachmentStrip attachments={ticket.attachments} />
+          </div>
+        )}
+      </div>
+
+      {comments.map(c =>
+        c.kind === 'MESSAGE' || c.body ? (
+          <MessageBubble key={c.id} comment={c} currentUserId={currentUserId} />
+        ) : (
+          <SystemEvent key={c.id} comment={c} currentUserId={currentUserId} />
+        )
+      )}
+    </>
   );
 }
 
@@ -544,13 +896,13 @@ function TicketRow({
   };
 
   const latest = ticket.latestComment;
-  const mine = latest?.authorId === currentUserId;
-  const waitingOnThem = OPEN_STATUSES.includes(ticket.status) && mine;
+  const lastWasMine = latest?.authorId === currentUserId;
+  const awaiting = ACTIVE_STATUSES.includes(ticket.status) && lastWasMine;
   const longDesc = (ticket.description?.length ?? 0) > 260;
   const select = 'rounded-md border bg-white px-2 py-1 text-xs font-medium disabled:opacity-50';
 
   return (
-    <div className="grid grid-cols-1 gap-5 border-b p-5 last:border-b-0 hover:bg-gray-50/60 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-5 border-b p-5 last:border-b-0 hover:bg-gray-50/60 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       {/* ---------------------------- left: the ask ---------------------------- */}
       <div className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -568,7 +920,6 @@ function TicketRow({
               {ticket.category.name}
             </span>
           )}
-          <span className="text-[11px] text-gray-400">raised {relative(ticket.createdAt)}</span>
         </div>
 
         <button
@@ -578,6 +929,12 @@ function TicketRow({
         >
           {ticket.title}
         </button>
+
+        <p className="text-[11px] text-gray-400">
+          {ticket.raisedById === currentUserId ? 'You' : ticket.raisedByName || 'Someone'} raised
+          this {relative(ticket.createdAt)}
+          {ticket.assignedToName ? ` · handled by ${ticket.assignedToName}` : ' · unassigned'}
+        </p>
 
         {ticket.description && (
           <div>
@@ -655,12 +1012,12 @@ function TicketRow({
 
       {/* ------------------------- right: latest activity ------------------------ */}
       <div className="min-w-0 space-y-2 lg:border-l lg:pl-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
             <MessageSquare className="h-3 w-3" />
             Latest {ticket._count?.comments ? `of ${ticket._count.comments}` : ''}
           </p>
-          {waitingOnThem && (
+          {awaiting && (
             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
               awaiting reply
             </span>
@@ -669,21 +1026,40 @@ function TicketRow({
 
         {latest ? (
           <div
-            className={`rounded-lg border p-3 ${
-              mine ? 'bg-white' : 'border-gray-900/10 bg-gray-900/[0.04]'
+            className={`space-y-2 rounded-lg border p-3 ${
+              lastWasMine ? 'bg-white' : 'border-gray-900/10 bg-gray-900/[0.04]'
             }`}
           >
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-gray-700">
-                {mine ? 'You' : 'Support'}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-gray-700">
+                {authorLabel(latest, currentUserId)}
               </span>
-              <span className="shrink-0 text-[10px] text-gray-400">
+              {latest.authorRole && (
+                <span className="text-[10px] text-gray-400">{label(latest.authorRole)}</span>
+              )}
+              <StatusStamp value={latest.statusAtPost} />
+              <span className="ml-auto shrink-0 text-[10px] text-gray-400">
                 {relative(latest.createdAt)}
               </span>
             </div>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
-              {latest.body}
-            </p>
+
+            {latest.fromStatus && latest.toStatus && (
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                {label(latest.fromStatus)}
+                <ArrowRight className="h-3 w-3" />
+                {label(latest.toStatus)}
+              </p>
+            )}
+
+            {latest.body ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+                {latest.body}
+              </p>
+            ) : (
+              <p className="text-xs italic text-gray-400">Status update, no message</p>
+            )}
+
+            <AttachmentStrip attachments={latest.attachments} size="sm" />
           </div>
         ) : (
           <p className="rounded-lg border border-dashed py-4 text-center text-xs text-gray-400">
@@ -693,8 +1069,11 @@ function TicketRow({
 
         {replyOpen ? (
           <div className="space-y-2">
-            <QuickReply
+            <ThreadComposer
               ticketId={ticket.id}
+              currentStatus={ticket.status}
+              statuses={meta?.statuses ?? []}
+              canChangeStatus={isAdmin}
               autoFocus
               onPosted={async () => {
                 setReplyOpen(false);
@@ -775,8 +1154,7 @@ function TicketSheet({
     try {
       await patchTicket(ticketId, payload);
       toast.success('Updated');
-      await refetch();
-      await onChanged();
+      await Promise.all([refetch(), refetchThread(), onChanged()]);
     } catch (err: any) {
       toast.error(errMsg(err, 'Update failed'));
     } finally {
@@ -791,8 +1169,7 @@ function TicketSheet({
       await addFiles(ticketId, files);
       toast.success('Files attached');
       setFiles([]);
-      await refetch();
-      await onChanged();
+      await Promise.all([refetch(), onChanged()]);
     } catch (err: any) {
       toast.error(errMsg(err, 'Upload failed'));
     } finally {
@@ -804,18 +1181,29 @@ function TicketSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
-      <aside className="flex h-full w-full max-w-[1100px] flex-col bg-white shadow-2xl">
-        {/* header */}
+      <aside className="flex h-full w-full max-w-[1180px] flex-col bg-white shadow-2xl">
         <header className="flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs text-gray-500">{ticket?.ticketNumber ?? '…'}</span>
               {ticket && <StatusBadge value={ticket.status} />}
               {ticket && <PriorityBadge value={ticket.priority} />}
+              {ticket?.category && (
+                <span className="rounded-full border px-2 py-0.5 text-[11px] text-gray-600">
+                  {ticket.category.name}
+                </span>
+              )}
             </div>
             <h2 className="mt-1.5 truncate text-lg font-semibold text-gray-900">
               {ticket?.title ?? 'Loading…'}
             </h2>
+            {ticket && (
+              <p className="mt-0.5 text-[11px] text-gray-500">
+                {ticket.raisedByName || 'Requester'} ·{' '}
+                {ticket.assignedToName ? `handled by ${ticket.assignedToName}` : 'unassigned'} ·
+                last activity {relative(ticket.lastActivityAt)}
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -834,69 +1222,27 @@ function TicketSheet({
           </div>
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px]">
-            {/* ---------------------------- thread column --------------------------- */}
+            {/* thread */}
             <section className="flex min-h-0 flex-col border-r">
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
-                {/* original request reads as the first message */}
-                <div className="rounded-lg border bg-gray-50 p-4">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                    Original request · {fmtDateTime(ticket.createdAt)}
-                  </p>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-                    {ticket.description || 'No description provided.'}
-                  </p>
-                  {!!ticket.attachments?.length && (
-                    <div className="mt-3">
-                      <AttachmentStrip attachments={ticket.attachments} />
-                    </div>
-                  )}
-                </div>
-
-                {comments.map(c => {
-                  const mine = c.authorId === currentUserId;
-                  return (
-                    <div key={c.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                          mine ? 'bg-gray-900 text-white' : 'border bg-white text-gray-800'
-                        }`}
-                      >
-                        <div className="mb-1 flex items-center gap-2">
-                          <span
-                            className={`text-[11px] font-semibold ${
-                              mine ? 'text-white/70' : 'text-gray-500'
-                            }`}
-                          >
-                            {mine ? 'You' : 'Support'}
-                          </span>
-                          <span
-                            className={`text-[10px] ${mine ? 'text-white/50' : 'text-gray-400'}`}
-                          >
-                            {fmtDateTime(c.createdAt)}
-                          </span>
-                        </div>
-                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{c.body}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-
+                <ThreadList ticket={ticket} comments={comments} currentUserId={currentUserId} />
                 <div ref={bottomRef} />
               </div>
 
-              <div className="shrink-0 border-t bg-white px-6 py-4">
-                <QuickReply
+              <div className="shrink-0 border-t bg-gray-50/60 px-6 py-4">
+                <ThreadComposer
                   ticketId={ticket.id}
+                  currentStatus={ticket.status}
+                  statuses={meta?.statuses ?? []}
+                  canChangeStatus={isAdmin}
                   onPosted={async () => {
-                    await refetchThread();
-                    await refetch();
-                    await onChanged();
+                    await Promise.all([refetchThread(), refetch(), onChanged()]);
                   }}
                 />
               </div>
             </section>
 
-            {/* ----------------------------- side column ---------------------------- */}
+            {/* side rail */}
             <aside className="min-h-0 space-y-5 overflow-y-auto bg-gray-50/60 px-5 py-5">
               {isAdmin && (
                 <div className="space-y-3">
@@ -940,15 +1286,18 @@ function TicketSheet({
                       </option>
                     ))}
                   </select>
+                  <p className="text-[10px] text-gray-400">
+                    Changing status here posts a system event in the thread.
+                  </p>
                 </div>
               )}
 
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                  Attachments ({ticket.attachments?.length ?? 0})
+                  Ticket files ({ticket.attachments?.length ?? 0})
                 </p>
                 {ticket.attachments?.length ? (
-                  <AttachmentStrip attachments={ticket.attachments} compact />
+                  <AttachmentStrip attachments={ticket.attachments} size="sm" />
                 ) : (
                   <p className="text-xs text-gray-400">None</p>
                 )}
@@ -963,11 +1312,14 @@ function TicketSheet({
                     {busy ? 'Uploading…' : `Upload ${files.length} file(s)`}
                   </button>
                 )}
+                <p className="text-[10px] text-gray-400">
+                  Files sent inside a reply stay attached to that message instead.
+                </p>
               </div>
 
               <div className="space-y-1 border-t pt-4 text-[11px] text-gray-500">
                 <p>Raised {fmtDateTime(ticket.createdAt)}</p>
-                <p>Last activity {fmtDateTime(ticket.updatedAt)}</p>
+                <p>Last activity {fmtDateTime(ticket.lastActivityAt)}</p>
                 {ticket.resolvedAt && <p>Resolved {fmtDateTime(ticket.resolvedAt)}</p>}
                 {ticket.closedAt && <p>Closed {fmtDateTime(ticket.closedAt)}</p>}
               </div>
@@ -994,12 +1346,7 @@ function CreateTicketDialog({
 }) {
   const meta = useTicketMeta();
   const { createTicket } = useTicketActions();
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    priority: '',
-    categoryId: '',
-  });
+  const [form, setForm] = useState({ title: '', description: '', priority: '', categoryId: '' });
   const [files, setFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -1122,6 +1469,124 @@ function CreateTicketDialog({
 }
 
 /* ========================================================================== */
+/*                        TICKET NOTIFICATION BELL                            */
+/* ========================================================================== */
+
+/**
+ * Dedicated ticket stream. Drop next to the global bell in your topbar —
+ * deliberately its own feed so ticket activity never drowns in regular noise.
+ */
+export function TicketNotificationBell({
+  onOpenTicket,
+}: {
+  onOpenTicket?: (ticketId: string) => void;
+}) {
+  const { items, unread, loading, refetch, markRead, markAllRead } = useTicketNotifications();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) refetch();
+  }, [open, refetch]);
+
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, []);
+
+  const handleClick = async (n: TicketNotification) => {
+    if (!n.isRead) await markRead(n.id);
+    setOpen(false);
+    if (onOpenTicket) onOpenTicket(n.ticketId);
+    else window.location.assign(`/tickets/${n.ticketId}`);
+  };
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        title="Ticket activity"
+        className="relative rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+      >
+        <Bell className="h-5 w-5" />
+        {unread > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 z-50 mt-2 w-[380px] overflow-hidden rounded-xl border bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b px-4 py-2.5">
+            <p className="text-sm font-semibold text-gray-900">Ticket activity</p>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={markAllRead}
+                className="flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-900"
+              >
+                <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-[420px] overflow-y-auto">
+            {loading && items.length === 0 ? (
+              <div className="space-y-2 p-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-12 animate-pulse rounded bg-gray-100" />
+                ))}
+              </div>
+            ) : items.length === 0 ? (
+              <p className="py-12 text-center text-sm text-gray-400">Nothing yet</p>
+            ) : (
+              <ul className="divide-y">
+                {items.map(n => (
+                  <li key={n.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleClick(n)}
+                      className={`flex w-full gap-3 px-4 py-3 text-left transition hover:bg-gray-50 ${
+                        n.isRead ? '' : 'bg-blue-50/40'
+                      }`}
+                    >
+                      <span
+                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                          n.isRead ? 'bg-transparent' : 'bg-blue-500'
+                        }`}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-xs font-semibold text-gray-900">
+                            {n.title}
+                          </span>
+                          <span className="ml-auto shrink-0 text-[10px] text-gray-400">
+                            {relative(n.createdAt)}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-gray-500">
+                          {n.actorName ? `${n.actorName} · ` : ''}
+                          {n.preview || n.ticket.title}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ========================================================================== */
 /*                            CATEGORY MANAGER (admin)                        */
 /* ========================================================================== */
 
@@ -1134,9 +1599,7 @@ function CategoryManager() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await axios.get('/tickets/categories', {
-      params: { includeInactive: true },
-    });
+    const res = await axios.get('/tickets/categories', { params: { includeInactive: true } });
     setRows(res.data.data ?? []);
   }, [axios]);
 
@@ -1256,7 +1719,6 @@ export default function TicketWorkspace({
   const [createOpen, setCreateOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  // debounce search into filters
   useEffect(() => {
     const t = setTimeout(() => setFilters(p => ({ ...p, search: searchInput, page: 1 })), 350);
     return () => clearTimeout(t);
@@ -1275,7 +1737,6 @@ export default function TicketWorkspace({
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 p-6">
-      {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">{heading}</h1>
@@ -1284,7 +1745,8 @@ export default function TicketWorkspace({
             {total} total
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <TicketNotificationBell onOpenTicket={id => setOpenId(id)} />
           <button
             type="button"
             onClick={refetch}
@@ -1326,7 +1788,6 @@ export default function TicketWorkspace({
         <CategoryManager />
       ) : (
         <>
-          {/* status tabs */}
           <div className="flex flex-wrap gap-2">
             {STATUS_TABS.map(t => (
               <button
@@ -1347,7 +1808,6 @@ export default function TicketWorkspace({
             ))}
           </div>
 
-          {/* filters */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative min-w-[240px] flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -1372,12 +1832,7 @@ export default function TicketWorkspace({
             </select>
             <select
               value={filters.categoryId ?? ''}
-              onChange={e =>
-                patchFilters({
-                  categoryId: e.target.value || undefined,
-                  page: 1,
-                })
-              }
+              onChange={e => patchFilters({ categoryId: e.target.value || undefined, page: 1 })}
               className={control}
             >
               <option value="">All categories</option>
@@ -1400,12 +1855,11 @@ export default function TicketWorkspace({
             </select>
           </div>
 
-          {/* feed */}
           <div className="overflow-hidden rounded-xl border bg-white">
             {loading ? (
               <div className="space-y-4 p-6">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-40 animate-pulse rounded-lg bg-gray-100" />
+                  <div key={i} className="h-44 animate-pulse rounded-lg bg-gray-100" />
                 ))}
               </div>
             ) : tickets.length === 0 ? (
@@ -1497,7 +1951,7 @@ export function TicketDetailView({
     setBusy(true);
     try {
       await patchTicket(ticketId, payload);
-      await refetch();
+      await Promise.all([refetch(), refetchThread()]);
       toast.success('Updated');
     } catch (err: any) {
       toast.error(errMsg(err, 'Update failed'));
@@ -1548,69 +2002,25 @@ export function TicketDetailView({
         </div>
         <h1 className="mt-2 text-xl font-semibold text-gray-900">{ticket.title}</h1>
         <p className="mt-1 text-xs text-gray-500">
-          Raised {fmtDateTime(ticket.createdAt)} · last activity {relative(ticket.updatedAt)}
+          {ticket.raisedByName || 'Requester'} ·{' '}
+          {ticket.assignedToName ? `handled by ${ticket.assignedToName}` : 'unassigned'} · raised{' '}
+          {fmtDateTime(ticket.createdAt)} · last activity {relative(ticket.lastActivityAt)}
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
-          <div className="rounded-xl border bg-gray-50 p-5">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Original request
-            </p>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
-              {ticket.description || 'No description provided.'}
-            </p>
-            {!!ticket.attachments?.length && (
-              <div className="mt-4">
-                <AttachmentStrip attachments={ticket.attachments} />
-              </div>
-            )}
-          </div>
+          <ThreadList ticket={ticket} comments={comments} currentUserId={currentUserId} />
 
-          <div className="space-y-4">
-            {comments.map(c => {
-              const mine = c.authorId === currentUserId;
-              return (
-                <div key={c.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                      mine ? 'bg-gray-900 text-white' : 'border bg-white text-gray-800'
-                    }`}
-                  >
-                    <div className="mb-1 flex items-center gap-2">
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          mine ? 'text-white/70' : 'text-gray-500'
-                        }`}
-                      >
-                        {mine ? 'You' : 'Support'}
-                      </span>
-                      <span className={`text-[10px] ${mine ? 'text-white/50' : 'text-gray-400'}`}>
-                        {fmtDateTime(c.createdAt)}
-                      </span>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{c.body}</p>
-                  </div>
-                </div>
-              );
-            })}
-            {comments.length === 0 && (
-              <p className="rounded-xl border border-dashed py-8 text-center text-sm text-gray-400">
-                No replies yet
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-xl border bg-white p-4">
-            <QuickReply
-              ticketId={ticket.id}
-              onPosted={async () => {
-                await refetchThread();
-                await refetch();
-              }}
-            />
-          </div>
+          <ThreadComposer
+            ticketId={ticket.id}
+            currentStatus={ticket.status}
+            statuses={meta?.statuses ?? []}
+            canChangeStatus={isAdmin}
+            onPosted={async () => {
+              await Promise.all([refetchThread(), refetch()]);
+            }}
+          />
         </div>
 
         <aside className="space-y-5">
@@ -1661,10 +2071,10 @@ export function TicketDetailView({
 
           <div className="space-y-2 rounded-xl border bg-white p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Attachments ({ticket.attachments?.length ?? 0})
+              Ticket files ({ticket.attachments?.length ?? 0})
             </p>
             {ticket.attachments?.length ? (
-              <AttachmentStrip attachments={ticket.attachments} compact />
+              <AttachmentStrip attachments={ticket.attachments} size="sm" />
             ) : (
               <p className="text-xs text-gray-400">None</p>
             )}
@@ -1683,7 +2093,7 @@ export function TicketDetailView({
 
           <div className="space-y-1 rounded-xl border bg-white p-4 text-[11px] text-gray-500">
             <p>Raised {fmtDateTime(ticket.createdAt)}</p>
-            <p>Last activity {fmtDateTime(ticket.updatedAt)}</p>
+            <p>Last activity {fmtDateTime(ticket.lastActivityAt)}</p>
             {ticket.resolvedAt && <p>Resolved {fmtDateTime(ticket.resolvedAt)}</p>}
             {ticket.closedAt && <p>Closed {fmtDateTime(ticket.closedAt)}</p>}
           </div>

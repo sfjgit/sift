@@ -195,7 +195,7 @@ export default function RoleEditPage() {
           {/* Scope legend — built from API data, always current */}
           {!scopeOptionsLoading && scopeOptions.length > 0 && (
             <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap pt-1">
-              {scopeOptions.map(o => (
+              {scopeOptions?.map(o => (
                 <span key={o.value}>
                   <span className="font-mono font-semibold text-foreground">{o.value}</span> ={' '}
                   {o.desc}
