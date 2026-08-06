@@ -1946,7 +1946,7 @@ type WindowMode = 'preset' | 'hours' | 'range';
 
 interface WinState {
   mode: WindowMode;
-  range: 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth';
+  range: '' | 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth';
   hours: number;
   fromDate: string;
   toDate: string;
@@ -1954,7 +1954,7 @@ interface WinState {
 
 const DEFAULT_WIN: WinState = {
   mode: 'preset',
-  range: 'today',
+  range: '',
   hours: 8,
   fromDate: '',
   toDate: '',
@@ -1978,7 +1978,10 @@ function winToParams(w: WinState): Record<string, string> {
     if (w.toDate) p.toDate = w.toDate;
     return p;
   }
-  return { range: w.range };
+  // return { range: w.range };
+  // preset mode — only send if a preset is actually selected
+  if (w.range) return { range: w.range };
+  return {}; // ← no filter when nothing is selected
 }
 
 function winLabel(w: WinState): string {
@@ -1987,7 +1990,7 @@ function winLabel(w: WinState): string {
     if (!w.fromDate && !w.toDate) return 'All time';
     return `${w.fromDate || 'start'} to ${w.toDate || 'now'}`;
   }
-  return PRESETS.find(p => p.k === w.range)?.l ?? 'Today';
+  return PRESETS.find(p => p.k === w.range)?.l ?? 'All time';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
