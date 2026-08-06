@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays } from 'date-fns';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useAxios } from '@/hooks/useAxios';
 
@@ -25,7 +26,7 @@ interface MeResponse {
   days: MeDay[];
 }
 
-// ─── THE quote — one, always, forever ────────────────────────────────────────
+// ─── THE quote ───────────────────────────────────────────────────────────────
 
 const THE_QUOTE = 'The downloaded CVs in Naukri and the parsed CVs should match in the ATS.';
 
@@ -45,25 +46,6 @@ function resolveDisplayName(user: ReturnType<typeof useAuth>['user']): string {
   return user.displayName?.trim() || user.firstName?.trim() || user.email?.split('@')[0] || 'there';
 }
 
-// ─── Stat chip — ALWAYS renders, zero or not ─────────────────────────────────
-
-interface ChipProps {
-  label: string;
-  value: number | null | undefined;
-  variant?: 'neutral' | 'danger' | 'good' | 'muted';
-}
-
-function Chip({ label, value, variant = 'neutral' }: ChipProps) {
-  // even if value is null/undefined we show "—" — never silently hide
-  const display = value == null ? '—' : String(value);
-  return (
-    <span className={`sgb-chip sgb-chip--${variant}`}>
-      <span className="sgb-chip__label">{label}</span>
-      <span className="sgb-chip__value">{display}</span>
-    </span>
-  );
-}
-
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface ScrollingGreetingBarProps {
@@ -75,7 +57,7 @@ interface ScrollingGreetingBarProps {
 
 export default function ScrollingGreetingBar({
   popDurationMs = 2200,
-  scrollSeconds = 16,
+  scrollSeconds = 18,
 }: ScrollingGreetingBarProps) {
   const { user } = useAuth();
   const axios = useAxios();
@@ -85,14 +67,11 @@ export default function ScrollingGreetingBar({
   const greeting = useMemo(() => getGreeting(), []);
   const name = resolveDisplayName(user);
 
-  // ── dates ──
   const today = useMemo(() => new Date(), []);
   const yesterday = useMemo(() => subDays(today, 1), [today]);
   const todayStr = format(today, 'yyyy-MM-dd');
   const yStr = format(yesterday, 'yyyy-MM-dd');
 
-  // ── fetch BOTH days — from yesterday to today ──────────────────────────────
-  // Never skip. Always fetch. Show whatever comes back.
   const meQ = useQuery<MeResponse>({
     queryKey: ['naukri-me-bar', yStr, todayStr],
     enabled: !!user,
@@ -106,27 +85,35 @@ export default function ScrollingGreetingBar({
       ).data,
   });
 
-  // Pull days — if a day entry is missing entirely, substitute a zero-skeleton
-  // so the UI always has something to show.
-  const yesterdayDay: Partial<MeDay> = meQ.data?.days?.find(d => d.reportDate === yStr) ?? {
+  // Always produce an object for each day — zero-skeleton if missing
+  const yDay: Partial<MeDay> = meQ.data?.days?.find(d => d.reportDate === yStr) ?? {
     reportDate: yStr,
     naukri: null,
     ats: 0,
     difference: null,
   };
 
-  const todayDay: Partial<MeDay> = meQ.data?.days?.find(d => d.reportDate === todayStr) ?? {
+  const tDay: Partial<MeDay> = meQ.data?.days?.find(d => d.reportDate === todayStr) ?? {
     reportDate: todayStr,
     naukri: null,
     ats: 0,
     difference: null,
   };
 
-  // ── gap logic ──
-  const yGap = yesterdayDay.difference ?? null;
-  const gapBad = yGap != null && yGap > 0;
+  // ── gap status ──
+  // naukri > ats  → DANGER  (red)
+  // ats >= naukri && naukri != null → GOOD (green)
+  // naukri null   → PENDING (grey)
+  type Status = 'danger' | 'good' | 'pending';
+  function gapStatus(naukri: number | null | undefined, ats: number | undefined): Status {
+    if (naukri == null) return 'pending';
+    if ((ats ?? 0) >= naukri) return 'good';
+    return 'danger';
+  }
 
-  // ── phase transitions ──
+  const yStatus = gapStatus(yDay.naukri, yDay.ats);
+  const yGap = yDay.difference ?? (yDay.naukri != null ? yDay.naukri - (yDay.ats ?? 0) : null);
+
   useEffect(() => {
     if (phase !== 'pop') return;
     const t = setTimeout(() => setPhase('bar'), popDurationMs);
@@ -135,32 +122,32 @@ export default function ScrollingGreetingBar({
 
   if (!user) return null;
 
+  const isAlert = yStatus === 'danger';
+
   return (
     <div
-      className={['sgb', phase === 'pop' ? 'sgb--pop' : 'sgb--bar', gapBad ? 'sgb--alert' : '']
-        .filter(Boolean)
-        .join(' ')}
+      className={`sgb ${phase === 'pop' ? 'sgb--pop' : 'sgb--bar'} ${isAlert ? 'sgb--alert' : ''}`}
     >
       {phase === 'pop' ? (
-        // ── POP ──────────────────────────────────────────────────────────────
         <div className="sgb__pop">
           <span className="sgb__dot" aria-hidden />
-          <span className="sgb__pop-text">
+          <span>
             {greeting}, <strong>{name}</strong>
           </span>
         </div>
       ) : (
-        // ── BAR ──────────────────────────────────────────────────────────────
         <div className="sgb__bar">
-          {/* LEFT — greeting */}
-          <span className="sgb__label">
+          {/* ── LEFT: greeting ── */}
+          <div className="sgb__greeting">
             <span className="sgb__dot sgb__dot--sm" aria-hidden />
-            {greeting}, <strong>{name}</strong>
-          </span>
+            <span className="sgb__greet-text">
+              {greeting}, <strong>{name}</strong>
+            </span>
+          </div>
 
-          <span className="sgb__div" aria-hidden />
+          <span className="sgb__sep" />
 
-          {/* CENTER — THE scrolling quote, always */}
+          {/* ── CENTER: scrolling quote ── */}
           <div className="sgb__marquee">
             <div className="sgb__track" style={{ animationDuration: `${scrollSeconds}s` }}>
               <span className="sgb__quote">{THE_QUOTE}</span>
@@ -170,31 +157,58 @@ export default function ScrollingGreetingBar({
             </div>
           </div>
 
-          <span className="sgb__div" aria-hidden />
+          <span className="sgb__sep" />
 
-          {/* RIGHT — stats. Always rendered. Loading state shows skeletons. */}
+          {/* ── RIGHT: stat cards ── */}
           <div className="sgb__stats">
-            {/* Yesterday */}
-            <div className="sgb__stat-col">
-              <span className="sgb__eyebrow">{format(yesterday, 'dd MMM')} · Yesterday</span>
-              <div className="sgb__chips">
-                <Chip label="Naukri" value={yesterdayDay.naukri} variant="neutral" />
-                <Chip label="ATS" value={yesterdayDay.ats} variant="neutral" />
-                <Chip
-                  label="Gap"
-                  value={yGap}
-                  variant={yGap == null ? 'muted' : yGap === 0 ? 'good' : 'danger'}
-                />
+            {/* Yesterday card */}
+            <div className={`sgb__card sgb__card--${yStatus}`}>
+              <div className="sgb__card-header">
+                <span className="sgb__card-date">{format(yesterday, 'dd MMM')}</span>
+                <span className="sgb__card-badge">
+                  {yStatus === 'danger' && <TrendingDown className="sgb__badge-icon" />}
+                  {yStatus === 'good' && <TrendingUp className="sgb__badge-icon" />}
+                  {yStatus === 'pending' && <Minus className="sgb__badge-icon" />}
+                  {yStatus === 'danger' ? 'Gap' : yStatus === 'good' ? 'Match' : 'Pending'}
+                </span>
+              </div>
+              <div className="sgb__card-row">
+                <div className="sgb__metric">
+                  <span className="sgb__metric-label">Naukri</span>
+                  <span className="sgb__metric-val">{yDay.naukri ?? '—'}</span>
+                </div>
+                <div className="sgb__metric-arrow">→</div>
+                <div className="sgb__metric">
+                  <span className="sgb__metric-label">ATS</span>
+                  <span className="sgb__metric-val sgb__metric-val--ats">{yDay.ats ?? 0}</span>
+                </div>
+                {yGap != null && (
+                  <>
+                    <div className="sgb__metric-arrow">=</div>
+                    <div className="sgb__metric">
+                      <span className="sgb__metric-label">{yGap > 0 ? 'Missing' : 'Delta'}</span>
+                      <span
+                        className={`sgb__metric-val sgb__metric-val--gap ${yGap > 0 ? 'val--bad' : 'val--ok'}`}
+                      >
+                        {yGap > 0 ? `−${yGap}` : `+${Math.abs(yGap)}`}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            <span className="sgb__stat-sep" aria-hidden />
-
-            {/* Today */}
-            <div className="sgb__stat-col">
-              <span className="sgb__eyebrow">Today · Sourced so far</span>
-              <div className="sgb__chips">
-                <Chip label="ATS" value={todayDay.ats} variant="muted" />
+            {/* Today card */}
+            <div className="sgb__card sgb__card--today">
+              <div className="sgb__card-header">
+                <span className="sgb__card-date">Today</span>
+                <span className="sgb__card-badge">Sourced</span>
+              </div>
+              <div className="sgb__card-row">
+                <div className="sgb__metric">
+                  <span className="sgb__metric-label">ATS</span>
+                  <span className="sgb__metric-val sgb__metric-val--ats">{tDay.ats ?? 0}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -202,33 +216,32 @@ export default function ScrollingGreetingBar({
       )}
 
       <style jsx>{`
-        /* ── Base ─────────────────────────────────────────────────────────── */
+        /* ══════════════════════════════════════════════════════════════════
+           BASE — deep navy blue
+        ══════════════════════════════════════════════════════════════════ */
         .sgb {
-          --blue-dark: #1e3a8a; /* blue-900 */
-          --blue-mid: #1d4ed8; /* blue-700 */
-          --blue-light: #2563eb; /* blue-600 */
-          --white: #ffffff;
-
           position: relative;
           width: 100%;
           overflow: hidden;
-          background: linear-gradient(
-            90deg,
-            var(--blue-dark) 0%,
-            var(--blue-mid) 60%,
-            var(--blue-light) 100%
-          );
-          color: var(--white);
-          font-size: 15px;
-          line-height: 1.2;
+          background: linear-gradient(100deg, #0f172a 0%, #1e3a8a 55%, #1d4ed8 100%);
+          color: #fff;
+          font-family: inherit;
+          line-height: 1;
           transition:
-            height 380ms cubic-bezier(0.22, 1, 0.36, 1),
-            padding 380ms cubic-bezier(0.22, 1, 0.36, 1);
+            height 400ms cubic-bezier(0.22, 1, 0.36, 1),
+            padding 400ms cubic-bezier(0.22, 1, 0.36, 1);
         }
 
-        /* gap alert — keep blue but add a top red hairline */
-        .sgb--alert {
-          box-shadow: inset 0 -3px 0 0 #ef4444;
+        /* alert: red bottom-border pulse */
+        .sgb--alert::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: #ef4444;
+          animation: sgb-redline 2s ease-in-out infinite;
         }
 
         .sgb--pop {
@@ -236,27 +249,26 @@ export default function ScrollingGreetingBar({
           padding: 0 28px;
         }
         .sgb--bar {
-          height: 56px;
-          padding: 0 18px;
+          height: 64px;
+          padding: 0 20px;
         }
 
-        /* ── Dot ──────────────────────────────────────────────────────────── */
+        /* ── dot ── */
         .sgb__dot {
           flex: 0 0 auto;
-          width: 10px;
-          height: 10px;
+          width: 9px;
+          height: 9px;
           border-radius: 50%;
           background: rgba(255, 255, 255, 0.9);
-          box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
           animation: sgb-pulse 2.2s ease-out infinite;
         }
         .sgb__dot--sm {
-          width: 8px;
-          height: 8px;
-          margin-right: 10px;
+          width: 7px;
+          height: 7px;
+          margin-right: 9px;
         }
 
-        /* ── Pop ──────────────────────────────────────────────────────────── */
+        /* ── pop ── */
         .sgb__pop {
           display: flex;
           align-items: center;
@@ -271,181 +283,242 @@ export default function ScrollingGreetingBar({
           font-weight: 800;
         }
 
-        /* ── Bar layout ───────────────────────────────────────────────────── */
+        /* ── bar layout ── */
         .sgb__bar {
           display: flex;
           align-items: center;
           gap: 14px;
           height: 100%;
-          animation: sgb-fade-in 380ms ease 100ms both;
+          animation: sgb-fade-in 380ms ease 80ms both;
         }
 
-        .sgb__label {
-          display: inline-flex;
-          align-items: center;
+        .sgb__greeting {
           flex: 0 0 auto;
+          display: flex;
+          align-items: center;
           white-space: nowrap;
+        }
+        .sgb__greet-text {
           font-size: 14px;
           font-weight: 500;
         }
-        .sgb__label strong {
+        .sgb__greet-text strong {
           font-weight: 800;
-          margin-left: 4px;
         }
 
-        .sgb__div {
+        .sgb__sep {
           flex: 0 0 auto;
           width: 1px;
-          height: 22px;
-          background: rgba(255, 255, 255, 0.28);
+          height: 28px;
+          background: rgba(255, 255, 255, 0.2);
         }
 
-        /* ── Marquee ──────────────────────────────────────────────────────── */
+        /* ── marquee ── */
         .sgb__marquee {
           flex: 1 1 auto;
           min-width: 0;
           overflow: hidden;
           -webkit-mask-image: linear-gradient(
             90deg,
-            transparent 0,
-            #000 24px,
-            #000 calc(100% - 24px),
-            transparent 100%
+            transparent,
+            #000 20px,
+            #000 calc(100% - 20px),
+            transparent
           );
           mask-image: linear-gradient(
             90deg,
-            transparent 0,
-            #000 24px,
-            #000 calc(100% - 24px),
-            transparent 100%
+            transparent,
+            #000 20px,
+            #000 calc(100% - 20px),
+            transparent
           );
         }
         .sgb__track {
           display: inline-flex;
-          gap: 96px;
+          gap: 100px;
           white-space: nowrap;
           will-change: transform;
           animation: sgb-scroll linear infinite;
         }
         .sgb__quote {
-          font-size: 13.5px;
+          font-size: 13px;
           font-weight: 600;
           font-style: italic;
-          /* white glow behind text so it pops on the blue */
-          text-shadow:
-            0 0 18px rgba(255, 255, 255, 0.45),
-            0 1px 3px rgba(0, 0, 0, 0.35);
-          letter-spacing: 0.15px;
-          opacity: 0.97;
+          color: rgba(255, 255, 255, 0.88);
+          text-shadow: 0 0 20px rgba(147, 197, 253, 0.6);
+          letter-spacing: 0.2px;
         }
 
-        /* ── Stats panel ──────────────────────────────────────────────────── */
+        /* ══════════════════════════════════════════════════════════════════
+           STAT CARDS
+        ══════════════════════════════════════════════════════════════════ */
         .sgb__stats {
           flex: 0 0 auto;
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
         }
-        .sgb__stat-col {
+
+        .sgb__card {
           display: flex;
           flex-direction: column;
-          align-items: flex-start;
-          gap: 3px;
+          gap: 5px;
+          padding: 6px 12px;
+          border-radius: 10px;
+          backdrop-filter: blur(8px);
+          border: 1px solid transparent;
+          min-width: 0;
         }
-        .sgb__eyebrow {
-          font-size: 9px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.09em;
-          opacity: 0.6;
-          white-space: nowrap;
+
+        /* danger card — red glowing */
+        .sgb__card--danger {
+          background: rgba(239, 68, 68, 0.15);
+          border-color: rgba(239, 68, 68, 0.5);
+          box-shadow:
+            0 0 0 1px rgba(239, 68, 68, 0.3),
+            0 4px 16px rgba(239, 68, 68, 0.25),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          animation: sgb-card-throb 2s ease-in-out infinite;
         }
-        .sgb__chips {
+
+        /* good card — green glowing */
+        .sgb__card--good {
+          background: rgba(16, 185, 129, 0.15);
+          border-color: rgba(16, 185, 129, 0.45);
+          box-shadow:
+            0 0 0 1px rgba(16, 185, 129, 0.25),
+            0 4px 16px rgba(16, 185, 129, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+
+        /* pending / no naukri data yet */
+        .sgb__card--pending {
+          background: rgba(255, 255, 255, 0.07);
+          border-color: rgba(255, 255, 255, 0.12);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        /* today card — subtle blue tint */
+        .sgb__card--today {
+          background: rgba(59, 130, 246, 0.18);
+          border-color: rgba(96, 165, 250, 0.35);
+          box-shadow:
+            0 4px 14px rgba(59, 130, 246, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        /* ── card header ── */
+        .sgb__card-header {
           display: flex;
           align-items: center;
-          gap: 5px;
+          justify-content: space-between;
+          gap: 8px;
         }
-        .sgb__stat-sep {
-          width: 1px;
-          height: 32px;
-          background: rgba(255, 255, 255, 0.2);
+        .sgb__card-date {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          opacity: 0.65;
+        }
+        .sgb__card-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          font-size: 9.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+          padding: 1px 6px;
+          border-radius: 99px;
+        }
+        .sgb__card--danger .sgb__card-badge {
+          background: rgba(239, 68, 68, 0.25);
+          color: #fca5a5;
+        }
+        .sgb__card--good .sgb__card-badge {
+          background: rgba(16, 185, 129, 0.2);
+          color: #6ee7b7;
+        }
+        .sgb__card--pending .sgb__card-badge {
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.45);
+        }
+        .sgb__card--today .sgb__card-badge {
+          background: rgba(96, 165, 250, 0.2);
+          color: #93c5fd;
+        }
+        .sgb__badge-icon {
+          width: 9px;
+          height: 9px;
           flex: 0 0 auto;
         }
 
-        /* ── Chips ────────────────────────────────────────────────────────── */
-        .sgb-chip {
-          display: inline-flex;
+        /* ── metrics row ── */
+        .sgb__card-row {
+          display: flex;
           align-items: center;
-          gap: 5px;
-          border-radius: 5px;
-          padding: 3px 8px;
-          white-space: nowrap;
+          gap: 6px;
         }
-        .sgb-chip__label {
-          font-size: 9.5px;
+        .sgb__metric {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1px;
+        }
+        .sgb__metric-label {
+          font-size: 9px;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.07em;
-          opacity: 0.75;
+          opacity: 0.55;
+          white-space: nowrap;
         }
-        .sgb-chip__value {
-          font-size: 14px;
+        .sgb__metric-val {
+          font-size: 18px;
           font-weight: 900;
-          /* WHITE box-shadow highlight behind every number */
+          line-height: 1;
+          /* White glow highlight behind every number */
           text-shadow:
-            0 0 12px rgba(255, 255, 255, 0.8),
-            0 0 4px rgba(255, 255, 255, 0.6);
+            0 0 14px rgba(255, 255, 255, 0.7),
+            0 0 4px rgba(255, 255, 255, 0.4);
         }
 
-        /* neutral — soft white glass */
-        .sgb-chip--neutral {
-          background: rgba(255, 255, 255, 0.14);
-          box-shadow:
-            0 1px 0 rgba(255, 255, 255, 0.18) inset,
-            0 2px 8px rgba(0, 0, 0, 0.2);
+        /* ATS value — always bright white */
+        .sgb__metric-val--ats {
           color: #fff;
+          text-shadow:
+            0 0 16px rgba(255, 255, 255, 0.9),
+            0 0 6px rgba(147, 197, 253, 0.6);
         }
 
-        /* danger — white card, red number, throb */
-        .sgb-chip--danger {
-          background: #fff;
-          box-shadow:
-            0 0 0 1.5px #ef4444,
-            0 3px 10px rgba(239, 68, 68, 0.45);
-          color: #dc2626;
-          animation: sgb-throb 1.6s ease-in-out infinite;
+        /* gap value colours */
+        .sgb__metric-val--gap.val--bad {
+          color: #fca5a5; /* red-300 — readable on dark */
+          text-shadow:
+            0 0 12px rgba(239, 68, 68, 0.8),
+            0 0 4px rgba(239, 68, 68, 0.4);
+          font-size: 20px;
         }
-        .sgb-chip--danger .sgb-chip__label {
-          opacity: 0.6;
-        }
-        .sgb-chip--danger .sgb-chip__value {
-          text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
-        }
-
-        /* good — green tinted glass */
-        .sgb-chip--good {
-          background: rgba(16, 185, 129, 0.2);
-          box-shadow:
-            0 0 0 1px rgba(16, 185, 129, 0.5),
-            0 2px 8px rgba(16, 185, 129, 0.25);
-          color: #d1fae5;
-        }
-        .sgb-chip--good .sgb-chip__value {
-          text-shadow: 0 0 10px rgba(52, 211, 153, 0.8);
+        .sgb__metric-val--gap.val--ok {
+          color: #6ee7b7; /* emerald-300 */
+          text-shadow:
+            0 0 12px rgba(16, 185, 129, 0.8),
+            0 0 4px rgba(16, 185, 129, 0.4);
         }
 
-        /* muted — dimmer neutral for today / missing data */
-        .sgb-chip--muted {
-          background: rgba(255, 255, 255, 0.08);
-          color: rgba(255, 255, 255, 0.7);
-          box-shadow: none;
-        }
-        .sgb-chip--muted .sgb-chip__value {
-          text-shadow: none;
-          font-size: 13px;
+        .sgb__metric-arrow {
+          font-size: 11px;
+          opacity: 0.35;
+          font-weight: 700;
+          padding: 0 1px;
+          align-self: flex-end;
+          margin-bottom: 2px;
         }
 
-        /* ── Animations ───────────────────────────────────────────────────── */
+        /* ══════════════════════════════════════════════════════════════════
+           ANIMATIONS
+        ══════════════════════════════════════════════════════════════════ */
         @keyframes sgb-scroll {
           from {
             transform: translateX(0);
@@ -474,41 +547,55 @@ export default function ScrollingGreetingBar({
         }
         @keyframes sgb-pulse {
           0% {
-            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
+            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
           }
           70% {
-            box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+            box-shadow: 0 0 0 7px rgba(255, 255, 255, 0);
           }
           100% {
             box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
           }
         }
-        @keyframes sgb-throb {
+        @keyframes sgb-card-throb {
           0%,
           100% {
             box-shadow:
-              0 0 0 1.5px #ef4444,
-              0 3px 10px rgba(239, 68, 68, 0.45);
+              0 0 0 1px rgba(239, 68, 68, 0.3),
+              0 4px 16px rgba(239, 68, 68, 0.25),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
           }
           50% {
             box-shadow:
-              0 0 0 2.5px #ef4444,
-              0 4px 16px rgba(239, 68, 68, 0.7);
+              0 0 0 2px rgba(239, 68, 68, 0.6),
+              0 6px 24px rgba(239, 68, 68, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          }
+        }
+        @keyframes sgb-redline {
+          0%,
+          100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.4;
           }
         }
 
         @media (prefers-reduced-motion: reduce) {
           .sgb__track,
           .sgb__dot,
-          .sgb-chip--danger {
+          .sgb__card--danger,
+          .sgb--alert::after {
             animation: none;
           }
         }
 
-        /* hide stats panel only on very small phones */
-        @media (max-width: 560px) {
+        @media (max-width: 640px) {
           .sgb__stats {
             display: none;
+          }
+          .sgb--bar {
+            height: 52px;
           }
         }
       `}</style>
