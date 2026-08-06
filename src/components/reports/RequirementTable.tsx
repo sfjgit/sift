@@ -142,6 +142,22 @@ export function RequirementTable({
         cell: r => <span className="text-[13px] font-bold text-slate-700">{r.totalOpenings}</span>,
       },
       {
+        id: 'salaryMin',
+        label: 'Min Salary',
+        align: 'center',
+        group: 'Salary',
+        exportValue: r => r.salaryMin,
+        cell: r => <span className="text-[13px] font-bold text-slate-700">{r.salaryMin}</span>,
+      },
+      {
+        id: 'salaryMax',
+        label: 'Max Salary',
+        align: 'center',
+        group: 'Salary',
+        exportValue: r => r.salaryMax,
+        cell: r => <span className="text-[13px] font-bold text-slate-700">{r.salaryMax}</span>,
+      },
+      {
         id: 'totalCandidates',
         label: 'Total',
         align: 'center',
@@ -168,6 +184,7 @@ export function RequirementTable({
           />
         ),
       })),
+
       {
         id: 'client',
         label: 'Client',
