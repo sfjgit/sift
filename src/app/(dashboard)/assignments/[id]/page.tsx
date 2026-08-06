@@ -1203,6 +1203,10 @@ function AddCandidateModal({
                 icon: <Database className="w-4 h-4 text-blue-600" />,
                 title: 'From Database',
                 desc: 'Search existing candidate pool',
+                onClickOverride: () => {
+                  router.push(`/assignments/${assignmentId}/database`);
+                  onClose();
+                },
               },
             ].map(row => (
               <button

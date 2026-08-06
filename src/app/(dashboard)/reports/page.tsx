@@ -2200,7 +2200,22 @@ function BUBarChart({
     </div>
   );
 }
-
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Active',
+  DRAFT: 'Draft',
+  PENDING_APPROVAL: 'Pending',
+  ON_HOLD: 'On Hold',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
+};
+const ALL_REPORT_STATUSES = [
+  { key: 'ACTIVE', label: 'Active', dot: 'bg-emerald-500' },
+  { key: 'DRAFT', label: 'Draft', dot: 'bg-slate-400' },
+  { key: 'PENDING_APPROVAL', label: 'Pending', dot: 'bg-amber-500' },
+  { key: 'ON_HOLD', label: 'On Hold', dot: 'bg-orange-500' },
+  { key: 'CLOSED', label: 'Closed', dot: 'bg-red-500' },
+  { key: 'CANCELLED', label: 'Cancelled', dot: 'bg-gray-500' },
+] as const;
 // ─────────────────────────────────────────────────────────────────────────────
 // FILTERS BAR
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2209,6 +2224,7 @@ interface Filters {
   clientId?: string;
   serviceLineId?: string;
   createdById?: string;
+  status?: string;
 }
 
 function FiltersBar({
@@ -2218,6 +2234,7 @@ function FiltersBar({
   onWin,
   standardOnly,
   onStandardOnly,
+  activeTab,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
@@ -2225,6 +2242,7 @@ function FiltersBar({
   onWin: (w: WinState) => void;
   standardOnly: boolean;
   onStandardOnly: (v: boolean) => void;
+  activeTab: TabKey;
 }) {
   const axios = useAxios();
   const { data: clientsRes } = useQuery({
@@ -2249,6 +2267,41 @@ function FiltersBar({
     },
     staleTime: 300000,
   });
+  {
+    /* ── Status quick-filter row ── */
+  }
+  <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
+    <Filter className="h-4 w-4 shrink-0 text-slate-400" />
+    <div className="flex items-center gap-0.5 flex-wrap">
+      <button
+        onClick={() => onChange({ ...filters, status: undefined })}
+        className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+          !filters.status
+            ? 'bg-indigo-600 text-white shadow-sm'
+            : 'text-slate-500 hover:text-slate-700 bg-slate-100'
+        }`}
+      >
+        All
+      </button>
+      {ALL_REPORT_STATUSES.map(s => {
+        const isActive = filters.status === s.key;
+        return (
+          <button
+            key={s.key}
+            onClick={() => onChange({ ...filters, status: isActive ? undefined : s.key })}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+              isActive
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 bg-slate-100'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+            {s.label}
+          </button>
+        );
+      })}
+    </div>
+  </div>;
 
   const clients: any[] = clientsRes ?? [];
   const sls: any[] = slRes ?? [];
@@ -2399,6 +2452,39 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
+        {/* ── Row 3: status — requirements tab only ── */}
+        {activeTab === 'requirements' && (
+          <>
+            <Select
+              value={filters.status ?? 'ALL'}
+              onValueChange={v => onChange({ ...filters, status: v === 'ALL' ? undefined : v })}
+            >
+              <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All statuses</SelectItem>
+                {ALL_REPORT_STATUSES.map(s => (
+                  <SelectItem key={s.key} value={s.key}>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+                      {s.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {filters.status && (
+              <button
+                onClick={() => onChange({ ...filters, status: undefined })}
+                className="flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <X className="h-3 w-3" /> Clear
+              </button>
+            )}
+          </>
+        )}
+
         <button
           onClick={() => onStandardOnly(!standardOnly)}
           className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
@@ -2415,7 +2501,7 @@ function FiltersBar({
           Standard stages only
         </button>
 
-        {(filters.clientId || filters.serviceLineId || filters.createdById) && (
+        {(filters.clientId || filters.serviceLineId || filters.createdById || filters.status) && (
           <button
             onClick={() => onChange({})}
             className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-50"
@@ -2775,6 +2861,7 @@ export default function ReportsPage() {
     if (filters.clientId) p.set('clientId', filters.clientId);
     if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
     if (filters.createdById) p.set('createdById', filters.createdById);
+    if (filters.status) p.set('status', filters.status);
     if (standardOnly) p.set('standardOnly', 'true');
     return p;
   }, [win, filters, standardOnly]);
@@ -2929,9 +3016,18 @@ export default function ReportsPage() {
         onWin={setWin}
         standardOnly={standardOnly}
         onStandardOnly={setStandardOnly}
+        activeTab={activeTab}
       />
 
-      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as TabKey)}>
+      <Tabs
+        value={activeTab}
+        onValueChange={v => {
+          const next = v as TabKey;
+          if (next !== 'requirements') setFilters(f => ({ ...f, status: undefined }));
+          setActiveTab(next);
+        }}
+      >
+        {' '}
         <TabsList className="h-10 gap-0.5 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
           <TabsTrigger
             value="overview"
@@ -2952,11 +3048,9 @@ export default function ReportsPage() {
             <FileText className="h-3.5 w-3.5" /> Requirements
           </TabsTrigger>
         </TabsList>
-
         <TabsContent value="overview" className="mt-5">
           <OverviewSection data={overviewQuery.data} loading={overviewQuery.isLoading} />
         </TabsContent>
-
         <TabsContent value="recruiters" className="mt-5">
           <RecruiterSection
             resp={recruiterQuery.data}
@@ -2967,7 +3061,6 @@ export default function ReportsPage() {
             onDownloadSelected={handleRecruiterSelected}
           />
         </TabsContent>
-
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
             resp={requirementQuery.data}
