@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: UserTable.tsx
 // Path: src/components/users/UserTable.tsx
 
@@ -90,6 +91,22 @@ const RESET_INIT: ResetState = {
   loading: false,
 };
 
+interface RevealState {
+  open: boolean;
+  user: UserListItem | null;
+  password: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const REVEAL_INIT: RevealState = {
+  open: false,
+  user: null,
+  password: null,
+  loading: false,
+  error: null,
+};
+
 function initials(u: UserListItem) {
   return `${u.firstName[0] ?? ''}${u.lastName[0] ?? ''}`.toUpperCase();
 }
@@ -118,6 +135,7 @@ export function UserTable({
 }: Props) {
   const router = useRouter();
   const [reset, setReset] = useState<ResetState>(RESET_INIT);
+  const [reveal, setReveal] = useState<RevealState>(REVEAL_INIT);
   const axios = useAxios();
 
   // ── Manage DMs dialog state ───────────────────────────────────────────────
@@ -158,6 +176,18 @@ export function UserTable({
     } catch {
       toast.error('Network error. Please try again.');
       setReset(s => ({ ...s, loading: false }));
+    }
+  }
+
+  // ── Reveal password ───────────────────────────────────────────────────────
+  async function handleReveal(user: UserListItem) {
+    setReveal({ open: true, user, password: null, loading: true, error: null });
+    try {
+      const res = await axios.get(`/auth/reveal-password/${user.id}`);
+      setReveal(s => ({ ...s, loading: false, password: res.data.data.password }));
+    } catch (err: any) {
+      const msg = err?.response?.data?.message ?? 'Failed to retrieve password';
+      setReveal(s => ({ ...s, loading: false, error: msg }));
     }
   }
 
@@ -371,6 +401,16 @@ export function UserTable({
                             </DropdownMenuItem>
                           )}
 
+                          {/* ── Reveal password — superAdmin only ── */}
+                          {isSuperAdmin && permissions.canEdit && (
+                            <DropdownMenuItem
+                              onClick={() => handleReveal(user)}
+                              className="gap-2 text-xs text-violet-600 focus:text-violet-600 focus:bg-violet-50"
+                            >
+                              <EyeIcon className="h-3.5 w-3.5" /> Reveal password
+                            </DropdownMenuItem>
+                          )}
+
                           {permissions.canEdit && onToggle && (
                             <>
                               <DropdownMenuSeparator />
@@ -581,6 +621,62 @@ export function UserTable({
                   <KeyRound className="h-3.5 w-3.5" /> Reset password
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Reveal Password Dialog ── */}
+      <Dialog open={reveal.open} onOpenChange={() => setReveal(REVEAL_INIT)}>
+        <DialogContent className="sm:max-w-[380px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <KeyRound className="h-4 w-4 text-violet-500" />
+              Password
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {reveal.user?.firstName} {reveal.user?.lastName}{' '}
+              <span className="text-muted-foreground">({reveal.user?.email})</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3">
+            {reveal.loading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Decrypting…
+              </div>
+            )}
+            {reveal.error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                {reveal.error}
+              </div>
+            )}
+            {reveal.password && (
+              <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2.5">
+                <code className="flex-1 text-sm font-mono select-all">{reveal.password}</code>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(reveal.password!);
+                    toast.success('Copied to clipboard');
+                  }}
+                >
+                  <EyeIcon className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => setReveal(REVEAL_INIT)}
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
