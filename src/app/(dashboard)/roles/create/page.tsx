@@ -21,6 +21,15 @@ export default function RoleCreatePage() {
   const axios = useAxios();
   const permission = usePermission('settings');
 
+  // ── Fetch scope options ───────────────────────────────────────────────────
+  const scopesQuery = useQuery({
+    queryKey: ['role-scopes'],
+    queryFn: async () => (await axios.get('/roles/scopes')).data,
+    staleTime: Infinity,
+  });
+
+  const scopeOptions = scopesQuery.data?.data ?? [];
+
   useEffect(() => {
     if (!permission.canAdd) router.replace('/roles');
   }, [permission.canAdd, router]);
@@ -149,8 +158,12 @@ export default function RoleCreatePage() {
                 ))}
               </div>
             ) : (
-              // @ts-expect-error err
-              <PermissionsMatrix modules={modules} rows={permissions} onChange={setPermissions} />
+              <PermissionsMatrix
+                modules={modules}
+                rows={permissions}
+                onChange={setPermissions}
+                scopeOptions={scopeOptions} // ← this was missing
+              />
             )}
           </CardContent>
         </Card>
