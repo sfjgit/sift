@@ -78,6 +78,9 @@ export interface RequirementRow {
   city: string | null;
   country: string | null;
   jobType: string;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryType: string | null;
   remoteType: string;
   respondBy: string | null;
   isRespondByBreached: boolean;
