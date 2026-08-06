@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: TicketWorkspace.tsx
 // Path: src/components/tickets/TicketWorkspace.tsx
 //

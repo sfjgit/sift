@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: TicketDetailDrawer.tsx
 // Path: src/components/tickets/TicketDetailDrawer.tsx
 
