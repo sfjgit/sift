@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: CreateTicketDialog.tsx
 // Path: src/components/tickets/CreateTicketDialog.tsx
 

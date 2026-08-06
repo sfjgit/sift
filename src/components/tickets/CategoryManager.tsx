@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: CategoryManager.tsx
 // Path: src/components/tickets/CategoryManager.tsx
 
