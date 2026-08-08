@@ -37,6 +37,7 @@ import {
   Trash2,
   Pencil,
   RefreshCw,
+  Calendar,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -685,6 +686,8 @@ function useFilters() {
   const page = Number(searchParams.get('page') ?? '1');
   const limit = Number(searchParams.get('limit') ?? '25');
   const createdById = searchParams.get('createdById') ?? '';
+  const dateFrom = searchParams.get('dateFrom') ?? '';
+  const dateTo = searchParams.get('dateTo') ?? '';
 
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
@@ -710,6 +713,8 @@ function useFilters() {
   const setLimit = (v: number) => setParams({ limit: String(v), page: null });
 
   const setCreatedById = (v: string) => setParams({ createdById: v, page: null });
+  const setDateFrom = (v: string) => setParams({ dateFrom: v, page: null });
+  const setDateTo = (v: string) => setParams({ dateTo: v, page: null });
 
   const clearAll = () =>
     setParams({
@@ -721,11 +726,20 @@ function useFilters() {
       buId: null,
       page: null,
       createdById: null,
+      dateFrom: null,
+      dateTo: null,
     });
 
-  const activeFiltersCount = [status, priority, buId, serviceLineId, clientId, createdById].filter(
-    Boolean
-  ).length;
+  const activeFiltersCount = [
+    status,
+    priority,
+    buId,
+    serviceLineId,
+    clientId,
+    createdById,
+    dateFrom,
+    dateTo,
+  ].filter(Boolean).length;
 
   return {
     search,
@@ -739,6 +753,8 @@ function useFilters() {
     page,
     limit,
     createdById,
+    dateFrom,
+    dateTo,
     setSearch,
     setStatus,
     setPriority,
@@ -751,6 +767,8 @@ function useFilters() {
     setPage,
     setLimit,
     clearAll,
+    setDateFrom,
+    setDateTo,
     activeFiltersCount,
   };
 }
@@ -841,7 +859,9 @@ function ExportButton({
     clientId: string;
     buId: string;
     createdByScope: string;
-    createdBy: string;
+    createdById: string;
+    dateFrom: string;
+    dateTo: string;
   };
 }) {
   const axios = useAxios();
@@ -858,7 +878,9 @@ function ExportButton({
       if (filters.serviceLineId) params.set('serviceLineId', filters.serviceLineId);
       if (filters.clientId) params.set('clientId', filters.clientId);
       if (filters.buId) params.set('buId', filters.buId);
-      if (filters.createdBy) params.set('createdBy', filters.createdBy);
+      if (filters.createdById) params.set('createdById', filters.createdById);
+      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) params.set('dateTo', filters.dateTo);
       params.set('createdByScope', filters.createdByScope);
 
       const response = await axios.get(`/requirements/export?${params.toString()}`, {
@@ -911,6 +933,10 @@ function FilterBar({
   setClientId,
   createdById,
   setCreatedById,
+  dateFrom,
+  dateTo,
+  setDateFrom,
+  setDateTo,
   byStatus,
   busData,
   busLoading,
@@ -934,6 +960,10 @@ function FilterBar({
   clientId: string;
   setClientId: (v: string) => void;
   createdById: string;
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
   setCreatedById: (v: string) => void;
   byStatus: Record<string, number>;
   busData: BusinessUnit[] | null | undefined;
@@ -1049,6 +1079,12 @@ function FilterBar({
           allLabel="Created By"
         />
       )}
+      <DateRangeFilter
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        setDateFrom={setDateFrom}
+        setDateTo={setDateTo}
+      />
       {activeFiltersCount > 0 && (
         <button
           onClick={clearAll}
@@ -1148,6 +1184,88 @@ function DropdownFilter({
   );
 }
 
+function DateRangeFilter({
+  dateFrom,
+  dateTo,
+  setDateFrom,
+  setDateTo,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  setDateFrom: (v: string) => void;
+  setDateTo: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isActive = !!(dateFrom || dateTo);
+
+  const label = useMemo(() => {
+    if (dateFrom && dateTo) return `${dateFrom} → ${dateTo}`;
+    if (dateFrom) return `From ${dateFrom}`;
+    if (dateTo) return `Until ${dateTo}`;
+    return 'Date Range';
+  }, [dateFrom, dateTo]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${
+            isActive
+              ? 'bg-primary/10 border-primary/30 text-primary'
+              : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+          }`}
+        >
+          <Calendar size={12} />
+          <span className="max-w-[160px] truncate">{label}</span>
+          <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-64 p-3 shadow-lg border border-slate-200 rounded-xl space-y-3"
+      >
+        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+          Created Date Range
+        </p>
+        <div className="space-y-2">
+          <div>
+            <label className="text-[11px] text-slate-500 mb-1 block">From</label>
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={e => setDateFrom(e.target.value)}
+              className="w-full text-[12px] border border-slate-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 mb-1 block">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={e => setDateTo(e.target.value)}
+              className="w-full text-[12px] border border-slate-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+        </div>
+        {isActive && (
+          <button
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+              setOpen(false);
+            }}
+            className="w-full flex items-center justify-center gap-1 text-[12px] text-red-500 hover:text-red-700 font-medium pt-1 border-t border-slate-100"
+          >
+            <X size={11} /> Clear dates
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── ActiveFilterChips ────────────────────────────────────────────────────────
 
 function ActiveFilterChips({
@@ -1167,6 +1285,10 @@ function ActiveFilterChips({
   createdById,
   setCreatedById,
   createdByData,
+  dateFrom,
+  setDateFrom,
+  dateTo,
+  setDateTo,
 }: {
   status: string;
   setStatus: (v: string) => void;
@@ -1184,6 +1306,10 @@ function ActiveFilterChips({
   createdById: string;
   setCreatedById: (v: string) => void;
   createdByData: { id: string; name: string }[] | null | undefined;
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
 }) {
   const chips = [
     status && { label: STATUS_LABEL[status] ?? status, clear: () => setStatus('') },
@@ -1208,6 +1334,14 @@ function ActiveFilterChips({
         label: createdByData.find(u => u.id === createdById)?.name ?? createdById,
         clear: () => setCreatedById(''),
       },
+    dateFrom && {
+      label: `From ${dateFrom}`,
+      clear: () => setDateFrom(''),
+    },
+    dateTo && {
+      label: `Until ${dateTo}`,
+      clear: () => setDateTo(''),
+    },
   ].filter(Boolean) as { label: string; clear: () => void }[];
 
   if (!chips.length) return null;
@@ -2139,6 +2273,8 @@ function RequirementsPageInner() {
     page,
     limit,
     createdById,
+    dateFrom,
+    dateTo,
     setSearch,
     setStatus,
     setPriority,
@@ -2150,6 +2286,8 @@ function RequirementsPageInner() {
     setViewMode,
     setPage,
     setLimit,
+    setDateFrom,
+    setDateTo,
     clearAll,
     activeFiltersCount,
   } = useFilters();
@@ -2249,6 +2387,8 @@ function RequirementsPageInner() {
     if (clientId) p.set('clientId', clientId);
     if (buId) p.set('buId', buId);
     if (createdById) p.set('createdById', createdById);
+    if (dateFrom) p.set('dateFrom', dateFrom);
+    if (dateTo) p.set('dateTo', dateTo);
     p.set('createdByScope', createdByScope);
     p.set('page', String(page));
     p.set('limit', String(limit));
@@ -2262,6 +2402,8 @@ function RequirementsPageInner() {
     buId,
     createdById,
     createdByScope,
+    dateFrom,
+    dateTo,
     page,
     limit,
   ]);
@@ -2310,8 +2452,10 @@ function RequirementsPageInner() {
     serviceLineId,
     clientId,
     buId,
-    createdBy: createdById,
+    createdById,
     createdByScope,
+    dateFrom,
+    dateTo,
   };
   const hasActiveFilters = activeFiltersCount > 0;
 
@@ -2367,14 +2511,17 @@ function RequirementsPageInner() {
               <Plus size={14} /> Add New Job
             </Button>
           )}
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
-            onClick={() => router.push('/requirements/bulk')}
-          >
-            <Plus size={14} /> Bulk Upload Requirement
-          </Button>
+          {canAdd && (
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
+              onClick={() => router.push('/requirements/bulk')}
+            >
+              <Plus size={14} /> Bulk Upload Requirement
+            </Button>
+          )}
         </div>
+
         <div className="px-4 pb-2.5 overflow-x-auto scrollbar-none">
           <FilterBar
             status={status}
@@ -2399,6 +2546,10 @@ function RequirementsPageInner() {
             createdByData={createdByOptions}
             createdByLoading={createdByLoading}
             activeFiltersCount={activeFiltersCount}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            setDateFrom={setDateFrom}
+            setDateTo={setDateTo}
             clearAll={clearAll}
           />
         </div>
@@ -2422,6 +2573,10 @@ function RequirementsPageInner() {
           createdById={createdById}
           setCreatedById={setCreatedById}
           createdByData={createdByOptions}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          setDateFrom={setDateFrom}
+          setDateTo={setDateTo}
         />
       )}
 
