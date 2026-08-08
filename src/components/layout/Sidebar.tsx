@@ -9,7 +9,6 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard,
   FileText,
   Users,
   Building2,
@@ -30,57 +29,156 @@ import {
   X,
   LifeBuoy,
   ShieldQuestion,
+  ChevronDown,
+  Database,
+  SlidersHorizontal,
+  Landmark,
 } from 'lucide-react';
 
-const NAV = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Pipeline', href: '/pipeline-stages', icon: Kanban, module: 'pipeline-stages' },
+// ---------------------------------------------------------------------------
+// Nav structure
+// ---------------------------------------------------------------------------
 
-  { label: 'Reports', href: '/reports', icon: BarChart2, module: 'reports' },
+type NavItem =
+  | { type: 'divider' }
+  | {
+      type: 'link';
+      label: string;
+      href: string;
+      icon: React.ElementType;
+      module?: string;
+      superAdminOnly?: boolean;
+    }
+  | { type: 'group'; label: string; icon: React.ElementType; key: string; children: NavChild[] };
 
-  { label: 'My Assignments', href: '/my-assignments', icon: ClipboardList },
-  { label: 'Assignments', href: '/assignments', icon: ClipboardList },
+type NavChild = {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  module?: string;
+  superAdminOnly?: boolean;
+};
 
-  { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
-  { label: 'Candidates', href: '/candidates', icon: UserSearch, module: 'candidates' },
-  { label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
-  { type: 'divider' as const },
-  { label: 'Users', href: '/users', icon: Users, module: 'users' },
-  { label: 'Business Units', href: '/business-units', icon: Building2, module: 'business-units' },
-  { label: 'Departments', href: '/departments', icon: Layers, module: 'departments' },
-  { label: 'Service Lines', href: '/service-lines', icon: GitBranch, module: 'service-lines' },
-  { label: 'Org Tree', href: '/org', icon: Network },
-  { label: 'Roles', href: '/roles', icon: UserSquare2, module: 'roles' },
-  { type: 'divider' as const },
-  { label: 'Extension', href: '/extension', icon: Puzzle },
-  { label: 'Settings', href: '/settings', icon: Settings },
-  { label: 'Ingest Logs', href: '/ingest-logs', icon: ClipboardList, module: 'ingest-logs' },
-  { label: 'Naukri Logs', href: '/naukri-logs', icon: ClipboardList, module: 'Naukri-logs' },
-  { label: 'Login Activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
-  // visible to every authenticated user — no module gate
-  { label: 'My Tickets', href: '/my-tickets', icon: LifeBuoy },
-  // admin-only — driven by RolePermission, not a hardcoded role name
+const NAV: NavItem[] = [
+  // ── Core ──────────────────────────────────────────────────────────────────
   {
-    label: 'System Tickets',
+    type: 'link',
+    label: 'Pipeline',
+    href: '/pipeline-stages',
+    icon: Kanban,
+    module: 'pipeline-stages',
+  },
+  { type: 'link', label: 'Reports', href: '/reports', icon: BarChart2, module: 'reports' },
+  { type: 'link', label: 'My assignments', href: '/my-assignments', icon: ClipboardList },
+  { type: 'link', label: 'Assignments', href: '/assignments', icon: ClipboardList },
+  {
+    type: 'link',
+    label: 'Requirements',
+    href: '/requirements',
+    icon: FileText,
+    module: 'requirements',
+  },
+  {
+    type: 'link',
+    label: 'Candidates',
+    href: '/candidates',
+    icon: UserSearch,
+    module: 'candidates',
+  },
+  { type: 'link', label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
+
+  { type: 'divider' },
+
+  // ── Org group ─────────────────────────────────────────────────────────────
+  {
+    type: 'group',
+    label: 'Organisation',
+    icon: Landmark,
+    key: 'org',
+    children: [
+      { label: 'Users', href: '/users', icon: Users, module: 'users' },
+      {
+        label: 'Business units',
+        href: '/business-units',
+        icon: Building2,
+        module: 'business-units',
+      },
+      { label: 'Departments', href: '/departments', icon: Layers, module: 'departments' },
+      { label: 'Service lines', href: '/service-lines', icon: GitBranch, module: 'service-lines' },
+      { label: 'Org tree', href: '/org', icon: Network },
+      { label: 'Roles', href: '/roles', icon: UserSquare2, module: 'roles' },
+    ],
+  },
+
+  { type: 'divider' },
+
+  // ── Logs group ────────────────────────────────────────────────────────────
+  {
+    type: 'group',
+    label: 'Logs',
+    icon: Database,
+    key: 'logs',
+    children: [
+      { label: 'Ingest logs', href: '/ingest-logs', icon: ClipboardList, module: 'ingest-logs' },
+      { label: 'Naukri logs', href: '/naukri-logs', icon: ClipboardList, module: 'Naukri-logs' },
+      { label: 'Login activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
+    ],
+  },
+
+  { type: 'divider' },
+
+  // ── Admin group ───────────────────────────────────────────────────────────
+  {
+    type: 'group',
+    label: 'Admin',
+    icon: SlidersHorizontal,
+    key: 'admin',
+    children: [
+      { label: 'Extension', href: '/extension', icon: Puzzle },
+      { label: 'Settings', href: '/settings', icon: Settings },
+    ],
+  },
+
+  { type: 'divider' },
+
+  // ── Always-visible flat items ─────────────────────────────────────────────
+  { type: 'link', label: 'My tickets', href: '/my-tickets', icon: LifeBuoy },
+  {
+    type: 'link',
+    label: 'System tickets',
     href: '/system-tickets',
     icon: ShieldQuestion,
     module: 'system-tickets',
   },
 ];
 
-/** Timings — tweak in one place. */
-const REVEAL_DELAY_MS = 120; // pointer must linger on the edge this long before it slides in
-const HIDE_DELAY_MS = 500; // stays visible this long after the pointer leaves
-const TRIGGER_WIDTH = 14; // px hot-zone hugging the left edge
-const HINT_AUTO_DISMISS_MS = 14000; // first-run coach mark gives up after this
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const REVEAL_DELAY_MS = 120;
+const HIDE_DELAY_MS = 500;
+const TRIGGER_WIDTH = 14;
+const HINT_AUTO_DISMISS_MS = 14000;
 
 const PIN_KEY = 'talentos.sidebar.pinned';
 const HINT_KEY = 'talentos.sidebar.hintSeen';
+
+/** Per-group open/closed state — stored in localStorage so it survives reload. */
+function groupKey(key: string) {
+  return `talentos.sidebar.group.${key}`;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export function Sidebar() {
   const [pinned, setPinned] = useState(false);
   const [visible, setVisible] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  // group open states — keyed by group.key
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,7 +187,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, can } = useAuth();
 
-  // restore preferences
+  // ── Restore preferences ──────────────────────────────────────────────────
   useEffect(() => {
     try {
       const isPinned = window.localStorage.getItem(PIN_KEY) === '1';
@@ -98,14 +196,56 @@ export function Sidebar() {
         setShowHint(true);
         hintTimer.current = setTimeout(() => setShowHint(false), HINT_AUTO_DISMISS_MS);
       }
+
+      // Restore group open states
+      const restoredGroups: Record<string, boolean> = {};
+      NAV.forEach(item => {
+        if (item.type !== 'group') return;
+        const stored = window.localStorage.getItem(groupKey(item.key));
+        // default: open if any child is currently active — handled after mount via pathname
+        restoredGroups[item.key] = stored === '1';
+      });
+      setOpenGroups(restoredGroups);
     } catch {
-      /* storage unavailable — ignore */
+      /* storage unavailable */
     }
     return () => {
       if (hintTimer.current) clearTimeout(hintTimer.current);
     };
   }, []);
 
+  // Auto-open the group that contains the current route
+  useEffect(() => {
+    NAV.forEach(item => {
+      if (item.type !== 'group') return;
+      const hasActiveChild = item.children.some(
+        c => pathname === c.href || pathname.startsWith(c.href + '/')
+      );
+      if (hasActiveChild) {
+        setOpenGroups(prev => ({ ...prev, [item.key]: true }));
+        try {
+          window.localStorage.setItem(groupKey(item.key), '1');
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setOpenGroups(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(groupKey(key), next[key] ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Hint ─────────────────────────────────────────────────────────────────
   const dismissHint = useCallback(() => {
     setShowHint(false);
     if (hintTimer.current) clearTimeout(hintTimer.current);
@@ -116,6 +256,7 @@ export function Sidebar() {
     }
   }, []);
 
+  // ── Hover timers ─────────────────────────────────────────────────────────
   const clearTimers = useCallback(() => {
     if (revealTimer.current) clearTimeout(revealTimer.current);
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -125,7 +266,6 @@ export function Sidebar() {
 
   useEffect(() => clearTimers, [clearTimers]);
 
-  // the moment they actually pull the sidebar out, the lesson is learned
   useEffect(() => {
     if (visible && showHint) dismissHint();
   }, [visible, showHint, dismissHint]);
@@ -142,7 +282,6 @@ export function Sidebar() {
     hideTimer.current = setTimeout(() => setVisible(false), HIDE_DELAY_MS);
   }, [pinned, clearTimers]);
 
-  // hovering the panel itself keeps it alive indefinitely
   const keepAlive = useCallback(() => {
     if (pinned) return;
     clearTimers();
@@ -158,44 +297,67 @@ export function Sidebar() {
         /* ignore */
       }
       clearTimers();
-      setVisible(next); // pinning => stays open, unpinning => slide away
+      setVisible(next);
       return next;
     });
   }, [clearTimers]);
 
-  // navigating away should let it retract on its own
   useEffect(() => {
     if (!pinned) scheduleHide();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  // ── RBAC helpers ─────────────────────────────────────────────────────────
   const isSuperAdmin = user?.isSuperAdmin === true;
 
-  const visibleNav = NAV.filter(item => {
-    if ('type' in item) return true;
-    // @ts-expect-error optional flag on some nav entries
+  /** Is this link visible to the current user? */
+  function linkVisible(item: { module?: string; superAdminOnly?: boolean }): boolean {
     if (item.superAdminOnly) return isSuperAdmin;
     if (isSuperAdmin) return true;
     if (!item.module) return true;
     return can(item.module, 'canView');
-  });
+  }
 
-  const cleanedNav = visibleNav.filter((item, i, arr) => {
-    if (!('type' in item)) return true;
+  /** Filter children that are visible; returns empty array if none pass. */
+  function visibleChildren(children: NavChild[]): NavChild[] {
+    return children.filter(c => linkVisible(c));
+  }
+
+  // ── Build rendered nav items ──────────────────────────────────────────────
+  const filteredNav = NAV.reduce<NavItem[]>((acc, item) => {
+    if (item.type === 'divider') {
+      acc.push(item);
+      return acc;
+    }
+    if (item.type === 'link') {
+      if (linkVisible(item)) acc.push(item);
+      return acc;
+    }
+    if (item.type === 'group') {
+      const kids = visibleChildren(item.children);
+      if (kids.length > 0) acc.push({ ...item, children: kids });
+      return acc;
+    }
+    return acc;
+  }, []);
+
+  // Strip orphan/double dividers
+  const cleanedNav = filteredNav.filter((item, i, arr) => {
+    if (item.type !== 'divider') return true;
     const prev = arr[i - 1];
     const next = arr[i + 1];
     if (!prev || !next) return false;
-    if ('type' in prev) return false;
+    if (prev.type === 'divider') return false;
     return true;
   });
 
   const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase();
-
   const shown = pinned || visible;
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Edge hot-zone — only exists while floating */}
+      {/* Edge hot-zone */}
       {!pinned && (
         <div
           aria-hidden
@@ -209,7 +371,7 @@ export function Sidebar() {
         />
       )}
 
-      {/* Permanent breadcrumb: slim pulsing grabber on the edge while hidden */}
+      {/* Pulsing grabber */}
       {!pinned && (
         <div
           aria-hidden
@@ -253,7 +415,7 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* Layout spacer — reserves width only when pinned */}
+      {/* Layout spacer */}
       <div
         className={cn(
           'shrink-0 transition-[width] duration-200 ease-in-out',
@@ -272,11 +434,11 @@ export function Sidebar() {
           !pinned && shown && 'shadow-2xl'
         )}
       >
-        {/* Logo + pin toggle */}
-        <div className="h-16 flex items-center shrink-0 w-full border-b border-border px-3.5 gap-3">
+        {/* Header */}
+        <div className="h-14 flex items-center shrink-0 w-full border-b border-border px-3.5 gap-3">
           <svg
-            width="48"
-            height="48"
+            width="32"
+            height="32"
             viewBox="0 0 32 32"
             xmlns="http://www.w3.org/2000/svg"
             className="shrink-0"
@@ -285,19 +447,17 @@ export function Sidebar() {
             <rect x="3" y="5" width="26" height="7" rx="2" fill="#4f7cff" />
             <rect x="12" y="12" width="8" height="15" rx="2" fill="#4f7cff" />
           </svg>
-
           <div className="flex flex-col items-start leading-none min-w-0">
-            <span className="text-[14px] font-bold text-foreground tracking-tight whitespace-nowrap">
+            <span className="text-[13px] font-semibold text-foreground tracking-tight whitespace-nowrap">
               TalentOS
             </span>
-            <span className="text-[9px] text-muted-foreground tracking-[0.2em] uppercase mt-1 whitespace-nowrap">
+            <span className="text-[9px] text-muted-foreground tracking-[0.2em] uppercase mt-0.5 whitespace-nowrap">
               Recruit
             </span>
           </div>
-
           <button
             onClick={togglePin}
-            title={pinned ? 'Unpin sidebar (auto-hide)' : 'Pin sidebar open'}
+            title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
             aria-pressed={pinned}
             className={cn(
               'ml-auto shrink-0 h-7 w-7 rounded-md flex items-center justify-center transition-colors',
@@ -313,36 +473,114 @@ export function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2 px-2 flex flex-col gap-0.5">
           {cleanedNav.map((item, i) => {
-            if ('type' in item) {
-              return <div key={`d-${i}`} className="h-px bg-border my-1.5 shrink-0" />;
+            // Divider
+            if (item.type === 'divider') {
+              return <div key={`d-${i}`} className="h-px bg-border my-1 shrink-0" />;
             }
 
-            const Icon = item.icon;
-            const isActive =
-              pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+            // Flat link
+            if (item.type === 'link') {
+              const Icon = item.icon;
+              const isActive =
+                pathname === item.href ||
+                (item.href !== '/' && pathname.startsWith(item.href + '/'));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-2.5 h-9 px-2.5 rounded-lg whitespace-nowrap overflow-hidden transition-colors text-sm',
+                    isActive
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-normal'
+                  )}
+                >
+                  <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : '')} />
+                  {item.label}
+                </Link>
+              );
+            }
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'relative flex items-center gap-3 h-11 px-3 rounded-lg whitespace-nowrap overflow-hidden transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )}
-              >
-                <Icon className={cn('h-6 w-6 shrink-0', isActive ? 'text-primary' : '')} />
-                <span className="text-sm font-medium">{item.label}</span>
-              </Link>
-            );
+            // Group
+            if (item.type === 'group') {
+              const GroupIcon = item.icon;
+              const isOpen = !!openGroups[item.key];
+              const hasActiveChild = item.children.some(
+                c => pathname === c.href || pathname.startsWith(c.href + '/')
+              );
+
+              return (
+                <div key={item.key}>
+                  <button
+                    onClick={() => toggleGroup(item.key)}
+                    aria-expanded={isOpen}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg transition-colors text-sm',
+                      hasActiveChild && !isOpen
+                        ? 'text-primary font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-normal'
+                    )}
+                  >
+                    <GroupIcon
+                      className={cn(
+                        'h-4 w-4 shrink-0',
+                        hasActiveChild && !isOpen ? 'text-primary' : ''
+                      )}
+                    />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <ChevronDown
+                      className={cn(
+                        'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
+                        isOpen && 'rotate-180'
+                      )}
+                    />
+                  </button>
+
+                  {/* Children */}
+                  <div
+                    className={cn(
+                      'overflow-hidden transition-all duration-200 ease-in-out',
+                      isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                    )}
+                  >
+                    <div className="mt-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-[18px]">
+                      {item.children.map(child => {
+                        const ChildIcon = child.icon;
+                        const isActive =
+                          pathname === child.href ||
+                          (child.href !== '/' && pathname.startsWith(child.href + '/'));
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={cn(
+                              'flex items-center gap-2 h-8 px-2 rounded-md text-[13px] transition-colors whitespace-nowrap overflow-hidden',
+                              isActive
+                                ? 'bg-primary/10 text-primary font-medium'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-normal'
+                            )}
+                          >
+                            <ChildIcon
+                              className={cn('h-3.5 w-3.5 shrink-0', isActive ? 'text-primary' : '')}
+                            />
+                            {child.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
           })}
         </nav>
 
         {/* User footer */}
         <div className="border-t border-border p-1.5 shrink-0">
-          <div className="flex items-center gap-2.5 px-[7px] py-1.5 rounded-md hover:bg-muted/50 transition-colors cursor-pointer overflow-hidden whitespace-nowrap">
-            <div className="h-[26px] w-[26px] rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors cursor-pointer overflow-hidden whitespace-nowrap">
+            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
               <span className="text-[10px] font-medium text-primary">{initials}</span>
             </div>
             <div className="flex flex-col leading-tight min-w-0">
