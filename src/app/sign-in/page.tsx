@@ -461,9 +461,10 @@
 // }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 'use client';
 
-import { Suspense, useEffect, useState } from 'react'; // ← add Suspense
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -497,7 +498,7 @@ function SignInForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
-  const searchParams = useSearchParams(); // ← safe inside Suspense now
+  const searchParams = useSearchParams();
   const resetToken = searchParams.get('token');
   const axios = useAxios();
 
@@ -516,8 +517,13 @@ function SignInForm() {
       await login(email, password);
       toast.success('Welcome back!');
       router.push('/dashboard');
-    } catch {
-      toast.error('Something went wrong. Please try again.');
+    } catch (error: any) {
+      // Extract the dynamic message sent from your backend
+      const errorMessage =
+        error?.response?.data?.message ??
+        error?.message ??
+        'Invalid credentials. Please try again.';
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
