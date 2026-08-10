@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Puzzle, Chrome, FileText, Bot, CopyCheck, Link2, ShieldCheck, Lock } from 'lucide-react';
 
 const EXTENSION_URL =
-  'https://chromewebstore.google.com/detail/neaimkdnjdeklcnjeedncfhgconnfffd?utm_source=item-share-cb';
+  'https://chromewebstore.google.com/detail/dlfooldlaidjhcnhnlhhmblambjedgif?utm_source=item-share-cb';
 
 const STEPS = [
   {
