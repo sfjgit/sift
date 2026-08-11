@@ -266,7 +266,7 @@ export function AnchoredPanel({
   return createPortal(
     <div
       ref={panelRef}
-      className="fixed z-[100] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+      className="fixed z-100 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
       style={{
         top: pos.top,
         left: pos.left,

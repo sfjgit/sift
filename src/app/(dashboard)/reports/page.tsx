@@ -1946,7 +1946,7 @@ type WindowMode = 'preset' | 'hours' | 'range';
 
 interface WinState {
   mode: WindowMode;
-  range: '' | 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth';
+  range: 'All time' | 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth';
   hours: number;
   fromDate: string;
   toDate: string;
@@ -1954,13 +1954,14 @@ interface WinState {
 
 const DEFAULT_WIN: WinState = {
   mode: 'preset',
-  range: '',
+  range: 'All time',
   hours: 8,
   fromDate: '',
   toDate: '',
 };
 
 const PRESETS: { k: WinState['range']; l: string }[] = [
+  { k: 'All time', l: 'All time' },
   { k: 'today', l: 'Today' },
   { k: 'yesterday', l: 'Yesterday' },
   { k: 'last7', l: 'Last 7 days' },
@@ -2067,7 +2068,7 @@ function TimeSeriesChart({
     granularity === 'hour' ? format(new Date(b), 'dd MMM HH:mm') : format(new Date(b), 'dd MMM');
   return (
     <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H + 24}`} className="w-full min-w-[520px]">
+      <svg viewBox={`0 0 ${W} ${H + 24}`} className="w-full min-w-130">
         <defs>
           <linearGradient id="tsGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4F46E5" stopOpacity="0.35" />
@@ -2456,7 +2457,7 @@ function FiltersBar({
         </Select>
 
         {/* ── Row 3: status — requirements tab only ── */}
-        {activeTab === 'requirements' && (
+        {(activeTab === 'requirements' || activeTab === 'recruiters') && (
           <>
             <Select
               value={filters.status ?? 'ALL'}
