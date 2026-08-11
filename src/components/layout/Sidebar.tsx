@@ -9,6 +9,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
+  LayoutDashboard,
   FileText,
   Users,
   Building2,
@@ -31,25 +32,14 @@ import {
   ShieldQuestion,
   ChevronDown,
   Database,
-  SlidersHorizontal,
   Landmark,
+  Ticket,
+  BriefcaseBusiness,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
-// Nav structure
+// Types
 // ---------------------------------------------------------------------------
-
-type NavItem =
-  | { type: 'divider' }
-  | {
-      type: 'link';
-      label: string;
-      href: string;
-      icon: React.ElementType;
-      module?: string;
-      superAdminOnly?: boolean;
-    }
-  | { type: 'group'; label: string; icon: React.ElementType; key: string; children: NavChild[] };
 
 type NavChild = {
   label: string;
@@ -59,25 +49,53 @@ type NavChild = {
   superAdminOnly?: boolean;
 };
 
+type NavLink = {
+  type: 'link';
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  module?: string;
+  superAdminOnly?: boolean;
+};
+
+type NavGroup = {
+  type: 'group';
+  label: string;
+  icon: React.ElementType;
+  key: string;
+  children: NavChild[];
+};
+
+type NavDivider = { type: 'divider' };
+
+type NavItem = NavLink | NavGroup | NavDivider;
+
+// ---------------------------------------------------------------------------
+// Nav definition
+// ---------------------------------------------------------------------------
+
 const NAV: NavItem[] = [
-  // ── Core ──────────────────────────────────────────────────────────────────
   {
     type: 'link',
-    label: 'Pipeline',
-    href: '/pipeline-stages',
-    icon: Kanban,
-    module: 'pipeline-stages',
+    label: 'Dashboard',
+    href: '/dashboard',
+    icon: LayoutDashboard,
   },
-  { type: 'link', label: 'Reports', href: '/reports', icon: BarChart2, module: 'reports' },
-  { type: 'link', label: 'My assignments', href: '/my-assignments', icon: ClipboardList },
-  { type: 'link', label: 'Assignments', href: '/assignments', icon: ClipboardList },
+
+  { type: 'divider' },
+
   {
-    type: 'link',
-    label: 'Requirements',
-    href: '/requirements',
-    icon: FileText,
-    module: 'requirements',
+    type: 'group',
+    label: 'Jobs',
+    icon: BriefcaseBusiness,
+    key: 'jobs',
+    children: [
+      { label: 'Requirements', href: '/requirements', icon: FileText, module: 'requirements' },
+      { label: 'Assignments', href: '/assignments', icon: ClipboardList },
+      { label: 'My assignments', href: '/my-assignments', icon: ClipboardList },
+    ],
   },
+
   {
     type: 'link',
     label: 'Candidates',
@@ -86,16 +104,17 @@ const NAV: NavItem[] = [
     module: 'candidates',
   },
   { type: 'link', label: 'Clients', href: '/clients', icon: Briefcase, module: 'clients' },
+  { type: 'link', label: 'Reports', href: '/reports', icon: BarChart2, module: 'reports' },
 
   { type: 'divider' },
 
-  // ── Org group ─────────────────────────────────────────────────────────────
   {
     type: 'group',
     label: 'Organisation',
     icon: Landmark,
     key: 'org',
     children: [
+      { label: 'Pipeline', href: '/pipeline-stages', icon: Kanban, module: 'pipeline-stages' },
       { label: 'Users', href: '/users', icon: Users, module: 'users' },
       {
         label: 'Business units',
@@ -110,9 +129,6 @@ const NAV: NavItem[] = [
     ],
   },
 
-  { type: 'divider' },
-
-  // ── Logs group ────────────────────────────────────────────────────────────
   {
     type: 'group',
     label: 'Logs',
@@ -125,31 +141,26 @@ const NAV: NavItem[] = [
     ],
   },
 
-  { type: 'divider' },
-
-  // ── Admin group ───────────────────────────────────────────────────────────
   {
     type: 'group',
-    label: 'Admin',
-    icon: SlidersHorizontal,
-    key: 'admin',
+    label: 'Tickets',
+    icon: Ticket,
+    key: 'tickets',
     children: [
-      { label: 'Extension', href: '/extension', icon: Puzzle },
-      { label: 'Settings', href: '/settings', icon: Settings },
+      { label: 'My tickets', href: '/my-tickets', icon: LifeBuoy },
+      {
+        label: 'System tickets',
+        href: '/system-tickets',
+        icon: ShieldQuestion,
+        module: 'system-tickets',
+      },
     ],
   },
 
   { type: 'divider' },
 
-  // ── Always-visible flat items ─────────────────────────────────────────────
-  { type: 'link', label: 'My tickets', href: '/my-tickets', icon: LifeBuoy },
-  {
-    type: 'link',
-    label: 'System tickets',
-    href: '/system-tickets',
-    icon: ShieldQuestion,
-    module: 'system-tickets',
-  },
+  { type: 'link', label: 'Extension', href: '/extension', icon: Puzzle },
+  { type: 'link', label: 'Settings', href: '/settings', icon: Settings },
 ];
 
 // ---------------------------------------------------------------------------
@@ -164,8 +175,7 @@ const HINT_AUTO_DISMISS_MS = 14000;
 const PIN_KEY = 'talentos.sidebar.pinned';
 const HINT_KEY = 'talentos.sidebar.hintSeen';
 
-/** Per-group open/closed state — stored in localStorage so it survives reload. */
-function groupKey(key: string) {
+function groupStorageKey(key: string) {
   return `talentos.sidebar.group.${key}`;
 }
 
@@ -177,7 +187,6 @@ export function Sidebar() {
   const [pinned, setPinned] = useState(false);
   const [visible, setVisible] = useState(false);
   const [showHint, setShowHint] = useState(false);
-  // group open states — keyed by group.key
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,23 +196,21 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, can } = useAuth();
 
-  // ── Restore preferences ──────────────────────────────────────────────────
+  // ── Restore persisted preferences ────────────────────────────────────────
   useEffect(() => {
     try {
       const isPinned = window.localStorage.getItem(PIN_KEY) === '1';
       if (isPinned) setPinned(true);
+
       if (!isPinned && window.localStorage.getItem(HINT_KEY) !== '1') {
         setShowHint(true);
         hintTimer.current = setTimeout(() => setShowHint(false), HINT_AUTO_DISMISS_MS);
       }
 
-      // Restore group open states
       const restoredGroups: Record<string, boolean> = {};
       NAV.forEach(item => {
         if (item.type !== 'group') return;
-        const stored = window.localStorage.getItem(groupKey(item.key));
-        // default: open if any child is currently active — handled after mount via pathname
-        restoredGroups[item.key] = stored === '1';
+        restoredGroups[item.key] = window.localStorage.getItem(groupStorageKey(item.key)) === '1';
       });
       setOpenGroups(restoredGroups);
     } catch {
@@ -214,7 +221,7 @@ export function Sidebar() {
     };
   }, []);
 
-  // Auto-open the group that contains the current route
+  // Auto-open group that contains the active route
   useEffect(() => {
     NAV.forEach(item => {
       if (item.type !== 'group') return;
@@ -224,7 +231,7 @@ export function Sidebar() {
       if (hasActiveChild) {
         setOpenGroups(prev => ({ ...prev, [item.key]: true }));
         try {
-          window.localStorage.setItem(groupKey(item.key), '1');
+          window.localStorage.setItem(groupStorageKey(item.key), '1');
         } catch {
           /* ignore */
         }
@@ -237,7 +244,7 @@ export function Sidebar() {
     setOpenGroups(prev => {
       const next = { ...prev, [key]: !prev[key] };
       try {
-        window.localStorage.setItem(groupKey(key), next[key] ? '1' : '0');
+        window.localStorage.setItem(groupStorageKey(key), next[key] ? '1' : '0');
       } catch {
         /* ignore */
       }
@@ -307,10 +314,9 @@ export function Sidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // ── RBAC helpers ─────────────────────────────────────────────────────────
+  // ── RBAC ─────────────────────────────────────────────────────────────────
   const isSuperAdmin = user?.isSuperAdmin === true;
 
-  /** Is this link visible to the current user? */
   function linkVisible(item: { module?: string; superAdminOnly?: boolean }): boolean {
     if (item.superAdminOnly) return isSuperAdmin;
     if (isSuperAdmin) return true;
@@ -318,12 +324,7 @@ export function Sidebar() {
     return can(item.module, 'canView');
   }
 
-  /** Filter children that are visible; returns empty array if none pass. */
-  function visibleChildren(children: NavChild[]): NavChild[] {
-    return children.filter(c => linkVisible(c));
-  }
-
-  // ── Build rendered nav items ──────────────────────────────────────────────
+  // ── Filter + clean nav ────────────────────────────────────────────────────
   const filteredNav = NAV.reduce<NavItem[]>((acc, item) => {
     if (item.type === 'divider') {
       acc.push(item);
@@ -334,14 +335,13 @@ export function Sidebar() {
       return acc;
     }
     if (item.type === 'group') {
-      const kids = visibleChildren(item.children);
+      const kids = item.children.filter(c => linkVisible(c));
       if (kids.length > 0) acc.push({ ...item, children: kids });
       return acc;
     }
     return acc;
   }, []);
 
-  // Strip orphan/double dividers
   const cleanedNav = filteredNav.filter((item, i, arr) => {
     if (item.type !== 'divider') return true;
     const prev = arr[i - 1];
@@ -473,12 +473,11 @@ export function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2 px-2 flex flex-col gap-0.5">
           {cleanedNav.map((item, i) => {
-            // Divider
             if (item.type === 'divider') {
               return <div key={`d-${i}`} className="h-px bg-border my-1 shrink-0" />;
             }
 
-            // Flat link
+            // ── Flat link ──────────────────────────────────────────────────
             if (item.type === 'link') {
               const Icon = item.icon;
               const isActive =
@@ -489,19 +488,30 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-2.5 h-9 px-2.5 rounded-lg whitespace-nowrap overflow-hidden transition-colors text-sm',
+                    'flex items-center gap-3 h-10 px-2.5 rounded-lg whitespace-nowrap overflow-hidden transition-colors',
                     isActive
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-normal'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
                   )}
                 >
-                  <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : '')} />
-                  {item.label}
+                  {/* filled icon via strokeWidth=0 + fill trick; falls back to stroked if fill not available */}
+                  <Icon
+                    className={cn(
+                      'h-5 w-5 shrink-0',
+                      isActive ? 'text-primary' : 'text-foreground/60'
+                    )}
+                    strokeWidth={isActive ? 2.2 : 1.8}
+                    fill={isActive ? 'currentColor' : 'none'}
+                    style={isActive ? { opacity: 1 } : undefined}
+                  />
+                  <span className={cn('text-[13.5px]', isActive ? 'font-semibold' : 'font-medium')}>
+                    {item.label}
+                  </span>
                 </Link>
               );
             }
 
-            // Group
+            // ── Group ──────────────────────────────────────────────────────
             if (item.type === 'group') {
               const GroupIcon = item.icon;
               const isOpen = !!openGroups[item.key];
@@ -515,24 +525,34 @@ export function Sidebar() {
                     onClick={() => toggleGroup(item.key)}
                     aria-expanded={isOpen}
                     className={cn(
-                      'w-full flex items-center gap-2.5 h-9 px-2.5 rounded-lg transition-colors text-sm',
+                      'w-full flex items-center gap-3 h-10 px-2.5 rounded-lg transition-colors',
                       hasActiveChild && !isOpen
-                        ? 'text-primary font-medium'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-normal'
+                        ? 'text-primary'
+                        : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
                     )}
                   >
                     <GroupIcon
                       className={cn(
-                        'h-4 w-4 shrink-0',
-                        hasActiveChild && !isOpen ? 'text-primary' : ''
+                        'h-5 w-5 shrink-0',
+                        hasActiveChild && !isOpen ? 'text-primary' : 'text-foreground/60'
                       )}
+                      strokeWidth={hasActiveChild && !isOpen ? 2.2 : 1.8}
+                      fill={hasActiveChild && !isOpen ? 'currentColor' : 'none'}
                     />
-                    <span className="flex-1 text-left">{item.label}</span>
+                    <span
+                      className={cn(
+                        'flex-1 text-left text-[13.5px]',
+                        hasActiveChild && !isOpen ? 'font-semibold' : 'font-medium'
+                      )}
+                    >
+                      {item.label}
+                    </span>
                     <ChevronDown
                       className={cn(
-                        'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
+                        'h-4 w-4 shrink-0 text-foreground/40 transition-transform duration-200',
                         isOpen && 'rotate-180'
                       )}
+                      strokeWidth={2}
                     />
                   </button>
 
@@ -543,7 +563,7 @@ export function Sidebar() {
                       isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
                     )}
                   >
-                    <div className="mt-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-[18px]">
+                    <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-[18px]">
                       {item.children.map(child => {
                         const ChildIcon = child.icon;
                         const isActive =
@@ -554,16 +574,28 @@ export function Sidebar() {
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              'flex items-center gap-2 h-8 px-2 rounded-md text-[13px] transition-colors whitespace-nowrap overflow-hidden',
+                              'flex items-center gap-2.5 h-9 px-2 rounded-md whitespace-nowrap overflow-hidden transition-colors',
                               isActive
-                                ? 'bg-primary/10 text-primary font-medium'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 font-normal'
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-foreground/60 hover:text-foreground hover:bg-muted/60'
                             )}
                           >
                             <ChildIcon
-                              className={cn('h-3.5 w-3.5 shrink-0', isActive ? 'text-primary' : '')}
+                              className={cn(
+                                'h-[18px] w-[18px] shrink-0',
+                                isActive ? 'text-primary' : 'text-foreground/50'
+                              )}
+                              strokeWidth={isActive ? 2.2 : 1.8}
+                              fill={isActive ? 'currentColor' : 'none'}
                             />
-                            {child.label}
+                            <span
+                              className={cn(
+                                'text-[13px]',
+                                isActive ? 'font-semibold' : 'font-medium'
+                              )}
+                            >
+                              {child.label}
+                            </span>
                           </Link>
                         );
                       })}
@@ -579,15 +611,15 @@ export function Sidebar() {
 
         {/* User footer */}
         <div className="border-t border-border p-1.5 shrink-0">
-          <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors cursor-pointer overflow-hidden whitespace-nowrap">
-            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-[10px] font-medium text-primary">{initials}</span>
+          <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/60 transition-colors cursor-pointer overflow-hidden whitespace-nowrap">
+            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-[11px] font-semibold text-primary">{initials}</span>
             </div>
             <div className="flex flex-col leading-tight min-w-0">
-              <span className="text-[11px] font-medium text-foreground truncate">
+              <span className="text-[12px] font-semibold text-foreground truncate">
                 {user?.firstName} {user?.lastName}
               </span>
-              <span className="text-[10px] text-muted-foreground truncate">
+              <span className="text-[11px] text-foreground/50 truncate">
                 {user?.role?.name?.replace(/_/g, ' ')}
               </span>
             </div>
