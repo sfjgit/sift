@@ -6,21 +6,21 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
   ChevronDown,
-  UserPlus,
+  // UserPlus,
   MapPin,
   Building2,
   Zap,
   X,
   FileText,
-  Database,
-  Globe,
-  ExternalLink,
+  // Database,
+  // Globe,
+  // ExternalLink,
   Pencil,
   Phone,
   Mail,
@@ -44,7 +44,7 @@ import {
   XCircle,
   LogOut,
   MoreHorizontal,
-  CheckCircle2,
+  // CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -94,6 +94,7 @@ import {
   RequirementActivityTab,
 } from '@/components/requirements/RequirementNotesDocsActivityTabs';
 import { RequirementAssignmentsTab } from './_components/RequirementAssignmentsTab';
+import { ApplicantsList, RecruiterOption } from './_components/ApplicantsList';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -340,35 +341,35 @@ const formatMins = (mins: number | null) => {
   return `${Math.floor(d / 30)}mo`;
 };
 
-const PORTAL_APPS = [
-  {
-    appName: 'NAUKRI',
-    displayName: 'Naukri',
-    url: 'https://resdex.naukri.com',
-    bg: 'bg-orange-100',
-    short: 'N',
-    color: 'text-orange-700',
-    desc: 'Source from Naukri Resdex',
-  },
-  {
-    appName: 'LINKEDIN',
-    displayName: 'LinkedIn',
-    url: 'https://www.linkedin.com/talent/home',
-    bg: 'bg-blue-100',
-    short: 'in',
-    color: 'text-blue-800',
-    desc: 'Source from LinkedIn Recruiter',
-  },
-  {
-    appName: 'FOUNDIT',
-    displayName: 'Foundit',
-    url: 'https://www.foundit.in/recruiter',
-    bg: 'bg-purple-100',
-    short: 'F',
-    color: 'text-purple-700',
-    desc: 'Source from Foundit (Monster)',
-  },
-];
+// const PORTAL_APPS = [
+//   {
+//     appName: 'NAUKRI',
+//     displayName: 'Naukri',
+//     url: 'https://resdex.naukri.com',
+//     bg: 'bg-orange-100',
+//     short: 'N',
+//     color: 'text-orange-700',
+//     desc: 'Source from Naukri Resdex',
+//   },
+//   {
+//     appName: 'LINKEDIN',
+//     displayName: 'LinkedIn',
+//     url: 'https://www.linkedin.com/talent/home',
+//     bg: 'bg-blue-100',
+//     short: 'in',
+//     color: 'text-blue-800',
+//     desc: 'Source from LinkedIn Recruiter',
+//   },
+//   {
+//     appName: 'FOUNDIT',
+//     displayName: 'Foundit',
+//     url: 'https://www.foundit.in/recruiter',
+//     bg: 'bg-purple-100',
+//     short: 'F',
+//     color: 'text-purple-700',
+//     desc: 'Source from Foundit (Monster)',
+//   },
+// ];
 // function triggerExtension(rId: string, rCode: string, rTitle: string, app: string) {
 //   window.postMessage(
 //     {
@@ -386,330 +387,330 @@ const PORTAL_APPS = [
 // UPLOAD RESUME MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-function UploadResumeModal({
-  open,
-  onClose,
-  req,
-  // assignments,
-}: {
-  open: boolean;
-  onClose: () => void;
-  req: any;
-}) {
-  const axios = useAxios();
-  const qc = useQueryClient();
-  const [file, setFile] = useState<File | null>(null);
-  const [dragOver, setDragOver] = useState(false);
+// function UploadResumeModal({
+//   open,
+//   onClose,
+//   req,
+//   // assignments,
+// }: {
+//   open: boolean;
+//   onClose: () => void;
+//   req: any;
+// }) {
+//   const axios = useAxios();
+//   const qc = useQueryClient();
+//   const [file, setFile] = useState<File | null>(null);
+//   const [dragOver, setDragOver] = useState(false);
 
-  const ALLOWED = [
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/msword',
-    'application/rtf',
-    'text/rtf',
-  ];
-  const ALLOWED_EXT = '.pdf, .docx, .doc, .rtf';
+//   const ALLOWED = [
+//     'application/pdf',
+//     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+//     'application/msword',
+//     'application/rtf',
+//     'text/rtf',
+//   ];
+//   const ALLOWED_EXT = '.pdf, .docx, .doc, .rtf';
 
-  const mut = useMutation({
-    mutationFn: async () => {
-      if (!file) throw new Error('No file selected');
-      const form = new FormData();
-      form.append('file', file, file.name); // ← pass filename as 3rd arg
-      form.append('fileName', file.name);
-      form.append('mimeType', file.type);
-      form.append('requirementId', req.id);
-      form.append('reqCode', req.reqCode);
-      return axios.post('/candidate/api/resume/ingest', form, {
-        baseURL: '/api/proxy',
-        withCredentials: true,
-        headers: { 'Content-Type': undefined }, // ← let browser set multipart boundary
-        transformRequest: data => data, // ← prevent axios from re-serializing FormData
-      });
-    },
-    onSuccess: () => {
-      toast.success('Resume uploaded and parsed successfully');
-      qc.invalidateQueries({ queryKey: ['requirement-candidates', req.id] });
-      qc.invalidateQueries({ queryKey: ['requirement-detail', req.id] });
-      onClose();
-      setFile(null);
-    },
-    onError: (e: any) => {
-      const msg = e?.response?.data?.message ?? e?.message ?? 'Upload failed';
-      toast.error(msg);
-    },
-  });
+//   const mut = useMutation({
+//     mutationFn: async () => {
+//       if (!file) throw new Error('No file selected');
+//       const form = new FormData();
+//       form.append('file', file, file.name); // ← pass filename as 3rd arg
+//       form.append('fileName', file.name);
+//       form.append('mimeType', file.type);
+//       form.append('requirementId', req.id);
+//       form.append('reqCode', req.reqCode);
+//       return axios.post('/candidate/api/resume/ingest', form, {
+//         baseURL: '/api/proxy',
+//         withCredentials: true,
+//         headers: { 'Content-Type': undefined }, // ← let browser set multipart boundary
+//         transformRequest: data => data, // ← prevent axios from re-serializing FormData
+//       });
+//     },
+//     onSuccess: () => {
+//       toast.success('Resume uploaded and parsed successfully');
+//       qc.invalidateQueries({ queryKey: ['requirement-candidates', req.id] });
+//       qc.invalidateQueries({ queryKey: ['requirement-detail', req.id] });
+//       onClose();
+//       setFile(null);
+//     },
+//     onError: (e: any) => {
+//       const msg = e?.response?.data?.message ?? e?.message ?? 'Upload failed';
+//       toast.error(msg);
+//     },
+//   });
 
-  const handleFile = (f: File) => {
-    if (!ALLOWED.includes(f.type)) {
-      toast.error('Invalid file type. Only PDF, DOCX, DOC, RTF allowed.');
-      return;
-    }
-    if (f.size > 20 * 1024 * 1024) {
-      toast.error('File too large. Max 20MB.');
-      return;
-    }
-    setFile(f);
-  };
+//   const handleFile = (f: File) => {
+//     if (!ALLOWED.includes(f.type)) {
+//       toast.error('Invalid file type. Only PDF, DOCX, DOC, RTF allowed.');
+//       return;
+//     }
+//     if (f.size > 20 * 1024 * 1024) {
+//       toast.error('File too large. Max 20MB.');
+//       return;
+//     }
+//     setFile(f);
+//   };
 
-  if (!open) return null;
+//   if (!open) return null;
 
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={v => {
-        if (!v) {
-          onClose();
-          setFile(null);
-        }
-      }}
-    >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base font-bold">
-            <FileText className="w-4 h-4 text-emerald-600" />
-            Upload Resume
-          </DialogTitle>
-        </DialogHeader>
+//   return (
+//     <Dialog
+//       open={open}
+//       onOpenChange={v => {
+//         if (!v) {
+//           onClose();
+//           setFile(null);
+//         }
+//       }}
+//     >
+//       <DialogContent className="max-w-md">
+//         <DialogHeader>
+//           <DialogTitle className="flex items-center gap-2 text-base font-bold">
+//             <FileText className="w-4 h-4 text-emerald-600" />
+//             Upload Resume
+//           </DialogTitle>
+//         </DialogHeader>
 
-        <div className="space-y-4 py-1">
-          {/* Requirement context pill */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-            <span className="text-xs font-bold text-slate-500 font-mono">{req.reqCode}</span>
-            <span className="text-xs text-slate-400">·</span>
-            <span className="text-xs font-semibold text-slate-700 truncate">{req.title}</span>
-          </div>
+//         <div className="space-y-4 py-1">
+//           {/* Requirement context pill */}
+//           <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+//             <span className="text-xs font-bold text-slate-500 font-mono">{req.reqCode}</span>
+//             <span className="text-xs text-slate-400">·</span>
+//             <span className="text-xs font-semibold text-slate-700 truncate">{req.title}</span>
+//           </div>
 
-          {/* Drop zone */}
-          <div
-            onDragOver={e => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => {
-              e.preventDefault();
-              setDragOver(false);
-              const f = e.dataTransfer.files[0];
-              if (f) handleFile(f);
-            }}
-            className={`relative border-2 border-dashed rounded-xl transition-colors cursor-pointer ${
-              dragOver
-                ? 'border-primary bg-primary/5'
-                : file
-                  ? 'border-emerald-400 bg-emerald-50'
-                  : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-            }`}
-            onClick={() => document.getElementById('resume-file-input')?.click()}
-          >
-            <input
-              id="resume-file-input"
-              type="file"
-              accept=".pdf,.docx,.doc,.rtf"
-              className="hidden"
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-              }}
-            />
-            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-              {file ? (
-                <>
-                  <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
-                    <FileText className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <p className="text-sm font-bold text-emerald-800 truncate max-w-60">
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-emerald-600 mt-1">
-                    {(file.size / 1024).toFixed(0)} KB · Click to change
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-3">
-                    <FileText className="w-6 h-6 text-slate-400" />
-                  </div>
-                  <p className="text-sm font-semibold text-slate-700">
-                    Drop resume here or <span className="text-primary">browse</span>
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">{ALLOWED_EXT} · Max 20 MB</p>
-                </>
-              )}
-            </div>
-          </div>
+//           {/* Drop zone */}
+//           <div
+//             onDragOver={e => {
+//               e.preventDefault();
+//               setDragOver(true);
+//             }}
+//             onDragLeave={() => setDragOver(false)}
+//             onDrop={e => {
+//               e.preventDefault();
+//               setDragOver(false);
+//               const f = e.dataTransfer.files[0];
+//               if (f) handleFile(f);
+//             }}
+//             className={`relative border-2 border-dashed rounded-xl transition-colors cursor-pointer ${
+//               dragOver
+//                 ? 'border-primary bg-primary/5'
+//                 : file
+//                   ? 'border-emerald-400 bg-emerald-50'
+//                   : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+//             }`}
+//             onClick={() => document.getElementById('resume-file-input')?.click()}
+//           >
+//             <input
+//               id="resume-file-input"
+//               type="file"
+//               accept=".pdf,.docx,.doc,.rtf"
+//               className="hidden"
+//               onChange={e => {
+//                 const f = e.target.files?.[0];
+//                 if (f) handleFile(f);
+//               }}
+//             />
+//             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+//               {file ? (
+//                 <>
+//                   <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
+//                     <FileText className="w-6 h-6 text-emerald-600" />
+//                   </div>
+//                   <p className="text-sm font-bold text-emerald-800 truncate max-w-60">
+//                     {file.name}
+//                   </p>
+//                   <p className="text-xs text-emerald-600 mt-1">
+//                     {(file.size / 1024).toFixed(0)} KB · Click to change
+//                   </p>
+//                 </>
+//               ) : (
+//                 <>
+//                   <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-3">
+//                     <FileText className="w-6 h-6 text-slate-400" />
+//                   </div>
+//                   <p className="text-sm font-semibold text-slate-700">
+//                     Drop resume here or <span className="text-primary">browse</span>
+//                   </p>
+//                   <p className="text-xs text-slate-400 mt-1">{ALLOWED_EXT} · Max 20 MB</p>
+//                 </>
+//               )}
+//             </div>
+//           </div>
 
-          {/* Upload progress hint */}
-          {mut.isPending && (
-            <div className="flex items-center gap-2 text-sm text-slate-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-500 shrink-0" />
-              <span>Uploading and parsing with AI... this may take a moment</span>
-            </div>
-          )}
-        </div>
+//           {/* Upload progress hint */}
+//           {mut.isPending && (
+//             <div className="flex items-center gap-2 text-sm text-slate-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5">
+//               <Loader2 className="w-4 h-4 animate-spin text-blue-500 shrink-0" />
+//               <span>Uploading and parsing with AI... this may take a moment</span>
+//             </div>
+//           )}
+//         </div>
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              onClose();
-              setFile(null);
-            }}
-            disabled={mut.isPending}
-          >
-            Cancel
-          </Button>
-          <Button disabled={!file || mut.isPending} onClick={() => mut.mutate()} className="gap-2">
-            {mut.isPending ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Parsing...
-              </>
-            ) : (
-              <>
-                <FileText className="w-3.5 h-3.5" />
-                Upload & Parse
-              </>
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+//         <DialogFooter>
+//           <Button
+//             variant="outline"
+//             onClick={() => {
+//               onClose();
+//               setFile(null);
+//             }}
+//             disabled={mut.isPending}
+//           >
+//             Cancel
+//           </Button>
+//           <Button disabled={!file || mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+//             {mut.isPending ? (
+//               <>
+//                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
+//                 Parsing...
+//               </>
+//             ) : (
+//               <>
+//                 <FileText className="w-3.5 h-3.5" />
+//                 Upload & Parse
+//               </>
+//             )}
+//           </Button>
+//         </DialogFooter>
+//       </DialogContent>
+//     </Dialog>
+//   );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD CANDIDATE MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-function AddCandidateModal({
-  open,
-  onClose,
-  req,
-  assignments,
-}: {
-  open: boolean;
-  onClose: () => void;
-  req: any;
-  assignments: Assignment[];
-}) {
-  const [portalExpanded, setPortalExpanded] = useState(false);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  if (!open) return null;
-  return (
-    <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative z-10 w-full max-w-[440px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
-          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                <UserPlus className="w-4.5 h-4.5 text-primary" />
-              </div>
-              {/* <div>
-                <h2 className="text-base font-bold text-slate-900">Add Candidate</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Choose how to source</p>
-              </div> */}
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="px-3 py-3 space-y-1">
-            {[
-              {
-                iconBg: 'bg-rose-100',
-                icon: <Pencil className="w-4 h-4 text-rose-600" />,
-                title: 'Enter Manually',
-                desc: 'Type in candidate details',
-              },
-              {
-                iconBg: 'bg-emerald-100',
-                icon: <FileText className="w-4 h-4 text-emerald-700" />,
-                title: 'Upload Resume',
-                desc: 'PDF parsed with AI instantly',
-                onClickOverride: () => setUploadOpen(true),
-              },
-              {
-                iconBg: 'bg-blue-100',
-                icon: <Database className="w-4 h-4 text-blue-600" />,
-                title: 'From Database',
-                desc: 'Search existing candidate pool',
-              },
-            ].map(row => (
-              <button
-                key={row.title}
-                onClick={(row as any).onClickOverride ?? onClose}
-                className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-left group"
-              >
-                <div
-                  className={`w-10 h-10 rounded-xl ${row.iconBg} flex items-center justify-center shrink-0`}
-                >
-                  {row.icon}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-slate-900">{row.title}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{row.desc}</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
-              </button>
-            ))}
-            <div>
-              <button
-                onClick={() => setPortalExpanded(v => !v)}
-                className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                  <Globe className="w-4 h-4 text-amber-700" />
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-sm font-semibold text-slate-900">Portal Recruit</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Source directly from job boards</p>
-                </div>
-                <div
-                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
-                >
-                  {portalExpanded ? '−' : '+'}
-                </div>
-              </button>
-              {portalExpanded && (
-                <div className="ml-14 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
-                  {PORTAL_APPS.map(app => (
-                    <a
-                      key={app.appName}
-                      href={app.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        // triggerExtension(req.id, req.reqCode, req.title, app.appName);
-                        onClose();
-                      }}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
-                      >
-                        <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-slate-800">{app.displayName}</p>
-                        <p className="text-xs text-slate-500">{app.desc}</p>
-                      </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-      <UploadResumeModal open={uploadOpen} onClose={() => setUploadOpen(false)} req={req} />
-    </>
-  );
-}
+// function AddCandidateModal({
+//   open,
+//   onClose,
+//   req,
+//   assignments,
+// }: {
+//   open: boolean;
+//   onClose: () => void;
+//   req: any;
+//   assignments: Assignment[];
+// }) {
+//   const [portalExpanded, setPortalExpanded] = useState(false);
+//   const [uploadOpen, setUploadOpen] = useState(false);
+//   if (!open) return null;
+//   return (
+//     <>
+//       <div className="fixed inset-0 z-50 flex items-center justify-center">
+//         <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+//         <div className="relative z-10 w-full max-w-[440px] rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+//           <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100">
+//             <div className="flex items-center gap-3">
+//               <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+//                 <UserPlus className="w-4.5 h-4.5 text-primary" />
+//               </div>
+//               {/* <div>
+//                 <h2 className="text-base font-bold text-slate-900">Add Candidate</h2>
+//                 <p className="text-xs text-slate-500 mt-0.5">Choose how to source</p>
+//               </div> */}
+//             </div>
+//             <button
+//               onClick={onClose}
+//               className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
+//             >
+//               <X className="w-4 h-4" />
+//             </button>
+//           </div>
+//           <div className="px-3 py-3 space-y-1">
+//             {[
+//               {
+//                 iconBg: 'bg-rose-100',
+//                 icon: <Pencil className="w-4 h-4 text-rose-600" />,
+//                 title: 'Enter Manually',
+//                 desc: 'Type in candidate details',
+//               },
+//               {
+//                 iconBg: 'bg-emerald-100',
+//                 icon: <FileText className="w-4 h-4 text-emerald-700" />,
+//                 title: 'Upload Resume',
+//                 desc: 'PDF parsed with AI instantly',
+//                 onClickOverride: () => setUploadOpen(true),
+//               },
+//               {
+//                 iconBg: 'bg-blue-100',
+//                 icon: <Database className="w-4 h-4 text-blue-600" />,
+//                 title: 'From Database',
+//                 desc: 'Search existing candidate pool',
+//               },
+//             ].map(row => (
+//               <button
+//                 key={row.title}
+//                 onClick={(row as any).onClickOverride ?? onClose}
+//                 className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors text-left group"
+//               >
+//                 <div
+//                   className={`w-10 h-10 rounded-xl ${row.iconBg} flex items-center justify-center shrink-0`}
+//                 >
+//                   {row.icon}
+//                 </div>
+//                 <div className="flex-1">
+//                   <p className="text-sm font-semibold text-slate-900">{row.title}</p>
+//                   <p className="text-xs text-slate-500 mt-0.5">{row.desc}</p>
+//                 </div>
+//                 <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0" />
+//               </button>
+//             ))}
+//             <div>
+//               <button
+//                 onClick={() => setPortalExpanded(v => !v)}
+//                 className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 transition-colors group"
+//               >
+//                 <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+//                   <Globe className="w-4 h-4 text-amber-700" />
+//                 </div>
+//                 <div className="flex-1 text-left">
+//                   <p className="text-sm font-semibold text-slate-900">Portal Recruit</p>
+//                   <p className="text-xs text-slate-500 mt-0.5">Source directly from job boards</p>
+//                 </div>
+//                 <div
+//                   className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${portalExpanded ? 'border-primary bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
+//                 >
+//                   {portalExpanded ? '−' : '+'}
+//                 </div>
+//               </button>
+//               {portalExpanded && (
+//                 <div className="ml-14 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
+//                   {PORTAL_APPS.map(app => (
+//                     <a
+//                       key={app.appName}
+//                       href={app.url}
+//                       target="_blank"
+//                       rel="noopener noreferrer"
+//                       onClick={() => {
+//                         // triggerExtension(req.id, req.reqCode, req.title, app.appName);
+//                         onClose();
+//                       }}
+//                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
+//                     >
+//                       <div
+//                         className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
+//                       >
+//                         <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
+//                       </div>
+//                       <div className="flex-1">
+//                         <p className="text-sm font-semibold text-slate-800">{app.displayName}</p>
+//                         <p className="text-xs text-slate-500">{app.desc}</p>
+//                       </div>
+//                       <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
+//                     </a>
+//                   ))}
+//                 </div>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//       <UploadResumeModal open={uploadOpen} onClose={() => setUploadOpen(false)} req={req} />
+//     </>
+//   );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ACTION DIALOGS
@@ -1113,7 +1114,7 @@ function CandidateDetailDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-[560px] h-full bg-white shadow-2xl flex flex-col border-l border-slate-200">
+      <div className="relative z-10 w-full max-w-140 h-full bg-white shadow-2xl flex flex-col border-l border-slate-200">
         <div className="flex items-center gap-4 px-6 py-5 border-b border-slate-100 shrink-0 bg-slate-50">
           {snap ? (
             <Avatar className="h-12 w-12 shrink-0">
@@ -1341,14 +1342,14 @@ function CandidateDetailDrawer({
                 <p className="text-sm text-slate-500 text-center py-8">No transitions yet</p>
               ) : (
                 <div className="relative">
-                  <div className="absolute left-[17px] top-5 bottom-5 w-px bg-slate-200" />
+                  <div className="absolute left-4.25 top-5 bottom-5 w-px bg-slate-200" />
                   <div className="space-y-0">
                     {p.stageHistory.map(log => {
                       const c = SC(log.toStage.code);
                       return (
                         <div key={log.id} className="relative flex gap-4 pb-5">
                           <div
-                            className={`relative z-10 w-[34px] h-[34px] rounded-full shrink-0 flex items-center justify-center ${c.bg} border-2 ${c.border}`}
+                            className={`relative z-10 w-8.5 h-8.5 rounded-full shrink-0 flex items-center justify-center ${c.bg} border-2 ${c.border}`}
                           >
                             <span className={`w-2.5 h-2.5 rounded-full ${c.dot}`} />
                           </div>
@@ -1396,7 +1397,7 @@ function CandidateDetailDrawer({
                     })}
                     <div className="relative flex gap-4">
                       <div
-                        className={`relative z-10 w-[34px] h-[34px] rounded-full shrink-0 flex items-center justify-center ${SC(p.currentStage.code).bg} border-2 border-primary`}
+                        className={`relative z-10 w-8.5 h-8.5 rounded-full shrink-0 flex items-center justify-center ${SC(p.currentStage.code).bg} border-2 border-primary`}
                       >
                         <span
                           className={`w-2.5 h-2.5 rounded-full ${SC(p.currentStage.code).dot} animate-pulse`}
@@ -1699,7 +1700,7 @@ function CandidateCard({
 function PageSkeleton() {
   return (
     <div className="flex flex-col h-screen bg-white">
-      <div className="border-b p-6 flex gap-8 min-h-[120px]">
+      <div className="border-b p-6 flex gap-8 min-h-30">
         <div className="w-[42%] flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <Skeleton className="h-10 w-10 rounded-xl" />
@@ -1749,7 +1750,7 @@ export default function RequirementDetailPage() {
   const { user } = useAuth();
 
   const [tab, setTab] = useState('candidates');
-  const [addModal, setAddModal] = useState(false);
+  // const [addModal, setAddModal] = useState(false);
   const [activeOnly, setActiveOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
@@ -1760,6 +1761,10 @@ export default function RequirementDetailPage() {
     type: ActionType;
     pipeline: CandidatePipeline;
   } | null>(null);
+  const [applicantSearch, setApplicantSearch] = useState('');
+
+  const isWebsiteApplicant = (p: CandidatePipeline) =>
+    (p?.snapshot?.rawSnapshot as any)?.source === 'PUBLIC_WEBSITE';
 
   const reqQuery = useQuery<RequirementDetailResponse>({
     queryKey: ['requirement-detail', id],
@@ -1778,6 +1783,18 @@ export default function RequirementDetailPage() {
       return (await axios.get(`/requirements/${id}/candidates?${params}`)).data;
     },
     enabled: !!id && tab === 'candidates',
+  });
+
+  const applicantsQuery = useQuery<CandidatesResponse>({
+    queryKey: ['requirement-applicants', id, activeOnly, applicantSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (activeOnly) params.set('activeOnly', 'true');
+      if (applicantSearch) params.set('search', applicantSearch);
+      params.set('limit', '100');
+      return (await axios.get(`/requirements/${id}/candidates?${params}`)).data;
+    },
+    enabled: !!id,
   });
 
   const stagesQuery = useQuery<{ success: boolean; data: PipelineStage[] }>({
@@ -1802,6 +1819,17 @@ export default function RequirementDetailPage() {
     },
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed'),
   });
+  const req = reqQuery.data?.data;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const assignments = ((req as any)?.assignments as Assignment[]) ?? [];
+  const recruiterOptions: RecruiterOption[] = useMemo(() => {
+    const map = new Map<string, RecruiterOption>();
+    for (const a of assignments) {
+      const u = a.assignedTo;
+      if (u && !map.has(u.id)) map.set(u.id, u);
+    }
+    return [...map.values()];
+  }, [assignments]);
 
   const invalidateAfterAction = () => {
     qc.invalidateQueries({ queryKey: ['requirement-candidates', id] });
@@ -1822,8 +1850,18 @@ export default function RequirementDetailPage() {
       </div>
     );
   }
+  if (!req) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <AlertCircle className="w-10 h-10 text-rose-400" />
+        <p className="text-base font-medium text-slate-600">Failed to load requirement.</p>
+        <Button variant="ghost" onClick={() => router.back()}>
+          Go back
+        </Button>
+      </div>
+    );
+  }
 
-  const req = reqQuery.data.data;
   const perms = reqQuery.data.permissions;
   // ── Requirement-level permission: gates Edit button, Status dropdown, tab sub-components
   const canEdit = permission.canEdit && perms.canEdit;
@@ -1833,17 +1871,23 @@ export default function RequirementDetailPage() {
   const nextStatuses = STATUS_FLOW[req.status] ?? [];
   const summary = (req as any).pipelineSummary as PipelineSummary;
   const stages = summary?.byStage ?? [];
-  const assignments = ((req as any).assignments as Assignment[]) ?? [];
-  const candidates = candidatesQuery.data?.data ?? [];
+  // const candidates = candidatesQuery.data?.data ?? [];
+  const candidates = (candidatesQuery.data?.data ?? []).filter(p => !isWebsiteApplicant(p));
+  const applicants = (applicantsQuery.data?.data ?? []).filter(isWebsiteApplicant);
   const meta = candidatesQuery.data?.meta;
-  const activeStage = stages.find(s => s.id === activeStageId);
+  // const activeStage = stages.find(s => s.id === activeStageId);
   const pipelineStages = stagesQuery.data?.data ?? [];
+
+  // total across the requirement, independent of the stage sidebar
+  const allRows = applicantsQuery.data?.data ?? [];
+  const candidateTotal = allRows.filter(p => !isWebsiteApplicant(p)).length;
+  const applicantTotal = allRows.filter(isWebsiteApplicant).length;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-white">
       {/* ═══ HEADER ═══ */}
       <div className="border-b border-slate-200 bg-white shrink-0">
-        <div className="flex min-h-[120px]">
+        <div className="flex min-h-30">
           {/* LEFT — requirement info */}
           <div className="w-[40%] shrink-0 border-r border-slate-200 px-6 py-5">
             <div className="flex items-start gap-3">
@@ -1882,7 +1926,7 @@ export default function RequirementDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 ml-[52px]">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 ml-13">
                   {(req as any).client && (
                     <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                       <Building2 className="w-3.5 h-3.5 text-slate-400" />
@@ -1921,7 +1965,7 @@ export default function RequirementDetailPage() {
                 </div>
 
                 {assignments.length > 0 && (
-                  <div className="flex items-center gap-2 mb-3 ml-[52px]">
+                  <div className="flex items-center gap-2 mb-3 ml-13">
                     <div className="flex -space-x-2">
                       {assignments.slice(0, 6).map(a => (
                         <Avatar key={a.id} className="h-6 w-6 border-2 border-white">
@@ -1944,7 +1988,7 @@ export default function RequirementDetailPage() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 ml-[52px]">
+                <div className="flex items-center gap-2 ml-13">
                   {/* <Button
                     size="sm"
                     className="gap-2 h-8 text-sm font-semibold px-4"
@@ -2026,7 +2070,10 @@ export default function RequirementDetailPage() {
         <div className="border-b border-slate-200 bg-white shrink-0 px-6">
           <TabsList className="h-auto gap-0 bg-transparent p-0">
             {[
-              { value: 'candidates', label: 'Candidates', count: summary?.total },
+              // { value: 'candidates', label: 'Candidates', count: summary?.total },
+              // { value: 'applicants', label: 'Applicants' },
+              { value: 'candidates', label: 'Candidates', count: candidateTotal },
+              { value: 'applicants', label: 'Applicants', count: applicantTotal },
               { value: 'overview', label: 'Job Description' },
               { value: 'assignments', label: 'Assignments', count: assignments.length },
               { value: 'notes', label: 'Notes' },
@@ -2208,6 +2255,83 @@ export default function RequirementDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="applicants" className="flex-1 overflow-hidden mt-0 flex flex-col">
+          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-white shrink-0">
+            <span className="text-sm font-semibold text-slate-600">
+              {applicants.length} applied from website
+            </span>
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Input
+                  placeholder="Search applicants..."
+                  value={applicantSearch}
+                  onChange={e => setApplicantSearch(e.target.value)}
+                  className="pl-9 h-8 text-sm w-52 border-slate-200 focus-visible:ring-1"
+                />
+              </div>
+              <button
+                className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                onClick={() => applicantsQuery.refetch()}
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${applicantsQuery.isFetching ? 'animate-spin' : ''}`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* <div className="flex-1 overflow-y-auto">
+            {applicantsQuery.isLoading ? (
+              <div className="divide-y divide-slate-100">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex gap-4 px-5 py-4">
+                    <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                    <div className="flex-1 flex flex-col gap-2">
+                      <Skeleton className="h-4 w-48" />
+                      <Skeleton className="h-3 w-64" />
+                      <Skeleton className="h-3 w-36" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : applicants.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-72 gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                  <Globe className="w-7 h-7 text-slate-400" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-bold text-slate-700">No website applicants yet</p>
+                  <p className="text-xs font-medium text-slate-500 mt-1">
+                    People who apply from the careers page will show up here
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {applicants.map(c => (
+                  <CandidateCard
+                    key={c.id}
+                    p={c}
+                    canEdit={applicantsQuery.data?.permissions?.canEdit ?? false}
+                    onView={pid => router.push(`/requirements/${id}/candidates/${pid}`)}
+                    onAction={(action, pipeline) => setActionDialog({ type: action, pipeline })}
+                  />
+                ))}
+              </div>
+            )}
+          </div> */}
+          <div className="flex-1 overflow-y-auto">
+            <ApplicantsList
+              applicants={applicants}
+              recruiters={recruiterOptions}
+              requirementId={id}
+              isLoading={applicantsQuery.isLoading}
+              canEdit={applicantsQuery.data?.permissions?.canEdit ?? false}
+              onView={pid => router.push(`/requirements/${id}/candidates/${pid}`)}
+            />
           </div>
         </TabsContent>
         <TabsContent value="overview" className="flex-1 overflow-hidden mt-0">
