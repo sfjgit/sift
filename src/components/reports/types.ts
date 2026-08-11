@@ -46,6 +46,7 @@ export interface RecruiterStat {
   joined: number;
   dropped: number;
   active: number;
+  createdById: string;
   submissionRate: number;
   offerRate: number;
   joinRate: number;
