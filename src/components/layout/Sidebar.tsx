@@ -427,7 +427,7 @@ export function Sidebar() {
         onMouseEnter={keepAlive}
         onMouseLeave={scheduleHide}
         className={cn(
-          'fixed left-0 top-0 h-screen w-[220px] z-40 flex flex-col',
+          'fixed left-0 top-0 h-screen w-[220px] z-40 flex flex-col min-h-0',
           'border-r border-border bg-background',
           'transition-transform duration-200 ease-in-out will-change-transform',
           shown ? 'translate-x-0' : '-translate-x-full',
@@ -471,142 +471,146 @@ export function Sidebar() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-2 px-2 flex flex-col gap-0.5">
-          {cleanedNav.map((item, i) => {
-            if (item.type === 'divider') {
-              return <div key={`d-${i}`} className="h-px bg-border my-1 shrink-0" />;
-            }
+        <nav className="flex-1 min-h-0 overflow-y-auto">
+          <div className="py-2 px-2 flex flex-col gap-0.5">
+            {cleanedNav.map((item, i) => {
+              if (item.type === 'divider') {
+                return <div key={`d-${i}`} className="h-px bg-border my-1 shrink-0" />;
+              }
 
-            // ── Flat link ──────────────────────────────────────────────────
-            if (item.type === 'link') {
-              const Icon = item.icon;
-              const isActive =
-                pathname === item.href ||
-                (item.href !== '/' && pathname.startsWith(item.href + '/'));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 h-10 px-2.5 rounded-lg whitespace-nowrap overflow-hidden transition-colors',
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
-                  )}
-                >
-                  {/* filled icon via strokeWidth=0 + fill trick; falls back to stroked if fill not available */}
-                  <Icon
+              // ── Flat link ──────────────────────────────────────────────────
+              if (item.type === 'link') {
+                const Icon = item.icon;
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== '/' && pathname.startsWith(item.href + '/'));
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
                     className={cn(
-                      'h-5 w-5 shrink-0',
-                      isActive ? 'text-primary' : 'text-foreground/60'
-                    )}
-                    strokeWidth={isActive ? 2.2 : 1.8}
-                    fill={isActive ? 'currentColor' : 'none'}
-                    style={isActive ? { opacity: 1 } : undefined}
-                  />
-                  <span className={cn('text-[13.5px]', isActive ? 'font-semibold' : 'font-medium')}>
-                    {item.label}
-                  </span>
-                </Link>
-              );
-            }
-
-            // ── Group ──────────────────────────────────────────────────────
-            if (item.type === 'group') {
-              const GroupIcon = item.icon;
-              const isOpen = !!openGroups[item.key];
-              const hasActiveChild = item.children.some(
-                c => pathname === c.href || pathname.startsWith(c.href + '/')
-              );
-
-              return (
-                <div key={item.key}>
-                  <button
-                    onClick={() => toggleGroup(item.key)}
-                    aria-expanded={isOpen}
-                    className={cn(
-                      'w-full flex items-center gap-3 h-10 px-2.5 rounded-lg transition-colors',
-                      hasActiveChild && !isOpen
-                        ? 'text-primary'
+                      'flex items-center gap-3 h-10 px-2.5 rounded-lg whitespace-nowrap overflow-hidden transition-colors',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
                         : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
                     )}
                   >
-                    <GroupIcon
+                    {/* filled icon via strokeWidth=0 + fill trick; falls back to stroked if fill not available */}
+                    <Icon
                       className={cn(
                         'h-5 w-5 shrink-0',
-                        hasActiveChild && !isOpen ? 'text-primary' : 'text-foreground/60'
+                        isActive ? 'text-primary' : 'text-foreground/60'
                       )}
-                      strokeWidth={hasActiveChild && !isOpen ? 2.2 : 1.8}
-                      fill={hasActiveChild && !isOpen ? 'currentColor' : 'none'}
+                      strokeWidth={isActive ? 2.2 : 1.8}
+                      fill={isActive ? 'currentColor' : 'none'}
+                      style={isActive ? { opacity: 1 } : undefined}
                     />
                     <span
-                      className={cn(
-                        'flex-1 text-left text-[13.5px]',
-                        hasActiveChild && !isOpen ? 'font-semibold' : 'font-medium'
-                      )}
+                      className={cn('text-[13.5px]', isActive ? 'font-semibold' : 'font-medium')}
                     >
                       {item.label}
                     </span>
-                    <ChevronDown
-                      className={cn(
-                        'h-4 w-4 shrink-0 text-foreground/40 transition-transform duration-200',
-                        isOpen && 'rotate-180'
-                      )}
-                      strokeWidth={2}
-                    />
-                  </button>
+                  </Link>
+                );
+              }
 
-                  {/* Children */}
-                  <div
-                    className={cn(
-                      'overflow-hidden transition-all duration-200 ease-in-out',
-                      isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
-                    )}
-                  >
-                    <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-[18px]">
-                      {item.children.map(child => {
-                        const ChildIcon = child.icon;
-                        const isActive =
-                          pathname === child.href ||
-                          (child.href !== '/' && pathname.startsWith(child.href + '/'));
-                        return (
-                          <Link
-                            key={child.href}
-                            href={child.href}
-                            className={cn(
-                              'flex items-center gap-2.5 h-9 px-2 rounded-md whitespace-nowrap overflow-hidden transition-colors',
-                              isActive
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-foreground/60 hover:text-foreground hover:bg-muted/60'
-                            )}
-                          >
-                            <ChildIcon
+              // ── Group ──────────────────────────────────────────────────────
+              if (item.type === 'group') {
+                const GroupIcon = item.icon;
+                const isOpen = !!openGroups[item.key];
+                const hasActiveChild = item.children.some(
+                  c => pathname === c.href || pathname.startsWith(c.href + '/')
+                );
+
+                return (
+                  <div key={item.key}>
+                    <button
+                      onClick={() => toggleGroup(item.key)}
+                      aria-expanded={isOpen}
+                      className={cn(
+                        'w-full flex items-center gap-3 h-10 px-2.5 rounded-lg transition-colors',
+                        hasActiveChild && !isOpen
+                          ? 'text-primary'
+                          : 'text-foreground/70 hover:text-foreground hover:bg-muted/60'
+                      )}
+                    >
+                      <GroupIcon
+                        className={cn(
+                          'h-5 w-5 shrink-0',
+                          hasActiveChild && !isOpen ? 'text-primary' : 'text-foreground/60'
+                        )}
+                        strokeWidth={hasActiveChild && !isOpen ? 2.2 : 1.8}
+                        fill={hasActiveChild && !isOpen ? 'currentColor' : 'none'}
+                      />
+                      <span
+                        className={cn(
+                          'flex-1 text-left text-[13.5px]',
+                          hasActiveChild && !isOpen ? 'font-semibold' : 'font-medium'
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 shrink-0 text-foreground/40 transition-transform duration-200',
+                          isOpen && 'rotate-180'
+                        )}
+                        strokeWidth={2}
+                      />
+                    </button>
+
+                    {/* Children */}
+                    <div
+                      className={cn(
+                        'overflow-hidden transition-all duration-200 ease-in-out',
+                        isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                      )}
+                    >
+                      <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-[18px]">
+                        {item.children.map(child => {
+                          const ChildIcon = child.icon;
+                          const isActive =
+                            pathname === child.href ||
+                            (child.href !== '/' && pathname.startsWith(child.href + '/'));
+                          return (
+                            <Link
+                              key={child.href}
+                              href={child.href}
                               className={cn(
-                                'h-[18px] w-[18px] shrink-0',
-                                isActive ? 'text-primary' : 'text-foreground/50'
-                              )}
-                              strokeWidth={isActive ? 2.2 : 1.8}
-                              fill={isActive ? 'currentColor' : 'none'}
-                            />
-                            <span
-                              className={cn(
-                                'text-[13px]',
-                                isActive ? 'font-semibold' : 'font-medium'
+                                'flex items-center gap-2.5 h-9 px-2 rounded-md whitespace-nowrap overflow-hidden transition-colors',
+                                isActive
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-foreground/60 hover:text-foreground hover:bg-muted/60'
                               )}
                             >
-                              {child.label}
-                            </span>
-                          </Link>
-                        );
-                      })}
+                              <ChildIcon
+                                className={cn(
+                                  'h-[18px] w-[18px] shrink-0',
+                                  isActive ? 'text-primary' : 'text-foreground/50'
+                                )}
+                                strokeWidth={isActive ? 2.2 : 1.8}
+                                fill={isActive ? 'currentColor' : 'none'}
+                              />
+                              <span
+                                className={cn(
+                                  'text-[13px]',
+                                  isActive ? 'font-semibold' : 'font-medium'
+                                )}
+                              >
+                                {child.label}
+                              </span>
+                            </Link>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            }
+                );
+              }
 
-            return null;
-          })}
+              return null;
+            })}
+          </div>
         </nav>
 
         {/* User footer */}
