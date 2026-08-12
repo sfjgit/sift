@@ -3,7 +3,7 @@
 // File: RecruiterTable.tsx
 // Path: src/components/reports/RecruiterTable.tsx
 
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
 import {
@@ -19,9 +19,9 @@ import {
   makeSrColumn,
   useExpanded,
   useSelection,
+  useStageSelection,
 } from './reportUi';
 import { useReportViewStore, useReportViewsReady } from '@/stores/reportViewStore';
-import { exportViewToXlsx, resolveExportFields } from './exportTable';
 import type { RecruiterStat, StageMeta } from './types';
 
 interface RecruiterTableProps {
@@ -29,8 +29,19 @@ interface RecruiterTableProps {
   serviceLineId?: string;
   data: RecruiterStat[];
   stages: StageMeta[];
-  onDownloadAll: (slId?: string) => void;
-  onDownloadSelected: (ids: string[], slId?: string) => void;
+  onDownloadAll: (
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
+  onDownloadSelected: (
+    ids: string[],
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
 }
 
 export function RecruiterTable({
@@ -41,11 +52,12 @@ export function RecruiterTable({
   onDownloadAll,
   onDownloadSelected,
 }: RecruiterTableProps) {
-  // Stage columns differ per service line, so each line keeps its own layout + views.
   const tableKey = `reports.recruiters:${serviceLineId ?? 'unassigned'}`;
 
   const { selected, toggle, toggleAll } = useSelection();
   const { expanded, toggleExp } = useExpanded();
+  // selectedStageIds: the stages the user has highlighted in this table for export filtering
+  const { selectedStageIds, toggleStage, clearStages } = useStageSelection();
 
   const ready = useReportViewsReady();
   const hiddenRaw = useReportViewStore(s => s.hiddenColumns[tableKey]);
@@ -96,22 +108,51 @@ export function RecruiterTable({
         exportValue: r => r.sourced,
         cell: r => <span className="text-[15px] font-black text-slate-900">{r.sourced}</span>,
       },
-      ...stages.map<ColumnDef<RecruiterStat>>((s, i) => ({
-        id: `stage:${s.id}`,
-        label: s.label,
-        align: 'center',
-        group: 'Pipeline stages',
-        dotColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-        headerTitle: s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`,
-        exportValue: r => r.stageCounts[s.id] ?? 0,
-        cell: r => (
-          <StageCell
-            count={r.stageCounts[s.id] ?? 0}
-            base={r.sourced}
-            color={FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
-          />
-        ),
-      })),
+
+      // ── Stage columns — clicking the header toggles that stage for export filter ──
+      ...stages.map<ColumnDef<RecruiterStat>>((s, i) => {
+        const stageSelected = selectedStageIds.has(s.id);
+        return {
+          id: `stage:${s.id}`,
+          label: s.label,
+          align: 'center',
+          group: 'Pipeline stages',
+          dotColor: stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+          headerTitle: `${s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`} — click to toggle stage in export`,
+          exportValue: r => r.stageCounts[s.id] ?? 0,
+          // Header has a click ring when selected — indicates "this stage will filter the candidates sheet"
+          header: (
+            <button
+              onClick={() => toggleStage(s.id)}
+              title={stageSelected ? 'Remove from export filter' : 'Add to export filter'}
+              className={`flex w-full flex-col items-center gap-0.5 rounded px-1 py-0.5 transition-all ${stageSelected ? 'ring-2 ring-indigo-500 ring-offset-1 bg-indigo-50' : 'hover:bg-slate-100'}`}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{
+                  backgroundColor: stageSelected
+                    ? '#4F46E5'
+                    : FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+                }}
+              />
+              <span
+                className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: stageSelected ? '#4F46E5' : undefined }}
+              >
+                {s.label}
+              </span>
+            </button>
+          ),
+          cell: r => (
+            <StageCell
+              count={r.stageCounts[s.id] ?? 0}
+              base={r.sourced}
+              color={stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
+            />
+          ),
+        };
+      }),
+
       {
         id: 'active',
         label: 'Active',
@@ -126,16 +167,16 @@ export function RecruiterTable({
       },
       {
         id: 'joined',
-        label: 'Joined (total)',
+        label: 'Joined',
         align: 'center',
         group: 'Outcome',
-        headerTitle: 'Joined across every stage path — not the Joined stage count',
+        headerTitle: 'Joined across every stage path',
         exportValue: r => r.joined,
         cell: r => <span className="text-[13px] font-black text-emerald-700">{r.joined}</span>,
       },
       {
         id: 'dropped',
-        label: 'Dropped (total)',
+        label: 'Dropped',
         align: 'center',
         group: 'Outcome',
         exportValue: r => r.dropped,
@@ -161,26 +202,26 @@ export function RecruiterTable({
         ),
       },
     ],
-    [allIds, selected, toggle, toggleAll, expanded, toggleExp, stages]
+    [
+      allIds,
+      selected,
+      toggle,
+      toggleAll,
+      expanded,
+      toggleExp,
+      stages,
+      selectedStageIds,
+      toggleStage,
+    ]
   );
 
-  const exportLocal = useCallback(
-    async (onlySelected: boolean) => {
-      const rows = onlySelected ? data.filter(r => selected.has(r.id)) : data;
-      const scope = title ? title.replace(/\s+/g, '-').toLowerCase() : 'all';
-      const stamp = new Date().toISOString().split('T')[0];
-      await exportViewToXlsx({
-        columns,
-        rows,
-        hiddenColumns: hidden,
-        sheetName: title ?? 'Recruiters',
-        filename: `recruiters-${scope}${onlySelected ? '-selected' : ''}-${stamp}.xlsx`,
-      });
-    },
-    [columns, data, hidden, selected, title]
-  );
+  const stageIdsArr = [...selectedStageIds];
 
-  const visibleColumnCount = resolveExportFields(columns, hidden).length;
+  // Extract stage IDs the user has hidden via the column picker
+  // hidden entries for stage columns look like "stage:${stageId}"
+  const hiddenStageIds = hidden
+    .filter(id => id.startsWith('stage:'))
+    .map(id => id.replace('stage:', ''));
 
   return (
     <StickyTableCard>
@@ -188,6 +229,24 @@ export function RecruiterTable({
         title={title}
         count={data.length}
         countLabel="recruiters"
+        leftSlot={
+          stageIdsArr.length > 0 ? (
+            <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-600">
+              {stageIdsArr.length} stage{stageIdsArr.length > 1 ? 's' : ''} selected for export
+              <button
+                onClick={clearStages}
+                className="ml-1 rounded-full p-0.5 hover:bg-indigo-200 transition-colors"
+                title="Clear stage filter"
+              >
+                ×
+              </button>
+            </span>
+          ) : (
+            <span className="text-[10px] font-medium text-slate-400">
+              Click stage column headers to filter candidates export
+            </span>
+          )
+        }
         rightSlot={
           <>
             <ColumnViewMenu tableKey={tableKey} columns={columns} />
@@ -195,11 +254,32 @@ export function RecruiterTable({
               scopeLabel={title ? 'This line' : 'All'}
               rowCount={data.length}
               selectedCount={selected.size}
-              columnCount={visibleColumnCount}
-              onLocalAll={() => exportLocal(false)}
-              onLocalSelected={() => exportLocal(true)}
-              onServerAll={() => onDownloadAll(serviceLineId)}
-              onServerSelected={() => onDownloadSelected([...selected], serviceLineId)}
+              selectedStageIds={stageIdsArr}
+              onServerAll={hiddenCandidateCols =>
+                onDownloadAll(
+                  serviceLineId,
+                  stageIdsArr.length > 0 ? stageIdsArr : undefined,
+                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                  hiddenCandidateCols
+                )
+              }
+              onServerSelected={hiddenCandidateCols =>
+                onDownloadSelected(
+                  [...selected],
+                  serviceLineId,
+                  stageIdsArr.length > 0 ? stageIdsArr : undefined,
+                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                  hiddenCandidateCols
+                )
+              }
+              onServerStageFiltered={hiddenCandidateCols =>
+                onDownloadAll(
+                  serviceLineId,
+                  stageIdsArr,
+                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                  hiddenCandidateCols
+                )
+              }
             />
           </>
         }
@@ -236,9 +316,7 @@ export function RecruiterTable({
                       {rqi.title}
                     </span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        STATUS_STYLE[rqi.status] ?? 'bg-slate-100 text-slate-500'
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLE[rqi.status] ?? 'bg-slate-100 text-slate-500'}`}
                     >
                       {rqi.status.replace(/_/g, ' ')}
                     </span>
@@ -246,7 +324,6 @@ export function RecruiterTable({
                       <span className="text-[11px] text-slate-400">{rqi.client.name}</span>
                     )}
                   </div>
-
                   <div className="mt-2.5 flex flex-wrap gap-4 border-t border-slate-100 pt-2.5">
                     <MiniStat l="Sourced" v={rqi.sourced} />
                     <MiniStat l="Submitted" v={rqi.submitted} c="text-blue-700" />
@@ -255,7 +332,6 @@ export function RecruiterTable({
                     <MiniStat l="Dropped" v={rqi.dropped} c="text-red-500" />
                     <MiniStat l="Active" v={rqi.active} c="text-indigo-700" />
                   </div>
-
                   {stages.some(s => (rqi.stageCounts[s.id] ?? 0) > 0) && (
                     <div className="mt-2.5 flex flex-wrap gap-2 border-t border-slate-100 pt-2.5">
                       {stages

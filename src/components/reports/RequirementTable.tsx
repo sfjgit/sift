@@ -3,7 +3,7 @@
 // File: RequirementTable.tsx
 // Path: src/components/reports/RequirementTable.tsx
 
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import { FileDown } from 'lucide-react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
@@ -20,9 +20,9 @@ import {
   makeSrColumn,
   useExpanded,
   useSelection,
+  useStageSelection,
 } from './reportUi';
 import { useReportViewStore, useReportViewsReady } from '@/stores/reportViewStore';
-import { exportViewToXlsx, resolveExportFields } from './exportTable';
 import type { RequirementRow, StageMeta } from './types';
 
 interface RequirementTableProps {
@@ -30,8 +30,19 @@ interface RequirementTableProps {
   serviceLineId?: string;
   data: RequirementRow[];
   stages: StageMeta[];
-  onDownloadAll: (slId?: string) => void;
-  onDownloadSelected: (ids: string[], slId?: string) => void;
+  onDownloadAll: (
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
+  onDownloadSelected: (
+    ids: string[],
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
   onDownloadRow: (id: string, reqCode: string) => void;
 }
 
@@ -57,10 +68,10 @@ export function RequirementTable({
 
   const { selected, toggle, toggleAll } = useSelection();
   const { expanded, toggleExp } = useExpanded();
+  const { selectedStageIds, toggleStage, clearStages } = useStageSelection();
 
   const ready = useReportViewsReady();
   const hiddenRaw = useReportViewStore(s => s.hiddenColumns[tableKey]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const hidden = ready ? (hiddenRaw ?? []) : [];
 
   const allIds = useMemo(() => data.map(r => r.id), [data]);
@@ -105,9 +116,7 @@ export function RequirementTable({
         exportValue: r => r.status.replace(/_/g, ' '),
         cell: r => (
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-              STATUS_STYLE[r.status] ?? 'bg-slate-100 text-slate-500'
-            }`}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[r.status] ?? 'bg-slate-100 text-slate-500'}`}
           >
             {r.status.replace(/_/g, ' ')}
           </span>
@@ -126,10 +135,10 @@ export function RequirementTable({
         label: 'Created by',
         align: 'center',
         group: 'Dates',
-        exportValue: r => `${r.createdBy.firstName}${r.createdBy.lastName}.trim() || ''`,
+        exportValue: r => `${r.createdBy.firstName} ${r.createdBy.lastName}`.trim(),
         cell: r => (
           <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
-            {`${r.createdBy.firstName}${r.createdBy.lastName}`.trim() || '-'}
+            {`${r.createdBy.firstName} ${r.createdBy.lastName}`.trim() || '—'}
           </span>
         ),
       },
@@ -146,16 +155,20 @@ export function RequirementTable({
         label: 'Min Salary',
         align: 'center',
         group: 'Salary',
-        exportValue: r => r.salaryMin,
-        cell: r => <span className="text-[13px] font-bold text-slate-700">{r.salaryMin}</span>,
+        exportValue: r => r.salaryMin ?? '',
+        cell: r => (
+          <span className="text-[13px] font-bold text-slate-700">{r.salaryMin ?? '—'}</span>
+        ),
       },
       {
         id: 'salaryMax',
         label: 'Max Salary',
         align: 'center',
         group: 'Salary',
-        exportValue: r => r.salaryMax,
-        cell: r => <span className="text-[13px] font-bold text-slate-700">{r.salaryMax}</span>,
+        exportValue: r => r.salaryMax ?? '',
+        cell: r => (
+          <span className="text-[13px] font-bold text-slate-700">{r.salaryMax ?? '—'}</span>
+        ),
       },
       {
         id: 'totalCandidates',
@@ -168,22 +181,49 @@ export function RequirementTable({
           <span className="text-[14px] font-black text-slate-900">{r.totalCandidates}</span>
         ),
       },
-      ...stages.map<ColumnDef<RequirementRow>>((s, i) => ({
-        id: `stage:${s.id}`,
-        label: s.label,
-        align: 'center',
-        group: 'Pipeline stages',
-        dotColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-        headerTitle: s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`,
-        exportValue: r => r.stageCounts[s.id] ?? 0,
-        cell: r => (
-          <StageCell
-            count={r.stageCounts[s.id] ?? 0}
-            base={r.totalCandidates}
-            color={FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
-          />
-        ),
-      })),
+
+      // ── Stage columns — clicking header toggles stage for export filter ──────
+      ...stages.map<ColumnDef<RequirementRow>>((s, i) => {
+        const stageSelected = selectedStageIds.has(s.id);
+        return {
+          id: `stage:${s.id}`,
+          label: s.label,
+          align: 'center',
+          group: 'Pipeline stages',
+          dotColor: stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+          headerTitle: `${s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`} — click to toggle in export`,
+          exportValue: r => r.stageCounts[s.id] ?? 0,
+          header: (
+            <button
+              onClick={() => toggleStage(s.id)}
+              title={stageSelected ? 'Remove from export filter' : 'Add to export filter'}
+              className={`flex w-full flex-col items-center gap-0.5 rounded px-1 py-0.5 transition-all ${stageSelected ? 'ring-2 ring-indigo-500 ring-offset-1 bg-indigo-50' : 'hover:bg-slate-100'}`}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{
+                  backgroundColor: stageSelected
+                    ? '#4F46E5'
+                    : FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+                }}
+              />
+              <span
+                className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: stageSelected ? '#4F46E5' : undefined }}
+              >
+                {s.label}
+              </span>
+            </button>
+          ),
+          cell: r => (
+            <StageCell
+              count={r.stageCounts[s.id] ?? 0}
+              base={r.totalCandidates}
+              color={stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
+            />
+          ),
+        };
+      }),
 
       {
         id: 'client',
@@ -213,9 +253,7 @@ export function RequirementTable({
         exportValue: r => fmtDate(r.respondBy),
         cell: r => (
           <span
-            className={`whitespace-nowrap text-[11px] font-medium ${
-              r.isRespondByBreached ? 'font-bold text-red-500' : 'text-slate-400'
-            }`}
+            className={`whitespace-nowrap text-[11px] font-medium ${r.isRespondByBreached ? 'font-bold text-red-500' : 'text-slate-400'}`}
           >
             {fmtDate(r.respondBy)}
             {r.isRespondByBreached ? ' ⚠' : ''}
@@ -234,7 +272,6 @@ export function RequirementTable({
           </span>
         ),
       },
-
       {
         id: 'export',
         label: 'Export',
@@ -250,26 +287,25 @@ export function RequirementTable({
         ),
       },
     ],
-    [allIds, selected, toggle, toggleAll, expanded, toggleExp, stages, onDownloadRow]
+    [
+      allIds,
+      selected,
+      toggle,
+      toggleAll,
+      expanded,
+      toggleExp,
+      stages,
+      selectedStageIds,
+      toggleStage,
+      onDownloadRow,
+    ]
   );
 
-  const exportLocal = useCallback(
-    async (onlySelected: boolean) => {
-      const rows = onlySelected ? data.filter(r => selected.has(r.id)) : data;
-      const scope = title ? title.replace(/\s+/g, '-').toLowerCase() : 'all';
-      const stamp = new Date().toISOString().split('T')[0];
-      await exportViewToXlsx({
-        columns,
-        rows,
-        hiddenColumns: hidden,
-        sheetName: title ?? 'Requirements',
-        filename: `requirements-${scope}${onlySelected ? '-selected' : ''}-${stamp}.xlsx`,
-      });
-    },
-    [columns, data, hidden, selected, title]
-  );
+  const stageIdsArr = [...selectedStageIds];
 
-  const visibleColumnCount = resolveExportFields(columns, hidden).length;
+  const hiddenStageIds = hidden
+    .filter(id => id.startsWith('stage:'))
+    .map(id => id.replace('stage:', ''));
 
   return (
     <StickyTableCard>
@@ -277,6 +313,24 @@ export function RequirementTable({
         title={title}
         count={data.length}
         countLabel="requirements"
+        leftSlot={
+          stageIdsArr.length > 0 ? (
+            <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-600">
+              {stageIdsArr.length} stage{stageIdsArr.length > 1 ? 's' : ''} selected for export
+              <button
+                onClick={clearStages}
+                className="ml-1 rounded-full p-0.5 hover:bg-indigo-200 transition-colors"
+                title="Clear stage filter"
+              >
+                ×
+              </button>
+            </span>
+          ) : (
+            <span className="text-[10px] font-medium text-slate-400">
+              Click stage column headers to filter candidates export
+            </span>
+          )
+        }
         rightSlot={
           <>
             <ColumnViewMenu tableKey={tableKey} columns={columns} />
@@ -284,11 +338,32 @@ export function RequirementTable({
               scopeLabel={title ? 'This line' : 'All'}
               rowCount={data.length}
               selectedCount={selected.size}
-              columnCount={visibleColumnCount}
-              onLocalAll={() => exportLocal(false)}
-              onLocalSelected={() => exportLocal(true)}
-              onServerAll={() => onDownloadAll(serviceLineId)}
-              onServerSelected={() => onDownloadSelected([...selected], serviceLineId)}
+              selectedStageIds={stageIdsArr}
+              onServerAll={hiddenCandidateCols =>
+                onDownloadAll(
+                  serviceLineId,
+                  stageIdsArr.length > 0 ? stageIdsArr : undefined,
+                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                  hiddenCandidateCols
+                )
+              }
+              onServerSelected={hiddenCandidateCols =>
+                onDownloadSelected(
+                  [...selected],
+                  serviceLineId,
+                  stageIdsArr.length > 0 ? stageIdsArr : undefined,
+                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                  hiddenCandidateCols
+                )
+              }
+              onServerStageFiltered={hiddenCandidateCols =>
+                onDownloadAll(
+                  serviceLineId,
+                  stageIdsArr,
+                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                  hiddenCandidateCols
+                )
+              }
             />
           </>
         }
