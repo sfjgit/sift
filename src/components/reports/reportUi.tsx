@@ -84,26 +84,20 @@ export function KPI({
   trend?: 'up' | 'down';
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-col gap-1 rounded-xl border-2 border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+        <span className="text-[12px] font-black uppercase tracking-widest text-slate-600">
           {label}
         </span>
-        {color && <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />}
+        {color && <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />}
       </div>
-      <span className="mt-1 text-3xl font-black leading-none text-slate-900">{value}</span>
+      <span className="mt-1 text-4xl font-black leading-none text-slate-900">{value}</span>
       {sub && (
         <span
-          className={`mt-0.5 flex items-center gap-1 text-xs font-semibold ${
-            trend === 'up'
-              ? 'text-emerald-600'
-              : trend === 'down'
-                ? 'text-red-500'
-                : 'text-slate-400'
-          }`}
+          className={`mt-1 flex items-center gap-1 text-[12px] font-bold ${trend === 'up' ? 'text-emerald-700' : trend === 'down' ? 'text-red-600' : 'text-slate-500'}`}
         >
-          {trend === 'up' && <TrendingUp className="h-3 w-3" />}
-          {trend === 'down' && <TrendingDown className="h-3 w-3" />}
+          {trend === 'up' && <TrendingUp className="h-3.5 w-3.5" />}
+          {trend === 'down' && <TrendingDown className="h-3.5 w-3.5" />}
           {sub}
         </span>
       )}
@@ -123,9 +117,9 @@ export function Skel({ rows = 4 }: { rows?: number }) {
 
 export function Empty({ msg }: { msg: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-16 text-slate-400">
-      <AlertCircle className="h-10 w-10 opacity-30" />
-      <p className="text-sm font-medium">{msg}</p>
+    <div className="flex flex-col items-center justify-center gap-2 py-16 text-slate-500">
+      <AlertCircle className="h-10 w-10 opacity-40" />
+      <p className="text-[14px] font-semibold">{msg}</p>
     </div>
   );
 }
@@ -140,9 +134,9 @@ export function Card({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border-2 border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[13px] font-bold uppercase tracking-wider text-slate-700">{title}</h3>
+        <h3 className="text-[14px] font-black uppercase tracking-wider text-slate-800">{title}</h3>
         {action}
       </div>
       {children}
@@ -150,42 +144,38 @@ export function Card({
   );
 }
 
-export function MiniStat({ l, v, c = 'text-slate-800' }: { l: string; v: number; c?: string }) {
+export function MiniStat({ l, v, c = 'text-slate-900' }: { l: string; v: number; c?: string }) {
   return (
     <div className="flex flex-col">
-      <span className={`text-lg font-black ${c}`}>{v}</span>
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{l}</span>
+      <span className={`text-2xl font-black ${c}`}>{v}</span>
+      <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{l}</span>
     </div>
   );
 }
 
 export function LinePill({ name }: { name: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[12px] font-bold text-cyan-800">
-      <Layers className="h-3.5 w-3.5" /> {name}
+    <span className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-300 bg-cyan-50 px-3 py-1.5 text-[13px] font-black text-cyan-900">
+      <Layers className="h-4 w-4" /> {name}
     </span>
   );
 }
 
 export function StageCell({ count, base, color }: { count: number; base: number; color: string }) {
   const pct = base > 0 ? Math.round((count / base) * 100) : 0;
-  if (count <= 0) return <span className="text-xs text-slate-200">—</span>;
+  if (count <= 0) return <span className="text-sm font-bold text-slate-300">—</span>;
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <span className="text-[14px] font-black" style={{ color }}>
+      <span className="text-[16px] font-black" style={{ color }}>
         {count}
       </span>
-      <span className="text-[10px] font-semibold text-slate-400">{pct}%</span>
+      <span className="text-[11px] font-bold text-slate-500">{pct}%</span>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ANCHORED PANEL
-// Dropdowns live inside StickyTableCard, which must clip (rounded corners +
-// sticky), so an absolutely-positioned panel gets cut off. This portals to
-// <body> and positions itself against the trigger with `fixed`, so no ancestor's
-// overflow or z-index can touch it. It also flips upward when space is short.
+// ANCHORED PANEL — portals to body so table clip/sticky never cuts it off
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AnchoredPanel({
@@ -213,17 +203,14 @@ export function AnchoredPanel({
 
   useLayoutEffect(() => {
     if (!open) return;
-
     const compute = () => {
       const r = anchorRef.current?.getBoundingClientRect();
       if (!r) return;
-
-      const gap = 8;
-      const edge = 12;
+      const gap = 8,
+        edge = 12;
       const below = window.innerHeight - r.bottom - gap - edge;
       const above = r.top - gap - edge;
       const up = below < 260 && above > below;
-
       setPos({
         top: up ? r.top - gap : r.bottom + gap,
         left:
@@ -234,9 +221,7 @@ export function AnchoredPanel({
         up,
       });
     };
-
     compute();
-    // `true` captures scroll from the table's own scroll container too.
     window.addEventListener('scroll', compute, true);
     window.addEventListener('resize', compute);
     return () => {
@@ -266,7 +251,7 @@ export function AnchoredPanel({
   return createPortal(
     <div
       ref={panelRef}
-      className="fixed z-100 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+      className="fixed z-[100] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
       style={{
         top: pos.top,
         left: pos.left,
@@ -283,8 +268,94 @@ export function AnchoredPanel({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOWNLOAD MENU
-// Local = built in the browser from rows already loaded, visible columns only.
-// Server = the existing endpoint, every column.
+//
+// Server-only. All downloads go through the controller — no local SheetJS.
+// The "selected stage columns" concept is handled by the parent passing
+// `selectedStageIds` which gets appended to the server URL as ?stageIds=...
+//
+// Layout:
+//   ┌─ All rows          → server all  (full workbook, all candidates sheet)
+//   ├─ Selected rows (N) → server selected ids
+//   └─ [shown when stageIds] Filtered by N stages → server all + stageIds
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANDIDATE COLUMN REGISTRY (mirrors controller's ALL_CANDIDATE_COLS)
+// Used by the column picker inside DownloadMenu.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CANDIDATE_COL_DEFS = [
+  // Requirement context
+  { key: 'reqCode', label: 'Req Code', group: 'Requirement' },
+  { key: 'reqTitle', label: 'Requirement', group: 'Requirement' },
+  { key: 'totalPipeline', label: 'Total Pipeline', group: 'Requirement' },
+  { key: 'client', label: 'Client', group: 'Requirement' },
+  { key: 'spoc', label: 'Client SPOC', group: 'Requirement' },
+  { key: 'spocEmail', label: 'SPOC Email', group: 'Requirement' },
+  { key: 'spocDesig', label: 'SPOC Designation', group: 'Requirement' },
+  { key: 'serviceLine', label: 'Service Line', group: 'Requirement' },
+  { key: 'bu', label: 'Business Unit', group: 'Requirement' },
+  // Candidate identity
+  { key: 'name', label: 'Candidate Name', group: 'Candidate' },
+  { key: 'email', label: 'Email', group: 'Candidate' },
+  { key: 'phone', label: 'Phone', group: 'Candidate' },
+  { key: 'title', label: 'Current Title', group: 'Candidate' },
+  { key: 'company', label: 'Current Company', group: 'Candidate' },
+  { key: 'exp', label: 'Exp (yrs)', group: 'Candidate' },
+  { key: 'skills', label: 'Top Skills', group: 'Candidate' },
+  // Pipeline state
+  { key: 'recruiter', label: 'Recruiter', group: 'Pipeline' },
+  { key: 'stage', label: 'Current Stage', group: 'Pipeline' },
+  { key: 'disposition', label: 'Status', group: 'Pipeline' },
+  { key: 'addedOn', label: 'Added On', group: 'Pipeline' },
+  { key: 'pipelineDays', label: 'Days in Pipeline', group: 'Pipeline' },
+  { key: 'aging', label: 'Stage Aging', group: 'Pipeline' },
+  { key: 'submittedAt', label: 'Submitted At', group: 'Pipeline' },
+  { key: 'offerStatus', label: 'Offer Status', group: 'Pipeline' },
+  // CTC
+  { key: 'currentCtc', label: 'Current CTC', group: 'CTC' },
+  { key: 'expectedCtc', label: 'Expected CTC', group: 'CTC' },
+  { key: 'negotiatedCtc', label: 'Negotiated CTC', group: 'CTC' },
+  { key: 'offeredCtc', label: 'Offered CTC', group: 'CTC' },
+  { key: 'currency', label: 'Currency', group: 'CTC' },
+  { key: 'salaryType', label: 'Salary Type', group: 'CTC' },
+  // Joining
+  { key: 'noticePeriod', label: 'Notice Period', group: 'Joining' },
+  { key: 'lwd', label: 'Last Working Day', group: 'Joining' },
+  { key: 'expectedJoining', label: 'Expected Joining', group: 'Joining' },
+  { key: 'actualJoining', label: 'Actual Joining', group: 'Joining' },
+  { key: 'monthOfJoining', label: 'Month of Joining', group: 'Joining' },
+  { key: 'daysToJoin', label: 'Days to Join', group: 'Joining' },
+  // Flags
+  { key: 'rejected', label: 'Rejected?', group: 'Flags' },
+  { key: 'withdrawn', label: 'Withdrawn?', group: 'Flags' },
+  { key: 'onHold', label: 'On Hold?', group: 'Flags' },
+  // Audit
+  { key: 'reqCreated', label: 'Req Created', group: 'Audit' },
+  { key: 'reqDeleted', label: 'Req Deleted', group: 'Audit' },
+] as const;
+
+export type CandidateColKey = (typeof CANDIDATE_COL_DEFS)[number]['key'];
+
+// Default hidden columns — the heavy/rarely-needed ones hidden by default
+const DEFAULT_HIDDEN_CANDIDATE_COLS = new Set<CandidateColKey>([
+  'spocEmail',
+  'spocDesig',
+  'currency',
+  'salaryType',
+  'rejected',
+  'withdrawn',
+  'onHold',
+  'reqCreated',
+  'reqDeleted',
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOWNLOAD MENU
+//
+// Server-only export. Includes an inline Candidate Columns picker so the user
+// controls exactly which columns appear in the Candidates sheet.
+// Hidden candidate cols are sent as ?hiddenCandidateCols=key1,key2 to the server.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DownloadItem({
@@ -314,78 +385,177 @@ export function DownloadMenu({
   scopeLabel,
   rowCount,
   selectedCount,
-  columnCount,
-  onLocalAll,
-  onLocalSelected,
+  selectedStageIds = [],
   onServerAll,
   onServerSelected,
+  onServerStageFiltered,
 }: {
   scopeLabel: string;
   rowCount: number;
   selectedCount: number;
-  columnCount: number;
-  onLocalAll: () => void;
-  onLocalSelected: () => void;
-  onServerAll: () => void;
-  onServerSelected: () => void;
+  selectedStageIds?: string[];
+  onServerAll: (hiddenCandidateCols: string[]) => void;
+  onServerSelected: (hiddenCandidateCols: string[]) => void;
+  onServerStageFiltered?: (hiddenCandidateCols: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [colPickerOpen, setColPickerOpen] = useState(false);
+  const [hiddenCols, setHiddenCols] = useState<Set<CandidateColKey>>(
+    new Set(DEFAULT_HIDDEN_CANDIDATE_COLS)
+  );
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const hasStages = selectedStageIds.length > 0;
+
+  const toggleCol = (key: CandidateColKey) =>
+    setHiddenCols(prev => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+
+  const hiddenArr = [...hiddenCols];
+  const visibleCount = CANDIDATE_COL_DEFS.length - hiddenCols.size;
 
   const run = (fn: () => void) => () => {
     fn();
     setOpen(false);
   };
 
+  // Group cols for display
+  const groups = Array.from(new Set(CANDIDATE_COL_DEFS.map(c => c.group)));
+
   return (
     <>
       <button
         ref={triggerRef}
         onClick={() => setOpen(o => !o)}
-        className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
-          open
-            ? 'border-indigo-600 bg-indigo-600 text-white'
-            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-        }`}
+        className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${open ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
       >
         <Download className="h-3.5 w-3.5" /> Download
         <ChevronDown className="h-3 w-3 opacity-60" />
+        {hasStages && (
+          <span className="ml-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+            {selectedStageIds.length} stage{selectedStageIds.length > 1 ? 's' : ''}
+          </span>
+        )}
       </button>
 
-      <AnchoredPanel anchorRef={triggerRef} open={open} onClose={() => setOpen(false)} width={290}>
-        <div className="overflow-y-auto p-1.5">
-          <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            This view · {columnCount} columns
-          </p>
-          <DownloadItem
-            label={`All rows (${rowCount})`}
-            hint="Built here, instantly — only the columns you can see"
-            onClick={run(onLocalAll)}
-            disabled={rowCount === 0}
-          />
-          <DownloadItem
-            label={`Selected rows (${selectedCount})`}
-            hint={selectedCount ? 'Your ticked rows, visible columns' : 'Tick some rows first'}
-            onClick={run(onLocalSelected)}
-            disabled={selectedCount === 0}
-          />
+      <AnchoredPanel
+        anchorRef={triggerRef}
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setColPickerOpen(false);
+        }}
+        width={320}
+      >
+        <div className="flex min-h-0 flex-col overflow-hidden">
+          {/* ── Export actions ── */}
+          <div className="p-1.5">
+            <p className="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              {scopeLabel} export
+            </p>
 
-          <div className="my-1 border-t border-slate-100" />
+            <DownloadItem
+              label={`All rows (${rowCount})`}
+              hint="Summary sheet + Candidates sheet with selected columns"
+              onClick={run(() => onServerAll(hiddenArr))}
+              disabled={rowCount === 0}
+            />
+            <DownloadItem
+              label={`Selected rows (${selectedCount})`}
+              hint={selectedCount ? 'Only ticked rows' : 'Tick some rows first'}
+              onClick={run(() => onServerSelected(hiddenArr))}
+              disabled={selectedCount === 0}
+            />
 
-          <p className="px-2.5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            Full export · every column
-          </p>
-          <DownloadItem
-            label={`${scopeLabel} — all rows`}
-            hint="Generated by the server, ignores column choices"
-            onClick={run(onServerAll)}
-          />
-          <DownloadItem
-            label={`Selected rows (${selectedCount})`}
-            hint={selectedCount ? 'Server export, every column' : 'Tick some rows first'}
-            onClick={run(onServerSelected)}
-            disabled={selectedCount === 0}
-          />
+            {hasStages && onServerStageFiltered && (
+              <>
+                <div className="my-1 border-t border-slate-100" />
+                <DownloadItem
+                  label={`${selectedStageIds.length} selected stage${selectedStageIds.length > 1 ? 's' : ''} only`}
+                  hint="Candidates sheet shows only candidates in highlighted stages"
+                  onClick={run(() => onServerStageFiltered(hiddenArr))}
+                />
+              </>
+            )}
+          </div>
+
+          {/* ── Candidate columns picker ── */}
+          <div className="border-t border-slate-200">
+            <button
+              onClick={() => setColPickerOpen(o => !o)}
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+            >
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-600">
+                Candidate sheet columns
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                  {visibleCount}/{CANDIDATE_COL_DEFS.length}
+                </span>
+                <ChevronDown
+                  className={`h-3.5 w-3.5 text-slate-400 transition-transform ${colPickerOpen ? 'rotate-180' : ''}`}
+                />
+              </span>
+            </button>
+
+            {colPickerOpen && (
+              <div className="max-h-64 overflow-y-auto border-t border-slate-100 pb-2">
+                {/* All / None quick actions */}
+                <div className="flex items-center gap-1 px-3 py-1.5">
+                  <button
+                    onClick={() => setHiddenCols(new Set())}
+                    className="rounded px-2 py-0.5 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setHiddenCols(new Set(CANDIDATE_COL_DEFS.map(c => c.key)))}
+                    className="rounded px-2 py-0.5 text-[11px] font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                  >
+                    None
+                  </button>
+                  <button
+                    onClick={() => setHiddenCols(new Set(DEFAULT_HIDDEN_CANDIDATE_COLS))}
+                    className="rounded px-2 py-0.5 text-[11px] font-bold text-slate-500 hover:bg-slate-100 transition-colors"
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                {groups.map(group => (
+                  <div key={group}>
+                    <p className="px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {group}
+                    </p>
+                    {CANDIDATE_COL_DEFS.filter(c => c.group === group).map(col => {
+                      const isVisible = !hiddenCols.has(col.key);
+                      return (
+                        <button
+                          key={col.key}
+                          onClick={() => toggleCol(col.key)}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50 transition-colors"
+                        >
+                          {isVisible ? (
+                            <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                          ) : (
+                            <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                          )}
+                          <span
+                            className={`text-[12px] font-semibold ${isVisible ? 'text-slate-800' : 'text-slate-400'}`}
+                          >
+                            {col.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </AnchoredPanel>
     </>
@@ -394,14 +564,10 @@ export function DownloadMenu({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STICKY TABLE CARD
-// The card pins to the top of the scroll area, so KPIs and filters above it
-// scroll away and the table takes the whole viewport. Height is capped here and
-// the inner scroll region fills what is left (flex + min-h-0) — no JS measuring.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function StickyTableCard({
   children,
-  /** Raise this if your dashboard shell has its own fixed top bar. */
   topOffset = 0,
   bottomGap = 16,
 }: {
@@ -433,13 +599,13 @@ export function GroupHeader({
   rightSlot?: ReactNode;
 }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b-2 border-slate-200 bg-slate-50 px-4 py-3">
       {title ? (
         <LinePill name={title} />
       ) : (
-        <span className="text-sm font-bold text-slate-700">All</span>
+        <span className="text-[14px] font-black text-slate-800">All</span>
       )}
-      <span className="text-[12px] font-semibold text-slate-500">
+      <span className="text-[13px] font-bold text-slate-600">
         {count} {countLabel}
       </span>
       {leftSlot}
@@ -449,7 +615,7 @@ export function GroupHeader({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SELECTION
+// SELECTION + EXPAND HOOKS
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function useSelection() {
@@ -480,7 +646,26 @@ export function useExpanded() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COLUMN FACTORIES — the frozen block every report table shares
+// STAGE SELECTION HOOK
+// Tracks which stage columns the user has highlighted for export filtering.
+// Lives here so both RecruiterTable and RequirementTable share the same logic.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function useStageSelection() {
+  const [selectedStageIds, setSelectedStageIds] = useState<Set<string>>(new Set());
+  const toggleStage = (stageId: string) =>
+    setSelectedStageIds(p => {
+      const n = new Set(p);
+      if (n.has(stageId)) n.delete(stageId);
+      else n.add(stageId);
+      return n;
+    });
+  const clearStages = () => setSelectedStageIds(new Set());
+  return { selectedStageIds, toggleStage, clearStages };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLUMN FACTORIES
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function makeSelectColumn<T>(
@@ -557,7 +742,6 @@ export function makeExpandColumn<T>(
   };
 }
 
-/** Sr number. Row order comes from the API, so this is a display index only. */
 export function makeSrColumn<T>(): ColumnDef<T> {
   return {
     id: '__sr',

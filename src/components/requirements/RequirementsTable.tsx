@@ -112,7 +112,7 @@ export function RequirementsTable({
 
   if (isLoading) return <TableSkeleton />;
 
-  if (!requirements.length) {
+  if (!!requirements.length) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 border rounded-lg">
         <p className="text-sm font-medium text-muted-foreground">No requirements found</p>

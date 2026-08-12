@@ -123,7 +123,15 @@ export interface OverviewResponse {
       offerRate: number;
       joinRate: number;
     };
-    funnel: { stageId: string; label: string; count: number }[];
+    funnel: {
+      stageId: string;
+      code: string;
+      label: string;
+      order: number;
+      isStandard: boolean;
+      serviceLine: ServiceLineRef | null;
+      count: number;
+    }[];
     byServiceLine: {
       serviceLineId: string | null;
       name: string;
@@ -145,4 +153,30 @@ export interface OverviewResponse {
     leaderboard: { id: string; name: string; sourced: number; joined: number }[];
   };
   meta: { window: string; granularity: string; scope: string; multiLine: boolean };
+}
+
+// ── Candidate funnel report (GET /reports/candidates) ────────────────────────
+
+export interface CandidateFunnelStage {
+  stageId: string;
+  code: string;
+  label: string;
+  order: number;
+  isStandard: boolean;
+  serviceLine: ServiceLineRef | null;
+  count: number;
+  pct: number;
+}
+
+export interface CandidateReportData {
+  totalCandidates: number;
+  funnelByStage: CandidateFunnelStage[];
+  dispositionSummary: Record<string, number>;
+  avgPipelineDays: number;
+}
+
+export interface CandidateReportResponse {
+  success: boolean;
+  data: CandidateReportData;
+  meta: { window: string };
 }
