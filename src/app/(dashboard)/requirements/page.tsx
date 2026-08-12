@@ -55,6 +55,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
 import { isReasonRequired, RequirementStatus, STATUS_FLOW } from '@/components/requirements/types';
+import { Span } from 'next/dist/trace';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ interface Requirement {
   closureReason?: string | null;
   jdParseStatus?: string | null;
   client?: { id: string; name: string } | null;
+  clientSpoc?: { handler: { id: string; firstName: string; lastName: string } } | null;
   businessUnit?: { id: string; name: string } | null;
   serviceLine?: { id: string; name: string } | null;
   createdBy?: { id: string; firstName: string; lastName: string } | null;
@@ -1431,6 +1433,9 @@ function RequirementsTable({
             <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
               Client
             </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
+              Spoc
+            </th>
             <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16">
               Open
             </th>
@@ -1566,7 +1571,7 @@ function RequirementsTable({
                       {req.createdBy.firstName} {req.createdBy.lastName}
                     </span>
                   ) : (
-                    <span className="text-slate-300">—</span>
+                    <span className="text-slate-5 00">—</span>
                   )}
                 </td>
 
@@ -1576,7 +1581,20 @@ function RequirementsTable({
                     className="text-slate-700 text-[12px] truncate block"
                     style={{ maxWidth: 120 }}
                   >
-                    {req.client?.name ?? <span className="text-slate-300">—</span>}
+                    {req.client?.name ?? <span className="text-slate-500">—</span>}
+                  </span>
+                </td>
+
+                <td className="px-3 py-3">
+                  <span
+                    className="text-slate-700 text-[12px] truncate block"
+                    style={{ maxWidth: 120 }}
+                  >
+                    {req.clientSpoc ? (
+                      `${req.clientSpoc.handler.firstName} ${req.clientSpoc.handler.lastName}`
+                    ) : (
+                      <span className="text-slate-500">—</span>
+                    )}
                   </span>
                 </td>
 
