@@ -21,6 +21,7 @@ import {
   Info,
   Search,
   X,
+  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +59,11 @@ interface DailyRow {
   fillStatus: 'FILLED' | 'NAUKRI_NOT_FILLED' | 'SYSTEM_CAPTURED_ONLY';
   flags: string[];
   isFrozen: boolean;
+  // NEW — 3-step activity breakdown from ExtensionCaptureLogs
+  naukriProfilesViewed: number;
+  naukriPhonesRevealed: number;
+  naukriCvsDownloaded: number;
+  completeProfilesCaptured: number;
 }
 
 interface SummaryRow {
@@ -425,12 +431,15 @@ export default function NaukriLogsPage() {
   const analytics = useMemo(() => {
     const naukri = filteredDaily.reduce((s, r) => s + (r.naukriCvConsumed ?? 0), 0);
     const ats = filteredDaily.reduce((s, r) => s + r.atsCaptured, 0);
+    // NEW — total complete profiles across the filtered view
+    const complete = filteredDaily.reduce((s, r) => s + (r.completeProfilesCaptured ?? 0), 0);
     return {
       naukri,
       ats,
       gap: naukri - ats,
       notFilled: filteredDaily.filter(r => r.fillStatus === 'NAUKRI_NOT_FILLED').length,
       leaking: filteredDaily.filter(r => r.flags.includes('ATS_LEAKAGE')).length,
+      complete,
     };
   }, [filteredDaily]);
 
@@ -666,6 +675,14 @@ export default function NaukriLogsPage() {
                 tone="emerald"
                 sub="landed in the system"
               />
+              {/* NEW — total complete profiles (all 3 steps, same day) */}
+              <StatCard
+                icon={CheckCircle2}
+                label="Complete profiles"
+                value={analytics.complete}
+                tone="emerald"
+                sub="viewed + phone + resume"
+              />
               <StatCard
                 icon={TrendingDown}
                 label="Difference"
@@ -818,6 +835,11 @@ export default function NaukriLogsPage() {
                       <th className="text-left font-semibold px-3 py-2.5">RM</th>
                       <th className="text-right font-semibold px-3 py-2.5">Naukri</th>
                       <th className="text-right font-semibold px-3 py-2.5">ATS</th>
+                      {/* NEW — 3-step breakdown, placed right after ATS since it explains that number */}
+                      <th className="text-right font-semibold px-3 py-2.5">Profiles</th>
+                      <th className="text-right font-semibold px-3 py-2.5">Phones</th>
+                      <th className="text-right font-semibold px-3 py-2.5">Resumes</th>
+                      <th className="text-right font-semibold px-3 py-2.5">Complete</th>
                       <th className="text-right font-semibold px-3 py-2.5">Diff</th>
                       <th className="text-left font-semibold px-3 py-2.5">Status</th>
                       <th className="text-left font-semibold px-5 py-2.5">Flags</th>
@@ -851,6 +873,19 @@ export default function NaukriLogsPage() {
                                   .join(' · ')}
                               </div>
                             )}
+                          </td>
+                          {/* NEW — 3-step breakdown cells */}
+                          <td className="px-3 py-3 text-right tabular-nums text-slate-600">
+                            {r.naukriProfilesViewed}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-slate-600">
+                            {r.naukriPhonesRevealed}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-slate-600">
+                            {r.naukriCvsDownloaded}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums font-bold text-emerald-600">
+                            {r.completeProfilesCaptured}
                           </td>
                           <td
                             className={`px-3 py-3 text-right tabular-nums font-bold ${

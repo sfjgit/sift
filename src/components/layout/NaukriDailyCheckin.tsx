@@ -45,6 +45,11 @@ interface MeDay {
   promiseStatus: string;
   story: DayStory;
   meme: { url: string; caption: string | null } | null;
+  // NEW — 3-step activity breakdown, now returned by /naukri/me
+  profilesViewed?: number;
+  phonesRevealed?: number;
+  cvsDownloaded?: number;
+  completeProfiles?: number;
 }
 interface MeResponse {
   scope: string;
@@ -170,6 +175,37 @@ export default function NaukriDailyCheckin() {
                       Not accounted
                     </p>
                     <p className="text-2xl font-extrabold text-red-600">{gap}</p>
+                  </div>
+                </div>
+
+                {/* NEW — 3-step breakdown, right where the recruiter needs to
+                    see WHY the gap exists, not just that it exists */}
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Profiles
+                    </p>
+                    <p className="text-lg font-bold text-slate-800">{day.profilesViewed ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Phones
+                    </p>
+                    <p className="text-lg font-bold text-slate-800">{day.phonesRevealed ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Resumes
+                    </p>
+                    <p className="text-lg font-bold text-slate-800">{day.cvsDownloaded ?? 0}</p>
+                  </div>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+                      Complete
+                    </p>
+                    <p className="text-lg font-bold text-emerald-700">
+                      {day.completeProfiles ?? 0}
+                    </p>
                   </div>
                 </div>
 

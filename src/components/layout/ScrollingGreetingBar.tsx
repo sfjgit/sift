@@ -19,6 +19,11 @@ interface MeDay {
   difference: number | null;
   flags: string[];
   reason: string | null;
+  // NEW — 3-step activity breakdown, now returned by /naukri/me
+  profilesViewed?: number;
+  phonesRevealed?: number;
+  cvsDownloaded?: number;
+  completeProfiles?: number;
 }
 interface MeResponse {
   scope: string;
@@ -98,6 +103,10 @@ export default function ScrollingGreetingBar({
     naukri: null,
     ats: 0,
     difference: null,
+    profilesViewed: 0,
+    phonesRevealed: 0,
+    cvsDownloaded: 0,
+    completeProfiles: 0,
   };
 
   // ── gap status ──
@@ -208,6 +217,32 @@ export default function ScrollingGreetingBar({
                 <div className="sgb__metric">
                   <span className="sgb__metric-label">ATS</span>
                   <span className="sgb__metric-val sgb__metric-val--ats">{tDay.ats ?? 0}</span>
+                </div>
+                {/* NEW — 3-step breakdown, compact, for real-time self-check */}
+                <div className="sgb__metric-arrow">·</div>
+                <div className="sgb__metric sgb__metric--mini">
+                  <span className="sgb__metric-label">Profiles</span>
+                  <span className="sgb__metric-val sgb__metric-val--mini">
+                    {tDay.profilesViewed ?? 0}
+                  </span>
+                </div>
+                <div className="sgb__metric sgb__metric--mini">
+                  <span className="sgb__metric-label">Phones</span>
+                  <span className="sgb__metric-val sgb__metric-val--mini">
+                    {tDay.phonesRevealed ?? 0}
+                  </span>
+                </div>
+                <div className="sgb__metric sgb__metric--mini">
+                  <span className="sgb__metric-label">Resumes</span>
+                  <span className="sgb__metric-val sgb__metric-val--mini">
+                    {tDay.cvsDownloaded ?? 0}
+                  </span>
+                </div>
+                <div className="sgb__metric sgb__metric--mini">
+                  <span className="sgb__metric-label">Complete</span>
+                  <span className="sgb__metric-val sgb__metric-val--mini sgb__metric-val--complete">
+                    {tDay.completeProfiles ?? 0}
+                  </span>
                 </div>
               </div>
             </div>
@@ -490,6 +525,21 @@ export default function ScrollingGreetingBar({
           text-shadow:
             0 0 16px rgba(255, 255, 255, 0.9),
             0 0 6px rgba(147, 197, 253, 0.6);
+        }
+
+        /* NEW — compact mini-metrics for the 3-step breakdown on Today card */
+        .sgb__metric--mini {
+          gap: 0;
+        }
+        .sgb__metric-val--mini {
+          font-size: 13px;
+          font-weight: 800;
+          text-shadow: none;
+          color: rgba(255, 255, 255, 0.85);
+        }
+        .sgb__metric-val--complete {
+          color: #6ee7b7;
+          text-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
         }
 
         /* gap value colours */
