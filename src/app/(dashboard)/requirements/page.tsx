@@ -58,7 +58,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
 import { isReasonRequired, RequirementStatus, STATUS_FLOW } from '@/components/requirements/types';
-import { Span } from 'next/dist/trace';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -280,10 +279,22 @@ const DEPTH_LABEL: Record<number, { label: string; cls: string }> = {
   1: { label: 'TL', cls: 'bg-violet-100 text-violet-700' },
   2: { label: 'Rec', cls: 'bg-emerald-100 text-emerald-700' },
 };
-const SALE_BASIS_LABEL: Record<string, { label: string; cls: string }> = {
-  SALE_VALUE: { label: 'Direct', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  BAND_PERCENTAGE: { label: 'Band %', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  SALARY_AVG: { label: 'Salary Avg', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+const SALE_BASIS_LABEL: Record<string, { label: string; desc: string; cls: string }> = {
+  SALE_VALUE: {
+    label: 'Direct',
+    desc: 'Sale value set directly on requirement × openings',
+    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  },
+  BAND_PERCENTAGE: {
+    label: 'Band %',
+    desc: 'Band value × client % × openings',
+    cls: 'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  SALARY_AVG: {
+    label: 'Salary Avg',
+    desc: 'Avg of min/max salary × openings (no band set)',
+    cls: 'bg-amber-50 text-amber-700 border-amber-200',
+  },
 };
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -336,35 +347,83 @@ function canonicalPillFromDot(dotCls: string): string {
 }
 
 // ─── SaleValueBadge ───────────────────────────────────────────────────────────
+// compact=true  → used in card view strip (just amount)
+// compact=false → used in table cell (amount + basis pill + formula tooltip)
 
 function SaleValueBadge({
   computedSaleValue,
   saleValueBasis,
   compact = false,
+  req,
 }: {
   computedSaleValue: number | null | undefined;
   saleValueBasis: string | null | undefined;
   compact?: boolean;
+  req?: Requirement;
 }) {
   if (computedSaleValue == null) {
     return (
       <span className="flex items-center gap-1 text-[11px] text-slate-300 italic">
-        {!compact && <AlertTriangle size={10} className="text-slate-300" />}
-        N/A
+        {!compact && <AlertTriangle size={10} className="text-amber-400" />}
+        {!compact ? <span className="text-amber-500 not-italic font-medium">No data</span> : 'N/A'}
       </span>
     );
   }
+
   const basis = saleValueBasis ? SALE_BASIS_LABEL[saleValueBasis] : null;
+
+  // Build a human-readable formula string so the CEO can trace where it came from
+  const formulaLine = (() => {
+    if (!req || !saleValueBasis) return null;
+    const open = req.totalOpenings ?? 1;
+    if (saleValueBasis === 'SALE_VALUE' && req.saleValue != null) {
+      return `${fmtCurrency(req.saleValue)} (direct) × ${open} opening${open !== 1 ? 's' : ''}`;
+    }
+    if (
+      saleValueBasis === 'BAND_PERCENTAGE' &&
+      req.band?.value != null &&
+      req.client?.percentageValue != null
+    ) {
+      return `${fmtCurrency(req.band.value)} (band) × ${req.client.percentageValue}% (client) × ${open} opening${open !== 1 ? 's' : ''}`;
+    }
+    if (saleValueBasis === 'SALARY_AVG') {
+      const min = req.salaryMin;
+      const max = req.salaryMax;
+      const avg = min != null && max != null ? (min + max) / 2 : (min ?? max ?? 0);
+      if (min != null && max != null) {
+        return `Avg of ${fmtCurrency(min)}–${fmtCurrency(max)} = ${fmtCurrency(avg)} × ${open} opening${open !== 1 ? 's' : ''}`;
+      }
+      return `${fmtCurrency(avg)} (salary) × ${open} opening${open !== 1 ? 's' : ''}`;
+    }
+    return null;
+  })();
+
+  if (compact) {
+    return (
+      <span className="text-[12px] font-bold text-emerald-700 tabular-nums">
+        {fmtCurrency(computedSaleValue)}
+      </span>
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-1 min-w-0">
+      {/* Main amount */}
       <span className="text-[13px] font-bold text-emerald-700 tabular-nums leading-none">
         {fmtCurrency(computedSaleValue)}
       </span>
-      {basis && !compact && (
+      {/* Basis pill */}
+      {basis && (
         <span
           className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border w-fit ${basis.cls}`}
         >
           {basis.label}
+        </span>
+      )}
+      {/* Formula — the key CEO line */}
+      {formulaLine && (
+        <span className="text-[10px] text-slate-400 leading-tight" style={{ maxWidth: 180 }}>
+          {formulaLine}
         </span>
       )}
     </div>
@@ -1468,11 +1527,23 @@ function RequirementsTable({
               Agreement
             </th>
             {/* ── Sale value ── */}
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32 bg-emerald-50 border-l border-emerald-100">
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36 bg-emerald-50 border-l border-emerald-100">
               Band
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36 bg-emerald-50">
-              Sale Value
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32 bg-emerald-50">
+              Salary Range
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-28 bg-emerald-50">
+              <span className="block">Req. Sale Value</span>
+              <span className="text-[9px] text-slate-400 font-normal normal-case tracking-normal">
+                manually entered
+              </span>
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-56 bg-emerald-50">
+              <span className="block">Computed Sale Value</span>
+              <span className="text-[9px] text-slate-400 font-normal normal-case tracking-normal">
+                auto-calculated
+              </span>
             </th>
             {/* ── Numbers ── */}
             <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-14 bg-slate-50">
@@ -1596,7 +1667,7 @@ function RequirementsTable({
                       {req.createdBy.firstName} {req.createdBy.lastName}
                     </span>
                   ) : (
-                    <span className="text-slate-5 00">—</span>
+                    <span className="text-slate-300">—</span>
                   )}
                 </td>
 
@@ -1637,13 +1708,19 @@ function RequirementsTable({
                         {req.band.name ? ` · ${req.band.name}` : ''}
                       </span>
                       {req.band.value != null && (
-                        <span className="text-[10px] text-slate-500">
-                          Val: {fmtCurrency(req.band.value)}
+                        <span className="text-[10px] text-slate-600 font-medium">
+                          {fmtCurrency(req.band.value)}
+                          {req.client?.percentageValue != null && (
+                            <span className="text-slate-400 font-normal">
+                              {' '}
+                              × {req.client.percentageValue}%
+                            </span>
+                          )}
                         </span>
                       )}
                       {req.band.rangeFrom != null && req.band.rangeTo != null && (
                         <span className="text-[10px] text-slate-400">
-                          {fmtCurrency(req.band.rangeFrom)} – {fmtCurrency(req.band.rangeTo)}
+                          Range: {fmtCurrency(req.band.rangeFrom)} – {fmtCurrency(req.band.rangeTo)}
                         </span>
                       )}
                     </div>
@@ -1652,11 +1729,58 @@ function RequirementsTable({
                   )}
                 </td>
 
-                {/* Computed sale value */}
+                {/* Salary min/max */}
+                <td className="px-3 py-3 bg-emerald-50/30">
+                  {req.salaryMin != null || req.salaryMax != null ? (
+                    <div className="flex flex-col gap-0.5">
+                      {req.salaryMin != null && req.salaryMax != null ? (
+                        <>
+                          <span className="text-[11px] text-slate-700 font-medium tabular-nums">
+                            {fmtCurrency(req.salaryMin)} – {fmtCurrency(req.salaryMax)}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            Avg: {fmtCurrency((req.salaryMin + req.salaryMax) / 2)}
+                            {req.salaryType ? ` / ${req.salaryType.toLowerCase()}` : ''}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-slate-700 font-medium tabular-nums">
+                          {fmtCurrency(req.salaryMin ?? req.salaryMax)}
+                          {req.salaryType ? (
+                            <span className="text-[10px] text-slate-400 font-normal ml-1">
+                              / {req.salaryType.toLowerCase()}
+                            </span>
+                          ) : (
+                            ''
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-slate-300 text-[11px]">—</span>
+                  )}
+                </td>
+
+                {/* Req. Sale Value — raw manually entered number, NOT multiplied by openings */}
+                <td className="px-3 py-3 bg-emerald-50/30">
+                  {req.saleValue != null ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[13px] font-bold text-slate-700 tabular-nums leading-none">
+                        {fmtCurrency(req.saleValue)}
+                      </span>
+                      <span className="text-[10px] text-slate-400">per opening</span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-300 text-[11px]">—</span>
+                  )}
+                </td>
+
+                {/* Computed Sale Value — auto-calculated from chain, includes openings */}
                 <td className="px-3 py-3 bg-emerald-50/30">
                   <SaleValueBadge
                     computedSaleValue={req.computedSaleValue}
                     saleValueBasis={req.saleValueBasis}
+                    req={req}
                   />
                 </td>
 
@@ -2112,6 +2236,7 @@ function RequirementCard({
                     computedSaleValue={req.computedSaleValue}
                     saleValueBasis={req.saleValueBasis}
                     compact
+                    req={req}
                   />
                 </div>
               )}
@@ -2229,6 +2354,7 @@ function RequirementCard({
                     computedSaleValue={req.computedSaleValue}
                     saleValueBasis={req.saleValueBasis}
                     compact
+                    req={req}
                   />
                 </div>
               )}
