@@ -119,7 +119,7 @@ interface Requirement {
   salaryType?: string | null;
   salaryCurrency?: string | null;
   computedSaleValue?: number | null;
-  saleValueBasis?: 'SALE_VALUE' | 'BAND_PERCENTAGE' | 'SALARY_AVG' | null;
+  saleValueBasis?: 'SALE_VALUE' | 'BAND' | 'FIXED_PCT' | 'SALARY_AVG' | null;
   // Band
   bandId?: string | null;
   band?: Band | null;
@@ -282,17 +282,22 @@ const DEPTH_LABEL: Record<number, { label: string; cls: string }> = {
 const SALE_BASIS_LABEL: Record<string, { label: string; desc: string; cls: string }> = {
   SALE_VALUE: {
     label: 'Direct',
-    desc: 'Sale value set directly on requirement × openings',
+    desc: 'Req. sale value × openings',
     cls: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   },
-  BAND_PERCENTAGE: {
-    label: 'Band %',
-    desc: 'Band value × client % × openings',
+  BAND: {
+    label: 'Band',
+    desc: 'Band value × openings',
     cls: 'bg-blue-50 text-blue-700 border-blue-200',
+  },
+  FIXED_PCT: {
+    label: 'Fixed %',
+    desc: 'Avg salary × client % × openings',
+    cls: 'bg-violet-50 text-violet-700 border-violet-200',
   },
   SALARY_AVG: {
     label: 'Salary Avg',
-    desc: 'Avg of min/max salary × openings (no band set)',
+    desc: 'Avg of min/max salary × openings',
     cls: 'bg-amber-50 text-amber-700 border-amber-200',
   },
 };
@@ -372,29 +377,46 @@ function SaleValueBadge({
 
   const basis = saleValueBasis ? SALE_BASIS_LABEL[saleValueBasis] : null;
 
-  // Build a human-readable formula string so the CEO can trace where it came from
+  // Human-readable formula — so the CEO can trace every number
   const formulaLine = (() => {
     if (!req || !saleValueBasis) return null;
     const open = req.totalOpenings ?? 1;
+    const openLabel = `× ${open} opening${open !== 1 ? 's' : ''}`;
+
     if (saleValueBasis === 'SALE_VALUE' && req.saleValue != null) {
-      return `${fmtCurrency(req.saleValue)} (direct) × ${open} opening${open !== 1 ? 's' : ''}`;
+      // Direct: saleValue × openings
+      return `${fmtCurrency(req.saleValue)} (sale value) ${openLabel}`;
     }
-    if (
-      saleValueBasis === 'BAND_PERCENTAGE' &&
-      req.band?.value != null &&
-      req.client?.percentageValue != null
-    ) {
-      return `${fmtCurrency(req.band.value)} (band) × ${req.client.percentageValue}% (client) × ${open} opening${open !== 1 ? 's' : ''}`;
+
+    if (saleValueBasis === 'BAND' && req.band?.value != null) {
+      // Band: band.value × openings — no salary, no percentage
+      return `${fmtCurrency(req.band.value)} (band ${req.band.code}) ${openLabel}`;
     }
+
+    if (saleValueBasis === 'FIXED_PCT') {
+      // Fixed %: avg(salaryMin, salaryMax) × (pct/100) × openings
+      const min = req.salaryMin;
+      const max = req.salaryMax;
+      const avg = min != null && max != null ? (min + max) / 2 : (min ?? max ?? 0);
+      const pct = req.client?.percentageValue;
+      const salaryPart =
+        min != null && max != null
+          ? `avg(${fmtCurrency(min)}, ${fmtCurrency(max)}) = ${fmtCurrency(avg)}`
+          : fmtCurrency(avg);
+      return `${salaryPart} × ${pct}% (client) ${openLabel}`;
+    }
+
     if (saleValueBasis === 'SALARY_AVG') {
+      // Salary avg only — no band, no percentage
       const min = req.salaryMin;
       const max = req.salaryMax;
       const avg = min != null && max != null ? (min + max) / 2 : (min ?? max ?? 0);
       if (min != null && max != null) {
-        return `Avg of ${fmtCurrency(min)}–${fmtCurrency(max)} = ${fmtCurrency(avg)} × ${open} opening${open !== 1 ? 's' : ''}`;
+        return `avg(${fmtCurrency(min)}, ${fmtCurrency(max)}) = ${fmtCurrency(avg)} ${openLabel}`;
       }
-      return `${fmtCurrency(avg)} (salary) × ${open} opening${open !== 1 ? 's' : ''}`;
+      return `${fmtCurrency(avg)} (salary) ${openLabel}`;
     }
+
     return null;
   })();
 
