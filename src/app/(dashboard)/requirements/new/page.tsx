@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable react/no-unescaped-entities */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // File: page.tsx
 // Path: src/app/(dashboard)/requirements/new/page.tsx
@@ -34,7 +33,6 @@ import {
   Tag,
   Zap,
   Lock,
-  ChevronRight,
   RotateCcw,
   ClipboardList,
 } from 'lucide-react';
@@ -51,6 +49,108 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import { useRequirementDraftStore } from '@/stores/useRequirementDraftStore';
 import { COUNTRIES, getStates, getCities } from '@/data/locationData';
+
+function BandSaleValueFields({
+  clientId,
+  clientAgreementType,
+  control,
+  setValue,
+}: {
+  clientId: string | null | undefined;
+  clientAgreementType: string | null | undefined;
+  control: any;
+  setValue: any;
+}) {
+  const axios = useAxios();
+  const bandId = useWatch({ control, name: 'bandId' });
+  const saleValue = useWatch({ control, name: 'saleValue' });
+  const showBand = clientAgreementType === 'BAND' && !!clientId;
+
+  const { data: bands, isLoading } = useQuery<Band[]>({
+    queryKey: ['client-bands', clientId],
+    queryFn: async () => (await axios.get(`/clients/${clientId}/bands`)).data?.data ?? [],
+    enabled: showBand,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selectedBand = bands?.find(b => b.id === bandId) ?? null;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 mt-2">
+      {showBand && (
+        <div>
+          <FieldLabel>
+            Band <span className="text-[11px] font-normal text-slate-400">(optional)</span>
+          </FieldLabel>
+          {isLoading ? (
+            <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 animate-pulse" />
+          ) : (
+            <Select
+              value={bandId ?? '__none__'}
+              onValueChange={v =>
+                setValue('bandId', v === '__none__' ? null : v, { shouldDirty: true })
+              }
+            >
+              <SelectTrigger className={selectCls}>
+                <SelectValue placeholder="Select band…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">
+                  <span className="text-slate-400">No band</span>
+                </SelectItem>
+                {(bands ?? []).map(b => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.code}
+                    {b.name ? ` · ${b.name}` : ''}
+                    {b.rangeFrom != null && b.rangeTo != null
+                      ? ` · ${formatINR(b.rangeFrom)}–${formatINR(b.rangeTo)}`
+                      : b.value != null
+                        ? ` · ${formatINR(b.value)}`
+                        : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {selectedBand && (
+            <p className="text-[11px] text-slate-400 mt-1">
+              {selectedBand.rangeFrom != null
+                ? `${formatINR(selectedBand.rangeFrom)} – ${formatINR(selectedBand.rangeTo)}`
+                : formatINR(selectedBand.value)}
+              {selectedBand.experience != null ? ` · ${selectedBand.experience}y exp` : ''}
+            </p>
+          )}
+        </div>
+      )}
+      <div>
+        <FieldLabel>
+          Sale Value <span className="text-[11px] font-normal text-slate-400">(optional)</span>
+        </FieldLabel>
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[13px] pointer-events-none">
+            ₹
+          </span>
+          <Input
+            type="number"
+            min={0}
+            step={1000}
+            placeholder="e.g. 450000"
+            value={saleValue ?? ''}
+            onChange={e =>
+              setValue('saleValue', e.target.value === '' ? null : parseFloat(e.target.value), {
+                shouldDirty: true,
+              })
+            }
+            className={`${inputCls} pl-7`}
+          />
+        </div>
+        {saleValue != null && saleValue > 0 && (
+          <p className="text-[11px] text-slate-400 mt-1">{formatINR(saleValue)}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -87,7 +187,24 @@ function coerceNumber(v: unknown): number | null {
 // ─────────────────────────────────────────────────────────────────────────────
 // SCHEMA
 // ─────────────────────────────────────────────────────────────────────────────
+interface Band {
+  id: string;
+  code: string;
+  name: string | null;
+  rangeFrom: number | null;
+  rangeTo: number | null;
+  value: number | null;
+  experience: number | null;
+}
 
+function formatINR(n: number | null | undefined): string {
+  if (n == null) return '';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(n);
+}
 const optionalNumber = z.preprocess(coerceNumber, z.number().min(0).optional().nullable());
 
 const schema = z.object({
@@ -127,6 +244,9 @@ const schema = z.object({
   jdParseStatus: z.enum(['PARSED', 'FAILED', 'MANUALLY_OVERRIDDEN']).optional().nullable(),
   jdParsedFields: z.array(z.string()).default([]),
   parsedJDId: z.string().optional().nullable(),
+
+  bandId: z.string().optional().nullable(),
+  saleValue: z.preprocess(coerceNumber, z.number().min(0).optional().nullable()),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -139,6 +259,8 @@ interface MyClient {
   id: string;
   name: string;
   vmsName?: string;
+  agreementType?: string | null;
+  percentageValue?: number | null;
 }
 interface SpocDMUser {
   id: string;
@@ -203,12 +325,12 @@ const SECTION_FIELDS: Record<string, (keyof FormValues)[]> = {
 // Defines every field we track, with a label and how to check if filled
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface UnfilledField {
-  key: string;
-  label: string;
-  section: string;
-  required: boolean;
-}
+// interface UnfilledField {
+//   key: string;
+//   label: string;
+//   section: string;
+//   required: boolean;
+// }
 
 // We check these reactively via useWatch
 const TRACKED_FIELDS = [
@@ -1244,6 +1366,8 @@ export default function NewRequirementPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
     defaultValues: {
+      bandId: null,
+      saleValue: null,
       priority: 'MEDIUM',
       jobOpenFor: 'EXTERNAL',
       salaryCurrency: 'INR',
@@ -1393,6 +1517,7 @@ export default function NewRequirementPage() {
   });
 
   const clients = clientsRes?.data ?? [];
+  const selectedClient = clients.find(c => c.id === selectedClientId) ?? null;
   const rawSpocs = spocsRes?.data ?? [];
   const spocs = [...rawSpocs].sort((a, b) => {
     const ad = a.clientSpocDms?.length ?? 0,
@@ -1414,6 +1539,7 @@ export default function NewRequirementPage() {
     setSelectedSpoc(null);
     setValue('clientSpocId', '');
     setDraft({ clientSpocId: '' });
+    setValue('bandId', null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId]);
 
@@ -1598,6 +1724,9 @@ export default function NewRequirementPage() {
       keySkills,
       targetCompanies,
       noPoachCompanies,
+
+      bandId: data.bandId ?? null,
+      saleValue: data.saleValue ?? null,
     });
   }
 
@@ -2327,6 +2456,13 @@ export default function NewRequirementPage() {
                     )}
                   </div>
                 )}
+
+                <BandSaleValueFields
+                  clientId={selectedClientId}
+                  clientAgreementType={selectedClient?.agreementType}
+                  control={control}
+                  setValue={setValue}
+                />
               </SectionCard>
 
               {/* Timeline */}

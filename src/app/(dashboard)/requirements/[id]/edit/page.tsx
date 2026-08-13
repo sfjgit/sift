@@ -84,14 +84,35 @@ function computeTurnaround(start?: string | null, target?: string | null): numbe
   return days > 0 ? days : null;
 }
 
+function formatINR(n: number | null | undefined): string {
+  if (n == null) return '';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TYPES (client / spoc — same shapes as the create page)
+// TYPES
 // ─────────────────────────────────────────────────────────────────────────────
+
+interface Band {
+  id: string;
+  code: string;
+  name: string | null;
+  rangeFrom: number | null;
+  rangeTo: number | null;
+  value: number | null;
+  experience: number | null;
+}
 
 interface MyClient {
   id: string;
   name: string;
   vmsName?: string;
+  agreementType?: string | null;
+  percentageValue?: number | null;
 }
 interface SpocDMUser {
   id: string;
@@ -149,8 +170,10 @@ const schema = z.object({
   noPoachCompanies: z.array(z.string().trim().min(1)),
   startDate: z.string().optional().nullable(),
   targetDate: z.string().optional().nullable(),
-  // client/spoc — only clientSpocId is sent; backend re-derives client/SL/BU
   clientSpocId: z.string().optional().nullable(),
+  // ── NEW ──
+  bandId: z.string().optional().nullable(),
+  saleValue: z.preprocess(coerceNumber, z.number().min(0).optional().nullable()),
 });
 
 type EditFormValues = z.infer<typeof schema>;
@@ -190,6 +213,9 @@ function reqToFormValues(req: any): EditFormValues {
     startDate: toDateInput(req.startDate),
     targetDate: toDateInput(req.targetDate),
     clientSpocId: req.clientSpoc?.id ?? null,
+    // ── NEW ──
+    bandId: req.bandId ?? null,
+    saleValue: req.saleValue ?? null,
   };
 }
 
@@ -267,7 +293,113 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SPOC SELECT ITEM — copied from the create page
+// BAND + SALE VALUE FIELDS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BandSaleValueFields({
+  clientId,
+  clientAgreementType,
+  control,
+  setValue,
+}: {
+  clientId: string | null | undefined;
+  clientAgreementType: string | null | undefined;
+  control: any;
+  setValue: any;
+}) {
+  const axios = useAxios();
+  const bandId = useWatch({ control, name: 'bandId' });
+  const saleValue = useWatch({ control, name: 'saleValue' });
+  const showBand = clientAgreementType === 'BAND' && !!clientId;
+
+  const { data: bands, isLoading } = useQuery<Band[]>({
+    queryKey: ['client-bands', clientId],
+    queryFn: async () => (await axios.get(`/clients/${clientId}/bands`)).data?.data ?? [],
+    enabled: showBand,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const selectedBand = bands?.find(b => b.id === bandId) ?? null;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 mt-2">
+      {showBand && (
+        <div>
+          <FieldLabel>
+            Band <span className="text-[11px] font-normal text-slate-400">(optional)</span>
+          </FieldLabel>
+          {isLoading ? (
+            <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 animate-pulse" />
+          ) : (
+            <Select
+              value={bandId ?? '__none__'}
+              onValueChange={v =>
+                setValue('bandId', v === '__none__' ? null : v, { shouldDirty: true })
+              }
+            >
+              <SelectTrigger className={selectCls}>
+                <SelectValue placeholder="Select band…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">
+                  <span className="text-slate-400">No band</span>
+                </SelectItem>
+                {(bands ?? []).map(b => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.code}
+                    {b.name ? ` · ${b.name}` : ''}
+                    {b.rangeFrom != null && b.rangeTo != null
+                      ? ` · ${formatINR(b.rangeFrom)}–${formatINR(b.rangeTo)}`
+                      : b.value != null
+                        ? ` · ${formatINR(b.value)}`
+                        : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {selectedBand && (
+            <p className="text-[11px] text-slate-400 mt-1">
+              {selectedBand.rangeFrom != null
+                ? `${formatINR(selectedBand.rangeFrom)} – ${formatINR(selectedBand.rangeTo)}`
+                : formatINR(selectedBand.value)}
+              {selectedBand.experience != null ? ` · ${selectedBand.experience}y exp` : ''}
+            </p>
+          )}
+        </div>
+      )}
+      <div>
+        <FieldLabel>
+          Sale Value <span className="text-[11px] font-normal text-slate-400">(optional)</span>
+        </FieldLabel>
+        <div className="relative">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-[13px] pointer-events-none">
+            ₹
+          </span>
+          <Input
+            type="number"
+            min={0}
+            step={1000}
+            placeholder="e.g. 450000"
+            value={saleValue ?? ''}
+            onChange={e =>
+              setValue('saleValue', e.target.value === '' ? null : parseFloat(e.target.value), {
+                shouldDirty: true,
+              })
+            }
+            className={`${inputCls} pl-7`}
+          />
+        </div>
+        {saleValue != null && saleValue > 0 && (
+          <p className="text-[11px] text-slate-400 mt-1">{formatINR(saleValue)}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SPOC SELECT ITEM
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SpocSelectItem({ spoc }: { spoc: ClientSpoc }) {
@@ -312,9 +444,6 @@ function SpocSelectItem({ spoc }: { spoc: ClientSpoc }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENT & SPOC EDITOR
-//   Lifted verbatim from the create page (same queries, same behaviour), wrapped
-//   for the edit page: local state instead of the draft store. Only emits
-//   clientSpocId via onChange — the backend re-derives client/SL/BU from it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ClientSpocEditor({
@@ -354,14 +483,11 @@ function ClientSpocEditor({
     return 0;
   });
 
-  // Auto-select single client (only when nothing chosen yet)
   useEffect(() => {
     if (clients.length === 1 && !selectedClientId) setSelectedClientId(clients[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clients]);
 
-  // Reset SPOC when the user actively changes the client (skip the first
-  // programmatic set that comes from auto-select / no client yet)
   const prevClientRef = useRef<string>('');
   useEffect(() => {
     if (prevClientRef.current && prevClientRef.current !== selectedClientId) {
@@ -373,11 +499,9 @@ function ClientSpocEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId]);
 
-  // Auto-select primary / only SPOC once the list loads
   useEffect(() => {
     if (!spocs.length) return;
     if (userClearedSpoc.current) return;
-    // if the incoming value already matches a spoc in this list, adopt it
     const existing = value ? spocs.find(s => s.id === value) : null;
     if (existing) {
       setSelectedSpoc(existing);
@@ -429,7 +553,6 @@ function ClientSpocEditor({
             </p>
           )}
           {spocs.length === 1 && selectedSpoc ? (
-            // Only one SPOC — lock it, no change option
             <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
               <CheckCircle size={14} className="text-emerald-500 shrink-0" />
               {selectedSpoc.firstName} {selectedSpoc.lastName}
@@ -440,7 +563,6 @@ function ClientSpocEditor({
               )}
             </div>
           ) : selectedSpoc && !userClearedSpoc.current ? (
-            // Auto-selected primary, user can still change
             <div className="h-11 flex items-center px-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-[14px] font-semibold text-slate-700 gap-2">
               <CheckCircle size={14} className="text-emerald-500 shrink-0" />
               {selectedSpoc.firstName} {selectedSpoc.lastName}
@@ -462,7 +584,6 @@ function ClientSpocEditor({
               </button>
             </div>
           ) : (
-            // Full dropdown
             <Select
               value={value || ''}
               onValueChange={val => {
@@ -554,7 +675,7 @@ function ClientSpocEditor({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LOCATION SECTION — same cascading pattern as new requirement page
+// LOCATION SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 function LocationSection({
@@ -577,8 +698,6 @@ function LocationSection({
   const [manualState, setManualState] = useState(false);
   const [manualCity, setManualCity] = useState(false);
 
-  // on initial load the country/state may already be set from the requirement —
-  // only reset when country CHANGES after mount
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) {
@@ -606,8 +725,6 @@ function LocationSection({
   return (
     <div className="space-y-4">
       <p className="text-[11.5px] text-slate-400">Pick from the list or type any custom value</p>
-
-      {/* Country */}
       <div>
         <FieldLabel>Country</FieldLabel>
         <Controller
@@ -632,9 +749,7 @@ function LocationSection({
           )}
         />
       </div>
-
       <div className="grid grid-cols-2 gap-4">
-        {/* State */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <FieldLabel>State / Province</FieldLabel>
@@ -684,8 +799,6 @@ function LocationSection({
             />
           )}
         </div>
-
-        {/* City */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <FieldLabel>City</FieldLabel>
@@ -742,7 +855,6 @@ function LocationSection({
           )}
         </div>
       </div>
-
       {(watchedCountry || watchedState) && (
         <div className="flex items-center gap-1.5 text-[12px] text-slate-500 flex-wrap">
           <MapPin size={11} className="text-blue-400 shrink-0" />
@@ -776,7 +888,7 @@ function TurnaroundDisplay({ control }: { control: any }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BONUS FIELD — toggle pattern, no NaN
+// BONUS FIELD
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BonusField({
@@ -798,8 +910,7 @@ function BonusField({
         onClick={() => setValue('bonusAmount', 0)}
         className="flex items-center gap-2 text-[12.5px] font-semibold text-slate-500 hover:text-primary border border-dashed border-slate-300 hover:border-primary px-3 py-2 rounded-xl transition-colors w-full justify-center"
       >
-        <Plus size={13} />
-        Add Bonus Amount
+        <Plus size={13} /> Add Bonus Amount
       </button>
     );
   }
@@ -813,8 +924,7 @@ function BonusField({
           onClick={() => setValue('bonusAmount', null)}
           className="text-[11px] text-slate-400 hover:text-red-500 flex items-center gap-1"
         >
-          <X size={11} />
-          Remove
+          <X size={11} /> Remove
         </button>
       </div>
       <Input
@@ -864,21 +974,18 @@ export default function EditRequirementPage() {
   const [isReady, setIsReady] = useState(false);
   const [changingClient, setChangingClient] = useState(false);
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
   const { data: reqRes, isLoading } = useQuery({
     queryKey: ['requirement', id],
     queryFn: async () => (await axios.get(`/requirements/${id}`)).data,
   });
   const req = reqRes?.data;
 
-  // ── RHF ──────────────────────────────────────────────────────────────────
   const {
     register,
     control,
     handleSubmit,
     reset,
     setValue,
-    trigger,
     getValues,
     formState: { errors, dirtyFields },
   } = useForm<EditFormValues>({
@@ -896,17 +1003,17 @@ export default function EditRequirementPage() {
       totalOpenings: 1,
       bonusAmount: null,
       clientSpocId: null,
+      bandId: null,
+      saleValue: null,
     },
   });
 
-  // Hydrate once when data arrives
   useEffect(() => {
     if (!req) return;
     reset(reqToFormValues(req));
     setTimeout(() => setIsReady(true), 0);
   }, [req, reset]);
 
-  // ── Scroll-spy ────────────────────────────────────────────────────────────
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
     const visibilityMap = new Map<string, number>();
@@ -938,7 +1045,6 @@ export default function EditRequirementPage() {
     document.getElementById(sid)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  // ── Submit — only dirty fields ────────────────────────────────────────────
   const updateMutation = useMutation({
     mutationFn: async (payload: Record<string, any>) =>
       (await axios.put(`/requirements/${id}`, payload)).data,
@@ -964,13 +1070,11 @@ export default function EditRequirementPage() {
       return;
     }
 
-    // if the change flow was opened but no SPOC picked, block instead of sending empty
     if ('clientSpocId' in payload && !payload.clientSpocId) {
       toast.error('Select a SPOC before saving the client change');
       return;
     }
 
-    // coerce number fields — just like controller does on create
     const numFields = [
       'experienceMin',
       'experienceMax',
@@ -978,16 +1082,15 @@ export default function EditRequirementPage() {
       'salaryMax',
       'bonusAmount',
       'totalOpenings',
+      'saleValue',
     ] as const;
     numFields.forEach(f => {
       if (f in payload) payload[f] = toNum(payload[f]);
     });
 
-    // dates
     if ('startDate' in payload) payload.startDate = toISOOrNull(payload.startDate);
     if ('targetDate' in payload) payload.targetDate = toISOOrNull(payload.targetDate);
 
-    // auto-compute turnaround if either date changed
     if ('startDate' in payload || 'targetDate' in payload) {
       const start = payload.startDate ?? toISOOrNull(allValues.startDate);
       const target = payload.targetDate ?? toISOOrNull(allValues.targetDate);
@@ -1001,7 +1104,6 @@ export default function EditRequirementPage() {
     await updateMutation.mutateAsync(payload);
   }
 
-  // ── Skeleton ──────────────────────────────────────────────────────────────
   if (isLoading || !isReady || !req) {
     return (
       <div className="h-screen flex flex-col bg-[#F8F9FB] overflow-hidden">
@@ -1277,7 +1379,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* Location — cascading */}
+            {/* Location */}
             <SectionCard id="edit-location">
               <SectionTitle icon={MapPin} label="Location" color="bg-blue-100 text-blue-600" />
               <LocationSection
@@ -1491,7 +1593,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* Client & SPOC — editable via Change button */}
+            {/* Client & SPOC */}
             <SectionCard id="edit-client">
               <SectionTitle
                 icon={UserCheck}
@@ -1528,6 +1630,13 @@ export default function EditRequirementPage() {
                     <ReadonlyField label="Service Line" value={req.serviceLine?.name ?? '—'} />
                     <ReadonlyField label="Business Unit" value={req.businessUnit?.name ?? '—'} />
                   </div>
+                  {/* Band + Sale Value — always shown in readonly mode using req data */}
+                  <BandSaleValueFields
+                    clientId={req.client?.id}
+                    clientAgreementType={req.client?.agreementType}
+                    control={control}
+                    setValue={setValue}
+                  />
                 </>
               ) : (
                 <>
@@ -1546,8 +1655,7 @@ export default function EditRequirementPage() {
                       }}
                       className="text-[11px] text-slate-400 hover:text-red-500 flex items-center gap-1"
                     >
-                      <X size={11} />
-                      Cancel
+                      <X size={11} /> Cancel
                     </button>
                   </div>
                   <Controller
@@ -1561,6 +1669,13 @@ export default function EditRequirementPage() {
                     )}
                   />
                   <FieldError msg={(errors as any).clientSpocId?.message} />
+                  {/* Band + Sale Value in change mode too */}
+                  <BandSaleValueFields
+                    clientId={req.client?.id}
+                    clientAgreementType={req.client?.agreementType}
+                    control={control}
+                    setValue={setValue}
+                  />
                 </>
               )}
             </SectionCard>
@@ -1578,7 +1693,6 @@ export default function EditRequirementPage() {
                   <Input type="date" className={inputCls} {...register('targetDate')} />
                 </div>
               </div>
-              {/* turnaround auto-computed — shown read-only, same as create */}
               <TurnaroundDisplay control={control} />
               <p className="text-[11px] text-slate-400">
                 Turnaround is auto-calculated and saved on submit.

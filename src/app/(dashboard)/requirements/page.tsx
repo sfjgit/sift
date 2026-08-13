@@ -38,6 +38,9 @@ import {
   Pencil,
   RefreshCw,
   Calendar,
+  TrendingUp,
+  BadgeDollarSign,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,7 +68,6 @@ interface PipelineStage {
   order: number;
   serviceLineId: string | null;
 }
-
 interface PipelineStageCount {
   stageId: string;
   code: string;
@@ -74,7 +76,6 @@ interface PipelineStageCount {
   canonicalStage: string | null;
   count: number;
 }
-
 interface Assignment {
   id: string;
   depth?: number;
@@ -83,7 +84,14 @@ interface Assignment {
   assignedTo?: { id: string; firstName: string; lastName: string; role?: { name: string } };
   assignedBy?: { id: string; firstName: string; lastName: string };
 }
-
+interface Band {
+  id: string;
+  code: string;
+  name?: string | null;
+  rangeFrom?: number | null;
+  rangeTo?: number | null;
+  value?: number | null;
+}
 interface Requirement {
   id: string;
   slug?: string | null;
@@ -104,7 +112,24 @@ interface Requirement {
   isTurnaroundBreached?: boolean;
   closureReason?: string | null;
   jdParseStatus?: string | null;
-  client?: { id: string; name: string } | null;
+  // Sale value fields
+  saleValue?: number | null;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryType?: string | null;
+  salaryCurrency?: string | null;
+  computedSaleValue?: number | null;
+  saleValueBasis?: 'SALE_VALUE' | 'BAND_PERCENTAGE' | 'SALARY_AVG' | null;
+  // Band
+  bandId?: string | null;
+  band?: Band | null;
+  // Client
+  client?: {
+    id: string;
+    name: string;
+    agreementType?: string | null;
+    percentageValue?: number | null;
+  } | null;
   businessUnit?: { id: string; name: string } | null;
   serviceLine?: { id: string; name: string } | null;
   createdBy?: { id: string; firstName: string; lastName: string } | null;
@@ -113,7 +138,6 @@ interface Requirement {
   canonicalStageCounts?: Record<string, number>;
   _count?: { pipelines: number };
 }
-
 interface BusinessUnit {
   id: string;
   name: string;
@@ -127,12 +151,16 @@ interface Client {
   name: string;
   status: string;
 }
-
 interface User {
   id: string;
   firstName: string;
   lastName: string;
-  // role?: { name: string };
+}
+
+interface SaleValueSummary {
+  totalSaleValue: number;
+  omittedCount: number;
+  includedCount: number;
 }
 interface RequirementsResponse {
   success: boolean;
@@ -140,8 +168,8 @@ interface RequirementsResponse {
   meta: { total: number; page: number; limit: number; pages: number };
   permissions?: { canAdd: boolean; canEdit: boolean; canDelete: boolean };
   scope?: { createdByScope: string; canViewScope: string; isSuperAdmin?: boolean };
+  saleValueSummary?: SaleValueSummary;
 }
-
 interface StatsResponse {
   success: boolean;
   data: {
@@ -151,7 +179,6 @@ interface StatsResponse {
     recentlyCreated: number;
   };
 }
-
 interface CandidateInPipeline {
   id: string;
   isRejected: boolean;
@@ -183,7 +210,6 @@ const STATUS_BADGE: Record<string, string> = {
   CLOSED: 'bg-red-500 text-white',
   CANCELLED: 'bg-gray-500 text-white',
 };
-
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'Active',
   DRAFT: 'Draft',
@@ -192,13 +218,11 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: 'Closed',
   CANCELLED: 'Cancelled',
 };
-
 const PRIORITY_BADGE: Record<string, string> = {
   HIGH: 'bg-red-100 text-red-700 border border-red-200',
   MEDIUM: 'bg-amber-100 text-amber-700 border border-amber-200',
   LOW: 'bg-green-100 text-green-700 border border-green-200',
 };
-
 const STAGE_NUMBER_COLOR: Record<string, string> = {
   '01': 'text-orange-500',
   '02': 'text-violet-600',
@@ -213,7 +237,6 @@ const STAGE_NUMBER_COLOR: Record<string, string> = {
   '09': 'text-emerald-500',
   '10': 'text-green-600',
 };
-
 const STAGE_DRAWER_COLORS: Record<string, string> = {
   '01': 'bg-orange-100 text-orange-700 border-orange-200',
   '02': 'bg-violet-100 text-violet-700 border-violet-200',
@@ -228,7 +251,6 @@ const STAGE_DRAWER_COLORS: Record<string, string> = {
   '09': 'bg-emerald-100 text-emerald-700 border-emerald-200',
   '10': 'bg-green-100 text-green-700 border-green-200',
 };
-
 const AVATAR_COLORS = [
   'bg-violet-500',
   'bg-blue-500',
@@ -238,9 +260,7 @@ const AVATAR_COLORS = [
   'bg-cyan-500',
   'bg-indigo-500',
 ];
-
 const ALL_PRIORITIES = ['HIGH', 'MEDIUM', 'LOW'];
-
 const ALL_STATUSES = [
   { key: 'ACTIVE', label: 'Active', icon: Zap, dot: 'bg-emerald-500' },
   { key: 'ON_HOLD', label: 'On Hold', icon: PauseCircle, dot: 'bg-orange-500' },
@@ -249,18 +269,20 @@ const ALL_STATUSES = [
   { key: 'CLOSED', label: 'Closed', icon: XCircle, dot: 'bg-red-400' },
   { key: 'CANCELLED', label: 'Cancelled', icon: AlertCircle, dot: 'bg-gray-400' },
 ];
-
 const SCOPE_OPTIONS = [
   { value: 'OWN', label: 'Mine', icon: UserCheck },
   { value: 'TEAM', label: 'My Team', icon: UsersRound },
   { value: 'REPORTING', label: 'Reporting Line', icon: Network },
 ] as const;
-
-// depth label — 0 = DM level, 1 = TL level, 2 = Recruiter level
 const DEPTH_LABEL: Record<number, { label: string; cls: string }> = {
   0: { label: 'DM', cls: 'bg-blue-100 text-blue-700' },
   1: { label: 'TL', cls: 'bg-violet-100 text-violet-700' },
   2: { label: 'Rec', cls: 'bg-emerald-100 text-emerald-700' },
+};
+const SALE_BASIS_LABEL: Record<string, { label: string; cls: string }> = {
+  SALE_VALUE: { label: 'Direct', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  BAND_PERCENTAGE: { label: 'Band %', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  SALARY_AVG: { label: 'Salary Avg', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -287,10 +309,101 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
     throw err;
   }
 }
+function fmtCurrency(n: number | null | undefined, currency = 'INR'): string {
+  if (n == null) return '—';
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(2)}L`;
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+function canonicalPillFromDot(dotCls: string): string {
+  const map: Record<string, string> = {
+    'bg-slate-500': 'bg-slate-100 text-slate-700',
+    'bg-blue-600': 'bg-blue-50 text-blue-700',
+    'bg-violet-600': 'bg-violet-50 text-violet-700',
+    'bg-amber-600': 'bg-amber-50 text-amber-700',
+    'bg-orange-600': 'bg-orange-50 text-orange-700',
+    'bg-emerald-700': 'bg-emerald-50 text-emerald-700',
+    'bg-green-700': 'bg-green-50 text-green-700',
+    'bg-red-600': 'bg-red-50 text-red-600',
+    'bg-pink-500': 'bg-pink-50 text-pink-700',
+    'bg-cyan-500': 'bg-cyan-50 text-cyan-700',
+    'bg-indigo-600': 'bg-indigo-50 text-indigo-700',
+    'bg-teal-500': 'bg-teal-50 text-teal-700',
+    'bg-rose-600': 'bg-rose-50 text-rose-600',
+  };
+  return map[dotCls] ?? 'bg-slate-100 text-slate-600';
+}
+
+// ─── SaleValueBadge ───────────────────────────────────────────────────────────
+
+function SaleValueBadge({
+  computedSaleValue,
+  saleValueBasis,
+  compact = false,
+}: {
+  computedSaleValue: number | null | undefined;
+  saleValueBasis: string | null | undefined;
+  compact?: boolean;
+}) {
+  if (computedSaleValue == null) {
+    return (
+      <span className="flex items-center gap-1 text-[11px] text-slate-300 italic">
+        {!compact && <AlertTriangle size={10} className="text-slate-300" />}
+        N/A
+      </span>
+    );
+  }
+  const basis = saleValueBasis ? SALE_BASIS_LABEL[saleValueBasis] : null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[13px] font-bold text-emerald-700 tabular-nums leading-none">
+        {fmtCurrency(computedSaleValue)}
+      </span>
+      {basis && !compact && (
+        <span
+          className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border w-fit ${basis.cls}`}
+        >
+          {basis.label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── SaleValueSummaryBar ──────────────────────────────────────────────────────
+
+function SaleValueSummaryBar({ summary }: { summary: SaleValueSummary | undefined }) {
+  if (!summary) return null;
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 bg-emerald-50 border-b border-emerald-100 flex-wrap">
+      <div className="flex items-center gap-1.5">
+        <TrendingUp size={13} className="text-emerald-600 shrink-0" />
+        <span className="text-[12px] font-semibold text-emerald-700">Total Sale Value:</span>
+        <span className="text-[13px] font-bold text-emerald-800 tabular-nums">
+          {fmtCurrency(summary.totalSaleValue)}
+        </span>
+      </div>
+      <span className="text-[11px] text-emerald-600">
+        ({summary.includedCount} computed
+        {summary.omittedCount > 0 && (
+          <span className="text-amber-600 ml-1 font-semibold">
+            · {summary.omittedCount} omitted
+          </span>
+        )}
+        )
+      </span>
+      {summary.omittedCount > 0 && (
+        <span className="text-[11px] text-amber-600 flex items-center gap-1">
+          <AlertTriangle size={11} />
+          {summary.omittedCount} requirement{summary.omittedCount > 1 ? 's' : ''} have no
+          band/salary data
+        </span>
+      )}
+    </div>
+  );
+}
 
 // ─── AssigneesPopover ─────────────────────────────────────────────────────────
-// Shows the full assignment chain for a requirement in a clean popover.
-// Click the stacked avatars or the assign button to open.
 
 function AssigneesPopover({
   req,
@@ -304,8 +417,6 @@ function AssigneesPopover({
   const [open, setOpen] = useState(false);
   const assignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
   const hasAssignees = assignments.length > 0;
-
-  // Show stacked avatars for the first 3 depth-0 assignees
   const topLevel = assignments.filter(a => (a.depth ?? 0) === 0).slice(0, 3);
 
   return (
@@ -317,7 +428,6 @@ function AssigneesPopover({
           title={hasAssignees ? 'View assignees' : 'Assign'}
         >
           {hasAssignees ? (
-            // stacked avatars
             <div className="flex -space-x-1.5">
               {topLevel.map(a =>
                 a.assignedTo ? (
@@ -342,29 +452,24 @@ function AssigneesPopover({
           )}
         </button>
       </PopoverTrigger>
-
       <PopoverContent
         align="end"
         sideOffset={6}
         onClick={e => e.stopPropagation()}
         className="w-64 p-0 shadow-xl border border-slate-200 rounded-xl overflow-hidden"
       >
-        {/* Header */}
         <div className="px-3 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
             Assignees
           </span>
           <span className="text-[11px] text-slate-400">{assignments.length} active</span>
         </div>
-
-        {/* Assignment list */}
         <div className="max-h-56 overflow-y-auto">
           {assignments.length === 0 ? (
             <div className="px-3 py-4 text-center text-[12px] text-slate-400">
               No one assigned yet
             </div>
           ) : (
-            // Group by depth visually
             assignments
               .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
               .map(a => {
@@ -378,15 +483,12 @@ function AssigneesPopover({
                     className="flex items-center gap-2.5 px-3 py-2 border-b border-slate-50 last:border-b-0 hover:bg-slate-50 transition-colors"
                     style={{ paddingLeft: `${12 + depth * 10}px` }}
                   >
-                    {/* Depth indent line */}
                     {depth > 0 && <span className="w-px h-4 bg-slate-200 shrink-0 -ml-2" />}
-                    {/* Avatar */}
                     <div
                       className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${avatarColor(user.id)}`}
                     >
                       {initials(`${user.firstName} ${user.lastName}`)}
                     </div>
-                    {/* Name + role */}
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] font-medium text-slate-800 truncate">
                         {user.firstName} {user.lastName}
@@ -395,7 +497,6 @@ function AssigneesPopover({
                         <p className="text-[10px] text-slate-400 truncate">{user.role.name}</p>
                       )}
                     </div>
-                    {/* Depth badge */}
                     <span
                       className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${tag.cls}`}
                     >
@@ -406,8 +507,6 @@ function AssigneesPopover({
               })
           )}
         </div>
-
-        {/* Assign CTA */}
         {canAdd && (
           <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
             <button
@@ -417,8 +516,7 @@ function AssigneesPopover({
               }}
               className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-semibold rounded-lg transition-colors"
             >
-              <UserPlus size={12} />
-              Assign
+              <UserPlus size={12} /> Assign
             </button>
           </div>
         )}
@@ -426,6 +524,7 @@ function AssigneesPopover({
     </Popover>
   );
 }
+
 // ─── DeleteRequirementButton ──────────────────────────────────────────────────
 
 function DeleteRequirementButton({ req, canDelete }: { req: Requirement; canDelete: boolean }) {
@@ -433,7 +532,6 @@ function DeleteRequirementButton({ req, canDelete }: { req: Requirement; canDele
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const { mutate, isPending } = useMutation({
     mutationFn: async () => (await axios.delete(`/requirements/${req.id}`)).data,
     onSuccess: () => {
@@ -444,12 +542,10 @@ function DeleteRequirementButton({ req, canDelete }: { req: Requirement; canDele
       queryClient.invalidateQueries({ queryKey: ['requirement', req.id] });
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.message ?? 'Failed to delete requirement. Please try again.');
+      setError(err?.response?.data?.message ?? 'Failed to delete requirement.');
     },
   });
-
   if (!canDelete) return null;
-
   return (
     <Popover
       open={open}
@@ -512,13 +608,12 @@ function DeleteRequirementButton({ req, canDelete }: { req: Requirement; canDele
 
 function EditRequirementButton({ req, canEdit }: { req: Requirement; canEdit: boolean }) {
   const router = useRouter();
-  const idOrSlug = req.slug ?? req.id;
   if (!canEdit) return null;
   return (
     <button
       onClick={e => {
         e.stopPropagation();
-        router.push(`/requirements/${idOrSlug}/edit`);
+        router.push(`/requirements/${req.slug ?? req.id}/edit`);
       }}
       title="Edit requirement"
       className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
@@ -537,15 +632,11 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
   const [toStatus, setToStatus] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  // const nextStatuses = STATUS_FLOW[req.status] ?? [];
   const nextStatuses = STATUS_FLOW[req.status as keyof typeof STATUS_FLOW] ?? [];
-
   const needsReason = toStatus
     ? isReasonRequired(req.status as RequirementStatus, toStatus as RequirementStatus)
     : false;
   const reasonInvalid = needsReason && reason.trim().length < 5;
-
   const { mutate, isPending } = useMutation({
     mutationFn: async () =>
       (
@@ -563,16 +654,13 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
       setError(err?.response?.data?.message ?? 'Failed to change status.');
     },
   });
-
   function close() {
     setOpen(false);
     setToStatus(null);
     setReason('');
     setError(null);
   }
-
   if (!canEdit || nextStatuses.length === 0) return null;
-
   return (
     <Popover
       open={open}
@@ -613,9 +701,7 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
                 className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] text-slate-700 hover:bg-slate-50 transition-colors text-left"
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    ALL_STATUSES.find(x => x.key === s)?.dot ?? 'bg-slate-400'
-                  }`}
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${ALL_STATUSES.find(x => x.key === s)?.dot ?? 'bg-slate-400'}`}
                 />
                 {STATUS_LABEL[s] ?? s}
               </button>
@@ -633,9 +719,7 @@ function StatusChangeButton({ req, canEdit }: { req: Requirement; canEdit: boole
                 needsReason ? 'Why is this being reopened?' : 'Why is this status changing?'
               }
               rows={2}
-              className={`w-full text-[12px] border rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2 ${
-                reasonInvalid ? 'border-red-300' : 'border-slate-200'
-              }`}
+              className={`w-full text-[12px] border rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2 ${reasonInvalid ? 'border-red-300' : 'border-slate-200'}`}
             />
             {error && (
               <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-md px-2 py-1.5 mb-2">
@@ -711,11 +795,9 @@ function useFilters() {
   const setViewMode = (v: 'cards' | 'table') => setParams({ view: v });
   const setPage = (v: number) => setParams({ page: String(v) });
   const setLimit = (v: number) => setParams({ limit: String(v), page: null });
-
   const setCreatedById = (v: string) => setParams({ createdById: v, page: null });
   const setDateFrom = (v: string) => setParams({ dateFrom: v, page: null });
   const setDateTo = (v: string) => setParams({ dateTo: v, page: null });
-
   const clearAll = () =>
     setParams({
       search: null,
@@ -729,7 +811,6 @@ function useFilters() {
       dateFrom: null,
       dateTo: null,
     });
-
   const activeFiltersCount = [
     status,
     priority,
@@ -796,9 +877,7 @@ function ScopeSwitcher({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${
-              isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
           >
             <Icon size={12} />
             {opt.label}
@@ -823,22 +902,14 @@ function ViewToggle({
       <button
         onClick={() => onChange('cards')}
         title="Card view"
-        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${
-          value === 'cards'
-            ? 'bg-white shadow-sm text-slate-900'
-            : 'text-slate-400 hover:text-slate-600'
-        }`}
+        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${value === 'cards' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
       >
         <LayoutList size={14} />
       </button>
       <button
         onClick={() => onChange('table')}
         title="Table view"
-        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${
-          value === 'table'
-            ? 'bg-white shadow-sm text-slate-900'
-            : 'text-slate-400 hover:text-slate-600'
-        }`}
+        className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${value === 'table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
       >
         <Table2 size={14} />
       </button>
@@ -866,7 +937,6 @@ function ExportButton({
 }) {
   const axios = useAxios();
   const [loading, setLoading] = useState(false);
-
   const handleExport = async () => {
     if (loading) return;
     setLoading(true);
@@ -882,7 +952,6 @@ function ExportButton({
       if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) params.set('dateTo', filters.dateTo);
       params.set('createdByScope', filters.createdByScope);
-
       const response = await axios.get(`/requirements/export?${params.toString()}`, {
         responseType: 'blob',
       });
@@ -900,7 +969,6 @@ function ExportButton({
       setLoading(false);
     }
   };
-
   return (
     <button
       onClick={handleExport}
@@ -960,11 +1028,11 @@ function FilterBar({
   clientId: string;
   setClientId: (v: string) => void;
   createdById: string;
-  dateFrom: string;
-  setDateFrom: (v: string) => void;
-  dateTo: string;
-  setDateTo: (v: string) => void;
   setCreatedById: (v: string) => void;
+  dateFrom: string;
+  dateTo: string;
+  setDateFrom: (v: string) => void;
+  setDateTo: (v: string) => void;
   byStatus: Record<string, number>;
   busData: BusinessUnit[] | null | undefined;
   busLoading: boolean;
@@ -982,11 +1050,9 @@ function FilterBar({
       <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5 shrink-0">
         <button
           onClick={() => setStatus('')}
-          className={`px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${
-            !status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
+          className={`px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${!status ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
-          All
+          All{' '}
           <span
             className={`ml-1.5 text-[11px] font-bold ${!status ? 'text-slate-600' : 'text-slate-400'}`}
           >
@@ -1001,11 +1067,7 @@ function FilterBar({
             <button
               key={s.key}
               onClick={() => setStatus(isActive ? '' : s.key)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${
-                isActive
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-all whitespace-nowrap ${isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
               {s.label}
@@ -1020,9 +1082,7 @@ function FilterBar({
           );
         })}
       </div>
-
       <div className="h-5 w-px bg-slate-200 shrink-0" />
-
       {busData && busData.length > 0 && (
         <DropdownFilter
           label="Business Unit"
@@ -1034,7 +1094,6 @@ function FilterBar({
           allLabel="All BUs"
         />
       )}
-
       {slData && slData.length > 0 && (
         <DropdownFilter
           label="Service Line"
@@ -1046,7 +1105,6 @@ function FilterBar({
           allLabel="All Service Lines"
         />
       )}
-
       {clientsData && clientsData.length > 0 && (
         <DropdownFilter
           label="Client"
@@ -1058,7 +1116,6 @@ function FilterBar({
           allLabel="All Clients"
         />
       )}
-
       <DropdownFilter
         label="Priority"
         icon={<Zap size={12} />}
@@ -1067,7 +1124,6 @@ function FilterBar({
         onSelect={setPriority}
         allLabel="All Priorities"
       />
-
       {createdByData && createdByData.length > 0 && (
         <DropdownFilter
           label="Created By"
@@ -1120,16 +1176,11 @@ function DropdownFilter({
   const [open, setOpen] = useState(false);
   const selected = items.find(i => i.id === value);
   const isActive = !!value;
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${
-            isActive
-              ? 'bg-primary/10 border-primary/30 text-primary'
-              : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
-          }`}
+          className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${isActive ? 'bg-primary/10 border-primary/30 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
         >
           {icon}
           <span className="max-w-[100px] truncate">{selected ? selected.name : label}</span>
@@ -1153,11 +1204,7 @@ function DropdownFilter({
                 onSelect('');
                 setOpen(false);
               }}
-              className={`w-full text-left px-3 py-2 rounded-md text-[13px] transition-colors ${
-                !value
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
+              className={`w-full text-left px-3 py-2 rounded-md text-[13px] transition-colors ${!value ? 'bg-primary/10 text-primary font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               {allLabel}
             </button>
@@ -1168,11 +1215,7 @@ function DropdownFilter({
                   onSelect(item.id === value ? '' : item.id);
                   setOpen(false);
                 }}
-                className={`w-full text-left px-3 py-2 rounded-md text-[13px] transition-colors truncate ${
-                  value === item.id
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`w-full text-left px-3 py-2 rounded-md text-[13px] transition-colors truncate ${value === item.id ? 'bg-primary/10 text-primary font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
               >
                 {item.name}
               </button>
@@ -1197,23 +1240,17 @@ function DateRangeFilter({
 }) {
   const [open, setOpen] = useState(false);
   const isActive = !!(dateFrom || dateTo);
-
   const label = useMemo(() => {
     if (dateFrom && dateTo) return `${dateFrom} → ${dateTo}`;
     if (dateFrom) return `From ${dateFrom}`;
     if (dateTo) return `Until ${dateTo}`;
     return 'Date Range';
   }, [dateFrom, dateTo]);
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${
-            isActive
-              ? 'bg-primary/10 border-primary/30 text-primary'
-              : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
-          }`}
+          className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${isActive ? 'bg-primary/10 border-primary/30 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
         >
           <Calendar size={12} />
           <span className="max-w-[160px] truncate">{label}</span>
@@ -1334,18 +1371,10 @@ function ActiveFilterChips({
         label: createdByData.find(u => u.id === createdById)?.name ?? createdById,
         clear: () => setCreatedById(''),
       },
-    dateFrom && {
-      label: `From ${dateFrom}`,
-      clear: () => setDateFrom(''),
-    },
-    dateTo && {
-      label: `Until ${dateTo}`,
-      clear: () => setDateTo(''),
-    },
+    dateFrom && { label: `From ${dateFrom}`, clear: () => setDateFrom('') },
+    dateTo && { label: `Until ${dateTo}`, clear: () => setDateTo('') },
   ].filter(Boolean) as { label: string; clear: () => void }[];
-
   if (!chips.length) return null;
-
   return (
     <div className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-50 border-b border-slate-100 flex-wrap">
       <span className="text-[11px] text-slate-400 font-medium shrink-0">Filtered by:</span>
@@ -1364,17 +1393,17 @@ function ActiveFilterChips({
 }
 
 // ─── RequirementsTable ────────────────────────────────────────────────────────
+// Column order:
+//   Action | Code | Job Title | Status | Priority | Created By |
+//   Client | Agreement | Band | Sale Value | Open | Age |
+//   Assigned To | [canonical stage cols] | →
 
 function RequirementsTable({
   requirements,
   selectedIds,
-  // onSelect,
-  // onSelectAll,
-  // allSelected,
   canonicalKeys,
   canonicalMeta,
   onStageClick,
-  // allStages,
   canAdd,
   canDelete,
   canEdit,
@@ -1396,62 +1425,76 @@ function RequirementsTable({
 }) {
   const router = useRouter();
 
+  // fixed cols + client cols + sale cols + assignee col + canonical stage cols + arrow
+  const totalCols = 9 + 4 + canonicalKeys.length + 1;
+
   return (
     <div className="overflow-x-auto h-full">
       <table
         className="w-full text-[12px] border-collapse"
-        style={{ minWidth: `${820 + canonicalKeys.length * 80}px` }}
+        style={{ minWidth: `${920 + canonicalKeys.length * 80}px` }}
       >
         <thead className="sticky top-0 z-10">
           <tr className="bg-slate-50 border-b-2 border-slate-200">
-            {/* <th className="w-9 px-3 py-3">
-              <Checkbox checked={allSelected} onCheckedChange={onSelectAll} />
-            </th> */}
-            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
+            {/* ── Action ── */}
+            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24 bg-slate-50">
               Action
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
+            {/* ── Identity ── */}
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24 bg-slate-50">
               Code
             </th>
             <th
-              className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400"
-              style={{ minWidth: 240 }}
+              className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 bg-slate-50"
+              style={{ minWidth: 220 }}
             >
               Job Title
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24">
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24 bg-slate-50">
               Status
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-20">
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-20 bg-slate-50">
               Priority
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-28 bg-slate-50">
               Created By
             </th>
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32">
+            {/* ── Client info ── */}
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32 bg-blue-50 border-l border-blue-100">
               Client
             </th>
-            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16">
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-24 bg-blue-50">
+              Agreement
+            </th>
+            {/* ── Sale value ── */}
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32 bg-emerald-50 border-l border-emerald-100">
+              Band
+            </th>
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36 bg-emerald-50">
+              Sale Value
+            </th>
+            {/* ── Numbers ── */}
+            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-14 bg-slate-50">
               Open
             </th>
-            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-20">
+            <th className="text-center px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16 bg-slate-50">
               Age
             </th>
+            {/* ── Assignees ── */}
+            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-32 bg-slate-50">
+              Assigned To
+            </th>
+            {/* ── Pipeline stages — always last ── */}
             {canonicalKeys.map(key => (
               <th
                 key={key}
-                className="text-center px-2 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16"
+                className="text-center px-2 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-16 bg-violet-50 border-l first:border-l-violet-100"
                 title={key}
               >
                 {canonicalMeta.find(s => s.key === key)?.label ?? key.replace(/_/g, ' ')}
               </th>
             ))}
-            {/* Assignees column */}
-            <th className="text-left px-3 py-3 font-semibold text-[11px] uppercase tracking-wider text-slate-400 w-36">
-              Assigned To
-            </th>
-
-            <th className="w-8 px-2 py-3" />
+            <th className="w-8 px-2 py-3 bg-slate-50" />
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -1467,24 +1510,10 @@ function RequirementsTable({
             return (
               <tr
                 key={req.id}
-                className={`group transition-colors cursor-pointer ${
-                  isSelected
-                    ? 'bg-primary/[0.04] hover:bg-primary/[0.06]'
-                    : 'bg-white hover:bg-slate-50/80'
-                } ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
+                className={`group transition-colors cursor-pointer ${isSelected ? 'bg-primary/[0.04] hover:bg-primary/[0.06]' : 'bg-white hover:bg-slate-50/80'} ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
                 onClick={() => router.push(`/requirements/${idOrSlug}`)}
               >
-                {/* Checkbox */}
-                {/* <td
-                  className="px-3 py-3"
-                  onClick={e => {
-                    e.stopPropagation();
-                    onSelect(req.id);
-                  }}
-                >
-                  <Checkbox checked={isSelected} />
-                </td> */}
-                {/* Action column */}
+                {/* Action */}
                 <td className="px-2 py-3" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-0.5">
                     <EditRequirementButton req={req} canEdit={canEdit} />
@@ -1504,7 +1533,7 @@ function RequirementsTable({
                 <td className="px-3 py-3">
                   <p
                     className="font-semibold text-slate-900 text-[13px] leading-snug truncate"
-                    style={{ maxWidth: 280 }}
+                    style={{ maxWidth: 220 }}
                   >
                     {req.title}
                   </p>
@@ -1561,7 +1590,7 @@ function RequirementsTable({
                   {req.createdBy ? (
                     <span
                       className="text-[12px] text-slate-500 truncate block"
-                      style={{ maxWidth: 110 }}
+                      style={{ maxWidth: 100 }}
                     >
                       {req.createdBy.firstName} {req.createdBy.lastName}
                     </span>
@@ -1570,14 +1599,64 @@ function RequirementsTable({
                   )}
                 </td>
 
-                {/* Client */}
-                <td className="px-3 py-3">
+                {/* ── Client section (blue-tinted) ─────────────────────── */}
+                {/* Client name */}
+                <td className="px-3 py-3 bg-blue-50/30 border-l border-blue-100">
                   <span
-                    className="text-slate-700 text-[12px] truncate block"
+                    className="text-slate-800 text-[12px] font-medium truncate block"
                     style={{ maxWidth: 120 }}
                   >
                     {req.client?.name ?? <span className="text-slate-300">—</span>}
                   </span>
+                </td>
+
+                {/* Agreement type */}
+                <td className="px-3 py-3 bg-blue-50/30">
+                  {req.client?.agreementType ? (
+                    <span
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${req.client.agreementType === 'BAND' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                    >
+                      {req.client.agreementType === 'BAND' ? 'Band' : 'Fixed'}
+                      {req.client.agreementType === 'FIXED' &&
+                        req.client.percentageValue != null &&
+                        ` ${req.client.percentageValue}%`}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300 text-[11px]">—</span>
+                  )}
+                </td>
+
+                {/* ── Sale value section (emerald-tinted) ──────────────── */}
+                {/* Band info */}
+                <td className="px-3 py-3 bg-emerald-50/30 border-l border-emerald-100">
+                  {req.band ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[11px] font-semibold text-slate-700">
+                        {req.band.code}
+                        {req.band.name ? ` · ${req.band.name}` : ''}
+                      </span>
+                      {req.band.value != null && (
+                        <span className="text-[10px] text-slate-500">
+                          Val: {fmtCurrency(req.band.value)}
+                        </span>
+                      )}
+                      {req.band.rangeFrom != null && req.band.rangeTo != null && (
+                        <span className="text-[10px] text-slate-400">
+                          {fmtCurrency(req.band.rangeFrom)} – {fmtCurrency(req.band.rangeTo)}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-slate-300 text-[11px]">—</span>
+                  )}
+                </td>
+
+                {/* Computed sale value */}
+                <td className="px-3 py-3 bg-emerald-50/30">
+                  <SaleValueBadge
+                    computedSaleValue={req.computedSaleValue}
+                    saleValueBasis={req.saleValueBasis}
+                  />
                 </td>
 
                 {/* Openings */}
@@ -1588,15 +1667,18 @@ function RequirementsTable({
                 {/* Age */}
                 <td className="px-3 py-3 text-center">
                   <span
-                    className={`font-semibold text-[12px] tabular-nums ${
-                      age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'
-                    }`}
+                    className={`font-semibold text-[12px] tabular-nums ${age > 30 ? 'text-red-500' : age > 14 ? 'text-amber-500' : 'text-slate-400'}`}
                   >
                     {age}d
                   </span>
                 </td>
 
-                {/* Canonical stage counts */}
+                {/* Assigned to */}
+                <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                  <AssigneesPopover req={req} canAdd={canAdd} onAssign={onAssign} />
+                </td>
+
+                {/* ── Canonical stage counts — always last ─────────────── */}
                 {canonicalKeys.map(key => {
                   const count = req.canonicalStageCounts?.[key] ?? 0;
                   const stageId = req.pipelineStageCounts?.find(
@@ -1605,7 +1687,7 @@ function RequirementsTable({
                   return (
                     <td
                       key={key}
-                      className="px-2 py-3 text-center"
+                      className="px-2 py-3 text-center bg-violet-50/20"
                       onClick={e => {
                         if (count > 0 && stageId) {
                           e.stopPropagation();
@@ -1625,11 +1707,6 @@ function RequirementsTable({
                     </td>
                   );
                 })}
-
-                {/* Assigned to — popover */}
-                <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                  <AssigneesPopover req={req} canAdd={canAdd} onAssign={onAssign} />
-                </td>
 
                 {/* Arrow */}
                 <td className="px-2 py-3">
@@ -1760,7 +1837,6 @@ function CandidateDrawer({
             })}
           </div>
         </SheetHeader>
-
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
@@ -1880,7 +1956,6 @@ function CandidateDrawer({
             })
           )}
         </div>
-
         <div className="shrink-0 px-5 py-3 border-t border-border">
           <Button
             variant="outline"
@@ -1899,7 +1974,7 @@ function CandidateDrawer({
   );
 }
 
-// ─── RequirementCard ──────────────────────────────────────────────────────────
+// ─── RequirementCard (card view) ──────────────────────────────────────────────
 
 function RequirementCard({
   req,
@@ -1923,16 +1998,9 @@ function RequirementCard({
   const idOrSlug = req.slug ?? req.id;
   const age = daysSince(req.createdAt);
   const isBreached = req.isRespondByBreached || req.isTurnaroundBreached;
-
   const reqServiceLineId = req.serviceLine?.id ?? req.serviceLineId ?? null;
 
-  const stagesToRender: {
-    id: string;
-    code: string;
-    label: string;
-    order: number;
-    count: number;
-  }[] =
+  const stagesToRender =
     (req.pipelineStageCounts ?? []).length > 0
       ? (req.pipelineStageCounts ?? []).map(s => ({
           id: s.stageId,
@@ -1948,15 +2016,13 @@ function RequirementCard({
   const totalPipeline =
     req._count?.pipelines ?? (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
   const openings = req.totalOpenings ?? 0;
-
-  // For card view: show stacked avatars + assign button in the bottom strip
   const activeAssignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
-  const topLevelAssignees = activeAssignments.filter(a => (a.depth ?? 0) === 0);
 
   return (
     <div
       className={`bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md hover:border-slate-300 ${selected ? 'border-primary/40 bg-primary/[0.02]' : 'border-slate-200'} ${isBreached ? 'border-l-4 border-l-red-500' : ''}`}
     >
+      {/* Desktop layout */}
       <div className="hidden md:flex">
         <div
           className="flex-1 min-w-0 p-4 cursor-pointer"
@@ -2020,11 +2086,37 @@ function RequirementCard({
                 {totalPipeline > 0 && (
                   <span className="text-emerald-600 font-medium">{totalPipeline} applicants</span>
                 )}
+                {/* Client + sale value inline summary */}
+                {req.client?.name && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-slate-600">
+                    <Building2 size={10} className="shrink-0" />
+                    {req.client.name}
+                  </span>
+                )}
               </div>
+              {/* Sale value strip */}
+              {(req.computedSaleValue != null || req.band) && (
+                <div
+                  className="flex items-center gap-3 flex-wrap"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {req.band && (
+                    <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <BadgeDollarSign size={11} className="text-blue-500 shrink-0" />
+                      {req.band.code}
+                      {req.band.value != null ? ` · ${fmtCurrency(req.band.value)}` : ''}
+                    </span>
+                  )}
+                  <SaleValueBadge
+                    computedSaleValue={req.computedSaleValue}
+                    saleValueBasis={req.saleValueBasis}
+                    compact
+                  />
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Bottom strip: assignees + assign button */}
+          {/* Bottom strip */}
           <div
             className="flex items-center justify-between ml-6"
             onClick={e => e.stopPropagation()}
@@ -2053,7 +2145,7 @@ function RequirementCard({
         </div>
 
         {/* Stage counts panel */}
-        <div className="flex border-l border-slate-100 w-[55%] shrink-0">
+        <div className="flex border-l border-slate-100 w-[50%] shrink-0">
           {stagesToRender.map(stage => {
             const color = STAGE_NUMBER_COLOR[stage.code] ?? 'text-slate-400';
             return (
@@ -2116,6 +2208,9 @@ function RequirementCard({
               </h3>
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-slate-500">
                 {req.businessUnit?.name && <span>{req.businessUnit.name}</span>}
+                {req.client?.name && (
+                  <span className="font-medium text-slate-600">{req.client.name}</span>
+                )}
                 {req.city && (
                   <span className="flex items-center gap-1">
                     <MapPin size={10} />
@@ -2127,6 +2222,15 @@ function RequirementCard({
                   <span className="text-emerald-600 font-medium">{totalPipeline} applicants</span>
                 )}
               </div>
+              {req.computedSaleValue != null && (
+                <div className="mt-1">
+                  <SaleValueBadge
+                    computedSaleValue={req.computedSaleValue}
+                    saleValueBasis={req.saleValueBasis}
+                    compact
+                  />
+                </div>
+              )}
             </div>
             <div className="flex flex-col items-end gap-1.5 shrink-0">
               <span
@@ -2153,15 +2257,12 @@ function RequirementCard({
               </div>
             </div>
           </div>
-
-          {/* Mobile assignees strip */}
           {activeAssignments.length > 0 && (
             <div className="flex items-center gap-1.5 mt-1 ml-7" onClick={e => e.stopPropagation()}>
               <AssigneesPopover req={req} canAdd={false} onAssign={onAssign} />
             </div>
           )}
         </div>
-
         {stagesToRender.length > 0 && (
           <div className="border-t border-slate-100">
             <button
@@ -2221,7 +2322,7 @@ function CardSkeleton() {
         <Skeleton className="h-5 w-64 max-w-full" />
         <Skeleton className="h-3 w-48 max-w-full" />
       </div>
-      <div className="hidden md:flex border-l border-slate-100 w-[55%] shrink-0">
+      <div className="hidden md:flex border-l border-slate-100 w-[50%] shrink-0">
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
@@ -2234,25 +2335,6 @@ function CardSkeleton() {
       </div>
     </div>
   );
-}
-
-function canonicalPillFromDot(dotCls: string): string {
-  const map: Record<string, string> = {
-    'bg-slate-500': 'bg-slate-100 text-slate-700',
-    'bg-blue-600': 'bg-blue-50 text-blue-700',
-    'bg-violet-600': 'bg-violet-50 text-violet-700',
-    'bg-amber-600': 'bg-amber-50 text-amber-700',
-    'bg-orange-600': 'bg-orange-50 text-orange-700',
-    'bg-emerald-700': 'bg-emerald-50 text-emerald-700',
-    'bg-green-700': 'bg-green-50 text-green-700',
-    'bg-red-600': 'bg-red-50 text-red-600',
-    'bg-pink-500': 'bg-pink-50 text-pink-700',
-    'bg-cyan-500': 'bg-cyan-50 text-cyan-700',
-    'bg-indigo-600': 'bg-indigo-50 text-indigo-700',
-    'bg-teal-500': 'bg-teal-50 text-teal-700',
-    'bg-rose-600': 'bg-rose-50 text-rose-600',
-  };
-  return map[dotCls] ?? 'bg-slate-100 text-slate-600';
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -2301,12 +2383,9 @@ function RequirementsPageInner() {
     stageLabel: string;
   }>({ open: false, requirementId: '', requirementTitle: '', stageId: null, stageLabel: '' });
 
-  // Assign handler — navigate to the requirement detail page's assign tab
-  // You can swap this for a modal/sheet if you build one later
   const handleAssign = useCallback(
     (req: Requirement) => {
-      const idOrSlug = req.slug ?? req.id;
-      router.push(`/requirements/${idOrSlug}?tab=assignments`);
+      router.push(`/requirements/${req.slug ?? req.id}?tab=assignments`);
     },
     [router]
   );
@@ -2361,7 +2440,6 @@ function RequirementsPageInner() {
       ),
     staleTime: 5 * 60 * 1000,
   });
-
   const { data: createdByData, isLoading: createdByLoading } = useQuery({
     queryKey: ['requirement-creators'],
     queryFn: () =>
@@ -2371,10 +2449,7 @@ function RequirementsPageInner() {
 
   const createdByOptions = useMemo(
     () =>
-      (createdByData ?? []).map(u => ({
-        id: u.id,
-        name: `${u.firstName} ${u.lastName}`.trim(),
-      })),
+      (createdByData ?? []).map(u => ({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim() })),
     [createdByData]
   );
 
@@ -2421,6 +2496,7 @@ function RequirementsPageInner() {
   const canDelete = reqData?.permissions?.canDelete ?? false;
   const canEdit = reqData?.permissions?.canEdit ?? false;
   const isSuperAdmin = reqData?.scope?.isSuperAdmin ?? false;
+  const saleValueSummary = reqData?.saleValueSummary;
 
   const canonicalKeys = useMemo(() => canonicalMeta.map(s => s.key), [canonicalMeta]);
 
@@ -2517,7 +2593,7 @@ function RequirementsPageInner() {
               className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
               onClick={() => router.push('/requirements/bulk')}
             >
-              <Plus size={14} /> Bulk Upload Requirement
+              <Plus size={14} /> Bulk Upload
             </Button>
           )}
         </div>
@@ -2555,6 +2631,7 @@ function RequirementsPageInner() {
         </div>
       </div>
 
+      {/* ── Active filter chips ── */}
       {hasActiveFilters && (
         <ActiveFilterChips
           status={status}
@@ -2580,12 +2657,15 @@ function RequirementsPageInner() {
         />
       )}
 
+      {/* ── Sale value summary bar (shows whenever data is loaded) ── */}
+      {!reqLoading && saleValueSummary && <SaleValueSummaryBar summary={saleValueSummary} />}
+
       {/* ── Content ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
         {viewMode === 'table' ? (
           <div className="bg-white h-full">
             {reqLoading ? (
-              <TableSkeleton cols={9 + canonicalKeys.length} />
+              <TableSkeleton cols={13 + canonicalKeys.length} />
             ) : requirements.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                 <Briefcase size={40} className="mb-3 opacity-20" />
