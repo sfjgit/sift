@@ -214,6 +214,19 @@ export default function ScrollingGreetingBar({
                 <span className="sgb__card-badge">Sourced</span>
               </div>
               <div className="sgb__card-row">
+                {/* FIX: was never coded to show Naukri at all — not because
+                    data was missing, this card just never had the markup for
+                    it. Shown conditionally, same pattern as Yesterday's card,
+                    only when a report has actually been uploaded for today. */}
+                {tDay.naukri != null && (
+                  <>
+                    <div className="sgb__metric">
+                      <span className="sgb__metric-label">Naukri</span>
+                      <span className="sgb__metric-val">{tDay.naukri}</span>
+                    </div>
+                    <div className="sgb__metric-arrow">→</div>
+                  </>
+                )}
                 <div className="sgb__metric">
                   <span className="sgb__metric-label">ATS</span>
                   <span className="sgb__metric-val sgb__metric-val--ats">{tDay.ats ?? 0}</span>
