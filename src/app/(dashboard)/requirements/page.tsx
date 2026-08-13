@@ -58,6 +58,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
 import { isReasonRequired, RequirementStatus, STATUS_FLOW } from '@/components/requirements/types';
+import { Span } from 'next/dist/trace';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1595,7 +1596,7 @@ function RequirementsTable({
                       {req.createdBy.firstName} {req.createdBy.lastName}
                     </span>
                   ) : (
-                    <span className="text-slate-300">—</span>
+                    <span className="text-slate-5 00">—</span>
                   )}
                 </td>
 
