@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
+import ScrollingGreetingBar from '@/components/layout/ScrollingGreetingBar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2049,6 +2050,8 @@ function DashboardContent() {
 export default function DashboardPage() {
   return (
     <Suspense fallback={null}>
+      <ScrollingGreetingBar />
+
       <DashboardContent />
     </Suspense>
   );

@@ -10,7 +10,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <AuthGate>
       <NaukriDailyCheckin />
-      <ScrollingGreetingBar />
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
