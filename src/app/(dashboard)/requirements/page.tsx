@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useState, useMemo, useCallback, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,38 +14,30 @@ import {
   Building2,
   Phone,
   Clock,
-  Star,
   MapPin,
   Users,
   Zap,
-  PauseCircle,
-  XCircle,
-  CheckCircle2,
-  FileText,
-  AlertCircle,
   X,
   ChevronDown,
-  ChevronUp,
   Download,
   LayoutList,
   Table2,
   UserCheck,
-  UsersRound,
-  Network,
   ChevronRight,
   UserPlus,
   Trash2,
   Pencil,
   RefreshCw,
-  Calendar,
   TrendingUp,
-  BadgeDollarSign,
   AlertTriangle,
   ExternalLink,
-  Eye,
-  EyeOff,
   SlidersHorizontal,
   Columns3,
+  BarChart3,
+  Save,
+  Trash,
+  Check,
+  PieChart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,11 +49,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAxios } from '@/hooks/useAxios';
 import { isReasonRequired, RequirementStatus, STATUS_FLOW } from '@/components/requirements/types';
+import {
+  useRequirementsStore,
+  useRequirementsStoreReady,
+  ColKey,
+  DEFAULT_COLS,
+} from '@/stores/requirementsStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,7 +76,7 @@ interface PipelineStageCount {
   code: string;
   label: string;
   order: number;
-  canonicalStage: string | null;
+  isTerminal?: boolean;
   count: number;
 }
 interface Assignment {
@@ -136,51 +135,83 @@ interface Requirement {
   assignments?: Assignment[];
   pipelineStageCounts?: PipelineStageCount[];
   _count?: { pipelines: number };
+  totalFunnelCount?: number;
+  terminalCount?: number;
+  terminalStageCounts?: Record<string, number>;
+  achievedValue?: number | null;
+  achievedPct?: number;
+  clientSpoc?: { id: string; firstName: string; lastName: string } | null;
 }
-interface BusinessUnit {
+
+interface TerminalStageDef {
   id: string;
-  name: string;
+  code: string;
+  label: string;
+  order: number;
+  serviceLineId: string | null;
 }
-interface ServiceLine {
-  id: string;
-  name: string;
-}
-interface Client {
-  id: string;
-  name: string;
-  status: string;
-}
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-}
+
 interface FiltersResponse {
   success: boolean;
   data: {
-    businessUnits: BusinessUnit[];
-    serviceLines: ServiceLine[];
-    clients: Client[];
+    businessUnits: { id: string; name: string }[];
+    serviceLines: { id: string; name: string }[];
+    clients: { id: string; name: string; status: string }[];
     clientSpocs: { id: string; name: string; clientId: string; clientName: string }[];
     createdBy: { id: string; name: string }[];
     statusCounts: Record<string, number>;
     priorities: string[];
   };
 }
+
 interface SaleValueStats {
   totalSaleValue: number;
+  totalAchievedValue?: number;
   omittedCount: number;
   includedCount: number;
-  hiddenCount: number;
+  totalRequirements?: number;
   byBasis: Record<string, { count: number; total: number }>;
 }
+
+interface PipelineSummaryEntry {
+  requirementId: string;
+  totalOpenings: number;
+  computedSaleValue: number | null;
+  totalFunnelCount: number;
+  terminalCount: number;
+  achievedPct: number;
+  achievedValue: number | null;
+  terminalStageCounts: Record<string, number>;
+  stages: {
+    stageId: string;
+    code: string;
+    label: string;
+    order: number;
+    isTerminal: boolean;
+    count: number;
+  }[];
+  terminalStages: { stageId: string; code: string; label: string; order: number; count: number }[];
+}
+interface PipelineSummaryResponse {
+  success: boolean;
+  data: PipelineSummaryEntry[];
+  meta: { terminalStageDefs: TerminalStageDef[] };
+}
+
 interface RequirementsResponse {
   success: boolean;
   data: Requirement[];
-  meta: { total: number; page: number; limit: number; pages: number };
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+    terminalStageDefs?: TerminalStageDef[];
+  };
   permissions?: { canAdd: boolean; canEdit: boolean; canDelete: boolean };
   scope?: { canViewScope: string; isSuperAdmin?: boolean };
 }
+
 interface CandidateInPipeline {
   id: string;
   isRejected: boolean;
@@ -204,59 +235,33 @@ interface CandidateInPipeline {
 
 // ─── Column definitions ───────────────────────────────────────────────────────
 
-type ColKey =
-  | 'code'
-  | 'title'
-  | 'status'
-  | 'priority'
-  | 'createdBy'
-  | 'client'
-  | 'agreement'
-  | 'band'
-  | 'salaryMin'
-  | 'salaryMax'
-  | 'reqSaleValue'
-  | 'computedSaleValue'
-  | 'openings'
-  | 'age'
-  | 'assignedTo';
-
 interface ColDef {
   key: ColKey;
   label: string;
-  group?: 'identity' | 'client' | 'sale' | 'meta';
+  group: 'identity' | 'client' | 'sale' | 'meta' | 'achieved';
   width: number;
-  defaultVisible: boolean;
 }
 
 const ALL_COLS: ColDef[] = [
-  { key: 'code', label: 'Code', group: 'identity', width: 100, defaultVisible: true },
-  { key: 'title', label: 'Job Title', group: 'identity', width: 260, defaultVisible: true },
-  { key: 'status', label: 'Status', group: 'identity', width: 110, defaultVisible: true },
-  { key: 'priority', label: 'Priority', group: 'identity', width: 90, defaultVisible: true },
-  { key: 'createdBy', label: 'Created By', group: 'identity', width: 130, defaultVisible: true },
-  { key: 'client', label: 'Client', group: 'client', width: 150, defaultVisible: true },
-  { key: 'agreement', label: 'Agreement', group: 'client', width: 110, defaultVisible: true },
-  { key: 'band', label: 'Band', group: 'sale', width: 160, defaultVisible: true },
-  { key: 'salaryMin', label: 'Salary Min', group: 'sale', width: 120, defaultVisible: true },
-  { key: 'salaryMax', label: 'Salary Max', group: 'sale', width: 120, defaultVisible: true },
-  {
-    key: 'reqSaleValue',
-    label: 'Req. Sale Value',
-    group: 'sale',
-    width: 130,
-    defaultVisible: true,
-  },
-  {
-    key: 'computedSaleValue',
-    label: 'Computed Value',
-    group: 'sale',
-    width: 220,
-    defaultVisible: true,
-  },
-  { key: 'openings', label: 'Open', group: 'meta', width: 70, defaultVisible: true },
-  { key: 'age', label: 'Age', group: 'meta', width: 70, defaultVisible: true },
-  { key: 'assignedTo', label: 'Assigned To', group: 'meta', width: 140, defaultVisible: true },
+  { key: 'code', label: 'Code', group: 'identity', width: 100 },
+  { key: 'title', label: 'Job Title', group: 'identity', width: 260 },
+  { key: 'status', label: 'Status', group: 'identity', width: 110 },
+  { key: 'priority', label: 'Priority', group: 'identity', width: 90 },
+  { key: 'createdBy', label: 'Created By', group: 'identity', width: 130 },
+  { key: 'client', label: 'Client', group: 'client', width: 150 },
+  { key: 'spoc', label: 'SPOC', group: 'client', width: 140 },
+  { key: 'agreement', label: 'Agreement', group: 'client', width: 110 },
+  { key: 'band', label: 'Band', group: 'sale', width: 160 },
+  { key: 'salaryMin', label: 'Salary Min', group: 'sale', width: 120 },
+  { key: 'salaryMax', label: 'Salary Max', group: 'sale', width: 120 },
+  { key: 'reqSaleValue', label: 'Req. Sale Value', group: 'sale', width: 130 },
+  { key: 'computedSaleValue', label: 'Computed Value', group: 'sale', width: 220 },
+  { key: 'openings', label: 'Open', group: 'meta', width: 70 },
+  { key: 'totalFunnel', label: 'Total Funnel', group: 'meta', width: 90 },
+  { key: 'age', label: 'Age', group: 'meta', width: 70 },
+  { key: 'assignedTo', label: 'Assigned To', group: 'meta', width: 140 },
+  { key: 'terminalCount', label: 'Achieved (Head)', group: 'achieved', width: 120 },
+  { key: 'achievedValue', label: 'Achieved Value', group: 'achieved', width: 160 },
 ];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -281,20 +286,6 @@ const PRIORITY_BADGE: Record<string, string> = {
   HIGH: 'bg-red-100 text-red-700 border border-red-200',
   MEDIUM: 'bg-amber-100 text-amber-700 border border-amber-200',
   LOW: 'bg-green-100 text-green-700 border border-green-200',
-};
-const STAGE_NUMBER_COLOR: Record<string, string> = {
-  '01': 'text-orange-500',
-  '02': 'text-violet-600',
-  '03': 'text-rose-500',
-  '04': 'text-pink-500',
-  '05': 'text-cyan-600',
-  '06': 'text-teal-500',
-  '07': 'text-blue-600',
-  '07A': 'text-blue-500',
-  '07B': 'text-blue-700',
-  '08': 'text-indigo-600',
-  '09': 'text-emerald-500',
-  '10': 'text-green-600',
 };
 const STAGE_DRAWER_COLORS: Record<string, string> = {
   '01': 'bg-orange-100 text-orange-700 border-orange-200',
@@ -336,6 +327,14 @@ const DEPTH_LABEL: Record<number, { label: string; cls: string }> = {
   1: { label: 'TL', cls: 'bg-violet-100 text-violet-700' },
   2: { label: 'Rec', cls: 'bg-emerald-100 text-emerald-700' },
 };
+const TERMINAL_COL_COLORS = [
+  'bg-purple-100 text-purple-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-violet-100 text-violet-700',
+  'bg-fuchsia-100 text-fuchsia-700',
+  'bg-pink-100 text-pink-700',
+  'bg-rose-100 text-rose-700',
+];
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
@@ -364,7 +363,7 @@ function formulaLine(req: Requirement): string | null {
   if (saleValueBasis === 'BAND' && req.band?.value != null)
     return `${fmtCurrency(req.band.value)} (band ${req.band.code}) ${ol}`;
   if (saleValueBasis === 'FIXED_PCT' && req.salaryMin != null)
-    return `${fmtCurrency(req.salaryMin)} × ${req.client?.percentageValue}% (client %) ${ol}`;
+    return `${fmtCurrency(req.salaryMin)} × ${req.client?.percentageValue}% ${ol}`;
   if (saleValueBasis === 'SALARY_MIN' && req.salaryMin != null)
     return `${fmtCurrency(req.salaryMin)} (salary min) ${ol}`;
   return null;
@@ -376,8 +375,8 @@ function useFilters() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-
   const get = (k: string, d = '') => searchParams.get(k) ?? d;
+
   const search = get('search');
   const status = get('status');
   const priority = get('priority');
@@ -418,7 +417,6 @@ function useFilters() {
       dateFrom: null,
       dateTo: null,
     });
-
   const activeFiltersCount = [
     status,
     priority,
@@ -463,43 +461,413 @@ function useFilters() {
   };
 }
 
-// ─── ColumnVisibilityPanel ────────────────────────────────────────────────────
+// ─── ColumnManagerPanel ───────────────────────────────────────────────────────
+// Full column manager with Zustand: static cols + terminal stage cols + templates
 
-function ColumnVisibilityPanel({
-  visible,
-  onChange,
-}: {
-  visible: Set<ColKey>;
-  onChange: (k: ColKey) => void;
-}) {
-  const groups = [
-    { label: 'Identity', keys: ALL_COLS.filter(c => c.group === 'identity') },
-    { label: 'Client', keys: ALL_COLS.filter(c => c.group === 'client') },
-    { label: 'Sale Value', keys: ALL_COLS.filter(c => c.group === 'sale') },
-    { label: 'Meta', keys: ALL_COLS.filter(c => c.group === 'meta') },
+function ColumnManagerPanel({ terminalStageDefs }: { terminalStageDefs: TerminalStageDef[] }) {
+  const {
+    visibleCols: _visibleCols,
+    toggleCol,
+    resetToDefault,
+    visibleTerminalCols: _visibleTerminalCols,
+    toggleTerminalCol,
+    templates,
+    saveTemplate,
+    applyTemplate,
+    deleteTemplate,
+  } = useRequirementsStore();
+
+  // Guard against pre-hydration undefined
+  const visibleCols = Array.isArray(_visibleCols) ? _visibleCols : DEFAULT_COLS;
+  const visibleTerminalCols = Array.isArray(_visibleTerminalCols) ? _visibleTerminalCols : [];
+
+  const [templateName, setTemplateName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const groups: { label: string; group: ColDef['group'] }[] = [
+    { label: 'Identity', group: 'identity' },
+    { label: 'Client', group: 'client' },
+    { label: 'Sale Value', group: 'sale' },
+    { label: 'Pipeline', group: 'meta' },
+    { label: 'Achieved', group: 'achieved' },
   ];
+
+  const handleSave = () => {
+    if (!templateName.trim()) return;
+    saveTemplate(templateName.trim(), [...visibleCols] as ColKey[], visibleTerminalCols);
+    setTemplateName('');
+    setSaving(false);
+  };
+
   return (
-    <div className="w-64 p-3">
-      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
-        Toggle Columns
-      </p>
-      {groups.map(g => (
-        <div key={g.label} className="mb-3">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-            {g.label}
+    <div className="w-72 max-h-[80vh] overflow-y-auto">
+      {/* Saved templates */}
+      {templates.length > 0 && (
+        <div className="px-3 pt-3 pb-2 border-b border-slate-100">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+            Saved Templates
           </p>
-          {g.keys.map(col => (
-            <label
-              key={col.key}
-              className="flex items-center gap-2 px-1 py-1 rounded hover:bg-slate-50 cursor-pointer"
-            >
-              <Checkbox checked={visible.has(col.key)} onCheckedChange={() => onChange(col.key)} />
-              <span className="text-[12px] text-slate-700">{col.label}</span>
-            </label>
+          {templates.map(t => (
+            <div key={t.id} className="flex items-center gap-1 mb-1">
+              <button
+                onClick={() => applyTemplate(t.id)}
+                className="flex-1 text-left text-[12px] px-2 py-1 rounded hover:bg-blue-50 hover:text-blue-700 text-slate-700 truncate"
+              >
+                {t.name}
+              </button>
+              <button
+                onClick={() => deleteTemplate(t.id)}
+                className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-red-500 rounded"
+              >
+                <Trash size={11} />
+              </button>
+            </div>
           ))}
         </div>
-      ))}
+      )}
+
+      {/* Static column groups */}
+      <div className="px-3 pt-2">
+        {groups.map(g => (
+          <div key={g.group} className="mb-3">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              {g.label}
+            </p>
+            {ALL_COLS.filter(c => c.group === g.group).map(col => (
+              <label
+                key={col.key}
+                className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-slate-50 cursor-pointer"
+              >
+                <Checkbox
+                  checked={visibleCols.includes(col.key)}
+                  onCheckedChange={() => toggleCol(col.key)}
+                />
+                <span className="text-[12px] text-slate-700">{col.label}</span>
+              </label>
+            ))}
+          </div>
+        ))}
+
+        {/* Dynamic terminal stage cols */}
+        {terminalStageDefs.length > 0 && (
+          <div className="mb-3">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Terminal Stages
+            </p>
+            {terminalStageDefs.map(ts => {
+              const key = `ts_${ts.id}`;
+              return (
+                <label
+                  key={ts.id}
+                  className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-slate-50 cursor-pointer"
+                >
+                  <Checkbox
+                    checked={visibleTerminalCols.length === 0 || visibleTerminalCols.includes(key)}
+                    onCheckedChange={() => toggleTerminalCol(key)}
+                  />
+                  <span className="text-[12px] text-slate-700">{ts.label}</span>
+                  {ts.serviceLineId && (
+                    <span className="text-[9px] text-slate-400 ml-auto">SL-specific</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Save template + reset */}
+      <div className="px-3 pb-3 border-t border-slate-100 pt-2 space-y-1.5">
+        {saving ? (
+          <div className="flex gap-1.5">
+            <input
+              value={templateName}
+              onChange={e => setTemplateName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              placeholder="Template name…"
+              className="flex-1 text-[12px] border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+              autoFocus
+            />
+            <button
+              onClick={handleSave}
+              disabled={!templateName.trim()}
+              className="px-2 py-1 bg-blue-600 text-white text-[12px] rounded disabled:opacity-40"
+            >
+              <Check size={12} />
+            </button>
+            <button
+              onClick={() => setSaving(false)}
+              className="px-2 py-1 text-slate-400 text-[12px] rounded hover:bg-slate-100"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setSaving(true)}
+            className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[12px] text-slate-600 hover:bg-slate-50 rounded border border-slate-200"
+          >
+            <Save size={12} /> Save as template
+          </button>
+        )}
+        <button
+          onClick={resetToDefault}
+          className="w-full text-[11px] text-slate-400 hover:text-slate-600 text-left px-1"
+        >
+          Reset to default
+        </button>
+      </div>
     </div>
+  );
+}
+
+// ─── StatsDialog ──────────────────────────────────────────────────────────────
+// Large dialog with sale value stats, pipeline stats, filter controls
+
+function StatsDialog({
+  open,
+  onClose,
+  saleStats,
+  pipelineSummary,
+  terminalStageDefs,
+  filtersData,
+  filters,
+}: {
+  open: boolean;
+  onClose: () => void;
+  saleStats: SaleValueStats | undefined;
+  pipelineSummary: PipelineSummaryResponse | undefined;
+  terminalStageDefs: TerminalStageDef[];
+  filtersData: FiltersResponse['data'] | undefined;
+  filters: ReturnType<typeof useFilters>;
+}) {
+  if (!open) return null;
+
+  const totalReqs = saleStats?.totalRequirements ?? pipelineSummary?.data?.length ?? 0;
+  const totalFunnel = pipelineSummary?.data?.reduce((s, e) => s + e.totalFunnelCount, 0) ?? 0;
+  const totalTerminal = pipelineSummary?.data?.reduce((s, e) => s + e.terminalCount, 0) ?? 0;
+  const totalSale = saleStats?.totalSaleValue ?? 0;
+  const totalAchieved =
+    saleStats?.totalAchievedValue ??
+    pipelineSummary?.data?.reduce((s, e) => s + (e.achievedValue ?? 0), 0) ??
+    0;
+  const achievedPct = totalSale > 0 ? Math.round((totalAchieved / totalSale) * 100) : 0;
+
+  // Per-terminal-stage totals across all requirements
+  const terminalTotals: Record<string, { count: number; label: string; code: string }> = {};
+  for (const entry of pipelineSummary?.data ?? []) {
+    for (const ts of entry.terminalStages) {
+      if (!terminalTotals[ts.stageId])
+        terminalTotals[ts.stageId] = { count: 0, label: ts.label, code: ts.code };
+      terminalTotals[ts.stageId].count += ts.count;
+    }
+  }
+
+  // By basis breakdown
+  const basisEntries = Object.entries(saleStats?.byBasis ?? {}).filter(([, v]) => v.count > 0);
+
+  const statCard = (label: string, value: string, sub?: string, color = 'text-slate-900') => (
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <p className="text-[11px] text-slate-400 font-medium uppercase tracking-wider mb-1">
+        {label}
+      </p>
+      <p className={`text-[22px] font-bold tabular-nums leading-none ${color}`}>{value}</p>
+      {sub && <p className="text-[11px] text-slate-400 mt-1">{sub}</p>}
+    </div>
+  );
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={o => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b border-slate-200 sticky top-0 bg-white z-10">
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-[16px] font-bold text-slate-900">
+                Requirements Stats
+              </DialogTitle>
+              <p className="text-[12px] text-slate-400 mt-0.5">
+                Full dataset — all filters applied, no page limit
+              </p>
+            </div>
+            {/* Quick filter chips inside dialog */}
+            <div className="flex items-center gap-1.5 flex-wrap max-w-md justify-end">
+              {filters.status && (
+                <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                  {STATUS_LABEL[filters.status] ?? filters.status}
+                </span>
+              )}
+              {filters.serviceLineId && filtersData?.serviceLines && (
+                <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                  {filtersData.serviceLines.find(s => s.id === filters.serviceLineId)?.name}
+                </span>
+              )}
+              {filters.clientId && filtersData?.clients && (
+                <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                  {filtersData.clients.find(c => c.id === filters.clientId)?.name}
+                </span>
+              )}
+              {filters.dateFrom && (
+                <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                  From {filters.dateFrom}
+                </span>
+              )}
+              {filters.dateTo && (
+                <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                  Until {filters.dateTo}
+                </span>
+              )}
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="p-6 space-y-6">
+          {/* ── Top KPI cards ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {statCard('Total Requirements', totalReqs.toLocaleString())}
+            {statCard(
+              'Total Funnel',
+              totalFunnel.toLocaleString(),
+              'candidates across all stages',
+              'text-emerald-700'
+            )}
+            {statCard(
+              'Total Sale Value',
+              fmtCurrency(totalSale),
+              `${saleStats?.includedCount ?? 0} computed · ${saleStats?.omittedCount ?? 0} no data`,
+              'text-emerald-800'
+            )}
+            {statCard(
+              'Achieved Value',
+              fmtCurrency(totalAchieved),
+              `${achievedPct}% of total target`,
+              'text-purple-700'
+            )}
+          </div>
+
+          {/* ── Achieved / Terminal stage breakdown ── */}
+          {terminalStageDefs.length > 0 && (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Achieved — by Terminal Stage
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {terminalStageDefs.map((ts, i) => {
+                  const tot = terminalTotals[ts.id];
+                  const cls = TERMINAL_COL_COLORS[i % TERMINAL_COL_COLORS.length];
+                  return (
+                    <div
+                      key={ts.id}
+                      className={`rounded-xl border p-3 ${cls.replace('text-', 'border-').replace('bg-', 'border-').split(' ')[0]} bg-white`}
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wider mb-1 text-slate-400">
+                        {ts.label}
+                      </p>
+                      <p className={`text-[20px] font-bold tabular-nums ${cls.split(' ')[1]}`}>
+                        {tot?.count ?? 0}
+                      </p>
+                      <p className="text-[10px] text-slate-400">candidates placed</p>
+                    </div>
+                  );
+                })}
+                {totalTerminal > 0 && (
+                  <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1 text-purple-400">
+                      Total Terminal
+                    </p>
+                    <p className="text-[20px] font-bold tabular-nums text-purple-700">
+                      {totalTerminal}
+                    </p>
+                    <p className="text-[10px] text-purple-400">{achievedPct}% fill rate</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Sale value by calculation method ── */}
+          {basisEntries.length > 0 && (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Sale Value — by Calculation Method
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {basisEntries.map(([k, v]) => {
+                  const b = SALE_BASIS_LABEL[k];
+                  return (
+                    <div key={k} className="bg-white rounded-xl border border-slate-200 p-3">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        {b?.label ?? k}
+                      </p>
+                      <p className="text-[16px] font-bold text-slate-800 tabular-nums">
+                        {fmtCurrency(v.total)}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {v.count} requirement{v.count !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Top requirements by achieved value ── */}
+          {(pipelineSummary?.data?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                Top Requirements — by Achieved Value
+              </p>
+              <div className="space-y-1.5">
+                {[...(pipelineSummary?.data ?? [])]
+                  .filter(e => (e.achievedValue ?? 0) > 0)
+                  .sort((a, b) => (b.achievedValue ?? 0) - (a.achievedValue ?? 0))
+                  .slice(0, 10)
+                  .map(e => (
+                    <div
+                      key={e.requirementId}
+                      className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg border border-slate-100"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold text-purple-700 tabular-nums">
+                            {fmtCurrency(e.achievedValue)}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            of {fmtCurrency(e.computedSaleValue)}
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${e.achievedPct >= 100 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}
+                          >
+                            {e.achievedPct}%
+                          </span>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-purple-500 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, e.achievedPct)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[11px] text-slate-500">
+                          {e.terminalCount}/{e.totalOpenings} filled
+                        </p>
+                        <p className="text-[10px] text-slate-400">{e.totalFunnelCount} in funnel</p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -547,7 +915,6 @@ function AssigneesCell({
   const [open, setOpen] = useState(false);
   const assignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
   const top3 = assignments.filter(a => (a.depth ?? 0) === 0).slice(0, 3);
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -653,7 +1020,6 @@ function RowActions({
   canDelete: boolean;
   onOpenNew: () => void;
 }) {
-  const router = useRouter();
   const axios = useAxios();
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -662,8 +1028,6 @@ function RowActions({
   const [toStatus, setToStatus] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [statusErr, setStatusErr] = useState<string | null>(null);
-
-  const nextStatuses = STATUS_FLOW[req.status as keyof typeof STATUS_FLOW] ?? [];
 
   const { mutate: doDelete, isPending: deleting } = useMutation({
     mutationFn: async () => (await axios.delete(`/requirements/${req.id}`)).data,
@@ -697,7 +1061,6 @@ function RowActions({
 
   return (
     <div className="flex items-center gap-0.5" onClick={e => e.stopPropagation()}>
-      {/* Open same tab */}
       {canEdit && (
         <button
           onClick={() => window.open(`/requirements/${idOrSlug}/edit`, '_blank')}
@@ -707,8 +1070,6 @@ function RowActions({
           <Pencil size={12} />
         </button>
       )}
-
-      {/* Open new tab */}
       <button
         onClick={onOpenNew}
         title="Open in new tab"
@@ -716,8 +1077,6 @@ function RowActions({
       >
         <ExternalLink size={12} />
       </button>
-
-      {/* Status change — all statuses shown, any→any */}
       {canEdit && (
         <Popover
           open={statusOpen}
@@ -757,9 +1116,6 @@ function RowActions({
                   >
                     <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                     {s.label}
-                    {req.status === s.key && (
-                      <span className="ml-auto text-[10px] text-slate-400">current</span>
-                    )}
                   </button>
                 ))}
               </>
@@ -772,7 +1128,7 @@ function RowActions({
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   rows={2}
-                  className={`w-full text-[12px] border rounded px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary mb-2 ${needsReason && reason.trim().length < 5 ? 'border-red-300' : 'border-slate-200'}`}
+                  className={`w-full text-[12px] border rounded px-2 py-1.5 resize-none focus:outline-none mb-2 ${needsReason && reason.trim().length < 5 ? 'border-red-300' : 'border-slate-200'}`}
                 />
                 {statusErr && <p className="text-[11px] text-red-600 mb-2">{statusErr}</p>}
                 <div className="flex justify-end gap-2">
@@ -795,8 +1151,6 @@ function RowActions({
           </PopoverContent>
         </Popover>
       )}
-
-      {/* Delete */}
       {canDelete && (
         <Popover
           open={deleteOpen}
@@ -926,9 +1280,7 @@ function DropdownFilter({
   );
 }
 
-// ─── FilterPanel (hover-reveal strip) ────────────────────────────────────────
-// Default hidden. Appears when cursor enters the trigger zone at top of table
-// or user clicks the Filters button. Pushes content down with smooth transition.
+// ─── FilterPanel ─────────────────────────────────────────────────────────────
 
 function FilterPanel({
   show,
@@ -961,20 +1313,17 @@ function FilterPanel({
     activeFiltersCount,
     clearAll,
   } = filters;
-
   const byStatus = filterData?.statusCounts ?? {};
   const total = Object.values(byStatus).reduce((s, n) => s + n, 0);
-
   return (
     <div className={`overflow-hidden transition-all duration-200 ${show ? 'max-h-48' : 'max-h-0'}`}>
       <div className="bg-white border-b border-slate-200 px-4 py-2.5 space-y-2">
-        {/* Status pills row */}
         <div className="flex items-center gap-1 flex-wrap">
           <button
             onClick={() => setStatus('')}
-            className={`px-2.5 py-1 rounded-lg text-[12px] font-medium transition-all whitespace-nowrap ${!status ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            className={`px-2.5 py-1 rounded-lg text-[12px] font-medium whitespace-nowrap ${!status ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
-            All <span className="ml-1 text-[11px] font-bold opacity-70">{total}</span>
+            All <span className="ml-1 text-[11px] opacity-70">{total}</span>
           </button>
           {ALL_STATUSES.map(s => {
             const count = byStatus[s.key] ?? 0;
@@ -984,7 +1333,7 @@ function FilterPanel({
               <button
                 key={s.key}
                 onClick={() => setStatus(isActive ? '' : s.key)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium transition-all whitespace-nowrap ${isActive ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-medium whitespace-nowrap ${isActive ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                 {s.label}
@@ -993,8 +1342,6 @@ function FilterPanel({
             );
           })}
         </div>
-
-        {/* Dropdowns row */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {filterData?.businessUnits?.length ? (
             <DropdownFilter
@@ -1057,8 +1404,6 @@ function FilterPanel({
               allLabel="Anyone"
             />
           ) : null}
-
-          {/* Date range */}
           <div className="flex items-center gap-1">
             <input
               type="date"
@@ -1076,7 +1421,6 @@ function FilterPanel({
               className="h-8 px-2 text-[12px] border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-
           {activeFiltersCount > 0 && (
             <button
               onClick={clearAll}
@@ -1094,7 +1438,15 @@ function FilterPanel({
 
 // ─── SaleValueSummaryBar ──────────────────────────────────────────────────────
 
-function SaleValueSummaryBar({ stats }: { stats: SaleValueStats | undefined }) {
+function SaleValueSummaryBar({
+  stats,
+  achievedTotal,
+  onStatsClick,
+}: {
+  stats: SaleValueStats | undefined;
+  achievedTotal: number;
+  onStatsClick: () => void;
+}) {
   if (!stats) return null;
   return (
     <div className="flex items-center gap-4 px-4 py-1.5 bg-emerald-50 border-b border-emerald-100 flex-wrap shrink-0">
@@ -1110,10 +1462,20 @@ function SaleValueSummaryBar({ stats }: { stats: SaleValueStats | undefined }) {
         {stats.omittedCount > 0 && (
           <span className="text-amber-600 ml-1 font-semibold">· {stats.omittedCount} no data</span>
         )}
-        {stats.hiddenCount > 0 && (
-          <span className="text-slate-400 ml-1">· {stats.hiddenCount} hidden (RBAC)</span>
-        )}
       </span>
+      {achievedTotal > 0 && (
+        <div className="flex items-center gap-1.5 pl-4 border-l border-emerald-200">
+          <span className="text-[12px] font-semibold text-purple-700">Achieved:</span>
+          <span className="text-[13px] font-bold text-purple-800 tabular-nums">
+            {fmtCurrency(achievedTotal)}
+          </span>
+          {stats.totalSaleValue > 0 && (
+            <span className="text-[11px] text-purple-500">
+              ({Math.round((achievedTotal / stats.totalSaleValue) * 100)}% of target)
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2 ml-auto">
         {Object.entries(stats.byBasis)
           .filter(([, v]) => v.count > 0)
@@ -1128,6 +1490,12 @@ function SaleValueSummaryBar({ stats }: { stats: SaleValueStats | undefined }) {
               </span>
             ) : null;
           })}
+        <button
+          onClick={onStatsClick}
+          className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded-lg transition-colors ml-2"
+        >
+          <BarChart3 size={11} /> Stats
+        </button>
       </div>
     </div>
   );
@@ -1138,9 +1506,11 @@ function SaleValueSummaryBar({ stats }: { stats: SaleValueStats | undefined }) {
 function ExportButton({
   filters,
   visibleCols,
+  visibleTerminalCols,
 }: {
   filters: ReturnType<typeof useFilters>;
-  visibleCols: Set<ColKey>;
+  visibleCols: ColKey[];
+  visibleTerminalCols: string[];
 }) {
   const axios = useAxios();
   const [loading, setLoading] = useState(false);
@@ -1159,8 +1529,9 @@ function ExportButton({
       if (filters.createdById) p.set('createdById', filters.createdById);
       if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) p.set('dateTo', filters.dateTo);
-      // Pass visible columns so backend can optionally filter sheet
+      // Tell backend which static cols + which terminal stage cols to include
       p.set('cols', [...visibleCols].join(','));
+      p.set('terminalCols', [...visibleTerminalCols].join(','));
       const res = await axios.get(`/requirements/export?${p}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
@@ -1213,9 +1584,9 @@ function CandidateDrawer({
   const router = useRouter();
   const [activeStageId, setActiveStageId] = useState<string | null>(stageId);
   useMemo(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-render
     setActiveStageId(stageId);
   }, [stageId]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (activeStageId) p.set('stageId', activeStageId);
@@ -1235,7 +1606,6 @@ function CandidateDrawer({
   const candidates = res?.data ?? [];
   const total = res?.meta?.total ?? 0;
   const activeStage = allStages.find(s => s.id === activeStageId);
-
   return (
     <Sheet
       open={open}
@@ -1391,11 +1761,6 @@ function CandidateDrawer({
 }
 
 // ─── ServiceLineTabs ──────────────────────────────────────────────────────────
-// Tabs are derived purely from data — no hardcoding of TAAS/KAAS names.
-// Each service line that exists in the filter data gets a tab.
-// Selecting a tab auto-applies serviceLineId filter.
-// Column set adapts: if the tab's reqs mostly use BAND → show band/agreement cols.
-// If mostly SALE_VALUE → show reqSaleValue. Always show computedSaleValue.
 
 function ServiceLineTabs({
   serviceLines,
@@ -1403,7 +1768,7 @@ function ServiceLineTabs({
   onSelect,
   statusCounts,
 }: {
-  serviceLines: ServiceLine[];
+  serviceLines: { id: string; name: string }[];
   activeId: string;
   onSelect: (id: string) => void;
   statusCounts: Record<string, number>;
@@ -1411,13 +1776,12 @@ function ServiceLineTabs({
   if (!serviceLines.length) return null;
   const total = Object.values(statusCounts).reduce((s, n) => s + n, 0);
   return (
-    <div className="flex items-center gap-0 border-b border-slate-200 bg-white shrink-0 overflow-x-auto scrollbar-none px-4">
-      {/* ALL tab */}
+    <div className="flex items-center border-b border-slate-200 bg-white shrink-0 overflow-x-auto scrollbar-none px-4">
       <button
         onClick={() => onSelect('')}
         className={`flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-semibold border-b-2 transition-all whitespace-nowrap shrink-0 ${!activeId ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
       >
-        All
+        All{' '}
         <span
           className={`text-[11px] px-1.5 py-0.5 rounded-full font-bold ${!activeId ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}
         >
@@ -1437,33 +1801,44 @@ function ServiceLineTabs({
   );
 }
 
-// ─── RequirementsTable — Excel-like frozen viewport ───────────────────────────
-// • thead is sticky inside the scroll container — never leaves view
-// • Action column is position: sticky left:0 — always visible while scrolling right
-// • tbody rows never cause page scroll — all scroll happens inside this container
+// ─── RequirementsTable ────────────────────────────────────────────────────────
+// Terminal stage columns are dynamic — one per TerminalStageDef from API
 
 function RequirementsTable({
   requirements,
   visibleCols,
-  allStages,
+  visibleTerminalCols,
+  terminalStageDefs,
   canAdd,
   canDelete,
   canEdit,
   onAssign,
-  onStageClick,
 }: {
   requirements: Requirement[];
-  visibleCols: Set<ColKey>;
-  allStages: PipelineStage[];
+  visibleCols: ColKey[];
+  visibleTerminalCols: string[];
+  terminalStageDefs: TerminalStageDef[];
   canAdd: boolean;
   canDelete: boolean;
   canEdit: boolean;
   onAssign: (r: Requirement) => void;
-  onStageClick: (r: Requirement, stageId: string) => void;
 }) {
   const router = useRouter();
-  const visibleColDefs = ALL_COLS.filter(c => visibleCols.has(c.key));
-  const totalFixedWidth = visibleColDefs.reduce((s, c) => s + c.width, 0) + 120 + 8; // action col + stage col placeholder
+  // Guard: treat undefined/null props as safe defaults (hydration race safety)
+  const _cols = Array.isArray(visibleCols) ? visibleCols : DEFAULT_COLS;
+  const _terminalCols = Array.isArray(visibleTerminalCols) ? visibleTerminalCols : [];
+  const _stageDefs = Array.isArray(terminalStageDefs) ? terminalStageDefs : [];
+
+  const visibleColDefs = ALL_COLS.filter(c => _cols.includes(c.key));
+  const visibleTerminalDefs = _stageDefs.filter(
+    ts => _terminalCols.length === 0 || _terminalCols.includes(`ts_${ts.id}`)
+  );
+
+  const totalWidth =
+    visibleColDefs.reduce((s, c) => s + c.width, 0) +
+    100 + // action col
+    visibleTerminalDefs.length * 110 + // per terminal stage col
+    (visibleTerminalDefs.length > 0 ? 130 : 0); // achieved value col
 
   const openReq = (req: Requirement, newTab: boolean) => {
     const path = `/requirements/${req.slug ?? req.id}`;
@@ -1471,31 +1846,31 @@ function RequirementsTable({
     else router.push(path);
   };
 
-  const grpCls = (g?: string) => {
-    if (g === 'client') return 'bg-blue-50/40';
-    if (g === 'sale') return 'bg-emerald-50/40';
-    return '';
-  };
   const grpHeadCls = (g?: string) => {
     if (g === 'client') return 'bg-blue-50';
     if (g === 'sale') return 'bg-emerald-50';
+    if (g === 'achieved') return 'bg-purple-50';
     return 'bg-slate-50';
+  };
+  const grpBgCls = (g?: string) => {
+    if (g === 'client') return 'bg-blue-50/40';
+    if (g === 'sale') return 'bg-emerald-50/40';
+    if (g === 'achieved') return 'bg-purple-50/30';
+    return '';
   };
 
   return (
-    // This div is the scroll container — fixed height, scrolls both axes
     <div className="absolute inset-0 overflow-auto">
       <table
         className="border-collapse text-[12px]"
-        style={{ minWidth: totalFixedWidth, width: '100%' }}
+        style={{ minWidth: totalWidth, width: '100%' }}
       >
         <thead className="sticky top-0 z-20">
           <tr className="border-b-2 border-slate-200">
-            {/* Sticky action column header — narrow */}
-            <th className="sticky left-0 z-30 bg-slate-50 text-center px-1 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400 w-10 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+            {/* Sticky action col */}
+            <th className="sticky left-0 z-30 bg-slate-50 text-center px-1 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 w-10 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
               •••
             </th>
-            {/* Regular column headers */}
             {visibleColDefs.map((col, i) => {
               const prevGroup = i > 0 ? visibleColDefs[i - 1].group : undefined;
               const borderLeft = col.group !== prevGroup && col.group !== 'identity';
@@ -1503,32 +1878,57 @@ function RequirementsTable({
                 <th
                   key={col.key}
                   style={{ width: col.width, minWidth: col.width }}
-                  className={`px-3 py-3 font-semibold text-[10px] uppercase tracking-wider text-slate-400 text-left ${grpHeadCls(col.group)} ${borderLeft ? 'border-l border-slate-200' : ''}`}
+                  className={`px-3 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 text-left ${grpHeadCls(col.group)} ${borderLeft ? 'border-l border-slate-200' : ''}`}
                 >
                   {col.label}
                   {col.key === 'reqSaleValue' && (
-                    <div className="text-[8px] text-slate-400 font-normal normal-case tracking-normal">
+                    <div className="text-[8px] font-normal normal-case tracking-normal text-slate-400">
                       manually entered
                     </div>
                   )}
                   {col.key === 'computedSaleValue' && (
-                    <div className="text-[8px] text-slate-400 font-normal normal-case tracking-normal">
+                    <div className="text-[8px] font-normal normal-case tracking-normal text-slate-400">
                       auto-calculated
                     </div>
                   )}
                 </th>
               );
             })}
+
+            {/* ── Dynamic terminal stage columns ── */}
+            {visibleTerminalDefs.map((ts, i) => (
+              <th
+                key={ts.id}
+                style={{ width: 110, minWidth: 110 }}
+                className={`px-2 py-3 text-[10px] font-semibold uppercase tracking-wider text-purple-500 text-center bg-purple-50 ${i === 0 ? 'border-l border-purple-200' : ''}`}
+              >
+                <div className="truncate" title={ts.label}>
+                  {ts.label}
+                </div>
+                {ts.serviceLineId && (
+                  <div className="text-[8px] text-purple-300 font-normal normal-case">
+                    SL-specific
+                  </div>
+                )}
+              </th>
+            ))}
+
+            {/* Achieved value summary col — only if terminal cols visible */}
+            {visibleTerminalDefs.length > 0 && (
+              <th
+                style={{ width: 130, minWidth: 130 }}
+                className="px-2 py-3 text-[10px] font-semibold uppercase tracking-wider text-purple-500 text-center bg-purple-50"
+              >
+                <div>Achieved</div>
+                <div className="text-[8px] text-purple-300 font-normal normal-case">₹ + %</div>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {requirements.map(req => {
             const age = daysSince(req.createdAt);
             const isBreached = req.isRespondByBreached || req.isTurnaroundBreached;
-            const totalPipeline =
-              req._count?.pipelines ??
-              (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
-            const stageCounts = req.pipelineStageCounts ?? [];
 
             return (
               <tr
@@ -1536,14 +1936,12 @@ function RequirementsTable({
                 className={`group cursor-pointer bg-white hover:bg-slate-50/80 transition-colors ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
                 onClick={() => openReq(req, false)}
               >
-                {/* Sticky action cell — collapsed dot, expand on row hover */}
+                {/* Sticky action cell */}
                 <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0">
                   <div className="relative flex items-center justify-center h-full min-h-[44px]">
-                    {/* Collapsed state — just a dot */}
                     <span className="group-hover:opacity-0 text-slate-300 text-[16px] leading-none select-none absolute transition-opacity duration-100">
                       ⋯
                     </span>
-                    {/* Expanded on hover */}
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-100 absolute flex items-center gap-0.5 px-1">
                       <RowActions
                         req={req}
@@ -1555,11 +1953,11 @@ function RequirementsTable({
                   </div>
                 </td>
 
-                {/* Data cells */}
+                {/* Static data cells */}
                 {visibleColDefs.map((col, i) => {
                   const prevGroup = i > 0 ? visibleColDefs[i - 1].group : undefined;
                   const borderLeft = col.group !== prevGroup && col.group !== 'identity';
-                  const bg = grpCls(col.group);
+                  const bg = grpBgCls(col.group);
 
                   let cell: React.ReactNode = null;
                   switch (col.key) {
@@ -1571,7 +1969,7 @@ function RequirementsTable({
                             navigator.clipboard.writeText(req.reqCode);
                           }}
                           title="Click to copy"
-                          className="font-mono text-[10px] text-slate-400 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 px-1 py-0.5 rounded transition-colors"
+                          className="font-mono text-[10px] text-slate-400 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 px-1 py-0.5 rounded"
                         >
                           {req.reqCode}
                         </button>
@@ -1605,9 +2003,9 @@ function RequirementsTable({
                                 {req.city}
                               </span>
                             )}
-                            {totalPipeline > 0 && (
+                            {(req.totalFunnelCount ?? 0) > 0 && (
                               <span className="text-[10px] text-emerald-600 font-semibold">
-                                {totalPipeline} in pipeline
+                                {req.totalFunnelCount} in funnel
                               </span>
                             )}
                           </div>
@@ -1659,6 +2057,18 @@ function RequirementsTable({
                         >
                           {req.client?.name ?? <span className="text-slate-300">—</span>}
                         </span>
+                      );
+                      break;
+                    case 'spoc':
+                      cell = req.clientSpoc ? (
+                        <span
+                          className="text-[12px] text-slate-600 truncate block"
+                          style={{ maxWidth: 120 }}
+                        >
+                          {req.clientSpoc.firstName} {req.clientSpoc.lastName}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">—</span>
                       );
                       break;
                     case 'agreement':
@@ -1754,6 +2164,20 @@ function RequirementsTable({
                         </span>
                       );
                       break;
+                    case 'totalFunnel': {
+                      const funnel =
+                        req.totalFunnelCount ??
+                        (req.pipelineStageCounts ?? []).reduce((s, c) => s + c.count, 0);
+                      cell =
+                        funnel > 0 ? (
+                          <span className="font-semibold text-emerald-700 tabular-nums text-[12px]">
+                            {funnel}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        );
+                      break;
+                    }
                     case 'age':
                       cell = (
                         <span
@@ -1766,18 +2190,101 @@ function RequirementsTable({
                     case 'assignedTo':
                       cell = <AssigneesCell req={req} canAdd={canAdd} onAssign={onAssign} />;
                       break;
+                    case 'terminalCount': {
+                      const tc = req.terminalCount ?? 0;
+                      const pct =
+                        req.totalOpenings > 0 ? Math.round((tc / req.totalOpenings) * 100) : 0;
+                      cell =
+                        tc > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[12px] font-bold text-purple-700 tabular-nums">
+                              {tc} / {req.totalOpenings}
+                            </span>
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${pct >= 100 ? 'bg-emerald-100 text-emerald-700' : pct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}
+                            >
+                              {pct}%
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        );
+                      break;
+                    }
+                    case 'achievedValue': {
+                      const av = req.achievedValue;
+                      cell =
+                        av != null && av > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[13px] font-bold text-purple-700 tabular-nums leading-none">
+                              {fmtCurrency(av)}
+                            </span>
+                            {req.computedSaleValue != null && req.computedSaleValue > 0 && (
+                              <span className="text-[10px] text-slate-400">
+                                of {fmtCurrency(req.computedSaleValue)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        );
+                      break;
+                    }
                   }
-
                   return (
                     <td
                       key={col.key}
-                      className={`px-3 py-2.5 align-top ${bg} ${borderLeft ? 'border-l border-slate-100' : ''}`}
+                      className={`px-3 py-2.5 align-top ${grpBgCls(col.group)} ${borderLeft ? 'border-l border-slate-100' : ''}`}
                       onClick={col.key === 'assignedTo' ? e => e.stopPropagation() : undefined}
                     >
                       {cell}
                     </td>
                   );
                 })}
+
+                {/* ── Dynamic terminal stage cells ── */}
+                {visibleTerminalDefs.map((ts, i) => {
+                  const cnt = req.terminalStageCounts?.[ts.id] ?? 0;
+                  const colorCls = TERMINAL_COL_COLORS[i % TERMINAL_COL_COLORS.length];
+                  return (
+                    <td
+                      key={ts.id}
+                      className={`px-2 py-2.5 text-center bg-purple-50/20 ${i === 0 ? 'border-l border-purple-100' : ''}`}
+                    >
+                      {cnt > 0 ? (
+                        <span
+                          className={`inline-block text-[12px] font-bold px-2 py-0.5 rounded-md ${colorCls}`}
+                        >
+                          {cnt}
+                        </span>
+                      ) : (
+                        <span className="text-slate-200">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+
+                {/* Achieved value + % summary */}
+                {visibleTerminalDefs.length > 0 && (
+                  <td className="px-2 py-2.5 text-center bg-purple-50/20">
+                    {req.achievedValue != null && req.achievedValue > 0 ? (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[12px] font-bold text-purple-700 tabular-nums">
+                          {fmtCurrency(req.achievedValue)}
+                        </span>
+                        {req.achievedPct != null && req.achievedPct > 0 && (
+                          <span
+                            className={`text-[9px] font-semibold px-1 py-0.5 rounded-full ${req.achievedPct >= 100 ? 'bg-emerald-100 text-emerald-700' : req.achievedPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-600'}`}
+                          >
+                            {req.achievedPct}%
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-slate-200">—</span>
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -1834,23 +2341,26 @@ function RequirementsPageInner() {
     activeFiltersCount,
   } = filters;
 
-  // Column visibility state
-  const [visibleCols, setVisibleCols] = useState<Set<ColKey>>(
-    new Set(ALL_COLS.filter(c => c.defaultVisible).map(c => c.key))
-  );
-  const toggleCol = (k: ColKey) =>
-    setVisibleCols(prev => {
-      const n = new Set(prev);
-      n.has(k) ? n.delete(k) : n.add(k);
-      return n;
-    });
+  // Zustand column state
+  const {
+    visibleCols: _rawCols,
+    toggleCol,
+    setVisibleCols,
+    visibleTerminalCols: _rawTerminalCols,
+    setVisibleTerminalCols,
+  } = useRequirementsStore();
+  const storeReady = useRequirementsStoreReady();
+  // Always arrays — safe regardless of hydration state
+  const visibleCols = Array.isArray(_rawCols) ? _rawCols : DEFAULT_COLS;
+  const visibleTerminalCols = Array.isArray(_rawTerminalCols) ? _rawTerminalCols : [];
+  const safeCols = visibleCols;
+  const safeTerminalCols = visibleTerminalCols;
 
-  // Filter panel — hidden by default, shown on hover or button click
   const [filterPinned, setFilterPinned] = useState(false);
   const [filterHovered, setFilterHovered] = useState(false);
   const showFilters = filterPinned || filterHovered;
+  const [statsOpen, setStatsOpen] = useState(false);
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drawer, setDrawer] = useState<{
     open: boolean;
     requirementId: string;
@@ -1870,14 +2380,14 @@ function RequirementsPageInner() {
     [router]
   );
 
-  // Single filters API call
+  // Filters API
   const { data: filtersData } = useQuery({
     queryKey: ['requirements-filters'],
     queryFn: async () => (await axios.get('/requirements/filters')).data as FiltersResponse,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Pipeline stages
+  // Pipeline stages (for CandidateDrawer)
   const { data: stagesData } = useQuery({
     queryKey: ['pipeline-stages'],
     queryFn: async () =>
@@ -1886,7 +2396,7 @@ function RequirementsPageInner() {
   });
   const allStages = ((stagesData as PipelineStage[]) ?? []).sort((a, b) => a.order - b.order);
 
-  // Sale value stats — full dataset, no page/limit
+  // Common filter qs (no page/limit) — used by stats + pipeline summary
   const saleStatsQs = useMemo(() => {
     const p = new URLSearchParams();
     if (filters.search) p.set('search', filters.search);
@@ -1913,6 +2423,7 @@ function RequirementsPageInner() {
     filters.dateTo,
   ]);
 
+  // Sale value stats — full dataset, no page/limit
   const { data: saleStatsData } = useQuery({
     queryKey: ['sale-value-stats', saleStatsQs],
     queryFn: async () =>
@@ -1921,7 +2432,36 @@ function RequirementsPageInner() {
     staleTime: 30_000,
   });
 
-  // Requirements list
+  // Pipeline summary — terminal stage data, full dataset
+  const { data: pipelineSummaryData } = useQuery({
+    queryKey: ['requirements-pipeline-summary', saleStatsQs],
+    queryFn: async () =>
+      (await axios.get(`/requirements/pipeline-summary?${saleStatsQs}`))
+        .data as PipelineSummaryResponse,
+    staleTime: 30_000,
+  });
+
+  // terminalStageDefs from pipeline summary meta
+  const terminalStageDefs = useMemo(
+    () => pipelineSummaryData?.meta?.terminalStageDefs ?? [],
+    [pipelineSummaryData]
+  );
+
+  // Build lookup: requirementId → pipeline summary entry
+  const pipelineSummaryMap = useMemo(() => {
+    const map: Record<string, PipelineSummaryEntry> = {};
+    for (const entry of pipelineSummaryData?.data ?? []) map[entry.requirementId] = entry;
+    return map;
+  }, [pipelineSummaryData]);
+
+  // When terminal stage defs change, init all terminal cols as visible
+  useMemo(() => {
+    if (!terminalStageDefs.length) return;
+    // If user has never customised terminal cols, show all
+    if (visibleTerminalCols.length === 0) return; // length=0 means "show all" in the table
+  }, [terminalStageDefs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Requirements list (paginated)
   const qs = useMemo(() => {
     const p = new URLSearchParams(saleStatsQs);
     p.set('page', String(page));
@@ -1935,7 +2475,24 @@ function RequirementsPageInner() {
     placeholderData: prev => prev,
   });
 
-  const requirements = reqData?.data ?? [];
+  // Merge pipeline summary into requirement rows
+  const requirements = useMemo(
+    () =>
+      (reqData?.data ?? []).map(r => {
+        const summary = pipelineSummaryMap[r.id];
+        return {
+          ...r,
+          totalFunnelCount:
+            summary?.totalFunnelCount ?? r.totalFunnelCount ?? r._count?.pipelines ?? 0,
+          terminalCount: summary?.terminalCount ?? r.terminalCount ?? 0,
+          terminalStageCounts: summary?.terminalStageCounts ?? r.terminalStageCounts ?? {},
+          achievedValue: summary?.achievedValue ?? r.achievedValue ?? null,
+          achievedPct: summary?.achievedPct ?? r.achievedPct ?? 0,
+        };
+      }),
+    [reqData, pipelineSummaryMap]
+  );
+
   const total = reqData?.meta?.total ?? 0;
   const totalPages = reqData?.meta?.pages ?? 0;
   const canAdd = reqData?.permissions?.canAdd ?? false;
@@ -1943,23 +2500,24 @@ function RequirementsPageInner() {
   const canEdit = reqData?.permissions?.canEdit ?? false;
   const isSuperAdmin = reqData?.scope?.isSuperAdmin ?? false;
 
-  // Smart column presets — derive from actual data in current tab, not hardcoded names.
-  // If any requirement in view has a band → show band cols.
-  // If any has percentageValue on client → show agreement col.
-  // If none have salaryMax → hide salaryMax col to reduce noise.
-  // This runs once when data loads; user can still override via the Columns panel.
-  const prevServiceLineId = useMemo(() => filters.serviceLineId, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useMemo(() => {
+  const achievedTotal =
+    saleStatsData?.totalAchievedValue ??
+    pipelineSummaryData?.data?.reduce((s, e) => s + (e.achievedValue ?? 0), 0) ??
+    0;
+
+  // Smart column presets — adapt when service line tab changes or data loads
+  // useEffect (not useMemo) so we never setState during render
+  useEffect(() => {
     if (!requirements.length) return;
     const hasBand = requirements.some(r => r.band != null);
-    const hasPct = requirements.some(r => r.client?.percentageValue != null);
     const hasSalMax = requirements.some(r => r.salaryMax != null);
     const hasSalMin = requirements.some(r => r.salaryMin != null);
     const hasReqSale = requirements.some(r => r.saleValue != null);
-
-    setVisibleCols(prev => {
+    const hasSpoc = requirements.some(r => r.clientSpoc != null);
+    const hasAchieved = requirements.some(r => (r.terminalCount ?? 0) > 0);
+    // @ts-expect-error errr
+    setVisibleCols((prev: any) => {
       const n = new Set(prev);
-      // Band cols — show only if data has bands
       if (!hasBand) {
         n.delete('band');
         n.delete('agreement');
@@ -1967,330 +2525,330 @@ function RequirementsPageInner() {
         n.add('band');
         n.add('agreement');
       }
-      // Salary cols — show only if data has them
       if (!hasSalMin) n.delete('salaryMin');
       else n.add('salaryMin');
       if (!hasSalMax) n.delete('salaryMax');
       else n.add('salaryMax');
-      // Req sale value — show only if directly entered sale values exist
       if (!hasReqSale) n.delete('reqSaleValue');
       else n.add('reqSaleValue');
-      // computedSaleValue always visible
+      if (!hasSpoc) n.delete('spoc');
+      else n.add('spoc');
+      if (!hasAchieved) {
+        n.delete('terminalCount');
+        n.delete('achievedValue');
+      } else {
+        n.add('terminalCount');
+        n.add('achievedValue');
+      }
       n.add('computedSaleValue');
+      n.add('totalFunnel');
       return n;
     });
   }, [filters.serviceLineId, requirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function toggleSelect(id: string) {
-    setSelectedIds(prev => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  }
-  function toggleAll() {
-    if (selectedIds.size === requirements.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(requirements.map(r => r.id)));
-  }
-
   return (
-    // Outer container — full viewport, nothing overflows
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-slate-50">
-      {/* ── Toolbar ── */}
-      <div className="bg-white border-b border-slate-200 shrink-0">
-        <div className="flex items-center gap-2 px-4 py-2 flex-wrap">
-          {/* Filter toggle button */}
-          <button
-            onClick={() => setFilterPinned(p => !p)}
-            className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${filterPinned || activeFiltersCount > 0 ? 'bg-primary/10 border-primary/30 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-          >
-            <SlidersHorizontal size={13} />
-            Filters
-            {activeFiltersCount > 0 && (
-              <span className="ml-0.5 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">
-                {activeFiltersCount}
-              </span>
-            )}
-          </button>
-
-          <div className="h-5 w-px bg-slate-200 shrink-0" />
-
-          {/* Search */}
-          <div className="relative">
-            <Search
-              size={13}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
-            <Input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search title, code, skill…"
-              className="pl-7 h-8 text-sm w-52 bg-slate-50 border-slate-200 focus:bg-white"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-
-          <div className="flex-1" />
-
-          {/* Count */}
-          <span className="text-[13px] text-slate-500 font-medium whitespace-nowrap">
-            {reqLoading ? '…' : `${total.toLocaleString()} found`}
-          </span>
-
-          {/* View toggle */}
-          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
+    <>
+      <div
+        className="flex flex-col overflow-hidden bg-slate-50"
+        style={{ height: 'calc(100vh - 64px)', maxHeight: 'calc(100vh - 64px)' }}
+      >
+        {/* ── Toolbar ── */}
+        <div className="bg-white border-b border-slate-200 shrink-0">
+          <div className="flex items-center gap-2 px-4 py-2 flex-wrap">
             <button
-              onClick={() => setViewMode('table')}
-              title="Table view"
-              className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+              onClick={() => setFilterPinned(p => !p)}
+              className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${filterPinned || activeFiltersCount > 0 ? 'bg-primary/10 border-primary/30 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
             >
-              <Table2 size={14} />
+              <SlidersHorizontal size={13} /> Filters
+              {activeFiltersCount > 0 && (
+                <span className="ml-0.5 text-[11px] font-bold bg-primary text-white rounded-full px-1.5">
+                  {activeFiltersCount}
+                </span>
+              )}
             </button>
-            <button
-              onClick={() => setViewMode('cards')}
-              title="Card view"
-              className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${viewMode === 'cards' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
-            >
-              <LayoutList size={14} />
-            </button>
-          </div>
 
-          {/* Column visibility */}
-          <Popover>
-            <PopoverTrigger asChild>
+            <div className="h-5 w-px bg-slate-200 shrink-0" />
+
+            <div className="relative">
+              <Search
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+              />
+              <Input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search title, code, skill…"
+                className="pl-7 h-8 text-sm w-52 bg-slate-50 border-slate-200 focus:bg-white"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1" />
+
+            <span className="text-[13px] text-slate-500 font-medium whitespace-nowrap">
+              {reqLoading ? '…' : `${total.toLocaleString()} found`}
+            </span>
+
+            {/* View toggle */}
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5 gap-0.5">
               <button
-                title="Show/hide columns"
-                className="flex items-center gap-1.5 px-2.5 h-8 border border-slate-200 rounded-lg text-[12px] font-medium text-slate-600 hover:bg-slate-50 shrink-0"
+                onClick={() => setViewMode('table')}
+                className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                <Columns3 size={13} /> Columns
-                {visibleCols.size < ALL_COLS.length && (
-                  <span className="text-[10px] text-amber-600 font-bold ml-0.5">
-                    {ALL_COLS.length - visibleCols.size} hidden
-                  </span>
-                )}
+                <Table2 size={14} />
               </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              className="p-0 shadow-xl border border-slate-200 rounded-xl overflow-hidden"
-            >
-              <ColumnVisibilityPanel visible={visibleCols} onChange={toggleCol} />
-            </PopoverContent>
-          </Popover>
-
-          {/* Export */}
-          <ExportButton filters={filters} visibleCols={visibleCols} />
-
-          {/* Add buttons */}
-          {canAdd && (
-            <>
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
-                onClick={() => router.push('/requirements/new')}
-              >
-                <Plus size={14} />
-                Add Job
-              </Button>
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
-                onClick={() => router.push('/requirements/bulk')}
-              >
-                <Plus size={14} />
-                Bulk Upload
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── Filter panel — hover-reveal zone ── */}
-      {/* Hovering over a thin trigger zone at top shows filters without clicking */}
-      <div onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
-        <FilterPanel show={showFilters} filters={filters} filterData={filtersData?.data} />
-      </div>
-
-      {/* ── Sale value stats bar ── */}
-      <SaleValueSummaryBar stats={saleStatsData} />
-
-      {/* ── Active filter chips (compact) ── */}
-      {activeFiltersCount > 0 && (
-        <div className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-50 border-b border-slate-100 flex-wrap shrink-0">
-          <span className="text-[11px] text-slate-400 font-medium shrink-0">Filters:</span>
-          {filters.status && (
-            <FilterChip
-              label={STATUS_LABEL[filters.status] ?? filters.status}
-              onRemove={() => filters.setStatus('')}
-            />
-          )}
-          {filters.priority && (
-            <FilterChip label={filters.priority} onRemove={() => filters.setPriority('')} />
-          )}
-          {filters.buId && filtersData?.data?.businessUnits && (
-            <FilterChip
-              label={
-                filtersData.data.businessUnits.find(b => b.id === filters.buId)?.name ??
-                filters.buId
-              }
-              onRemove={() => filters.setBuId('')}
-            />
-          )}
-          {filters.serviceLineId && filtersData?.data?.serviceLines && (
-            <FilterChip
-              label={
-                filtersData.data.serviceLines.find(s => s.id === filters.serviceLineId)?.name ??
-                filters.serviceLineId
-              }
-              onRemove={() => filters.setServiceLineId('')}
-            />
-          )}
-          {filters.clientId && filtersData?.data?.clients && (
-            <FilterChip
-              label={
-                filtersData.data.clients.find(c => c.id === filters.clientId)?.name ??
-                filters.clientId
-              }
-              onRemove={() => filters.setClientId('')}
-            />
-          )}
-          {filters.clientSpocId && filtersData?.data?.clientSpocs && (
-            <FilterChip
-              label={
-                filtersData.data.clientSpocs.find(s => s.id === filters.clientSpocId)?.name ??
-                filters.clientSpocId
-              }
-              onRemove={() => filters.setClientSpocId('')}
-            />
-          )}
-          {filters.createdById && filtersData?.data?.createdBy && (
-            <FilterChip
-              label={
-                filtersData.data.createdBy.find(u => u.id === filters.createdById)?.name ??
-                filters.createdById
-              }
-              onRemove={() => filters.setCreatedById('')}
-            />
-          )}
-          {filters.dateFrom && (
-            <FilterChip
-              label={`From ${filters.dateFrom}`}
-              onRemove={() => filters.setDateFrom('')}
-            />
-          )}
-          {filters.dateTo && (
-            <FilterChip label={`Until ${filters.dateTo}`} onRemove={() => filters.setDateTo('')} />
-          )}
-          <button
-            onClick={filters.clearAll}
-            className="text-[11px] text-red-500 hover:text-red-700 font-medium flex items-center gap-0.5 ml-1"
-          >
-            <X size={10} />
-            Clear all
-          </button>
-        </div>
-      )}
-
-      {/* ── Service line tabs ── */}
-      <ServiceLineTabs
-        serviceLines={filtersData?.data?.serviceLines ?? []}
-        activeId={filters.serviceLineId}
-        onSelect={filters.setServiceLineId}
-        statusCounts={filtersData?.data?.statusCounts ?? {}}
-      />
-
-      {/* ── Main content — this is the bounded, scrollable zone ── */}
-      <div className="flex-1 relative min-h-0 overflow-hidden">
-        {reqLoading ? (
-          <TableSkeleton />
-        ) : requirements.length === 0 ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
-            <Briefcase size={40} className="mb-3 opacity-20" />
-            <p className="text-sm font-medium">No requirements found</p>
-            {activeFiltersCount > 0 && (
               <button
-                onClick={filters.clearAll}
-                className="mt-2 text-sm text-primary hover:underline"
+                onClick={() => setViewMode('cards')}
+                className={`w-7 h-7 flex items-center justify-center rounded-md transition-all ${viewMode === 'cards' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
               >
-                Clear filters
+                <LayoutList size={14} />
               </button>
+            </div>
+
+            {/* Column manager — now Zustand-backed with templates */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="flex items-center gap-1.5 px-2.5 h-8 border border-slate-200 rounded-lg text-[12px] font-medium text-slate-600 hover:bg-slate-50 shrink-0">
+                  <Columns3 size={13} /> Columns
+                  {safeCols.length < DEFAULT_COLS.length && (
+                    <span className="text-[10px] text-amber-600 font-bold ml-0.5">
+                      {DEFAULT_COLS.length - safeCols.length} hidden
+                    </span>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="p-0 shadow-xl border border-slate-200 rounded-xl overflow-hidden"
+              >
+                <ColumnManagerPanel terminalStageDefs={terminalStageDefs} />
+              </PopoverContent>
+            </Popover>
+
+            <ExportButton
+              filters={filters}
+              visibleCols={safeCols}
+              visibleTerminalCols={safeTerminalCols}
+            />
+
+            {canAdd && (
+              <>
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
+                  onClick={() => router.push('/requirements/new')}
+                >
+                  <Plus size={14} />
+                  Add Job
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 bg-blue-600 hover:bg-blue-700 shrink-0"
+                  onClick={() => router.push('/requirements/bulk')}
+                >
+                  <Plus size={14} />
+                  Bulk Upload
+                </Button>
+              </>
             )}
           </div>
-        ) : (
-          <RequirementsTable
-            requirements={requirements}
-            visibleCols={visibleCols}
-            allStages={allStages}
-            canAdd={canAdd}
-            canDelete={canDelete}
-            canEdit={canEdit}
-            onAssign={handleAssign}
-            onStageClick={(req, stageId) =>
-              setDrawer({ open: true, requirementId: req.id, requirementTitle: req.title, stageId })
-            }
-          />
+        </div>
+
+        {/* Filter panel hover zone */}
+        <div
+          onMouseEnter={() => setFilterHovered(true)}
+          onMouseLeave={() => setFilterHovered(false)}
+        >
+          <FilterPanel show={showFilters} filters={filters} filterData={filtersData?.data} />
+        </div>
+
+        {/* Sale value summary bar — Stats button opens dialog */}
+        <SaleValueSummaryBar
+          stats={saleStatsData}
+          achievedTotal={achievedTotal}
+          onStatsClick={() => setStatsOpen(true)}
+        />
+
+        {/* Active filter chips */}
+        {activeFiltersCount > 0 && (
+          <div className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-50 border-b border-slate-100 flex-wrap shrink-0">
+            <span className="text-[11px] text-slate-400 font-medium shrink-0">Filters:</span>
+            {filters.status && (
+              <FilterChip
+                label={STATUS_LABEL[filters.status] ?? filters.status}
+                onRemove={() => filters.setStatus('')}
+              />
+            )}
+            {filters.priority && (
+              <FilterChip label={filters.priority} onRemove={() => filters.setPriority('')} />
+            )}
+            {filters.buId && filtersData?.data?.businessUnits && (
+              <FilterChip
+                label={
+                  filtersData.data.businessUnits.find(b => b.id === filters.buId)?.name ??
+                  filters.buId
+                }
+                onRemove={() => filters.setBuId('')}
+              />
+            )}
+            {filters.serviceLineId && filtersData?.data?.serviceLines && (
+              <FilterChip
+                label={
+                  filtersData.data.serviceLines.find(s => s.id === filters.serviceLineId)?.name ??
+                  filters.serviceLineId
+                }
+                onRemove={() => filters.setServiceLineId('')}
+              />
+            )}
+            {filters.clientId && filtersData?.data?.clients && (
+              <FilterChip
+                label={
+                  filtersData.data.clients.find(c => c.id === filters.clientId)?.name ??
+                  filters.clientId
+                }
+                onRemove={() => filters.setClientId('')}
+              />
+            )}
+            {filters.clientSpocId && filtersData?.data?.clientSpocs && (
+              <FilterChip
+                label={
+                  filtersData.data.clientSpocs.find(s => s.id === filters.clientSpocId)?.name ??
+                  filters.clientSpocId
+                }
+                onRemove={() => filters.setClientSpocId('')}
+              />
+            )}
+            {filters.createdById && filtersData?.data?.createdBy && (
+              <FilterChip
+                label={
+                  filtersData.data.createdBy.find(u => u.id === filters.createdById)?.name ??
+                  filters.createdById
+                }
+                onRemove={() => filters.setCreatedById('')}
+              />
+            )}
+            {filters.dateFrom && (
+              <FilterChip
+                label={`From ${filters.dateFrom}`}
+                onRemove={() => filters.setDateFrom('')}
+              />
+            )}
+            {filters.dateTo && (
+              <FilterChip
+                label={`Until ${filters.dateTo}`}
+                onRemove={() => filters.setDateTo('')}
+              />
+            )}
+            <button
+              onClick={filters.clearAll}
+              className="text-[11px] text-red-500 hover:text-red-700 font-medium flex items-center gap-0.5 ml-1"
+            >
+              <X size={10} />
+              Clear all
+            </button>
+          </div>
         )}
+
+        {/* Service line tabs */}
+        <ServiceLineTabs
+          serviceLines={filtersData?.data?.serviceLines ?? []}
+          activeId={filters.serviceLineId}
+          onSelect={filters.setServiceLineId}
+          statusCounts={filtersData?.data?.statusCounts ?? {}}
+        />
+
+        {/* Main content */}
+        <div className="flex-1 relative min-h-0 overflow-hidden">
+          {reqLoading ? (
+            <TableSkeleton />
+          ) : requirements.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
+              <Briefcase size={40} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">No requirements found</p>
+              {activeFiltersCount > 0 && (
+                <button
+                  onClick={filters.clearAll}
+                  className="mt-2 text-sm text-primary hover:underline"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <RequirementsTable
+              requirements={requirements}
+              visibleCols={safeCols}
+              visibleTerminalCols={safeTerminalCols}
+              terminalStageDefs={terminalStageDefs}
+              canAdd={canAdd}
+              canDelete={canDelete}
+              canEdit={canEdit}
+              onAssign={handleAssign}
+            />
+          )}
+        </div>
+
+        {/* Pagination — fixed at bottom */}
+        <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-white border-t border-slate-200">
+          <div className="hidden sm:flex items-center gap-2 text-[13px] text-slate-500">
+            <span>Per page:</span>
+            <Select value={String(limit)} onValueChange={v => setLimit(Number(v))}>
+              <SelectTrigger className="h-7 w-20 text-xs border-slate-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[25, 50, 100].map(n => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1 text-[12px] text-slate-500 ml-auto">
+            <span className="mr-2 text-slate-400">
+              {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total.toLocaleString()}
+            </span>
+            <button
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
+            >
+              «
+            </button>
+            <button
+              onClick={() => setPage(page - 1)}
+              disabled={page <= 1}
+              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => setPage(page + 1)}
+              disabled={page >= totalPages}
+              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
+            >
+              ›
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
+              className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
+            >
+              »
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* ── Pagination ── */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-white border-t border-slate-200">
-        <div className="hidden sm:flex items-center gap-2 text-[13px] text-slate-500">
-          <span>Per page:</span>
-          <Select value={String(limit)} onValueChange={v => setLimit(Number(v))}>
-            <SelectTrigger className="h-7 w-20 text-xs border-slate-200">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[25, 50, 100].map(n => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-1 text-[12px] text-slate-500 ml-auto">
-          <span className="mr-2 text-slate-400">
-            {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total.toLocaleString()}
-          </span>
-          <button
-            onClick={() => setPage(1)}
-            disabled={page <= 1}
-            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
-          >
-            «
-          </button>
-          <button
-            onClick={() => setPage(page - 1)}
-            disabled={page <= 1}
-            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
-          >
-            ‹
-          </button>
-          <button
-            onClick={() => setPage(page + 1)}
-            disabled={page >= totalPages}
-            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
-          >
-            ›
-          </button>
-          <button
-            onClick={() => setPage(totalPages)}
-            disabled={page >= totalPages}
-            className="w-7 h-7 flex items-center justify-center border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-30"
-          >
-            »
-          </button>
-        </div>
-      </div>
-
+      {/* Portals — outside the flex layout so they never affect height */}
       <CandidateDrawer
         open={drawer.open}
         onClose={() => setDrawer(d => ({ ...d, open: false }))}
@@ -2299,7 +2857,16 @@ function RequirementsPageInner() {
         stageId={drawer.stageId}
         allStages={allStages}
       />
-    </div>
+      <StatsDialog
+        open={statsOpen}
+        onClose={() => setStatsOpen(false)}
+        saleStats={saleStatsData}
+        pipelineSummary={pipelineSummaryData}
+        terminalStageDefs={terminalStageDefs}
+        filtersData={filtersData?.data}
+        filters={filters}
+      />
+    </>
   );
 }
 

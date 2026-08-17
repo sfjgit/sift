@@ -216,6 +216,7 @@ const addSpocSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// ─── Updated schema (replace the existing editSpocSchema) ───────────────────
 const editSpocSchema = z.object({
   firstName: z.string().min(1, 'Required').max(100).trim(),
   lastName: z.string().min(1, 'Required').max(100).trim(),
@@ -224,6 +225,8 @@ const editSpocSchema = z.object({
   designation: z.string().max(100).optional(),
   department: z.string().max(100).optional(),
   handlerId: z.string().min(1, 'Required'),
+  serviceLineId: z.string().min(1, 'Required'), // ← added
+  businessUnitId: z.string().min(1, 'Required'), // ← added
   isPrimary: z.boolean(),
   notes: z.string().max(500).optional(),
 });
@@ -909,6 +912,7 @@ function AddSpocDialog({
 // EDIT SPOC DIALOG
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ─── Full replacement: EditSpocDialog ───────────────────────────────────────
 function EditSpocDialog({
   spoc,
   clientId,
@@ -941,6 +945,8 @@ function EditSpocDialog({
         designation: spoc.designation ?? '',
         department: spoc.department ?? '',
         handlerId: spoc.handler.id,
+        serviceLineId: spoc.serviceLine.id, // ← seeded from existing data
+        businessUnitId: spoc.businessUnit.id, // ← seeded from existing data
         isPrimary: spoc.isPrimary,
         notes: spoc.notes ?? '',
       });
@@ -953,7 +959,24 @@ function EditSpocDialog({
     staleTime: 60_000,
     enabled: !!spoc,
   });
+
+  const { data: slRes } = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['service-lines-dropdown'],
+    queryFn: async () => (await axios.get('/service-lines?limit=100')).data,
+    staleTime: 60_000,
+    enabled: !!spoc,
+  });
+
+  const { data: busRes } = useQuery<{ data: { id: string; name: string }[] }>({
+    queryKey: ['bus-dropdown'],
+    queryFn: async () => (await axios.get('/business-units?limit=100')).data,
+    staleTime: 60_000,
+    enabled: !!spoc,
+  });
+
   const users = usersRes?.data ?? [];
+  const serviceLines = slRes?.data ?? [];
+  const businessUnits = busRes?.data ?? [];
 
   const mutation = useMutation({
     mutationFn: async (data: EditSpocValues) =>
@@ -973,6 +996,7 @@ function EditSpocDialog({
           <DialogTitle className="text-base font-semibold">Edit SPOC</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="flex flex-col gap-4 mt-1">
+          {/* Name */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label required>First name</Label>
@@ -986,6 +1010,7 @@ function EditSpocDialog({
             </div>
           </div>
 
+          {/* Email / Phone */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Email</Label>
@@ -998,6 +1023,7 @@ function EditSpocDialog({
             </div>
           </div>
 
+          {/* Designation / Department */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>Designation</Label>
@@ -1009,6 +1035,7 @@ function EditSpocDialog({
             </div>
           </div>
 
+          {/* Handler */}
           <div className="flex flex-col gap-1.5">
             <Label required>Handler</Label>
             <Controller
@@ -1032,11 +1059,61 @@ function EditSpocDialog({
             <FieldError message={errors.handlerId?.message} />
           </div>
 
+          {/* Service line / Business unit */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label required>Service line</Label>
+              <Controller
+                control={control}
+                name="serviceLineId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {serviceLines.map(sl => (
+                        <SelectItem key={sl.id} value={sl.id} className="text-sm">
+                          {sl.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <FieldError message={errors.serviceLineId?.message} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label required>Business unit</Label>
+              <Controller
+                control={control}
+                name="businessUnitId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {businessUnits.map(b => (
+                        <SelectItem key={b.id} value={b.id} className="text-sm">
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <FieldError message={errors.businessUnitId?.message} />
+            </div>
+          </div>
+
+          {/* Notes */}
           <div className="flex flex-col gap-1.5">
             <Label>Notes</Label>
             <Input className="h-9 text-sm" {...register('notes')} />
           </div>
 
+          {/* Primary toggle */}
           <Controller
             control={control}
             name="isPrimary"

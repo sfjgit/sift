@@ -114,15 +114,18 @@ interface MyClient {
   agreementType?: string | null;
   percentageValue?: number | null;
 }
+
 interface SpocDMUser {
   id: string;
   firstName: string;
   lastName: string;
 }
+
 interface SpocDM {
   id: string;
   dm: SpocDMUser;
 }
+
 interface ClientSpoc {
   id: string;
   firstName: string;
@@ -170,8 +173,8 @@ const schema = z.object({
   noPoachCompanies: z.array(z.string().trim().min(1)),
   startDate: z.string().optional().nullable(),
   targetDate: z.string().optional().nullable(),
+  // clientSpocId IS present — needed to track dirty state for SPOC changes
   clientSpocId: z.string().optional().nullable(),
-  // ── NEW ──
   bandId: z.string().optional().nullable(),
   saleValue: z.preprocess(coerceNumber, z.number().min(0).optional().nullable()),
 });
@@ -213,7 +216,6 @@ function reqToFormValues(req: any): EditFormValues {
     startDate: toDateInput(req.startDate),
     targetDate: toDateInput(req.targetDate),
     clientSpocId: req.clientSpoc?.id ?? null,
-    // ── NEW ──
     bandId: req.bandId ?? null,
     saleValue: req.saleValue ?? null,
   };
@@ -294,6 +296,10 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BAND + SALE VALUE FIELDS
+//
+// clientId and clientAgreementType are passed from the parent.
+// In readonly mode  → uses req.client data (stable).
+// In change mode    → uses the live selected client's data from ClientSpocEditor.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function BandSaleValueFields({
@@ -318,6 +324,17 @@ function BandSaleValueFields({
     enabled: showBand,
     staleTime: 5 * 60 * 1000,
   });
+
+  // When client changes (in change mode), clear the band selection so a stale
+  // band ID from the old client doesn't get submitted.
+  const prevClientIdRef = useRef<string | null | undefined>(clientId);
+  useEffect(() => {
+    if (prevClientIdRef.current !== undefined && prevClientIdRef.current !== clientId) {
+      setValue('bandId', null, { shouldDirty: true });
+    }
+    prevClientIdRef.current = clientId;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
 
   const selectedBand = bands?.find(b => b.id === bandId) ?? null;
 
@@ -444,21 +461,25 @@ function SpocSelectItem({ spoc }: { spoc: ClientSpoc }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENT & SPOC EDITOR
+//
+// onClientChange — called whenever the active client changes so the parent can
+//                  pass the live clientId + agreementType down to BandSaleValueFields.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ClientSpocEditor({
   value,
   onChange,
+  onClientChange,
 }: {
   value: string | null;
   onChange: (spocId: string) => void;
+  onClientChange?: (client: MyClient | null) => void;
 }) {
   const axios = useAxios();
 
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   const [selectedSpoc, setSelectedSpoc] = useState<ClientSpoc | null>(null);
   const userClearedSpoc = useRef(false);
-  const backfilledClient = useRef(false);
 
   const { data: clientsRes } = useQuery<{ data: MyClient[] }>({
     queryKey: ['my-clients'],
@@ -483,11 +504,21 @@ function ClientSpocEditor({
     return 0;
   });
 
+  // Auto-select when there's only one client
   useEffect(() => {
     if (clients.length === 1 && !selectedClientId) setSelectedClientId(clients[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clients]);
 
+  // Notify parent whenever selected client changes
+  useEffect(() => {
+    if (!onClientChange) return;
+    const client = clients.find(c => c.id === selectedClientId) ?? null;
+    onClientChange(client);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, clients]);
+
+  // Clear SPOC when client changes
   const prevClientRef = useRef<string>('');
   useEffect(() => {
     if (prevClientRef.current && prevClientRef.current !== selectedClientId) {
@@ -499,6 +530,7 @@ function ClientSpocEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClientId]);
 
+  // Auto-select SPOC when list loads / value already set
   useEffect(() => {
     if (!spocs.length) return;
     if (userClearedSpoc.current) return;
@@ -519,6 +551,7 @@ function ClientSpocEditor({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-5">
+        {/* Client picker */}
         <div>
           <FieldLabel required>Client</FieldLabel>
           {clients.length === 1 ? (
@@ -544,6 +577,7 @@ function ClientSpocEditor({
           )}
         </div>
 
+        {/* SPOC picker */}
         <div>
           <FieldLabel required>SPOC</FieldLabel>
           {spocs.length > 0 && (
@@ -636,6 +670,7 @@ function ClientSpocEditor({
         </div>
       </div>
 
+      {/* Derived info display */}
       {selectedSpoc && (
         <div className="grid grid-cols-2 gap-3 pt-1">
           {[
@@ -939,7 +974,7 @@ function BonusField({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECTIONS
+// SECTIONS CONFIG
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
@@ -973,6 +1008,10 @@ export default function EditRequirementPage() {
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
   const [isReady, setIsReady] = useState(false);
   const [changingClient, setChangingClient] = useState(false);
+
+  // Tracks the live selected client when in "change client" mode so we can
+  // pass the correct clientId + agreementType to BandSaleValueFields.
+  const [liveClient, setLiveClient] = useState<MyClient | null>(null);
 
   const { data: reqRes, isLoading } = useQuery({
     queryKey: ['requirement', id],
@@ -1014,6 +1053,7 @@ export default function EditRequirementPage() {
     setTimeout(() => setIsReady(true), 0);
   }, [req, reset]);
 
+  // Intersection observer for sidebar active section
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
     const visibilityMap = new Map<string, number>();
@@ -1070,11 +1110,13 @@ export default function EditRequirementPage() {
       return;
     }
 
+    // If clientSpocId is being changed, enforce a valid value
     if ('clientSpocId' in payload && !payload.clientSpocId) {
       toast.error('Select a SPOC before saving the client change');
       return;
     }
 
+    // Coerce numeric fields
     const numFields = [
       'experienceMin',
       'experienceMax',
@@ -1088,6 +1130,7 @@ export default function EditRequirementPage() {
       if (f in payload) payload[f] = toNum(payload[f]);
     });
 
+    // ISO-ify dates and auto-compute turnaround
     if ('startDate' in payload) payload.startDate = toISOOrNull(payload.startDate);
     if ('targetDate' in payload) payload.targetDate = toISOOrNull(payload.targetDate);
 
@@ -1098,11 +1141,20 @@ export default function EditRequirementPage() {
         payload.turnaroundDays = Math.ceil(
           (new Date(target).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)
         );
+      } else {
+        // One date was cleared — clear turnaround too
+        payload.turnaroundDays = null;
       }
     }
 
     await updateMutation.mutateAsync(payload);
   }
+
+  // ── Determine which client data to show in BandSaleValueFields ─────────────
+  // Readonly mode → stable req.client data
+  // Change mode   → live selected client from ClientSpocEditor
+  const bandClientId = changingClient ? liveClient?.id : req?.client?.id;
+  const bandAgreementType = changingClient ? liveClient?.agreementType : req?.client?.agreementType;
 
   if (isLoading || !isReady || !req) {
     return (
@@ -1129,7 +1181,7 @@ export default function EditRequirementPage() {
 
   return (
     <div className="h-screen flex flex-col bg-[#F8F9FB] overflow-hidden">
-      {/* Top bar */}
+      {/* ── Top bar ── */}
       <div className="shrink-0 z-20 bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4">
         <button
           onClick={() => router.back()}
@@ -1176,7 +1228,7 @@ export default function EditRequirementPage() {
         </div>
       </div>
 
-      {/* Body */}
+      {/* ── Body ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Sidebar */}
         <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
@@ -1196,21 +1248,39 @@ export default function EditRequirementPage() {
                     key={sec.id}
                     type="button"
                     onClick={() => scrollToSection(sec.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${isActive ? 'bg-primary/[0.08] border border-primary/20' : 'hover:bg-slate-50'}`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${
+                      isActive ? 'bg-primary/[0.08] border border-primary/20' : 'hover:bg-slate-50'
+                    }`}
                   >
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${hasError ? 'bg-red-500 text-white' : isActive ? 'bg-primary text-white shadow-sm shadow-primary/30' : isDirty ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'}`}
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all ${
+                        hasError
+                          ? 'bg-red-500 text-white'
+                          : isActive
+                            ? 'bg-primary text-white shadow-sm shadow-primary/30'
+                            : isDirty
+                              ? 'bg-amber-400 text-white'
+                              : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
+                      }`}
                     >
                       {hasError ? <AlertCircle size={13} /> : <Icon size={13} />}
                     </div>
                     <div className="min-w-0">
                       <p
-                        className={`text-[12.5px] font-semibold leading-none truncate ${hasError ? 'text-red-600' : isActive ? 'text-primary' : 'text-slate-600'}`}
+                        className={`text-[12.5px] font-semibold leading-none truncate ${
+                          hasError ? 'text-red-600' : isActive ? 'text-primary' : 'text-slate-600'
+                        }`}
                       >
                         {sec.label}
                       </p>
                       <p
-                        className={`text-[10.5px] mt-0.5 truncate ${hasError ? 'text-red-400' : isActive ? 'text-primary/60' : 'text-slate-400'}`}
+                        className={`text-[10.5px] mt-0.5 truncate ${
+                          hasError
+                            ? 'text-red-400'
+                            : isActive
+                              ? 'text-primary/60'
+                              : 'text-slate-400'
+                        }`}
                       >
                         {hasError ? 'Has errors' : isDirty ? 'Modified' : sec.sub}
                       </p>
@@ -1228,7 +1298,9 @@ export default function EditRequirementPage() {
               <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                 Context
               </p>
-              <p className="text-[12px] font-semibold text-slate-700">{req.client?.name}</p>
+              <p className="text-[12px] font-semibold text-slate-700">
+                {changingClient ? (liveClient?.name ?? '—') : (req.client?.name ?? '—')}
+              </p>
               <p className="text-[11px] text-slate-500">{req.serviceLine?.name}</p>
               <p className="text-[11px] text-slate-400">{req.businessUnit?.name}</p>
             </div>
@@ -1238,7 +1310,7 @@ export default function EditRequirementPage() {
         {/* Scrollable form */}
         <main className="flex-1 overflow-y-auto">
           <form onSubmit={handleSubmit(onSubmit)} className="px-8 py-8 space-y-6 max-w-3xl">
-            {/* Basic Info */}
+            {/* ── Basic Info ── */}
             <SectionCard id="edit-basics">
               <SectionTitle
                 icon={FileText}
@@ -1379,7 +1451,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* Location */}
+            {/* ── Location ── */}
             <SectionCard id="edit-location">
               <SectionTitle icon={MapPin} label="Location" color="bg-blue-100 text-blue-600" />
               <LocationSection
@@ -1390,7 +1462,7 @@ export default function EditRequirementPage() {
               />
             </SectionCard>
 
-            {/* Skills */}
+            {/* ── Skills ── */}
             <SectionCard id="edit-skills">
               <SectionTitle
                 icon={Briefcase}
@@ -1495,7 +1567,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* Compensation */}
+            {/* ── Compensation ── */}
             <SectionCard id="edit-compensation">
               <SectionTitle
                 icon={DollarSign}
@@ -1593,7 +1665,7 @@ export default function EditRequirementPage() {
               </div>
             </SectionCard>
 
-            {/* Client & SPOC */}
+            {/* ── Client & SPOC ── */}
             <SectionCard id="edit-client">
               <SectionTitle
                 icon={UserCheck}
@@ -1610,12 +1682,28 @@ export default function EditRequirementPage() {
                     </p>
                     <button
                       type="button"
-                      onClick={() => setChangingClient(true)}
+                      onClick={() => {
+                        setChangingClient(true);
+                        // Initialise liveClient from the current req so band
+                        // context doesn't flash while the picker loads.
+                        setLiveClient(
+                          req.client
+                            ? {
+                                id: req.client.id,
+                                name: req.client.name,
+                                agreementType: req.client.agreementType,
+                                percentageValue: req.client.percentageValue,
+                              }
+                            : null
+                        );
+                      }}
                       className="text-[11px] font-semibold text-primary underline underline-offset-2"
                     >
                       Change
                     </button>
                   </div>
+
+                  {/* Readonly snapshot */}
                   <div className="grid grid-cols-2 gap-4">
                     <ReadonlyField label="Client" value={req.client?.name ?? '—'} />
                     <ReadonlyField
@@ -1630,10 +1718,11 @@ export default function EditRequirementPage() {
                     <ReadonlyField label="Service Line" value={req.serviceLine?.name ?? '—'} />
                     <ReadonlyField label="Business Unit" value={req.businessUnit?.name ?? '—'} />
                   </div>
-                  {/* Band + Sale Value — always shown in readonly mode using req data */}
+
+                  {/* Band + Sale Value using stable req data */}
                   <BandSaleValueFields
-                    clientId={req.client?.id}
-                    clientAgreementType={req.client?.agreementType}
+                    clientId={bandClientId}
+                    clientAgreementType={bandAgreementType}
                     control={control}
                     setValue={setValue}
                   />
@@ -1648,7 +1737,14 @@ export default function EditRequirementPage() {
                       type="button"
                       onClick={() => {
                         setChangingClient(false);
+                        setLiveClient(null);
+                        // Restore original SPOC — mark as not dirty
                         setValue('clientSpocId', req.clientSpoc?.id ?? null, {
+                          shouldDirty: false,
+                          shouldValidate: false,
+                        });
+                        // Also restore bandId if it was cleared by client change
+                        setValue('bandId', req.bandId ?? null, {
                           shouldDirty: false,
                           shouldValidate: false,
                         });
@@ -1658,21 +1754,29 @@ export default function EditRequirementPage() {
                       <X size={11} /> Cancel
                     </button>
                   </div>
+
+                  {/* Live SPOC/client editor */}
                   <Controller
                     control={control}
                     name="clientSpocId"
                     render={({ field }) => (
                       <ClientSpocEditor
                         value={field.value ?? null}
-                        onChange={v => field.onChange(v)}
+                        onChange={v => {
+                          field.onChange(v);
+                        }}
+                        onClientChange={client => {
+                          setLiveClient(client);
+                        }}
                       />
                     )}
                   />
                   <FieldError msg={(errors as any).clientSpocId?.message} />
-                  {/* Band + Sale Value in change mode too */}
+
+                  {/* Band + Sale Value using live client data */}
                   <BandSaleValueFields
-                    clientId={req.client?.id}
-                    clientAgreementType={req.client?.agreementType}
+                    clientId={bandClientId}
+                    clientAgreementType={bandAgreementType}
                     control={control}
                     setValue={setValue}
                   />
@@ -1680,7 +1784,7 @@ export default function EditRequirementPage() {
               )}
             </SectionCard>
 
-            {/* Timeline */}
+            {/* ── Timeline ── */}
             <SectionCard id="edit-timeline">
               <SectionTitle icon={Calendar} label="Timeline" color="bg-rose-100 text-rose-600" />
               <div className="grid grid-cols-2 gap-5">
@@ -1699,7 +1803,7 @@ export default function EditRequirementPage() {
               </p>
             </SectionCard>
 
-            {/* Bottom actions */}
+            {/* ── Bottom actions ── */}
             <div className="pb-16 pt-2 flex items-center justify-between">
               <Button
                 type="button"

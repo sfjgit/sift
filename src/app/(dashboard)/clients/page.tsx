@@ -1088,7 +1088,7 @@ export default function ClientsPage() {
           className="w-screen!  sm:w-[85vw] sm:max-w-4xl! flex flex-col p-0 gap-0"
         >
           <SheetHeader className="px-6 py-4 border-b shrink-0">
-            <SheetTitle>{sheet?.mode === 'edit' ? 'Edit client' : 'New client'}</SheetTitle>
+            <SheetTitle>{sheet?.mode === 'edit' ? 'Edit client aa' : 'New client'}</SheetTitle>
             <SheetDescription>
               {sheet?.mode === 'edit'
                 ? 'Update client details, pricing and bands.'

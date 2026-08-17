@@ -68,7 +68,7 @@ export default function EditClientPage() {
         >
           ← {client.name}
         </button>
-        <h1 className="text-xl font-semibold mt-2">Edit client</h1>
+        <h1 className="text-xl font-semibold mt-2">Edit client a</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{client.name}</p>
       </div>
       <ClientForm
