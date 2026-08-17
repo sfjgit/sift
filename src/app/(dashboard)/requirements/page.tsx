@@ -173,6 +173,10 @@ interface SaleValueStats {
   byBasis: Record<string, { count: number; total: number }>;
 }
 
+// Mirrors GET /requirements/pipeline-summary exactly. The API returns per-stage
+// counts as the `terminalStageCounts` map only — there is no `stages` /
+// `terminalStages` array, so per-stage totals are derived from the map keyed by
+// stage id against `meta.terminalStageDefs`.
 interface PipelineSummaryEntry {
   requirementId: string;
   totalOpenings: number;
@@ -182,15 +186,6 @@ interface PipelineSummaryEntry {
   achievedPct: number;
   achievedValue: number | null;
   terminalStageCounts: Record<string, number>;
-  stages: {
-    stageId: string;
-    code: string;
-    label: string;
-    order: number;
-    isTerminal: boolean;
-    count: number;
-  }[];
-  terminalStages: { stageId: string; code: string; label: string; order: number; count: number }[];
 }
 interface PipelineSummaryResponse {
   success: boolean;
@@ -643,23 +638,29 @@ function StatsDialog({
 }) {
   if (!open) return null;
 
-  const totalReqs = saleStats?.totalRequirements ?? pipelineSummary?.data?.length ?? 0;
-  const totalFunnel = pipelineSummary?.data?.reduce((s, e) => s + e.totalFunnelCount, 0) ?? 0;
-  const totalTerminal = pipelineSummary?.data?.reduce((s, e) => s + e.terminalCount, 0) ?? 0;
+  const summaryEntries = Array.isArray(pipelineSummary?.data) ? pipelineSummary.data : [];
+  const stageDefs = Array.isArray(terminalStageDefs) ? terminalStageDefs : [];
+
+  const totalReqs = saleStats?.totalRequirements ?? summaryEntries.length;
+  const totalFunnel = summaryEntries.reduce((s, e) => s + (e.totalFunnelCount ?? 0), 0);
+  const totalTerminal = summaryEntries.reduce((s, e) => s + (e.terminalCount ?? 0), 0);
   const totalSale = saleStats?.totalSaleValue ?? 0;
   const totalAchieved =
-    saleStats?.totalAchievedValue ??
-    pipelineSummary?.data?.reduce((s, e) => s + (e.achievedValue ?? 0), 0) ??
-    0;
+    saleStats?.totalAchievedValue ?? summaryEntries.reduce((s, e) => s + (e.achievedValue ?? 0), 0);
   const achievedPct = totalSale > 0 ? Math.round((totalAchieved / totalSale) * 100) : 0;
 
-  // Per-terminal-stage totals across all requirements
+  // Per-terminal-stage totals across all requirements.
+  // The API sends counts as terminalStageCounts: { stageId → count }, so labels
+  // come from terminalStageDefs rather than from the entry itself.
   const terminalTotals: Record<string, { count: number; label: string; code: string }> = {};
-  for (const entry of pipelineSummary?.data ?? []) {
-    for (const ts of entry.terminalStages) {
-      if (!terminalTotals[ts.stageId])
-        terminalTotals[ts.stageId] = { count: 0, label: ts.label, code: ts.code };
-      terminalTotals[ts.stageId].count += ts.count;
+  for (const ts of stageDefs) {
+    terminalTotals[ts.id] = { count: 0, label: ts.label, code: ts.code };
+  }
+  for (const entry of summaryEntries) {
+    for (const [stageId, count] of Object.entries(entry.terminalStageCounts ?? {})) {
+      if (!terminalTotals[stageId])
+        terminalTotals[stageId] = { count: 0, label: stageId, code: stageId };
+      terminalTotals[stageId].count += count ?? 0;
     }
   }
 
@@ -750,13 +751,13 @@ function StatsDialog({
           </div>
 
           {/* ── Achieved / Terminal stage breakdown ── */}
-          {terminalStageDefs.length > 0 && (
+          {stageDefs.length > 0 && (
             <div>
               <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
                 Achieved — by Terminal Stage
               </p>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {terminalStageDefs.map((ts, i) => {
+                {stageDefs.map((ts, i) => {
                   const tot = terminalTotals[ts.id];
                   const cls = TERMINAL_COL_COLORS[i % TERMINAL_COL_COLORS.length];
                   return (
@@ -817,13 +818,13 @@ function StatsDialog({
           )}
 
           {/* ── Top requirements by achieved value ── */}
-          {(pipelineSummary?.data?.length ?? 0) > 0 && (
+          {summaryEntries.length > 0 && (
             <div>
               <p className="text-[12px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
                 Top Requirements — by Achieved Value
               </p>
               <div className="space-y-1.5">
-                {[...(pipelineSummary?.data ?? [])]
+                {[...summaryEntries]
                   .filter(e => (e.achievedValue ?? 0) > 0)
                   .sort((a, b) => (b.achievedValue ?? 0) - (a.achievedValue ?? 0))
                   .slice(0, 10)
@@ -2515,34 +2516,30 @@ function RequirementsPageInner() {
     const hasReqSale = requirements.some(r => r.saleValue != null);
     const hasSpoc = requirements.some(r => r.clientSpoc != null);
     const hasAchieved = requirements.some(r => (r.terminalCount ?? 0) > 0);
-    // @ts-expect-error errr
-    setVisibleCols((prev: any) => {
-      const n = new Set(prev);
-      if (!hasBand) {
-        n.delete('band');
-        n.delete('agreement');
-      } else {
-        n.add('band');
-        n.add('agreement');
+
+    // key → whether the current dataset has any data for it
+    const presence: Partial<Record<ColKey, boolean>> = {
+      band: hasBand,
+      agreement: hasBand,
+      salaryMin: hasSalMin,
+      salaryMax: hasSalMax,
+      reqSaleValue: hasReqSale,
+      spoc: hasSpoc,
+      terminalCount: hasAchieved,
+      achievedValue: hasAchieved,
+      computedSaleValue: true,
+      totalFunnel: true,
+    };
+
+    setVisibleCols(prev => {
+      const next = new Set<ColKey>(prev);
+      for (const [key, present] of Object.entries(presence) as [ColKey, boolean][]) {
+        if (present) next.add(key);
+        else next.delete(key);
       }
-      if (!hasSalMin) n.delete('salaryMin');
-      else n.add('salaryMin');
-      if (!hasSalMax) n.delete('salaryMax');
-      else n.add('salaryMax');
-      if (!hasReqSale) n.delete('reqSaleValue');
-      else n.add('reqSaleValue');
-      if (!hasSpoc) n.delete('spoc');
-      else n.add('spoc');
-      if (!hasAchieved) {
-        n.delete('terminalCount');
-        n.delete('achievedValue');
-      } else {
-        n.add('terminalCount');
-        n.add('achievedValue');
-      }
-      n.add('computedSaleValue');
-      n.add('totalFunnel');
-      return n;
+      // Bail out if nothing changed — avoids a pointless store write + re-render
+      if (next.size === prev.length && prev.every(k => next.has(k))) return prev;
+      return [...next];
     });
   }, [filters.serviceLineId, requirements.length]); // eslint-disable-line react-hooks/exhaustive-deps
 

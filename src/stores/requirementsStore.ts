@@ -58,6 +58,26 @@ export const DEFAULT_COLS: ColKey[] = [
   'achievedValue',
 ];
 
+const COL_ORDER = new Map(DEFAULT_COLS.map((k, i) => [k, i]));
+
+/** Accepts an array, a Set, or anything else and returns a clean, ordered ColKey[]. */
+function sanitizeCols(input: unknown): ColKey[] {
+  const arr = input instanceof Set ? [...input] : Array.isArray(input) ? input : null;
+  if (!arr) return DEFAULT_COLS;
+  const seen = new Set<ColKey>();
+  for (const k of arr) if (COL_ORDER.has(k as ColKey)) seen.add(k as ColKey);
+  return DEFAULT_COLS.filter(k => seen.has(k));
+}
+
+function sanitizeTerminalCols(input: unknown): TerminalColKey[] {
+  const arr = input instanceof Set ? [...input] : Array.isArray(input) ? input : null;
+  if (!arr) return [];
+  return [...new Set(arr.filter((k): k is string => typeof k === 'string'))];
+}
+
+/** Setters accept a value or an updater, mirroring React's setState. */
+type Updater<T extends readonly unknown[]> = T | ((prev: T) => T | Set<T[number]>);
+
 interface RequirementsStore {
   _hasHydrated: boolean;
   setHasHydrated: (v: boolean) => void;
@@ -66,10 +86,10 @@ interface RequirementsStore {
   visibleTerminalCols: TerminalColKey[];
   templates: ColumnTemplate[];
 
-  setVisibleCols: (cols: ColKey[]) => void;
+  setVisibleCols: (cols: Updater<ColKey[]>) => void;
   toggleCol: (key: ColKey) => void;
   toggleTerminalCol: (key: TerminalColKey) => void;
-  setVisibleTerminalCols: (cols: TerminalColKey[]) => void;
+  setVisibleTerminalCols: (cols: Updater<TerminalColKey[]>) => void;
 
   saveTemplate: (name: string, cols: ColKey[], terminalCols: TerminalColKey[]) => void;
   applyTemplate: (id: string) => void;
@@ -87,35 +107,63 @@ export const useRequirementsStore = create<RequirementsStore>()(
       visibleTerminalCols: [],
       templates: [],
 
-      setVisibleCols: cols => set({ visibleCols: cols }),
-      setVisibleTerminalCols: cols => set({ visibleTerminalCols: cols }),
+      setVisibleCols: cols =>
+        set(s => ({
+          visibleCols: sanitizeCols(
+            typeof cols === 'function' ? cols(sanitizeCols(s.visibleCols)) : cols
+          ),
+        })),
+
+      setVisibleTerminalCols: cols =>
+        set(s => ({
+          visibleTerminalCols: sanitizeTerminalCols(
+            typeof cols === 'function'
+              ? cols(sanitizeTerminalCols(s.visibleTerminalCols))
+              : cols
+          ),
+        })),
 
       toggleCol: key =>
-        set(s => ({
-          visibleCols: s.visibleCols.includes(key)
-            ? s.visibleCols.filter(k => k !== key)
-            : [...s.visibleCols, key],
-        })),
+        set(s => {
+          const cur = sanitizeCols(s.visibleCols);
+          return {
+            visibleCols: cur.includes(key)
+              ? cur.filter(k => k !== key)
+              : sanitizeCols([...cur, key]),
+          };
+        }),
 
       toggleTerminalCol: key =>
-        set(s => ({
-          visibleTerminalCols: s.visibleTerminalCols.includes(key)
-            ? s.visibleTerminalCols.filter(k => k !== key)
-            : [...s.visibleTerminalCols, key],
-        })),
+        set(s => {
+          const cur = sanitizeTerminalCols(s.visibleTerminalCols);
+          return {
+            visibleTerminalCols: cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key],
+          };
+        }),
 
       saveTemplate: (name, cols, terminalCols) =>
         set(s => ({
           templates: [
             ...s.templates,
-            { id: `tpl_${Date.now()}`, name, cols, terminalCols, createdAt: Date.now() },
+            {
+              id: `tpl_${Date.now()}`,
+              name,
+              cols: sanitizeCols(cols),
+              terminalCols: sanitizeTerminalCols(terminalCols),
+              createdAt: Date.now(),
+            },
           ],
         })),
 
       applyTemplate: id =>
         set(s => {
           const tpl = s.templates.find(t => t.id === id);
-          return tpl ? { visibleCols: tpl.cols, visibleTerminalCols: tpl.terminalCols } : {};
+          return tpl
+            ? {
+                visibleCols: sanitizeCols(tpl.cols),
+                visibleTerminalCols: sanitizeTerminalCols(tpl.terminalCols),
+              }
+            : {};
         }),
 
       deleteTemplate: id => set(s => ({ templates: s.templates.filter(t => t.id !== id) })),
@@ -127,13 +175,23 @@ export const useRequirementsStore = create<RequirementsStore>()(
       onRehydrateStorage: () => state => {
         state?.setHasHydrated(true);
       },
+      // Only persist data — never the action functions.
+      partialize: s => ({
+        visibleCols: s.visibleCols,
+        visibleTerminalCols: s.visibleTerminalCols,
+        templates: s.templates,
+      }),
       merge: (persisted: any, current) => ({
         ...current,
-        visibleCols: Array.isArray(persisted?.visibleCols) ? persisted.visibleCols : DEFAULT_COLS,
-        visibleTerminalCols: Array.isArray(persisted?.visibleTerminalCols)
-          ? persisted.visibleTerminalCols
+        visibleCols: sanitizeCols(persisted?.visibleCols),
+        visibleTerminalCols: sanitizeTerminalCols(persisted?.visibleTerminalCols),
+        templates: Array.isArray(persisted?.templates)
+          ? persisted.templates.map((t: any) => ({
+              ...t,
+              cols: sanitizeCols(t?.cols),
+              terminalCols: sanitizeTerminalCols(t?.terminalCols),
+            }))
           : [],
-        templates: Array.isArray(persisted?.templates) ? persisted.templates : [],
       }),
     }
   )

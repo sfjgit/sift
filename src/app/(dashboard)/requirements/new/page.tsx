@@ -210,7 +210,7 @@ const optionalNumber = z.preprocess(coerceNumber, z.number().min(0).optional().n
 const schema = z.object({
   clientSpocId: z.string().min(1, 'SPOC is required'),
   title: z.string().min(1, 'Title is required').max(300).trim(),
-  description: z.string().max(5000).optional().nullable(),
+  description: z.string().max(15000).optional().nullable(),
   jobType: z.enum(['CONTRACT', 'PERMANENT', 'CONTRACT_TO_HIRE', 'FREELANCE']),
   remoteType: z.enum(['ONSITE', 'REMOTE', 'HYBRID']),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
