@@ -137,6 +137,12 @@ const NAV: NavItem[] = [
     children: [
       { label: 'Ingest logs', href: '/ingest-logs', icon: ClipboardList, module: 'ingest-logs' },
       { label: 'Naukri logs', href: '/naukri-logs', icon: ClipboardList, module: 'Naukri-logs' },
+      {
+        label: 'Naukri capture logs',
+        href: '/naukri-capture-logs',
+        icon: ClipboardList,
+        superAdminOnly: true,
+      },
       { label: 'Login activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
     ],
   },
