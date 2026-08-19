@@ -1042,13 +1042,14 @@ export default function CandidateDetailPage() {
       if (body.expectedSalary !== undefined)
         body.expectedSalary = body.expectedSalary ? parseFloat(body.expectedSalary) : null;
       if (body.noticePeriodDays !== undefined)
-        body.noticePeriodDays = body.noticePeriodDays ? parseInt(body.noticePeriodDays) : null;
+        body.noticePeriodDays = body.noticePeriodDays ? parseInt(body.noticePeriodDays, 10) : null;
+      if (body.salaryType !== undefined) body.salaryType = body.salaryType ? body.salaryType : null;
       if (body.firstName || body.lastName) {
         const c = data!.data;
         body.fullName =
           `${body.firstName ?? c.firstName ?? ''} ${body.lastName ?? c.lastName ?? ''}`.trim();
       }
-      return axios.patch(`/candidates/${id}`, body);
+      return axios.patch(`/candidate/api/candidates/${id}`, body, { baseURL: '/api/proxy' });
     },
     onSuccess: () => {
       toast.success('Candidate updated');
