@@ -111,6 +111,8 @@ function SelectItem({
         className
       )}
       {...props}
+      // @ts-expect-error err
+      value={props.value === '' ? undefined : props.value}
     >
       <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
         <SelectPrimitive.ItemIndicator>

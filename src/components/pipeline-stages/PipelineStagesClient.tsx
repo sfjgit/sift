@@ -1,7 +1,8 @@
+/* eslint-disable react/no-unescaped-entities */
+'use client';
+
 // File: PipelineStagesClient.tsx
 // Path: src/app/(dashboard)/settings/pipeline-stages/PipelineStagesClient.tsx
-
-'use client';
 
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -28,14 +29,16 @@ import { useAxios } from '@/hooks/useAxios';
 import { cn } from '@/lib/utils';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// types
+// TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Locally widen PipelineStage so the new columns type-check even if the shared
-// hook type hasn't been updated yet. (Update usePipelineStages.ts too — see notes.)
+// Widen PipelineStage with the new flags + existing optional fields.
+// Update usePipelineStages.ts to include isSourced + isNearTerminal too.
 type LocalStage = PipelineStage & {
   isNew?: boolean;
   isStandard?: boolean;
+  isSourced?: boolean; // ← NEW: entry/sourcing stage — skipped in active pipeline counts
+  isNearTerminal?: boolean; // ← NEW: 80-90% confirmed, pre-placed stage
   serviceLineId?: string | null;
   serviceLine?: ServiceLineMeta | null;
 };
@@ -51,7 +54,7 @@ interface ServiceLineMeta {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// helpers
+// HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
 function newTempId() {
@@ -82,7 +85,7 @@ const NONE = '__none__';
 const COMMON = '__common__';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// flag chip — compact clickable toggle used for Standard / Terminal / Mandatory
+// FLAG CHIP — compact clickable toggle
 // ─────────────────────────────────────────────────────────────────────────────
 
 function FlagChip({
@@ -116,7 +119,56 @@ function FlagChip({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// insert row
+// FLAG RULES — mutual exclusivity helpers
+//
+// isSourced    → can't also be isTerminal or isNearTerminal
+// isTerminal   → can't also be isSourced or isNearTerminal
+// isNearTerminal → can't also be isSourced or isTerminal
+// pipeline=false (exit stage) → can't be isSourced or isTerminal
+// ─────────────────────────────────────────────────────────────────────────────
+
+function applySourcedToggle(stage: LocalStage, val: boolean): Partial<LocalStage> {
+  if (!val) return { isSourced: false };
+  // Turning on sourced — clear anything incompatible
+  return {
+    isSourced: true,
+    isTerminal: false,
+    isNearTerminal: false,
+    // Keep pipeline=true — sourced is still part of the flow, just skipped in counts
+  };
+}
+
+function applyTerminalToggle(stage: LocalStage, val: boolean): Partial<LocalStage> {
+  if (!val) return { isTerminal: false };
+  return {
+    isTerminal: true,
+    isSourced: false,
+    isNearTerminal: false,
+  };
+}
+
+function applyNearTerminalToggle(stage: LocalStage, val: boolean): Partial<LocalStage> {
+  if (!val) return { isNearTerminal: false };
+  return {
+    isNearTerminal: true,
+    isSourced: false,
+    isTerminal: false,
+  };
+}
+
+function applyPipelineToggle(stage: LocalStage, val: boolean): Partial<LocalStage> {
+  if (val) return { pipeline: true };
+  // pipeline=false = exit stage — clear positive flags
+  return {
+    pipeline: false,
+    isTerminal: false,
+    isSourced: false,
+    isNearTerminal: false,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INSERT ROW
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InsertRow({
@@ -171,7 +223,7 @@ function InsertRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// insert trigger
+// INSERT TRIGGER
 // ─────────────────────────────────────────────────────────────────────────────
 
 function InsertTrigger({ label, onClick }: { label: string; onClick: () => void }) {
@@ -193,7 +245,7 @@ function InsertTrigger({ label, onClick }: { label: string; onClick: () => void 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// stage row
+// STAGE ROW
 // ─────────────────────────────────────────────────────────────────────────────
 
 function StageRow({
@@ -202,14 +254,7 @@ function StageRow({
   originalStages,
   canonicalStages,
   serviceLines,
-  onLabelChange,
-  onCodeChange,
-  onCanonicalChange,
-  onServiceLineChange,
-  onStandardToggle,
-  onMandatoryToggle,
-  onTerminalToggle,
-  onToggle,
+  onPatch,
   onDelete,
   onDragStart,
   onDragEnter,
@@ -222,14 +267,7 @@ function StageRow({
   originalStages: PipelineStage[];
   canonicalStages: CanonicalStageMeta[];
   serviceLines: ServiceLineMeta[];
-  onLabelChange: (id: string, label: string) => void;
-  onCodeChange: (id: string, code: string) => void;
-  onCanonicalChange: (id: string, val: CanonicalStage | null) => void;
-  onServiceLineChange: (id: string, val: string | null) => void;
-  onStandardToggle: (id: string, val: boolean) => void;
-  onMandatoryToggle: (id: string, val: boolean) => void;
-  onTerminalToggle: (id: string, val: boolean) => void;
-  onToggle: (id: string, val: boolean) => void;
+  onPatch: (id: string, patch: Partial<LocalStage>) => void;
   onDelete: (stage: LocalStage) => void;
   onDragStart: () => void;
   onDragEnter: () => void;
@@ -246,6 +284,17 @@ function StageRow({
   const isMoved = !stage.isNew && orig !== undefined && orig.order !== stage.order;
   const col = SLOT_COLORS[idx % SLOT_COLORS.length];
 
+  // Derive a short description of what this stage "is" for the tooltip hint
+  const stageKind = stage.isSourced
+    ? 'Sourced — entry stage, excluded from active pipeline counts'
+    : stage.isTerminal
+      ? 'Terminal — good outcome, candidate is placed'
+      : stage.isNearTerminal
+        ? 'Near terminal — 80-90% confirmed, counts as near-placed'
+        : !stage.pipeline
+          ? 'Exit — candidate fell out of pipeline (rejected / withdrawn)'
+          : 'Active pipeline stage';
+
   return (
     <div
       draggable
@@ -259,8 +308,14 @@ function StageRow({
         stage.isNew && 'bg-blue-50 border-blue-300',
         isMoved && !stage.isNew && 'bg-amber-50/40 border-amber-200',
         isDragOver && 'border-primary scale-[1.005] bg-primary/5',
-        !stage.isActive && 'opacity-40'
+        !stage.isActive && 'opacity-40',
+        // Visual hint for stage kind
+        stage.isSourced && 'border-l-4 border-l-slate-300',
+        stage.isTerminal && !stage.isNew && 'border-l-4 border-l-emerald-400',
+        stage.isNearTerminal && !stage.isNew && 'border-l-4 border-l-teal-400',
+        !stage.pipeline && !stage.isNew && 'border-l-4 border-l-red-300'
       )}
+      title={stageKind}
     >
       <GripVertical className="h-4 w-4 text-muted-foreground/30 cursor-grab shrink-0" />
 
@@ -282,12 +337,12 @@ function StageRow({
             value={editCode}
             onChange={e => setEditCode(e.target.value)}
             onBlur={() => {
-              onCodeChange(stage.id, editCode);
+              onPatch(stage.id, { code: editCode });
               setEditingCode(false);
             }}
             onKeyDown={e => {
               if (e.key === 'Enter' || e.key === 'Escape') {
-                onCodeChange(stage.id, editCode);
+                onPatch(stage.id, { code: editCode });
                 setEditingCode(false);
               }
             }}
@@ -315,12 +370,12 @@ function StageRow({
               value={editLabel}
               onChange={e => setEditLabel(e.target.value)}
               onBlur={() => {
-                onLabelChange(stage.id, editLabel);
+                onPatch(stage.id, { label: editLabel });
                 setEditingLabel(false);
               }}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
-                  onLabelChange(stage.id, editLabel);
+                  onPatch(stage.id, { label: editLabel });
                   setEditingLabel(false);
                 }
                 if (e.key === 'Escape') setEditingLabel(false);
@@ -329,7 +384,7 @@ function StageRow({
             />
             <button
               onClick={() => {
-                onLabelChange(stage.id, editLabel);
+                onPatch(stage.id, { label: editLabel });
                 setEditingLabel(false);
               }}
               className="text-green-600 shrink-0"
@@ -366,11 +421,11 @@ function StageRow({
         )}
       </div>
 
-      {/* Service line — null == common/shared */}
+      {/* Service line */}
       <div className="shrink-0 w-36">
         <Select
           value={stage.serviceLineId ?? COMMON}
-          onValueChange={v => onServiceLineChange(stage.id, v === COMMON ? null : v)}
+          onValueChange={v => onPatch(stage.id, { serviceLineId: v === COMMON ? null : v })}
         >
           <SelectTrigger
             className={cn(
@@ -400,7 +455,7 @@ function StageRow({
         <Select
           value={stage.canonicalStage ?? NONE}
           onValueChange={v =>
-            onCanonicalChange(stage.id, v === NONE ? null : (v as CanonicalStage))
+            onPatch(stage.id, { canonicalStage: v === NONE ? null : (v as CanonicalStage) })
           }
         >
           <SelectTrigger className="h-7 text-xs px-2 w-full">
@@ -419,32 +474,70 @@ function StageRow({
         </Select>
       </div>
 
-      {/* Editable flags */}
-      <div className="shrink-0 flex items-center gap-1 w-[210px]">
+      {/* ── FLAGS ──────────────────────────────────────────────────────────────
+          Layout (left → right):
+          Standard | Sourced | Pipeline | NearTerminal | Terminal | Required
+          
+          Standard    — appears in the "standard only" filter set
+          Sourced     — entry stage, skip in active pipeline counts
+          Pipeline    — part of the flow (false = exit/rejection stage)
+          NearTerminal— 80-90% confident pre-placed
+          Terminal    — good outcome = placed
+          Required    — mandatory step in flow
+          
+          Mutual exclusions enforced via applyXxxToggle helpers above.
+      ──────────────────────────────────────────────────────────────────────── */}
+      <div className="shrink-0 flex items-center gap-1 w-[300px]">
         <FlagChip
           active={!!stage.isStandard}
           activeClass="bg-indigo-50 text-indigo-700 border-indigo-200"
-          label="Standard"
-          title="Mark as a standard stage (used for the reduced/standard set)"
-          onClick={() => onStandardToggle(stage.id, !stage.isStandard)}
+          label="Std"
+          title="Standard stage — included in the standard-only filter set"
+          onClick={() => onPatch(stage.id, { isStandard: !stage.isStandard })}
         />
+
+        <FlagChip
+          active={!!stage.isSourced}
+          activeClass="bg-slate-100 text-slate-700 border-slate-400"
+          label="Sourced"
+          title="Entry/sourcing stage — tracked separately, excluded from active pipeline counts"
+          onClick={() => onPatch(stage.id, applySourcedToggle(stage, !stage.isSourced))}
+        />
+
+        <FlagChip
+          active={!!stage.pipeline}
+          activeClass="bg-blue-50 text-blue-700 border-blue-300"
+          label="Pipeline"
+          title="Part of the active recruitment flow. Turn OFF for exit stages (rejected, withdrawn) — they exist but are out of the league"
+          onClick={() => onPatch(stage.id, applyPipelineToggle(stage, !stage.pipeline))}
+        />
+
+        <FlagChip
+          active={!!stage.isNearTerminal}
+          activeClass="bg-teal-50 text-teal-700 border-teal-300"
+          label="Near"
+          title="Near-terminal — candidate is 80-90% confirmed, almost placed. Tracked as a separate KPI"
+          onClick={() => onPatch(stage.id, applyNearTerminalToggle(stage, !stage.isNearTerminal))}
+        />
+
         <FlagChip
           active={stage.isTerminal}
-          activeClass="bg-green-50 text-green-700 border-green-200"
+          activeClass="bg-emerald-50 text-emerald-700 border-emerald-200"
           label="Terminal"
-          title="Terminal stage — no further transitions"
-          onClick={() => onTerminalToggle(stage.id, !stage.isTerminal)}
+          title="Terminal stage — good outcome, candidate is placed/joined. No further transitions"
+          onClick={() => onPatch(stage.id, applyTerminalToggle(stage, !stage.isTerminal))}
         />
+
         <FlagChip
           active={!stage.isMandatory}
           activeClass="bg-amber-50 text-amber-700 border-amber-200"
-          label={stage.isMandatory ? 'Required' : 'Optional'}
+          label={stage.isMandatory ? 'Req' : 'Opt'}
           title="Toggle whether recruiters must pass through this stage"
-          onClick={() => onMandatoryToggle(stage.id, !stage.isMandatory)}
+          onClick={() => onPatch(stage.id, { isMandatory: !stage.isMandatory })}
         />
       </div>
 
-      {/* Status badges (new / moved) */}
+      {/* Status badges */}
       <div className="shrink-0 flex items-center gap-1 w-16 justify-end">
         {stage.isNew && (
           <Badge className="text-[10px] px-1.5 py-0 bg-blue-500 text-white border-0">New</Badge>
@@ -462,7 +555,7 @@ function StageRow({
       {/* Active toggle */}
       <Switch
         checked={stage.isActive}
-        onCheckedChange={v => onToggle(stage.id, v)}
+        onCheckedChange={v => onPatch(stage.id, { isActive: v })}
         className="data-[state=checked]:bg-emerald-500 shrink-0"
       />
 
@@ -483,7 +576,7 @@ function StageRow({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// service-line tab
+// TAB BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TabButton({
@@ -530,7 +623,62 @@ const VIEW_ALL = '__all__';
 const VIEW_COMMON = '__common_only__';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// main
+// LEGEND — shown below the header so admins know what each flag means
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FlagLegend() {
+  const items = [
+    {
+      chip: 'Std',
+      color: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      desc: 'Standard — in the standard-only filter set',
+    },
+    {
+      chip: 'Sourced',
+      color: 'bg-slate-100 text-slate-700 border-slate-400',
+      desc: 'Entry stage — tracked separately, not counted in active pipeline',
+    },
+    {
+      chip: 'Pipeline',
+      color: 'bg-blue-50 text-blue-700 border-blue-300',
+      desc: 'Part of flow — OFF = exit stage (rejected/withdrawn)',
+    },
+    {
+      chip: 'Near',
+      color: 'bg-teal-50 text-teal-700 border-teal-300',
+      desc: 'Near-terminal — 80-90% confirmed, own KPI',
+    },
+    {
+      chip: 'Terminal',
+      color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      desc: 'Good outcome — candidate placed/joined',
+    },
+    {
+      chip: 'Req/Opt',
+      color: 'bg-amber-50 text-amber-700 border-amber-200',
+      desc: 'Required vs optional step in flow',
+    },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2 bg-slate-50 border-b text-[11px] text-muted-foreground">
+      <span className="font-semibold text-slate-500 uppercase tracking-wider text-[10px]">
+        Flags:
+      </span>
+      {items.map(item => (
+        <div key={item.chip} className="flex items-center gap-1.5">
+          <span className={cn('text-[10px] px-1.5 py-0.5 rounded border font-medium', item.color)}>
+            {item.chip}
+          </span>
+          <span>{item.desc}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PipelineStagesClient() {
@@ -542,38 +690,25 @@ export default function PipelineStagesClient() {
     queryKey: ['canonical-stages'],
     queryFn: async () => {
       const res = await axios.get('/candidates/canonical-stages');
-      return (res.data.data as string[]).map(v => ({
-        value: v,
-        label: toCanonicalLabel(v),
-      }));
+      return (res.data.data as string[]).map(v => ({ value: v, label: toCanonicalLabel(v) }));
     },
     staleTime: 10 * 60 * 1000,
   });
 
-  // Service lines for the per-stage selector. Adjust the route/shape to match
-  // your core service (assumes { success, data: [{ id, name }] }).
   const { data: serviceLines = [] } = useQuery<ServiceLineMeta[]>({
     queryKey: ['service-lines'],
-    queryFn: async () => {
-      const res = await axios.get('/service-lines');
-      return res.data.data as ServiceLineMeta[];
-    },
+    queryFn: async () => (await axios.get('/service-lines')).data.data as ServiceLineMeta[],
     staleTime: 10 * 60 * 1000,
   });
 
   const [local, setLocal] = useState<LocalStage[] | null>(null);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [insertAt, setInsertAt] = useState<number | null>(null);
-
-  // Active tab: VIEW_ALL | VIEW_COMMON | <serviceLineId>. View-only — never
-  // touches the underlying array, so save/drag/reorder are unaffected.
   const [view, setView] = useState<string>(VIEW_ALL);
 
   const stages: LocalStage[] = local ?? serverStages;
   const isDirty = local !== null || deletedIds.length > 0;
 
-  // A line tab shows that line's stages PLUS common (null) — merged in global
-  // order, i.e. exactly what a recruiter on that line steps through.
   const isLineView = view !== VIEW_ALL && view !== VIEW_COMMON;
   const visible = stages.filter(s => {
     if (view === VIEW_ALL) return true;
@@ -583,13 +718,10 @@ export default function PipelineStagesClient() {
 
   const commonCount = stages.filter(s => !s.serviceLineId).length;
   const lineOwnCount = (id: string) => stages.filter(s => s.serviceLineId === id).length;
-
-  // Real (global) array index → used for insert / append so ordering stays sound.
   const realIndexOf = (stage: LocalStage) => stages.indexOf(stage);
   const appendRealIdx = visible.length
     ? realIndexOf(visible[visible.length - 1]) + 1
     : stages.length;
-  // New stages created inside a line tab default to that line; else common.
   const defaultLineId = isLineView ? view : null;
 
   const dragId = useRef<string | null>(null);
@@ -599,6 +731,7 @@ export default function PipelineStagesClient() {
   const patchStages = (updater: (prev: LocalStage[]) => LocalStage[]) =>
     setLocal(prev => updater(prev ?? serverStages));
 
+  // Unified patch — handles any combination of field updates
   const patchStage = (id: string, patch: Partial<LocalStage>) =>
     patchStages(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
 
@@ -639,6 +772,9 @@ export default function PipelineStagesClient() {
       isTerminal: false,
       isActive: true,
       isStandard: false,
+      isSourced: false,
+      isNearTerminal: false,
+      pipeline: true, // new stages default to being part of the flow
       canonicalStage: null,
       serviceLineId: defaultLineId,
       serviceLine: null,
@@ -678,6 +814,9 @@ export default function PipelineStagesClient() {
         isTerminal: s.isTerminal,
         isActive: s.isActive,
         isStandard: s.isStandard ?? false,
+        isSourced: s.isSourced ?? false, // ← NEW
+        isNearTerminal: s.isNearTerminal ?? false, // ← NEW
+        pipeline: s.pipeline ?? true,
         serviceLineId: s.serviceLineId ?? null,
         isNew: s.isNew ?? false,
         canonicalStage: s.canonicalStage ?? null,
@@ -718,7 +857,7 @@ export default function PipelineStagesClient() {
                   line
                 </>
               ) : (
-                <>Drag to reorder · recruiter picks whichever stages apply</>
+                <>Drag to reorder · click flags to configure each stage's behaviour</>
               )}
             </p>
           </div>
@@ -764,7 +903,7 @@ export default function PipelineStagesClient() {
           ))}
         </div>
 
-        {/* Column headers */}
+        {/* Column headers — updated width for expanded flags column */}
         <div className="flex items-center gap-3 px-3 pt-2 pb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
           <span className="w-4 shrink-0" />
           <span className="w-8 shrink-0">#</span>
@@ -772,12 +911,15 @@ export default function PipelineStagesClient() {
           <span className="flex-1">Label</span>
           <span className="w-36 shrink-0">Service line</span>
           <span className="w-32 shrink-0">Maps to</span>
-          <span className="w-[210px] shrink-0">Flags</span>
+          <span className="w-[300px] shrink-0">Flags</span>
           <span className="w-16 shrink-0 text-right">Status</span>
           <span className="w-10 shrink-0">Active</span>
           <span className="w-5 shrink-0" />
         </div>
       </div>
+
+      {/* Flag legend */}
+      <FlagLegend />
 
       {/* Dirty banner */}
       {isDirty && (
@@ -803,21 +945,13 @@ export default function PipelineStagesClient() {
                     onClick={() => setInsertAt(realIdx)}
                   />
                 )}
-
                 <StageRow
                   stage={stage}
                   idx={vIdx}
                   originalStages={serverStages}
                   canonicalStages={canonicalStages}
                   serviceLines={serviceLines}
-                  onLabelChange={(id, label) => patchStage(id, { label })}
-                  onCodeChange={(id, code) => patchStage(id, { code })}
-                  onCanonicalChange={(id, val) => patchStage(id, { canonicalStage: val })}
-                  onServiceLineChange={(id, val) => patchStage(id, { serviceLineId: val })}
-                  onStandardToggle={(id, val) => patchStage(id, { isStandard: val })}
-                  onMandatoryToggle={(id, val) => patchStage(id, { isMandatory: val })}
-                  onTerminalToggle={(id, val) => patchStage(id, { isTerminal: val })}
-                  onToggle={(id, val) => patchStage(id, { isActive: val })}
+                  onPatch={patchStage}
                   onDelete={handleDelete}
                   onDragStart={() => onDragStart(stage.id)}
                   onDragEnter={() => onDragEnter(stage.id)}
