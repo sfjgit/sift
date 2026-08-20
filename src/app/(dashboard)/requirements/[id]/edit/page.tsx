@@ -27,6 +27,10 @@ import {
   Sparkles,
   CheckCircle,
   Tag,
+  Upload,
+  ExternalLink,
+  Wand2,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -294,6 +298,208 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// JD UPLOAD + VIEW FIELD
+//
+// Fix #2: After parsing, we store parsedJDId (library entry ID) — not jdFileKey.
+// The backend resolves the actual S3 key from the library.
+//
+// Fix #1: "View JD" calls GET /requirements/:id/jd which generates a signed
+// URL on demand — never stored.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface JDMeta {
+  parsedJDId: string | null; // Fix #2: this is what we send to the backend
+  jdFileName: string | null; // display only
+}
+
+// File: page.tsx
+// Path: src/app/(dashboard)/requirements/[id]/edit/page.tsx
+// — Replace only JDUploadField, everything else untouched —
+
+function JDUploadField({
+  requirementId,
+  jdMeta,
+  hasExistingFile,
+  onUploaded,
+  onFieldsFilled,
+}: {
+  requirementId: string;
+  jdMeta: JDMeta;
+  hasExistingFile: boolean;
+  onUploaded: (meta: JDMeta) => void;
+  onFieldsFilled: (parsed: any) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [viewingJD, setViewingJD] = useState(false);
+  const axios = useAxios();
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('jd', file);
+      const res = await axios.post('/jd/parse', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const json = res.data;
+
+      if (!json.success) {
+        toast.error(json.message ?? 'Failed to parse JD');
+        return;
+      }
+
+      let parsedJDId: string | null = null;
+      try {
+        const libRes = await axios.post('/jd/library', {
+          title: json.data.title ?? file.name,
+          parsedData: json.data,
+          jdFileKey: json.jdFileKey,
+          jdFileName: json.jdFileName ?? file.name,
+          jdFileType: json.jdFileType ?? file.type,
+        });
+        parsedJDId = libRes.data.data?.id ?? null;
+      } catch {
+        // non-fatal
+      }
+
+      onUploaded({
+        parsedJDId,
+        jdFileName: json.jdFileName ?? file.name,
+      });
+      onFieldsFilled(json.data);
+      toast.success('JD parsed — fields updated. Review and save.');
+    } catch {
+      toast.error('Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleViewJD() {
+    const viewId = jdMeta.parsedJDId ?? requirementId;
+    if (!viewId) return;
+    setViewingJD(true);
+    try {
+      const res = await axios.get(`/requirements/${viewId}/viewJd`);
+      if (res.data.url) {
+        window.open(res.data.url, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      toast.error('Could not load JD. Try again.');
+    } finally {
+      setViewingJD(false);
+    }
+  }
+
+  const canView = hasExistingFile || !!jdMeta.parsedJDId;
+  const hasParsed = canView; // mirrors parsedTitle check on new page
+
+  // ── hidden file input — always rendered ──────────────────────────────────
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept=".pdf,.doc,.docx,.rtf"
+      className="sr-only"
+      disabled={uploading}
+      onChange={e => {
+        const file = e.target.files?.[0];
+        if (file) handleFile(file);
+        e.target.value = '';
+      }}
+    />
+  );
+
+  // ── PARSED STATE — mirrors new page's success banner ─────────────────────
+  if (hasParsed) {
+    return (
+      <div className="space-y-3 mt-3">
+        {fileInput}
+        {/* Success banner — identical to new page */}
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
+          <CheckCircle size={18} className="text-emerald-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-emerald-800 truncate">
+              {jdMeta.jdFileName ?? 'Job Description'}
+            </p>
+            <p className="text-[11px] text-emerald-600 mt-0.5">Attached · saved to library</p>
+          </div>
+          {/* Reupload — same style as new page's RotateCcw button */}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-slate-700 shrink-0 disabled:opacity-50"
+          >
+            {uploading ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+            {uploading ? 'Parsing…' : 'Replace'}
+          </button>
+          {/* View JD — same style as new page's View JD button */}
+          <button
+            type="button"
+            onClick={handleViewJD}
+            disabled={viewingJD}
+            className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-slate-700 shrink-0 disabled:opacity-50"
+          >
+            {viewingJD ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <ExternalLink size={12} />
+            )}
+            {viewingJD ? 'Loading…' : 'View JD'}
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          PDF, DOCX, DOC, RTF · max 10 MB · fields auto-fill on upload
+        </p>
+      </div>
+    );
+  }
+
+  // ── UNPARSED STATE — upload zone matching new page's dashed box ──────────
+  return (
+    <div className="space-y-3 mt-3">
+      {fileInput}
+      <div
+        onClick={() => inputRef.current?.click()}
+        className={`cursor-pointer flex flex-col items-center gap-2 py-8 px-6 border-2 border-dashed rounded-xl transition-all ${
+          uploading
+            ? 'border-violet-300 bg-violet-50/60 opacity-60 pointer-events-none'
+            : 'border-violet-200 hover:border-violet-400 hover:bg-violet-50/50'
+        }`}
+      >
+        {uploading ? (
+          <>
+            <Loader2 size={28} className="text-violet-400 animate-spin" />
+            <p className="text-[14px] font-semibold text-violet-600">Parsing JD…</p>
+            <p className="text-[12px] text-slate-400">AI is extracting fields</p>
+          </>
+        ) : (
+          <>
+            <Wand2 size={28} className="text-violet-400" />
+            <p className="text-[14px] font-semibold text-violet-600">
+              Drop your JD here or click to upload
+            </p>
+            <p className="text-[12px] text-slate-400">AI will parse and auto-fill the form</p>
+            <div className="flex gap-2 mt-1">
+              {['PDF', 'DOC', 'DOCX', 'RTF'].map(ext => (
+                <span
+                  key={ext}
+                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-600"
+                >
+                  {ext}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-400">Fields auto-fill on upload · max 10 MB</p>
+    </div>
+  );
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // BAND + SALE VALUE FIELDS
 //
@@ -1013,6 +1219,13 @@ export default function EditRequirementPage() {
   // pass the correct clientId + agreementType to BandSaleValueFields.
   const [liveClient, setLiveClient] = useState<MyClient | null>(null);
 
+  // ── JD file meta — lives outside react-hook-form (not a form field) ────────
+  const [jdMeta, setJdMeta] = useState<JDMeta>({
+    parsedJDId: null,
+    jdFileName: null,
+  });
+  const [hasExistingFile, setHasExistingFile] = useState(false);
+
   const { data: reqRes, isLoading } = useQuery({
     queryKey: ['requirement', id],
     queryFn: async () => (await axios.get(`/requirements/${id}`)).data,
@@ -1050,7 +1263,18 @@ export default function EditRequirementPage() {
   useEffect(() => {
     if (!req) return;
     reset(reqToFormValues(req));
-    setTimeout(() => setIsReady(true), 0);
+    setTimeout(() => {
+      // Seed jdMeta from the existing requirement
+      setJdMeta({
+        // jdFileKey: req.jdFileKey ?? null,
+        // jdFileName: req.jdFileName ?? null,
+        // jdFileType: req.jdFileType ?? null,
+        parsedJDId: req.parsedJDId ?? null,
+        jdFileName: req.jdFileName ?? null,
+      });
+      setHasExistingFile(!!req.jdFileKey);
+      setIsReady(true);
+    }, 0);
   }, [req, reset]);
 
   // Intersection observer for sidebar active section
@@ -1097,6 +1321,37 @@ export default function EditRequirementPage() {
       toast.error(err?.response?.data?.message ?? 'Failed to update');
     },
   });
+
+  // ── Called by JDUploadField after a successful parse ──────────────────────
+  function handleJDFieldsFilled(parsed: any) {
+    const fieldMap: Partial<Record<keyof EditFormValues, any>> = {
+      title: parsed.title,
+      description: parsed.description,
+      primarySkills: parsed.primarySkills,
+      keySkills: parsed.keySkills,
+      experienceMin: parsed.experienceMin,
+      experienceMax: parsed.experienceMax,
+      education: parsed.education,
+      city: parsed.city,
+      state: parsed.state,
+      country: parsed.country,
+      salaryMin: parsed.salaryMin,
+      salaryMax: parsed.salaryMax,
+      salaryType: parsed.salaryType,
+      jobType: parsed.jobType,
+      remoteType: parsed.remoteType,
+      shift: parsed.shift,
+      functionalArea: parsed.functionalArea,
+      targetCompanies: parsed.targetCompanies,
+      noPoachCompanies: parsed.noPoachCompanies,
+      bonusAmount: parsed.bonusAmount,
+    };
+    (Object.entries(fieldMap) as [keyof EditFormValues, any][]).forEach(([key, val]) => {
+      if (val !== undefined && val !== null) {
+        setValue(key, val, { shouldDirty: true });
+      }
+    });
+  }
 
   async function onSubmit(allValues: EditFormValues) {
     const payload: Record<string, any> = {};
@@ -1147,6 +1402,10 @@ export default function EditRequirementPage() {
       }
     }
 
+    // payload.jdFileKey = jdMeta.jdFileKey;
+    // payload.jdFileName = jdMeta.jdFileName;
+    // payload.jdFileType = jdMeta.jdFileType;
+    payload.parsedJDId = jdMeta.parsedJDId;
     await updateMutation.mutateAsync(payload);
   }
 
@@ -1165,7 +1424,7 @@ export default function EditRequirementPage() {
           <Skeleton className="h-5 w-32 ml-auto" />
         </div>
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          <div className="hidden lg:block w-[240px] border-r bg-white" />
+          <div className="hidden lg:block w-60 border-r bg-white" />
           <div className="flex-1 p-8 flex flex-col gap-4">
             <Skeleton className="h-56 rounded-2xl" />
             <Skeleton className="h-32 rounded-2xl" />
@@ -1231,7 +1490,7 @@ export default function EditRequirementPage() {
       {/* ── Body ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Sidebar */}
-        <aside className="hidden lg:flex w-[240px] shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
+        <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white h-full overflow-hidden">
           <div className="flex-1 overflow-y-auto py-6 px-4">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-2 mb-3">
               Sections
@@ -1249,7 +1508,7 @@ export default function EditRequirementPage() {
                     type="button"
                     onClick={() => scrollToSection(sec.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${
-                      isActive ? 'bg-primary/[0.08] border border-primary/20' : 'hover:bg-slate-50'
+                      isActive ? 'bg-primary/8 border border-primary/20' : 'hover:bg-slate-50'
                     }`}
                   >
                     <div
@@ -1316,6 +1575,17 @@ export default function EditRequirementPage() {
                 icon={FileText}
                 label="Basic Info"
                 color="bg-slate-100 text-slate-600"
+              />
+              {/* JD Upload + View */}
+              <JDUploadField
+                requirementId={id}
+                jdMeta={jdMeta}
+                hasExistingFile={hasExistingFile}
+                onUploaded={meta => {
+                  setJdMeta(meta);
+                  setHasExistingFile(false); /* new upload, view will work after save */
+                }}
+                onFieldsFilled={handleJDFieldsFilled}
               />
               <div>
                 <FieldLabel required>Job Title</FieldLabel>
