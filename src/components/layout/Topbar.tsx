@@ -1,6 +1,10 @@
+// File: Topbar.tsx
+// Path: src/components/layout/Topbar.tsx
+
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAxios } from '@/hooks/useAxios';
@@ -18,12 +22,6 @@ import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
-// import { useMutation, useQueryClient } from '@tanstack/react-query';
-// import { Bell, BellOff, Search, Moon, Sun, LogOut, ChevronRight, CheckCheck } from 'lucide-react';
-// import { formatDistanceToNow } from 'date-fns';
-// import { cn } from '@/lib/utils';
-
-// add Notification type at top of file
 interface Notification {
   id: string;
   type: string;
@@ -35,9 +33,6 @@ interface Notification {
   createdAt: string;
 }
 
-// replace NotificationBell in Topbar.tsx
-
-// breadcrumb label map
 const LABELS: Record<string, string> = {
   '': 'Dashboard',
   requirements: 'Requirements',
@@ -56,23 +51,42 @@ function Breadcrumb() {
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) {
-    return <span className="text-sm font-semibold">Dashboard</span>;
+    return (
+      <Link href="/" className="text-sm font-semibold hover:text-foreground transition-colors">
+        Dashboard
+      </Link>
+    );
   }
 
   return (
     <div className="flex items-center gap-1 text-sm">
-      <span className="text-muted-foreground font-medium">TalentOS</span>
+      <Link
+        href="/dashboard"
+        className="text-muted-foreground font-medium hover:text-foreground transition-colors"
+      >
+        TalentOS
+      </Link>
+
       {segments.map((seg, i) => {
         const label = LABELS[seg] ?? seg;
         const isLast = i === segments.length - 1;
+        // Build the href up to this segment: /seg0/seg1/...
+        const href = '/' + segments.slice(0, i + 1).join('/');
+
         return (
           <span key={seg} className="flex items-center gap-1">
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
-            <span
-              className={cn('font-medium', isLast ? 'text-foreground' : 'text-muted-foreground')}
-            >
-              {label}
-            </span>
+            {isLast ? (
+              // Last segment: not a link, just bold label
+              <span className="font-medium text-foreground">{label}</span>
+            ) : (
+              <Link
+                href={href}
+                className="font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {label}
+              </Link>
+            )}
           </span>
         );
       })}
@@ -209,7 +223,6 @@ export function Topbar() {
 
       {/* right actions */}
       <div className="flex items-center gap-1">
-        {/* search */}
         <Button variant="ghost" size="icon" className="h-8 w-8">
           <Search className="h-4 w-4" />
         </Button>

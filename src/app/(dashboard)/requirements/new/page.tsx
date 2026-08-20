@@ -941,6 +941,9 @@ function JDSection({
   parsedTitle,
   parsedFileName,
   parsedFieldCount,
+  uploadedJDLibraryId,
+  viewingJD,
+  onViewJD,
 }: {
   onSelectLibrary: (id: string) => void;
   onUpload: () => void;
@@ -949,6 +952,9 @@ function JDSection({
   parsedTitle: string | null;
   parsedFileName?: string | null; // ← add to parent state
   parsedFieldCount?: number | null; // ← add to parent state
+  uploadedJDLibraryId: string | null;
+  viewingJD: boolean;
+  onViewJD: () => void;
 }) {
   const axios = useAxios();
   const router = useRouter();
@@ -1058,6 +1064,16 @@ function JDSection({
               <RotateCcw size={12} />
               Reupload
             </button>
+            {uploadedJDLibraryId && (
+              <button
+                type="button"
+                onClick={onViewJD}
+                disabled={viewingJD}
+                className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-slate-700 shrink-0 disabled:opacity-50"
+              >
+                {viewingJD ? 'Loading...' : 'View JD'}
+              </button>
+            )}
           </div>
 
           {/* New vs Duplicate */}
@@ -1345,10 +1361,8 @@ export default function NewRequirementPage() {
   const jdInputRef = useRef<HTMLInputElement>(null!);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const userClearedSpoc = useRef(false); // ← add this
-
-  // 1. Add two state vars next to isParsing in NewRequirementPage:
-  // const [parsedFileName, setParsedFileName] = useState<string | null>(null);
-  // const [parsedFieldCount, setParsedFieldCount] = useState<number | null>(null);
+  const [uploadedJDLibraryId, setUploadedJDLibraryId] = useState<string | null>(null);
+  const [viewingJD, setViewingJD] = useState(false);
 
   // // 2. In handleJdFile, after fillFormFromParsed:
   // setParsedFileName(file.name);
@@ -1464,6 +1478,24 @@ export default function NewRequirementPage() {
   const scrollToSection = useCallback((id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  const handleViewJD = async () => {
+    if (!uploadedJDLibraryId) return;
+
+    setViewingJD(true);
+
+    try {
+      const res = await axios.get(`/requirements/${uploadedJDLibraryId}/viewJd`);
+
+      if (res.data?.url) {
+        window.open(res.data.url, '_blank');
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? 'Failed to open JD');
+    } finally {
+      setViewingJD(false);
+    }
+  };
 
   // ── Snapshot to store ─────────────────────────────────────────────────────
   function snapshotToStore() {
@@ -1632,6 +1664,9 @@ export default function NewRequirementPage() {
         })
         .then(libRes => {
           const libId = libRes.data.data?.id ?? null;
+
+          // Store library ID for viewing the uploaded JD
+          setUploadedJDLibraryId(libId);
           setValue('parsedJDId', libId);
           setDraft({ parsedJDId: libId });
         })
@@ -1930,6 +1965,9 @@ export default function NewRequirementPage() {
                   onPromptFill={handlePromptFill}
                   isParsing={isParsing}
                   parsedTitle={parsedTitle}
+                  uploadedJDLibraryId={uploadedJDLibraryId}
+                  viewingJD={viewingJD}
+                  onViewJD={handleViewJD}
                 />
                 {parseError && (
                   <p className="text-[12px] text-red-500 flex items-center gap-1">

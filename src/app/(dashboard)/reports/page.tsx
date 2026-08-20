@@ -9,27 +9,23 @@ import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
   BarChart2,
-  CheckSquare,
-  Clock,
   FileText,
   Filter,
   LayoutDashboard,
   Layers,
   RefreshCw,
   Square,
+  CheckSquare,
   Users,
   UserCheck,
   X,
 } from 'lucide-react';
-import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -38,27 +34,25 @@ import { useAuth } from '@/context/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
 
 import type {
-  OverviewResponse,
   RecruiterGroup,
   RecruiterResponse,
   RequirementGroup,
   RequirementReportResponse,
   ServiceLineRef,
 } from '@/components/reports/types';
-import {
-  Card,
-  Empty,
-  FUNNEL_COLORS,
-  KPI,
-  MiniStat,
-  Skel,
-  humanKey,
-} from '@/components/reports/reportUi';
+import { DrillDrawer } from '@/components/reports/DrillDrawer';
+import type { DrillTarget } from '@/components/reports/DrillDrawer';
+import { OverviewSection } from '@/components/reports/OverviewSection';
+import { SalesSection } from '@/components/reports/SalesSection';
+import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
+import type { TeamSelection } from '@/components/reports/TeamTreePicker';
+
+import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable } from '@/components/reports/RequirementTable';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATE / TIME WINDOW STATE
+// TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
 type WindowMode = 'preset' | 'hours' | 'range';
@@ -71,7 +65,51 @@ interface WinState {
   toDate: string;
 }
 
-const DEFAULT_WIN: WinState = { mode: 'preset', range: '', hours: 8, fromDate: '', toDate: '' };
+interface Filters {
+  clientId?: string;
+  serviceLineId?: string;
+  businessUnitId?: string;
+  departmentId?: string;
+  createdById?: string;
+  status?: string;
+}
+
+type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates' | 'sales';
+
+// Sales drill payload — matches what SalesSection passes to onDrill
+interface SalesDrillPayload {
+  label: string;
+  type?: string;
+  stageId?: string;
+  reqId?: string;
+}
+
+interface CandidateReportData {
+  totalCandidates: number;
+  funnelByStage: {
+    stageId: string;
+    code: string;
+    label: string;
+    order: number;
+    isStandard: boolean;
+    count: number;
+    pct: number;
+  }[];
+  dispositionSummary: Record<string, number>;
+  avgPipelineDays: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE / TIME WINDOW HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_WIN: WinState = {
+  mode: 'preset',
+  range: '',
+  hours: 8,
+  fromDate: '',
+  toDate: '',
+};
 
 const PRESETS: { k: WinState['range']; l: string }[] = [
   { k: '', l: 'All time' },
@@ -96,16 +134,16 @@ function winToParams(w: WinState): Record<string, string> {
 }
 
 function winLabel(w: WinState): string {
-  if (w.mode === 'hours') return `Last ${w.hours} hours`;
+  if (w.mode === 'hours') return `Last ${w.hours}h`;
   if (w.mode === 'range') {
     if (!w.fromDate && !w.toDate) return 'All time';
-    return `${w.fromDate || 'start'} to ${w.toDate || 'now'}`;
+    return `${w.fromDate || 'start'} → ${w.toDate || 'now'}`;
   }
   return PRESETS.find(p => p.k === w.range)?.l ?? 'All time';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DOWNLOAD util
+// DOWNLOAD UTIL
 // ─────────────────────────────────────────────────────────────────────────────
 
 function downloadBlob(data: Blob, filename: string) {
@@ -118,200 +156,8 @@ function downloadBlob(data: Blob, filename: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CHARTS
+// FILTERS BAR
 // ─────────────────────────────────────────────────────────────────────────────
-
-function FunnelChart({ items }: { items: { label: string; count: number }[] }) {
-  const max = Math.max(1, ...items.map(i => i.count));
-  if (!items.length) return <Empty msg="No stage data." />;
-  return (
-    <div className="space-y-2.5">
-      {items.map((it, i) => {
-        const pct = Math.round((it.count / max) * 100);
-        const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
-        return (
-          <div key={it.label + i} className="flex items-center gap-3">
-            <span className="w-44 shrink-0 truncate text-right text-[13px] font-bold text-slate-800">
-              {it.label}
-            </span>
-            <div className="relative h-8 flex-1 overflow-hidden rounded-md bg-slate-200">
-              <div
-                className="flex h-full items-center justify-end rounded-md px-3 transition-all duration-500"
-                style={{ width: `${Math.max(pct, 6)}%`, backgroundColor: color }}
-              >
-                <span className="text-[12px] font-black text-white">{it.count}</span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function TimeSeriesChart({
-  points,
-  granularity,
-}: {
-  points: { bucket: string; count: number }[];
-  granularity: 'hour' | 'day';
-}) {
-  if (points.length < 2)
-    return (
-      <div className="flex h-40 items-center justify-center text-sm text-slate-400">
-        Not enough data points to plot.
-      </div>
-    );
-  const W = 640,
-    H = 160,
-    pad = 24;
-  const max = Math.max(1, ...points.map(p => p.count));
-  const stepX = (W - pad * 2) / (points.length - 1);
-  const xy = points.map(
-    (p, i) => [pad + i * stepX, H - pad - (p.count / max) * (H - pad * 2)] as const
-  );
-  const line = xy.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x},${y}`).join(' ');
-  const area = `${line} L${xy[xy.length - 1][0]},${H - pad} L${xy[0][0]},${H - pad} Z`;
-  const fmtBucket = (b: string) =>
-    granularity === 'hour' ? format(new Date(b), 'dd MMM HH:mm') : format(new Date(b), 'dd MMM');
-  return (
-    <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H + 24}`} className="w-full min-w-[520px]">
-        <defs>
-          <linearGradient id="tsGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4F46E5" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#4F46E5" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={area} fill="url(#tsGrad)" />
-        <path d={line} fill="none" stroke="#4F46E5" strokeWidth="2.5" strokeLinejoin="round" />
-        {xy.map(([x, y], i) => (
-          <g key={i}>
-            <circle cx={x} cy={y} r="3" fill="#4F46E5" />
-            <title>
-              {fmtBucket(points[i].bucket)}: {points[i].count}
-            </title>
-          </g>
-        ))}
-        {points.map((p, i) =>
-          i % Math.ceil(points.length / 8) === 0 ? (
-            <text
-              key={`t-${i}`}
-              x={pad + i * stepX}
-              y={H + 14}
-              fontSize="9"
-              fill="#94a3b8"
-              textAnchor="middle"
-            >
-              {fmtBucket(p.bucket)}
-            </text>
-          ) : null
-        )}
-      </svg>
-    </div>
-  );
-}
-
-function DispositionBars({ counts }: { counts: Record<string, number> }) {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const total = entries.reduce((s, [, v]) => s + v, 0);
-  if (!total) return <Empty msg="No disposition data." />;
-  return (
-    <div className="space-y-4">
-      <div className="flex h-5 w-full overflow-hidden rounded-full">
-        {entries.map(([k, v], i) => (
-          <div
-            key={k}
-            style={{
-              width: `${(v / total) * 100}%`,
-              backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-            }}
-            title={`${humanKey(k)}: ${v}`}
-          />
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
-        {entries.map(([k, v], i) => (
-          <div key={k} className="flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-sm"
-              style={{ backgroundColor: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}
-            />
-            <span className="text-[13px] font-bold text-slate-700">{humanKey(k)}</span>
-            <span className="text-[14px] font-black text-slate-900">{v}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Leaderboard({
-  items,
-}: {
-  items: { id: string; name: string; sourced: number; joined: number }[];
-}) {
-  const max = Math.max(1, ...items.map(i => i.sourced));
-  if (!items.length) return <Empty msg="No recruiter activity." />;
-  return (
-    <div className="space-y-3">
-      {items.map((r, i) => (
-        <div key={r.id} className="flex items-center gap-3">
-          <span className="w-5 text-[12px] font-black text-slate-500">{i + 1}</span>
-          <span className="w-40 shrink-0 truncate text-[13px] font-bold text-slate-800">
-            {r.name}
-          </span>
-          <div className="h-6 flex-1 overflow-hidden rounded bg-slate-200">
-            <div
-              className="h-full rounded bg-indigo-600 transition-all"
-              style={{ width: `${Math.max((r.sourced / max) * 100, 4)}%` }}
-            />
-          </div>
-          <span className="w-10 text-right text-[14px] font-black text-slate-900">{r.sourced}</span>
-          {r.joined > 0 && (
-            <span className="w-20 text-right text-[12px] font-bold text-emerald-700">
-              {r.joined} joined
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BUBarChart({
-  items,
-}: {
-  items: { businessUnitId: string | null; name: string; total: number; joined: number }[];
-}) {
-  const max = Math.max(1, ...items.map(i => i.total));
-  if (!items.length) return <Empty msg="No business unit data." />;
-  return (
-    <div className="space-y-4">
-      {items.map((b, i) => (
-        <div key={b.businessUnitId ?? `bu-${i}`}>
-          <div className="mb-1.5 flex justify-between">
-            <span className="text-[14px] font-bold text-slate-800">{b.name}</span>
-            <span className="text-[13px] font-semibold text-slate-600">
-              {b.total} total ·{' '}
-              <span className="font-black text-emerald-700">{b.joined} joined</span>
-            </span>
-          </div>
-          <div className="relative h-6 overflow-hidden rounded bg-slate-200">
-            <div
-              className="h-full rounded bg-indigo-600"
-              style={{ width: `${(b.total / max) * 100}%` }}
-            />
-            <div
-              className="absolute left-0 top-0 h-full rounded bg-emerald-500"
-              style={{ width: `${(b.joined / max) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 const ALL_REPORT_STATUSES = [
   { key: 'ACTIVE', label: 'Active', dot: 'bg-emerald-500' },
@@ -322,19 +168,6 @@ const ALL_REPORT_STATUSES = [
   { key: 'CANCELLED', label: 'Cancelled', dot: 'bg-gray-500' },
 ] as const;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FILTERS BAR
-// ─────────────────────────────────────────────────────────────────────────────
-
-type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates';
-
-interface Filters {
-  clientId?: string;
-  serviceLineId?: string;
-  createdById?: string;
-  status?: string;
-}
-
 function FiltersBar({
   filters,
   onChange,
@@ -343,6 +176,8 @@ function FiltersBar({
   standardOnly,
   onStandardOnly,
   activeTab,
+  teamSelection,
+  onTeamSelection,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
@@ -351,132 +186,87 @@ function FiltersBar({
   standardOnly: boolean;
   onStandardOnly: (v: boolean) => void;
   activeTab: TabKey;
+  teamSelection: TeamSelection | null;
+  onTeamSelection: (sel: TeamSelection | null) => void;
 }) {
   const axios = useAxios();
 
-  const { data: clientsRes } = useQuery({
-    queryKey: ['rf-clients'],
-    queryFn: async () => (await axios.get('/clients?limit=200&status=ACTIVE')).data?.data ?? [],
-    staleTime: 300000,
-  });
-
-  const { data: slRes } = useQuery({
-    queryKey: ['rf-sl'],
-    queryFn: async () => (await axios.get('/service-lines')).data?.data ?? [],
-    staleTime: 300000,
+  const { data: overviewFilters } = useQuery({
+    queryKey: ['reports-overview-filters'],
+    queryFn: async () => (await axios.get('/reports/overview/filters')).data?.data ?? {},
+    staleTime: 300_000,
   });
 
   const { data: createdByRes } = useQuery({
     queryKey: ['rf-created-by'],
     queryFn: async () => {
-      const rows = (await axios.get('/users?limit=100&isActive=true')).data?.data ?? [];
-
+      const rows = (await axios.get('/users?limit=200&isActive=true')).data?.data ?? [];
       return rows.map((u: any) => ({
         id: u.id,
-
         label:
           u.displayName?.trim() || `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email,
-
-        roleId: u.role?.id ?? null,
         roleName: u.role?.name?.trim() || 'OTHER',
       }));
     },
-    staleTime: 300000,
+    staleTime: 300_000,
+    enabled: activeTab === 'requirements',
   });
 
-  const clients: any[] = clientsRes ?? [];
-  const sls: any[] = slRes ?? [];
+  const serviceLines: any[] = overviewFilters?.serviceLines ?? [];
+  const businessUnits: any[] = overviewFilters?.businessUnits ?? [];
+  const departments: any[] = overviewFilters?.departments ?? [];
+  const clients: any[] = overviewFilters?.clients ?? [];
 
-  const createdBys: {
-    id: string;
-    label: string;
-    roleId: string | null;
-    roleName: string;
-  }[] = createdByRes ?? [];
-
-  /*
-   * Group users by role.
-   *
-   * Example:
-   *
-   * {
-   *   CSM: [...],
-   *   TAAS_RECRUITER: [...],
-   *   KAAS_RECRUITER: [...],
-   *   SR_CSM: [...]
-   * }
-   */
+  const createdBys = (createdByRes ?? []) as any[];
   const createdByGroups = createdBys.reduce(
-    (groups, user) => {
-      const role = user.roleName || 'OTHER';
-
-      if (!groups[role]) {
-        groups[role] = [];
-      }
-
-      groups[role].push(user);
-
-      return groups;
+    (g: any, u: any) => {
+      const role = u.roleName || 'OTHER';
+      if (!g[role]) g[role] = [];
+      g[role].push(u);
+      return g;
     },
-    {} as Record<
-      string,
-      {
-        id: string;
-        label: string;
-        roleId: string | null;
-        roleName: string;
-      }[]
-    >
+    {} as Record<string, any[]>
   );
-
-  /*
-   * Sort roles alphabetically.
-   */
-  const sortedRoleGroups = Object.entries(createdByGroups).sort(([roleA], [roleB]) =>
-    roleA.localeCompare(roleB)
-  );
+  const sortedRoleGroups = Object.entries(createdByGroups).sort(([a], [b]) => a.localeCompare(b));
 
   const set = (k: keyof Filters, v: string) =>
-    onChange({
-      ...filters,
-      [k]: v === 'ALL' ? undefined : v || undefined,
-    });
+    onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
 
-  const showStatus = activeTab === 'requirements' || activeTab === 'recruiters';
-
+  const showStatus =
+    activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
   const showCreatedBy = activeTab === 'requirements';
+  const showDept = activeTab === 'overview' || activeTab === 'recruiters';
+
+  const hasFilters = !!(
+    filters.clientId ||
+    filters.serviceLineId ||
+    filters.businessUnitId ||
+    filters.departmentId ||
+    filters.createdById ||
+    filters.status ||
+    teamSelection
+  );
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      {/* =========================================================
-          ROW 1: TIME WINDOW
-      ========================================================= */}
+      {/* Row 1: time window */}
       <div className="flex flex-wrap items-center gap-2">
-        <Clock className="h-4 w-4 shrink-0 text-slate-400" />
-
         <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
-          {(
-            [
-              { k: 'preset', l: 'Quick' },
-              { k: 'hours', l: 'By hours' },
-              { k: 'range', l: 'Custom range' },
-            ] as { k: WindowMode; l: string }[]
-          ).map(m => (
+          {(['preset', 'hours', 'range'] as WindowMode[]).map((m, idx) => (
             <button
-              key={m.k}
-              onClick={() => onWin({ ...win, mode: m.k })}
+              key={m}
+              onClick={() => onWin({ ...win, mode: m })}
               className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
-                win.mode === m.k
+                win.mode === m
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {m.l}
+              {['Quick', 'By hours', 'Custom range'][idx]}
             </button>
           ))}
         </div>
 
-        {/* QUICK PRESETS */}
         {win.mode === 'preset' &&
           PRESETS.map(p => (
             <button
@@ -492,7 +282,6 @@ function FiltersBar({
             </button>
           ))}
 
-        {/* HOURS */}
         {win.mode === 'hours' && (
           <div className="flex flex-wrap items-center gap-2">
             {HOUR_OPTS.map(h => (
@@ -508,59 +297,37 @@ function FiltersBar({
                 {h}h
               </button>
             ))}
-
             <div className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2">
               <span className="text-[10px] font-bold text-slate-400">CUSTOM</span>
-
               <input
                 type="number"
                 min={1}
                 value={win.hours}
-                onChange={e =>
-                  onWin({
-                    ...win,
-                    hours: Math.max(1, Number(e.target.value) || 1),
-                  })
-                }
+                onChange={e => onWin({ ...win, hours: Math.max(1, Number(e.target.value) || 1) })}
                 className="w-14 bg-transparent text-xs text-slate-700 outline-none"
               />
-
               <span className="text-[10px] font-bold text-slate-400">hrs</span>
             </div>
           </div>
         )}
 
-        {/* CUSTOM RANGE */}
         {win.mode === 'range' && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2">
               <span className="text-[10px] font-bold text-slate-400">FROM</span>
-
               <input
                 type="date"
                 value={win.fromDate}
-                onChange={e =>
-                  onWin({
-                    ...win,
-                    fromDate: e.target.value,
-                  })
-                }
+                onChange={e => onWin({ ...win, fromDate: e.target.value })}
                 className="w-28 bg-transparent text-xs text-slate-700 outline-none"
               />
             </div>
-
             <div className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2">
               <span className="text-[10px] font-bold text-slate-400">TO</span>
-
               <input
                 type="date"
                 value={win.toDate}
-                onChange={e =>
-                  onWin({
-                    ...win,
-                    toDate: e.target.value,
-                  })
-                }
+                onChange={e => onWin({ ...win, toDate: e.target.value })}
                 className="w-28 bg-transparent text-xs text-slate-700 outline-none"
               />
             </div>
@@ -572,23 +339,16 @@ function FiltersBar({
         </span>
       </div>
 
-      {/* =========================================================
-          ROW 2: ENTITY FILTERS
-      ========================================================= */}
+      {/* Row 2: entity filters */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
         <Filter className="h-4 w-4 shrink-0 text-slate-400" />
 
-        {/* =======================================================
-            CLIENT
-        ======================================================= */}
         <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
           <SelectTrigger className="h-8 w-40 border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All clients" />
           </SelectTrigger>
-
           <SelectContent>
             <SelectItem value="ALL">All clients</SelectItem>
-
             {clients.map(c => (
               <SelectItem key={c.id} value={c.id}>
                 {c.name}
@@ -597,18 +357,13 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
-        {/* =======================================================
-            SERVICE LINE
-        ======================================================= */}
         <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
           <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All service lines" />
           </SelectTrigger>
-
           <SelectContent>
             <SelectItem value="ALL">All service lines</SelectItem>
-
-            {sls.map(s => (
+            {serviceLines.map(s => (
               <SelectItem key={s.id} value={s.id}>
                 {s.name}
               </SelectItem>
@@ -616,42 +371,87 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
-        {/* =======================================================
-            DYNAMIC ROLE DROPDOWNS
-        ======================================================= */}
+        {businessUnits.length > 0 && (
+          <Select
+            value={filters.businessUnitId ?? 'ALL'}
+            onValueChange={v => set('businessUnitId', v)}
+          >
+            <SelectTrigger className="h-8 w-40 border-slate-200 text-xs font-medium">
+              <SelectValue placeholder="All BUs" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All business units</SelectItem>
+              {businessUnits.map(b => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {showDept && departments.length > 0 && (
+          <Select value={filters.departmentId ?? 'ALL'} onValueChange={v => set('departmentId', v)}>
+            <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
+              <SelectValue placeholder="All departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All departments</SelectItem>
+              {departments.map(d => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {showStatus && (
+          <Select
+            value={filters.status ?? 'ALL'}
+            onValueChange={v => onChange({ ...filters, status: v === 'ALL' ? undefined : v })}
+          >
+            <SelectTrigger className="h-8 w-40 border-slate-200 text-xs font-medium">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All statuses</SelectItem>
+              {ALL_REPORT_STATUSES.map(s => (
+                <SelectItem key={s.key} value={s.key}>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${s.dot}`} />
+                    {s.label}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         {showCreatedBy &&
           sortedRoleGroups.map(([roleName, users]) => {
-            const selectedUser = users.find(user => user.id === filters.createdById);
-
-            const displayRoleName = roleName
+            const sel = (users as any[]).find(u => u.id === filters.createdById);
+            const displayRole = roleName
               .replaceAll('_', ' ')
-              .replace(/\b\w/g, char => char.toUpperCase());
-
+              .replace(/\b\w/g, c => c.toUpperCase());
             return (
               <Select
                 key={roleName}
-                value={selectedUser?.id ?? 'ALL'}
-                onValueChange={value =>
-                  onChange({
-                    ...filters,
-                    createdById: value === 'ALL' ? undefined : value,
-                  })
+                value={sel?.id ?? 'ALL'}
+                onValueChange={v =>
+                  onChange({ ...filters, createdById: v === 'ALL' ? undefined : v })
                 }
               >
                 <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
-                  <SelectValue placeholder={displayRoleName} />
+                  <SelectValue placeholder={displayRole} />
                 </SelectTrigger>
-
                 <SelectContent>
-                  {/* RESET OPTION */}
-                  <SelectItem value="ALL">All {displayRoleName}</SelectItem>
-
-                  {/* USERS BELONGING ONLY TO THIS ROLE */}
-                  {users
+                  <SelectItem value="ALL">All {displayRole}</SelectItem>
+                  {(users as any[])
                     .sort((a, b) => a.label.localeCompare(b.label))
-                    .map(user => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.label}
+                    .map(u => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.label}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -659,59 +459,8 @@ function FiltersBar({
             );
           })}
 
-        {/* =======================================================
-            STATUS
-        ======================================================= */}
-        {showStatus && (
-          <>
-            <Select
-              value={filters.status ?? 'ALL'}
-              onValueChange={v =>
-                onChange({
-                  ...filters,
-                  status: v === 'ALL' ? undefined : v,
-                })
-              }
-            >
-              <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
+        <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
 
-              <SelectContent>
-                <SelectItem value="ALL">All statuses</SelectItem>
-
-                {ALL_REPORT_STATUSES.map(s => (
-                  <SelectItem key={s.key} value={s.key}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
-
-                      {s.label}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {filters.status && (
-              <button
-                onClick={() =>
-                  onChange({
-                    ...filters,
-                    status: undefined,
-                  })
-                }
-                className="flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-red-500 transition-colors hover:bg-red-50"
-              >
-                <X className="h-3 w-3" />
-                Clear
-              </button>
-            )}
-          </>
-        )}
-
-        {/* =======================================================
-            STANDARD STAGES ONLY
-        ======================================================= */}
         <button
           onClick={() => onStandardOnly(!standardOnly)}
           className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
@@ -728,130 +477,23 @@ function FiltersBar({
           Standard stages only
         </button>
 
-        {/* =======================================================
-            CLEAR ALL
-        ======================================================= */}
-        {(filters.clientId || filters.serviceLineId || filters.createdById || filters.status) && (
+        {hasFilters && (
           <button
-            onClick={() => onChange({})}
-            className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-50"
+            onClick={() => {
+              onChange({});
+              onTeamSelection(null);
+            }}
+            className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-red-500 hover:bg-red-50"
           >
-            <X className="h-3 w-3" />
-            Clear all
+            <X className="h-3 w-3" /> Clear all
           </button>
         )}
 
-        {/* =======================================================
-            SERVICE LINE HINT
-        ======================================================= */}
-        {!filters.serviceLineId && (
-          <span className="ml-1 text-[12px] font-semibold text-slate-500">
-            Tables split by service line — pick one to see flat.
+        {!filters.serviceLineId && activeTab !== 'sales' && activeTab !== 'overview' && (
+          <span className="ml-1 text-[11px] font-semibold text-slate-400">
+            Tables split by service line — pick one for flat view.
           </span>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// OVERVIEW
-// ─────────────────────────────────────────────────────────────────────────────
-
-function OverviewSection({ data, loading }: { data?: OverviewResponse; loading: boolean }) {
-  if (loading)
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
-        <Skeleton className="h-56 rounded-xl" />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Skeleton className="h-64 rounded-xl" />
-          <Skeleton className="h-64 rounded-xl" />
-        </div>
-      </div>
-    );
-
-  const d = data?.data;
-  if (!d || d.kpis.total === 0) return <Empty msg="No activity in this window." />;
-  const multiLine = d.byServiceLine.length > 1;
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <KPI label="Candidates" value={d.kpis.total} color="#4F46E5" />
-        <KPI
-          label="Submitted"
-          value={d.kpis.submitted}
-          color="#2563EB"
-          sub={`${d.kpis.submissionRate}% of sourced`}
-        />
-        <KPI
-          label="Offered"
-          value={d.kpis.offered}
-          color="#D97706"
-          sub={`${d.kpis.offerRate}% of submitted`}
-        />
-        <KPI
-          label="Joined"
-          value={d.kpis.joined}
-          color="#059669"
-          trend="up"
-          sub={`${d.kpis.joinRate}% of offered`}
-        />
-        <KPI label="Active" value={d.kpis.active} color="#0891B2" />
-        <KPI
-          label="Dropped"
-          value={d.kpis.dropped}
-          color="#DC2626"
-          trend={d.kpis.dropped > 0 ? 'down' : undefined}
-        />
-      </div>
-
-      <Card title={`Candidates added (${d.timeGranularity === 'hour' ? 'hourly' : 'daily'})`}>
-        <TimeSeriesChart points={d.timeSeries} granularity={d.timeGranularity} />
-      </Card>
-
-      {multiLine ? (
-        <>
-          <Card title="By business unit">
-            <BUBarChart items={d.byBusinessUnit} />
-          </Card>
-          <div>
-            <h3 className="mb-4 text-[15px] font-black uppercase tracking-wider text-slate-800">
-              Service line funnels
-            </h3>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {d.byServiceLine.map(line => (
-                <Card key={line.serviceLineId ?? 'none'} title={line.name}>
-                  <div className="mb-4 flex flex-wrap gap-5">
-                    <MiniStat l="Total" v={line.total} />
-                    <MiniStat l="Submitted" v={line.submitted} c="text-blue-700" />
-                    <MiniStat l="Offered" v={line.offered} c="text-amber-700" />
-                    <MiniStat l="Joined" v={line.joined} c="text-emerald-700" />
-                  </div>
-                  <FunnelChart items={line.funnel.map(f => ({ label: f.label, count: f.count }))} />
-                </Card>
-              ))}
-            </div>
-          </div>
-        </>
-      ) : (
-        <Card title="Stage funnel">
-          <FunnelChart items={d.funnel.map(f => ({ label: f.label, count: f.count }))} />
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card title="Disposition split">
-          <DispositionBars counts={d.dispositionCounts} />
-        </Card>
-        <Card title="Top recruiters">
-          <Leaderboard items={d.leaderboard} />
-        </Card>
       </div>
     </div>
   );
@@ -874,7 +516,7 @@ function LineTabs({
   onSelect: (k: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto border-b-2 border-slate-300">
+    <div className="flex items-center gap-1 overflow-x-auto border-b-2 border-slate-200">
       {groups.map(g => {
         const k = keyOf(g);
         const active = k === activeKey;
@@ -882,151 +524,22 @@ function LineTabs({
           <button
             key={k}
             onClick={() => onSelect(k)}
-            className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-[14px] font-bold transition-colors ${active ? 'border-indigo-600 text-indigo-800' : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-400'}`}
+            className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-[14px] font-bold transition-colors ${
+              active
+                ? 'border-indigo-600 text-indigo-800'
+                : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'
+            }`}
           >
             <Layers className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
             {nameOf(g)}
             <span
-              className={`rounded-full px-2 py-0.5 text-[12px] font-black ${active ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}
+              className={`rounded-full px-2 py-0.5 text-[12px] font-black ${active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}
             >
               {g.total}
             </span>
           </button>
         );
       })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATES SECTION (new tab)
-// Shows a funnel view + stage-filtered candidate list
-// Clicking a stage bar filters the list below it
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface CandidateReportData {
-  totalCandidates: number;
-  funnelByStage: {
-    stageId: string;
-    code: string;
-    label: string;
-    order: number;
-    isStandard: boolean;
-    count: number;
-    pct: number;
-  }[];
-  dispositionSummary: Record<string, number>;
-  avgPipelineDays: number;
-}
-
-function CandidatesSection({
-  data,
-  loading,
-  onExportAll,
-  onExportStage,
-  selectedStageIds,
-  onStageToggle,
-}: {
-  data?: { data: CandidateReportData };
-  loading: boolean;
-  onExportAll: () => void;
-  onExportStage: (stageIds: string[]) => void;
-  selectedStageIds: string[];
-  onStageToggle: (stageId: string) => void;
-}) {
-  if (loading) return <Skel rows={8} />;
-  const d = data?.data;
-  if (!d || d.totalCandidates === 0) return <Empty msg="No candidates in this window." />;
-
-  const max = Math.max(1, ...d.funnelByStage.map(s => s.count));
-
-  return (
-    <div className="space-y-5">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KPI label="Total Candidates" value={d.totalCandidates} color="#4F46E5" />
-        <KPI label="Avg Pipeline Days" value={d.avgPipelineDays} color="#0891B2" />
-        <KPI label="Active" value={d.dispositionSummary['ACTIVE'] ?? 0} color="#059669" />
-        <KPI label="Dropped" value={d.dispositionSummary['DROPPED'] ?? 0} color="#DC2626" />
-      </div>
-
-      {/* Stage funnel — clickable to filter */}
-      <Card title="Pipeline stages — click any stage to select for export">
-        <div className="mb-4 flex items-center gap-2">
-          {selectedStageIds.length > 0 && (
-            <>
-              <span className="rounded-lg bg-indigo-100 px-3 py-1.5 text-[13px] font-black text-indigo-800">
-                {selectedStageIds.length} stage{selectedStageIds.length > 1 ? 's' : ''} selected
-              </span>
-              <button
-                onClick={() => onExportStage(selectedStageIds)}
-                className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-[13px] font-bold text-white hover:bg-indigo-700 transition-colors shadow-sm"
-              >
-                Export selected stages
-              </button>
-            </>
-          )}
-          <button
-            onClick={onExportAll}
-            className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border-2 border-slate-300 px-4 text-[13px] font-bold text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            Export all
-          </button>
-        </div>
-
-        <div className="space-y-2.5">
-          {d.funnelByStage.map((s, i) => {
-            const pct = Math.round((s.count / max) * 100);
-            const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
-            const isSelected = selectedStageIds.includes(s.stageId);
-            return (
-              <button
-                key={s.stageId}
-                onClick={() => onStageToggle(s.stageId)}
-                className={`flex w-full items-center gap-3 rounded-lg p-1.5 transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1 bg-indigo-50' : 'hover:bg-slate-100'}`}
-              >
-                <span className="w-44 shrink-0 truncate text-right text-[13px] font-bold text-slate-800">
-                  {s.label}
-                </span>
-                <div className="relative h-9 flex-1 overflow-hidden rounded-md bg-slate-200">
-                  <div
-                    className="flex h-full items-center justify-between rounded-md px-3 transition-all duration-500"
-                    style={{
-                      width: `${Math.max(pct, 6)}%`,
-                      backgroundColor: color,
-                      opacity: isSelected ? 1 : 0.85,
-                    }}
-                  >
-                    <span className="text-[13px] font-black text-white">{s.count}</span>
-                    <span className="text-[11px] font-bold text-white/90">{s.pct}%</span>
-                  </div>
-                </div>
-                {isSelected && <CheckSquare className="h-5 w-5 shrink-0 text-indigo-600" />}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Auto total row */}
-        <div className="mt-4 flex items-center gap-4 rounded-lg bg-indigo-50 px-4 py-3 border-2 border-indigo-200">
-          <span className="w-44 shrink-0 text-right text-[13px] font-black text-indigo-800">
-            {selectedStageIds.length > 0 ? 'Selected total' : 'Grand total'}
-          </span>
-          <span className="text-[18px] font-black text-indigo-900">
-            {selectedStageIds.length > 0
-              ? d.funnelByStage
-                  .filter(s => selectedStageIds.includes(s.stageId))
-                  .reduce((sum, s) => sum + s.count, 0)
-              : d.totalCandidates}{' '}
-            <span className="text-[14px] font-bold text-indigo-700">candidates</span>
-          </span>
-        </div>
-      </Card>
-
-      {/* Disposition breakdown */}
-      <Card title="Disposition breakdown">
-        <DispositionBars counts={d.dispositionSummary} />
-      </Card>
     </div>
   );
 }
@@ -1062,12 +575,11 @@ function RecruiterSection({
   ) => void;
 }) {
   const [activeKey, setActiveKey] = useState<string>('');
-
   if (loading)
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-5 gap-3">
-          {[...Array(5)].map((_, i) => (
+          {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
         </div>
@@ -1122,13 +634,12 @@ function RecruiterSection({
           trend={totals.dropped > 0 ? 'down' : undefined}
         />
       </div>
-
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
           Filter by requirement
         </span>
         <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
-          <SelectTrigger className="h-9 w-80 border-2 border-slate-300 text-[13px] font-semibold text-slate-800">
+          <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
             <SelectValue placeholder="All requirements" />
           </SelectTrigger>
           <SelectContent>
@@ -1143,13 +654,12 @@ function RecruiterSection({
         {reqFilter && (
           <button
             onClick={() => onReqFilter('')}
-            className="flex h-9 items-center gap-1 rounded-lg px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50 border border-red-200"
+            className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
           >
             <X className="h-3.5 w-3.5" /> Clear
           </button>
         )}
       </div>
-
       <RecruiterTable
         key={keyOf(active)}
         title={active.serviceLine?.name ?? null}
@@ -1196,6 +706,7 @@ function RequirementSection({
   const groups: RequirementGroup[] = resp?.groups ?? [];
   if (!groups.length) return <Empty msg="No requirements found for this window." />;
   const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+
   return (
     <div className="space-y-5">
       <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
@@ -1209,6 +720,372 @@ function RequirementSection({
         onDownloadSelected={onDownloadSelected}
         onDownloadRow={onDownloadRow}
       />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CANDIDATES SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DISP_COLORS: Record<string, string> = {
+  ACTIVE: '#3B82F6',
+  PLACED: '#10B981',
+  DROPPED: '#EF4444',
+  DUPLICATE: '#94A3B8',
+  ON_HOLD: '#F59E0B',
+};
+
+function CandidatesSection({
+  data,
+  loading,
+  onExportAll,
+  onExportStage,
+  selectedStageIds,
+  onStageToggle,
+}: {
+  data?: { data: CandidateReportData };
+  loading: boolean;
+  onExportAll: () => void;
+  onExportStage: (stageIds: string[]) => void;
+  selectedStageIds: string[];
+  onStageToggle: (stageId: string) => void;
+}) {
+  if (loading) return <Skel rows={8} />;
+  const d = data?.data;
+  if (!d || d.totalCandidates === 0) return <Empty msg="No candidates in this window." />;
+  const max = Math.max(1, ...d.funnelByStage.map(s => s.count));
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KPI label="Total Candidates" value={d.totalCandidates} color="#4F46E5" />
+        <KPI label="Avg Pipeline Days" value={d.avgPipelineDays} color="#0891B2" />
+        <KPI label="Active" value={d.dispositionSummary['ACTIVE'] ?? 0} color="#059669" />
+        <KPI label="Dropped" value={d.dispositionSummary['DROPPED'] ?? 0} color="#DC2626" />
+      </div>
+
+      <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
+          Pipeline stages — click to select for export
+        </h3>
+        <div className="mb-4 flex items-center gap-2">
+          {selectedStageIds.length > 0 && (
+            <>
+              <span className="rounded-lg bg-indigo-100 px-3 py-1.5 text-[13px] font-black text-indigo-800">
+                {selectedStageIds.length} stage{selectedStageIds.length > 1 ? 's' : ''} selected
+              </span>
+              <button
+                onClick={() => onExportStage(selectedStageIds)}
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-[13px] font-bold text-white hover:bg-indigo-700"
+              >
+                Export selected stages
+              </button>
+            </>
+          )}
+          <button
+            onClick={onExportAll}
+            className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border-2 border-slate-200 px-4 text-[13px] font-bold text-slate-700 hover:bg-slate-50"
+          >
+            Export all
+          </button>
+        </div>
+        <div className="space-y-2.5">
+          {d.funnelByStage.map((s, i) => {
+            const pct = Math.round((s.count / max) * 100);
+            const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+            const isSel = selectedStageIds.includes(s.stageId);
+            return (
+              <button
+                key={s.stageId}
+                onClick={() => onStageToggle(s.stageId)}
+                className={`flex w-full items-center gap-3 rounded-lg p-1.5 transition-all ${isSel ? 'bg-indigo-50 ring-2 ring-indigo-500 ring-offset-1' : 'hover:bg-slate-50'}`}
+              >
+                <span className="w-44 shrink-0 truncate text-right text-[13px] font-bold text-slate-800">
+                  {s.label}
+                </span>
+                <div className="relative h-9 flex-1 overflow-hidden rounded-md bg-slate-100">
+                  <div
+                    className="flex h-full items-center justify-between rounded-md px-3 transition-all duration-500"
+                    style={{
+                      width: `${Math.max(pct, 6)}%`,
+                      backgroundColor: color,
+                      opacity: isSel ? 1 : 0.85,
+                    }}
+                  >
+                    <span className="text-[13px] font-black text-white">{s.count}</span>
+                    <span className="text-[11px] font-bold text-white/90">{s.pct}%</span>
+                  </div>
+                </div>
+                {isSel && <CheckSquare className="h-5 w-5 shrink-0 text-indigo-600" />}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 flex items-center gap-4 rounded-lg border-2 border-indigo-200 bg-indigo-50 px-4 py-3">
+          <span className="w-44 shrink-0 text-right text-[13px] font-black text-indigo-800">
+            {selectedStageIds.length > 0 ? 'Selected total' : 'Grand total'}
+          </span>
+          <span className="text-[18px] font-black text-indigo-900">
+            {selectedStageIds.length > 0
+              ? d.funnelByStage
+                  .filter(s => selectedStageIds.includes(s.stageId))
+                  .reduce((sum, s) => sum + s.count, 0)
+              : d.totalCandidates}{' '}
+            <span className="text-[14px] font-bold text-indigo-700">candidates</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
+          Disposition breakdown
+        </h3>
+        {(() => {
+          const entries = Object.entries(d.dispositionSummary)
+            .filter(([, v]) => v > 0)
+            .sort((a, b) => b[1] - a[1]);
+          const total = entries.reduce((s, [, v]) => s + v, 0);
+          if (!total) return <Empty msg="No disposition data." />;
+          return (
+            <div className="space-y-4">
+              <div className="flex h-6 w-full overflow-hidden rounded-full">
+                {entries.map(([k, v]) => (
+                  <div
+                    key={k}
+                    style={{
+                      width: `${(v / total) * 100}%`,
+                      backgroundColor: DISP_COLORS[k] ?? '#94A3B8',
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {entries.map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 rounded-sm"
+                      style={{ backgroundColor: DISP_COLORS[k] ?? '#94A3B8' }}
+                    />
+                    <span className="text-[12px] font-bold text-slate-700">
+                      {k.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-[13px] font-black text-slate-900">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SALES DRILL DRAWER — standalone wrapper that fetches from /reports/sales/drill
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SALES DRILL DRAWER — shows REQUIREMENT stats, not candidate names
+// CSMs care: which reqs have activity, fill rate, sale value, stage counts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATUS_PILL: Record<string, string> = {
+  ACTIVE: 'bg-emerald-50 text-emerald-700',
+  DRAFT: 'bg-slate-100 text-slate-600',
+  PENDING_APPROVAL: 'bg-amber-50 text-amber-700',
+  ON_HOLD: 'bg-orange-50 text-orange-700',
+  CLOSED: 'bg-red-50 text-red-600',
+  CANCELLED: 'bg-gray-100 text-gray-500',
+};
+
+function fmtCurrencyDrill(n: number): string {
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
+function SalesDrillDrawer({
+  payload,
+  onClose,
+}: {
+  payload: SalesDrillPayload;
+  onClose: () => void;
+}) {
+  const axios = useAxios();
+
+  const drillQuery = useQuery({
+    queryKey: ['sales-drill-req', payload],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (payload.type) p.set('type', payload.type);
+      if (payload.stageId) p.set('stageId', payload.stageId);
+      if (payload.reqId) p.set('reqId', payload.reqId);
+      return (await axios.get(`/reports/sales/drill?${p}`)).data;
+    },
+  });
+
+  const rows: any[] = drillQuery.data?.data?.rows ?? [];
+  const totals: any = drillQuery.data?.data?.totals ?? {};
+  const loading = drillQuery.isLoading;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-[15px] font-black text-slate-900">{payload.label}</h2>
+            <p className="text-[12px] text-slate-400">
+              {loading ? 'Loading…' : `${rows.length} requirement${rows.length !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Summary strip — totals across all rows in this drill */}
+        {!loading && rows.length > 0 && (
+          <div className="flex items-center gap-6 border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px]">
+            <span className="font-black text-slate-700">{totals.reqs} reqs</span>
+            <span className="font-black text-emerald-700">{totals.placed} placed</span>
+            <span className="font-semibold text-blue-600">{totals.active} active</span>
+            <span className="font-semibold text-red-500">{totals.dropped} dropped</span>
+            <span className="ml-auto font-black text-indigo-700">
+              {fmtCurrencyDrill(totals.saleValue ?? 0)} total sale value
+            </span>
+          </div>
+        )}
+
+        {/* Body — requirement cards */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-[13px] text-slate-400">
+              No requirements match this filter.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((r: any) => {
+                const maxStage = Math.max(...(r.stageBreakdown ?? []).map((s: any) => s.count), 1);
+                return (
+                  <div
+                    key={r.id}
+                    className="rounded-xl border-2 border-slate-100 bg-white p-4 shadow-sm"
+                  >
+                    {/* Req header */}
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+                            {r.reqCode}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_PILL[r.status] ?? 'bg-slate-100 text-slate-600'}`}
+                          >
+                            {r.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-[13px] font-black text-slate-900">
+                          {r.title}
+                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                          {r.client && <span>{r.client.name}</span>}
+                          {r.serviceLine && <span>· {r.serviceLine.name}</span>}
+                          <span>
+                            · {r.totalOpenings} opening{r.totalOpenings !== 1 ? 's' : ''}
+                          </span>
+                          <span>· Created by {r.createdBy}</span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[16px] font-black text-emerald-700">
+                          {fmtCurrencyDrill(r.saleValue)}
+                        </p>
+                        <p className="text-[11px] text-slate-400">sale value</p>
+                      </div>
+                    </div>
+
+                    {/* Pipeline stat pills */}
+                    <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+                      <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">
+                        {r.pipeline.placed} placed
+                      </span>
+                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-bold text-indigo-600">
+                        {r.pipeline.active} active
+                      </span>
+                      {r.pipeline.nearTerminal > 0 && (
+                        <span className="rounded-lg bg-amber-50 px-2.5 py-1 font-bold text-amber-600">
+                          {r.pipeline.nearTerminal} near close
+                        </span>
+                      )}
+                      {r.pipeline.sourced > 0 && (
+                        <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                          {r.pipeline.sourced} sourced
+                        </span>
+                      )}
+                      {r.pipeline.dropped > 0 && (
+                        <span className="rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-500">
+                          {r.pipeline.dropped} dropped
+                        </span>
+                      )}
+                      <span className="ml-auto rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                        {r.pipeline.total} total
+                      </span>
+                      {r.fillRate > 0 && (
+                        <span className="rounded-lg bg-purple-50 px-2.5 py-1 font-bold text-purple-700">
+                          {r.fillRate}% fill rate
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Stage breakdown bars */}
+                    {r.stageBreakdown?.length > 0 && (
+                      <div className="space-y-1.5">
+                        {r.stageBreakdown.map((s: any, idx: number) => {
+                          const barPct = Math.max((s.count / maxStage) * 100, 4);
+                          const color = s.isTerminal
+                            ? '#059669'
+                            : ['#4F46E5', '#7C3AED', '#0891B2', '#D97706', '#6366F1'][idx % 5];
+                          return (
+                            <div key={s.stageId} className="flex items-center gap-2">
+                              <span className="w-32 shrink-0 truncate text-right text-[10px] font-semibold text-slate-500">
+                                {s.label}
+                              </span>
+                              <div className="relative h-5 flex-1 overflow-hidden rounded-md bg-slate-100">
+                                <div
+                                  className="flex h-full items-center rounded-md px-2"
+                                  style={{ width: `${barPct}%`, backgroundColor: color }}
+                                >
+                                  <span className="text-[10px] font-black text-white">
+                                    {s.count}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1229,9 +1106,10 @@ export default function ReportsPage() {
   const [standardOnly, setStandardOnly] = useState(false);
   const [recReqFilter, setRecReqFilter] = useState('');
   const [downloading, setDownloading] = useState<string | null>(null);
-
-  // Selected stage IDs on the Candidates tab — drives both the UI total and the export
   const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]);
+  const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
+  const [salesDrillPayload, setSalesDrillPayload] = useState<SalesDrillPayload | null>(null);
+  const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(null);
 
   const handleStageToggle = useCallback((stageId: string) => {
     setSelectedStageIds(prev =>
@@ -1244,11 +1122,17 @@ export default function ReportsPage() {
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
     if (filters.clientId) p.set('clientId', filters.clientId);
     if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
+    if (filters.businessUnitId) p.set('businessUnitId', filters.businessUnitId);
+    if (filters.departmentId) p.set('departmentId', filters.departmentId);
     if (filters.createdById) p.set('createdById', filters.createdById);
     if (filters.status) p.set('status', filters.status);
     if (standardOnly) p.set('standardOnly', 'true');
+    if (teamSelection) {
+      p.set('userIds', teamSelection.memberIds.join(','));
+      p.set('teamRootId', teamSelection.id);
+    }
     return p;
-  }, [win, filters, standardOnly]);
+  }, [win, filters, standardOnly, teamSelection]);
 
   const baseQs = baseParams.toString();
 
@@ -1258,33 +1142,45 @@ export default function ReportsPage() {
     return p.toString();
   }, [baseQs, recReqFilter]);
 
+  // ── Queries ─────────────────────────────────────────────────────────────────
   const overviewQuery = useQuery({
-    queryKey: ['report-overview', baseQs],
-    queryFn: async () => (await axios.get(`/reports/overview?${baseQs}`)).data as OverviewResponse,
+    queryKey: ['report-overview-v2', baseQs],
+    queryFn: async () => (await axios.get(`/reports/overview?${baseQs}`)).data,
     enabled: hasAccess && activeTab === 'overview',
-    staleTime: 60000,
+    staleTime: 60_000,
   });
+
   const recruiterQuery = useQuery({
     queryKey: ['report-recruiters', recParams],
     queryFn: async () =>
       (await axios.get(`/reports/recruiters?${recParams}`)).data as RecruiterResponse,
     enabled: hasAccess && activeTab === 'recruiters',
-    staleTime: 60000,
+    staleTime: 60_000,
   });
+
   const requirementQuery = useQuery({
     queryKey: ['report-requirements', baseQs],
     queryFn: async () =>
       (await axios.get(`/reports/requirements?${baseQs}`)).data as RequirementReportResponse,
     enabled: hasAccess && activeTab === 'requirements',
-    staleTime: 60000,
+    staleTime: 60_000,
   });
+
   const candidateQuery = useQuery({
     queryKey: ['report-candidates', baseQs],
     queryFn: async () => (await axios.get(`/reports/candidates?${baseQs}`)).data,
     enabled: hasAccess && activeTab === 'candidates',
-    staleTime: 60000,
+    staleTime: 60_000,
   });
 
+  const salesQuery = useQuery({
+    queryKey: ['report-sales', baseQs],
+    queryFn: async () => (await axios.get(`/reports/sales?${baseQs}`)).data,
+    enabled: hasAccess && activeTab === 'sales',
+    staleTime: 60_000,
+  });
+
+  // ── Download helper ──────────────────────────────────────────────────────────
   const download = useCallback(
     async (url: string, filename: string, key: string) => {
       if (downloading) return;
@@ -1303,13 +1199,6 @@ export default function ReportsPage() {
 
   const dateStr = new Date().toISOString().split('T')[0];
 
-  // Helper: builds params with stageIds appended
-  const withStageIds = useCallback((base: string, stageIds?: string[]) => {
-    const p = new URLSearchParams(base);
-    if (stageIds && stageIds.length > 0) p.set('stageIds', stageIds.join(','));
-    return p.toString();
-  }, []);
-
   const handleRecruiterAll = useCallback(
     (
       slId?: string,
@@ -1322,11 +1211,7 @@ export default function ReportsPage() {
       if (stageIds?.length) p.set('stageIds', stageIds.join(','));
       if (hiddenStageIds?.length) p.set('hiddenStageIds', hiddenStageIds.join(','));
       if (hiddenCandidateCols?.length) p.set('hiddenCandidateCols', hiddenCandidateCols.join(','));
-      download(
-        `/reports/recruiters/export?${p}`,
-        `recruiter-report-${slId ? 'line' : 'all'}-${dateStr}.xlsx`,
-        'rec-all'
-      );
+      download(`/reports/recruiters/export?${p}`, `recruiter-report-${dateStr}.xlsx`, 'rec-all');
     },
     [recParams, download, dateStr]
   );
@@ -1366,11 +1251,7 @@ export default function ReportsPage() {
       if (stageIds?.length) p.set('stageIds', stageIds.join(','));
       if (hiddenStageIds?.length) p.set('hiddenStageIds', hiddenStageIds.join(','));
       if (hiddenCandidateCols?.length) p.set('hiddenCandidateCols', hiddenCandidateCols.join(','));
-      download(
-        `/reports/requirements/export?${p}`,
-        `requirements-${slId ? 'line' : 'all'}-${dateStr}.xlsx`,
-        'req-all'
-      );
+      download(`/reports/requirements/export?${p}`, `requirements-${dateStr}.xlsx`, 'req-all');
     },
     [baseQs, download, dateStr]
   );
@@ -1409,22 +1290,21 @@ export default function ReportsPage() {
     [download, dateStr]
   );
 
-  // Candidates tab exports — stageIds drive the Candidates sheet filter
   const handleCandidateExportAll = useCallback(() => {
-    const qs = withStageIds(baseQs);
-    download(`/reports/candidates/export?${qs}`, `candidates-all-${dateStr}.xlsx`, 'cand-all');
-  }, [baseQs, withStageIds, download, dateStr]);
+    download(`/reports/candidates/export?${baseQs}`, `candidates-all-${dateStr}.xlsx`, 'cand-all');
+  }, [baseQs, download, dateStr]);
 
   const handleCandidateExportStages = useCallback(
     (stageIds: string[]) => {
-      const qs = withStageIds(baseQs, stageIds);
+      const p = new URLSearchParams(baseQs);
+      p.set('stageIds', stageIds.join(','));
       download(
-        `/reports/candidates/export?${qs}`,
+        `/reports/candidates/export?${p}`,
         `candidates-stages-${dateStr}.xlsx`,
         'cand-stages'
       );
     },
-    [baseQs, withStageIds, download, dateStr]
+    [baseQs, download, dateStr]
   );
 
   if (!hasAccess)
@@ -1437,16 +1317,18 @@ export default function ReportsPage() {
 
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-slate-50 p-6">
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="mb-1 flex items-center gap-2">
+          <div className="mb-1 flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 shadow-sm">
               <BarChart2 className="h-5 w-5 text-white" />
             </div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">Reports</h1>
+            <h1 className="text-[28px] font-black tracking-tight text-slate-900">Reports</h1>
           </div>
-          <p className="text-sm font-semibold text-slate-600">
-            Live monitoring · Recruiter performance · Requirement analytics · Candidate pipeline
+          <p className="text-[13px] font-semibold text-slate-500">
+            Live monitoring · Recruiter performance · Requirement analytics · Candidate pipeline ·
+            Sales
           </p>
         </div>
         {downloading && (
@@ -1456,6 +1338,7 @@ export default function ReportsPage() {
         )}
       </div>
 
+      {/* Filters */}
       <FiltersBar
         filters={filters}
         onChange={f => {
@@ -1467,13 +1350,18 @@ export default function ReportsPage() {
         standardOnly={standardOnly}
         onStandardOnly={setStandardOnly}
         activeTab={activeTab}
+        teamSelection={teamSelection}
+        onTeamSelection={setTeamSelection}
       />
 
+      {/* Tabs */}
       <Tabs
         value={activeTab}
         onValueChange={v => {
           const next = v as TabKey;
-          if (next === 'overview') setFilters(f => ({ ...f, status: undefined }));
+          if (next === 'overview' || next === 'candidates' || next === 'sales') {
+            setFilters(f => ({ ...f, status: undefined, createdById: undefined }));
+          }
           setSelectedStageIds([]);
           setActiveTab(next);
         }}
@@ -1503,11 +1391,23 @@ export default function ReportsPage() {
           >
             <UserCheck className="h-3.5 w-3.5" /> Candidates
           </TabsTrigger>
+          <TabsTrigger
+            value="sales"
+            className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+          >
+            <BarChart2 className="h-3.5 w-3.5" /> Sales
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-5">
-          <OverviewSection data={overviewQuery.data} loading={overviewQuery.isLoading} />
+          <OverviewSection
+            data={overviewQuery.data}
+            loading={overviewQuery.isLoading}
+            onDrill={setDrillTarget}
+            baseQs={baseQs}
+          />
         </TabsContent>
+
         <TabsContent value="recruiters" className="mt-5">
           <RecruiterSection
             resp={recruiterQuery.data}
@@ -1518,6 +1418,7 @@ export default function ReportsPage() {
             onDownloadSelected={handleRecruiterSelected}
           />
         </TabsContent>
+
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
             resp={requirementQuery.data}
@@ -1527,6 +1428,7 @@ export default function ReportsPage() {
             onDownloadSelected={handleRequirementSelected}
           />
         </TabsContent>
+
         <TabsContent value="candidates" className="mt-5">
           <CandidatesSection
             data={candidateQuery.data}
@@ -1537,7 +1439,23 @@ export default function ReportsPage() {
             onStageToggle={handleStageToggle}
           />
         </TabsContent>
+
+        <TabsContent value="sales" className="mt-5">
+          <SalesSection
+            data={salesQuery.data?.data ?? null}
+            loading={salesQuery.isLoading}
+            onDrill={setSalesDrillPayload}
+          />
+        </TabsContent>
       </Tabs>
+
+      {/* Overview DrillDrawer — uses its own internal fetch via baseQs */}
+      <DrillDrawer target={drillTarget} baseQs={baseQs} onClose={() => setDrillTarget(null)} />
+
+      {/* Sales DrillDrawer — separate component, fetches from /reports/sales/drill */}
+      {salesDrillPayload && (
+        <SalesDrillDrawer payload={salesDrillPayload} onClose={() => setSalesDrillPayload(null)} />
+      )}
     </div>
   );
 }
