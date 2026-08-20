@@ -1,19 +1,30 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { Suspense, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+// File: page.tsx
+// Path: src/app/(dashboard)/reports/page.tsx
+
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format, subDays, startOfMonth, endOfMonth, startOfYear } from 'date-fns';
-import { DateRange } from 'react-day-picker';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from 'recharts';
 import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+  AlertCircle,
+  BarChart2,
+  FileText,
+  Filter,
+  LayoutDashboard,
+  Layers,
+  RefreshCw,
+  Square,
+  CheckSquare,
+  Users,
+  UserCheck,
+  X,
+  ChevronDown,
+  SlidersHorizontal,
+  TrendingUp,
+} from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
@@ -21,2038 +32,1461 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import {
-  Zap,
-  TrendingUp,
-  AlertTriangle,
-  Users,
-  Briefcase,
-  CalendarIcon,
-  X,
-  ChevronRight,
-  Building2,
-  FileText,
-  CheckCircle2,
-  AlertCircle,
-  Info,
-  Download,
-} from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
-import ScrollingGreetingBar from '@/components/layout/ScrollingGreetingBar';
+import { usePermission } from '@/hooks/usePermission';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import type {
+  RecruiterGroup,
+  RecruiterResponse,
+  RequirementGroup,
+  RequirementReportResponse,
+  ServiceLineRef,
+} from '@/components/reports/types';
+import { DrillDrawer } from '@/components/reports/DrillDrawer';
+import type { DrillTarget } from '@/components/reports/DrillDrawer';
+import { OverviewSection } from '@/components/reports/OverviewSection';
+import { SalesSection } from '@/components/reports/SalesSection';
+import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
+import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 
-interface StatsData {
-  totalRequirements: number;
-  active: number;
-  pendingApproval: number;
-  draft: number;
-  onHold: number;
-  closed: number;
-  breached: number;
-  thisWeek: number;
-  highPriority: number;
-  totalClients: number;
-  totalCandidates: number;
-  buBreakdown: { id: string; name: string; count: number }[];
-  slBreakdown: { id: string; name: string; count: number }[];
+import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
+import { RecruiterTable } from '@/components/reports/RecruiterTable';
+import { RequirementTable } from '@/components/reports/RequirementTable';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WindowMode = 'preset' | 'hours' | 'range';
+
+interface WinState {
+  mode: WindowMode;
+  range: '' | 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth';
+  hours: number;
+  fromDate: string;
+  toDate: string;
 }
 
-interface PipelineStageOverview {
-  stageId: string;
-  code: string;
+interface Filters {
+  clientId?: string;
+  serviceLineId?: string;
+  businessUnitId?: string;
+  departmentId?: string;
+  createdById?: string;
+  status?: string;
+}
+
+type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates' | 'sales';
+
+interface SalesDrillPayload {
   label: string;
-  order: number;
-  serviceLineId: string | null;
-  isTerminal: boolean;
-  total: number;
-  active: number;
-  rejected: number;
-  withdrawn: number;
-  onHold: number;
-  inactive: number;
+  type?: string;
+  stageId?: string;
+  reqId?: string;
 }
 
-interface PipelineOverviewData {
-  summary: {
-    totalCandidates: number;
-    activeCandidates: number;
-    inactiveCandidates: number;
-    onHold: number;
-  };
-  stages: PipelineStageOverview[];
+interface CandidateReportData {
+  totalCandidates: number;
+  funnelByStage: {
+    stageId: string;
+    code: string;
+    label: string;
+    order: number;
+    isStandard: boolean;
+    count: number;
+    pct: number;
+  }[];
+  dispositionSummary: Record<string, number>;
+  avgPipelineDays: number;
 }
 
-interface Assignment {
-  id: string;
-  depth: number;
-  allocatedOpenings: number | null;
-  filledOpenings: number;
-  submissionsCount: number;
-  deadline: string | null;
-  breachedAt: string | null;
-  assignedAt: string;
-  requirement: {
-    id: string;
-    reqCode: string;
-    title: string;
-    status: string;
-    priority: string;
-    totalOpenings: number;
-    client: { id: string; name: string } | null;
-    serviceLine: { id: string; name: string } | null;
-    isRespondByBreached: boolean;
-    respondBy: string | null;
-  };
-  pipelines: { id: string }[];
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE / TIME WINDOW HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
-interface Department {
-  id: string;
-  name: string;
-  code: string;
-  isActive: boolean;
-}
+const DEFAULT_WIN: WinState = { mode: 'preset', range: '', hours: 8, fromDate: '', toDate: '' };
 
-interface HierarchyUser {
-  id: string;
-  firstName: string;
-  lastName: string;
-  employeeId: string | null;
-  isActive: boolean;
-}
-
-// ── Enhanced recruiter stat — now includes group membership for drill-down ──
-interface RecruiterStat {
-  recruiterId: string;
-  name: string;
-  count: number;
-  departmentId: string | null;
-  departmentName: string | null;
-  teamLeadId: string | null;
-  teamLeadName: string | null;
-  buId: string | null;
-  buName: string | null;
-}
-
-interface ResumeStats {
-  total: number;
-  bySource: { source: string; count: number }[];
-  byDepartment: { id: string; name: string; count: number }[];
-  byTeamLead: { id: string; name: string; count: number }[];
-  byBusinessUnit: { id: string; name: string; count: number }[];
-  byRecruiter: RecruiterStat[];
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const STAGE_COLORS: Record<string, string> = {
-  '01': '#f97316',
-  '02': '#7c3aed',
-  '03': '#f43f5e',
-  '04': '#ec4899',
-  '05': '#06b6d4',
-  '06': '#14b8a6',
-  '07': '#3b82f6',
-  '07A': '#60a5fa',
-  '07B': '#1d4ed8',
-  '08': '#6366f1',
-  '09': '#10b981',
-  '10': '#94a3b8',
-};
-
-const PRESETS = [
-  { label: 'Today', from: () => new Date(), to: () => new Date() },
-  { label: 'Last 7 days', from: () => subDays(new Date(), 6), to: () => new Date() },
-  { label: 'Last 30 days', from: () => subDays(new Date(), 29), to: () => new Date() },
-  { label: 'This month', from: () => startOfMonth(new Date()), to: () => endOfMonth(new Date()) },
-  { label: 'This year', from: () => startOfYear(new Date()), to: () => new Date() },
+const PRESETS: { k: WinState['range']; l: string }[] = [
+  { k: '', l: 'All time' },
+  { k: 'today', l: 'Today' },
+  { k: 'yesterday', l: 'Yesterday' },
+  { k: 'last7', l: 'Last 7 days' },
+  { k: 'last30', l: 'Last 30 days' },
+  { k: 'thisMonth', l: 'This month' },
 ];
+const HOUR_OPTS = [8, 12, 24, 48, 72];
 
-// ─── Source colors ────────────────────────────────────────────────────────────
-
-const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
-  Naukri: { bg: 'bg-blue-500/10', text: 'text-blue-600 dark:text-blue-400' },
-  LinkedIn: { bg: 'bg-sky-500/10', text: 'text-sky-600 dark:text-sky-400' },
-  Manual: { bg: 'bg-violet-500/10', text: 'text-violet-600 dark:text-violet-400' },
-  Referral: { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400' },
-  Unspecified: { bg: 'bg-slate-500/10', text: 'text-slate-500 dark:text-slate-400' },
-};
-
-function sourceStyle(source: string) {
-  return (
-    SOURCE_COLORS[source] ?? {
-      bg: 'bg-emerald-500/10',
-      text: 'text-emerald-600 dark:text-emerald-400',
-    }
-  );
+function winToParams(w: WinState): Record<string, string> {
+  if (w.mode === 'hours') return { hours: String(w.hours) };
+  if (w.mode === 'range') {
+    const p: Record<string, string> = {};
+    if (w.fromDate) p.fromDate = w.fromDate;
+    if (w.toDate) p.toDate = w.toDate;
+    return p;
+  }
+  if (w.range) return { range: w.range };
+  return {};
 }
 
-// ─── Chart configs ────────────────────────────────────────────────────────────
-
-const funnelChartConfig: ChartConfig = {
-  active: { label: 'Active', color: '#378ADD' },
-  onHold: { label: 'On hold', color: '#EF9F27' },
-  inactive: { label: 'Inactive', color: '#e2e8f0' },
-};
-
-const buChartConfig: ChartConfig = {
-  count: { label: 'Requirements', color: '#7F77DD' },
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+function winLabel(w: WinState): string {
+  if (w.mode === 'hours') return `Last ${w.hours}h`;
+  if (w.mode === 'range') {
+    if (!w.fromDate && !w.toDate) return 'All time';
+    return `${w.fromDate || 'start'} → ${w.toDate || 'now'}`;
+  }
+  return PRESETS.find(p => p.k === w.range)?.l ?? 'All time';
 }
 
-function stageColor(code: string) {
-  return STAGE_COLORS[code] ?? '#94a3b8';
+function downloadBlob(data: Blob, filename: string) {
+  const url = URL.createObjectURL(data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
-const PRIORITY_COLOR: Record<string, string> = {
-  HIGH: '#E24B4A',
-  MEDIUM: '#BA7517',
-  LOW: '#639922',
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTER PANEL — slides in from the right as a drawer
+// ─────────────────────────────────────────────────────────────────────────────
 
-function nameInitials(name: string) {
-  const parts = name.trim().split(' ');
-  return parts.length >= 2
-    ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-    : name.slice(0, 2).toUpperCase();
-}
+const ALL_REPORT_STATUSES = [
+  { key: 'ACTIVE', label: 'Active', dot: 'bg-emerald-400' },
+  { key: 'DRAFT', label: 'Draft', dot: 'bg-slate-400' },
+  { key: 'PENDING_APPROVAL', label: 'Pending', dot: 'bg-amber-400' },
+  { key: 'ON_HOLD', label: 'On Hold', dot: 'bg-orange-400' },
+  { key: 'CLOSED', label: 'Closed', dot: 'bg-red-400' },
+  { key: 'CANCELLED', label: 'Cancelled', dot: 'bg-gray-400' },
+] as const;
 
-// ─── Date Range Picker ────────────────────────────────────────────────────────
-
-function DateRangePicker({
-  range,
+function FilterPanel({
+  open,
+  onClose,
+  filters,
   onChange,
+  win,
+  onWin,
+  standardOnly,
+  onStandardOnly,
+  activeTab,
+  teamSelection,
+  onTeamSelection,
 }: {
-  range: DateRange | undefined;
-  onChange: (r: DateRange | undefined) => void;
+  open: boolean;
+  onClose: () => void;
+  filters: Filters;
+  onChange: (f: Filters) => void;
+  win: WinState;
+  onWin: (w: WinState) => void;
+  standardOnly: boolean;
+  onStandardOnly: (v: boolean) => void;
+  activeTab: TabKey;
+  teamSelection: TeamSelection | null;
+  onTeamSelection: (sel: TeamSelection | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const axios = useAxios();
 
-  const label =
-    range?.from && range?.to
-      ? `${format(range.from, 'dd MMM yy')} – ${format(range.to, 'dd MMM yy')}`
-      : range?.from
-        ? `From ${format(range.from, 'dd MMM yy')}`
-        : 'All time';
+  const { data: overviewFilters } = useQuery({
+    queryKey: ['reports-overview-filters'],
+    queryFn: async () => (await axios.get('/reports/overview/filters')).data?.data ?? {},
+    staleTime: 300_000,
+  });
+
+  const { data: createdByRes } = useQuery({
+    queryKey: ['rf-created-by'],
+    queryFn: async () => {
+      const rows = (await axios.get('/users?limit=200&isActive=true')).data?.data ?? [];
+      return rows.map((u: any) => ({
+        id: u.id,
+        label:
+          u.displayName?.trim() || `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email,
+        roleName: u.role?.name?.trim() || 'OTHER',
+      }));
+    },
+    staleTime: 300_000,
+    enabled: activeTab === 'requirements',
+  });
+
+  const serviceLines: any[] = overviewFilters?.serviceLines ?? [];
+  const businessUnits: any[] = overviewFilters?.businessUnits ?? [];
+  const departments: any[] = overviewFilters?.departments ?? [];
+  const clients: any[] = overviewFilters?.clients ?? [];
+
+  const createdBys = (createdByRes ?? []) as any[];
+  const createdByGroups = createdBys.reduce(
+    (g: any, u: any) => {
+      const role = u.roleName || 'OTHER';
+      if (!g[role]) g[role] = [];
+      g[role].push(u);
+      return g;
+    },
+    {} as Record<string, any[]>
+  );
+  const sortedRoleGroups = Object.entries(createdByGroups).sort(([a], [b]) => a.localeCompare(b));
+
+  const set = (k: keyof Filters, v: string) =>
+    onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
+
+  const showStatus =
+    activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
+  const showCreatedBy = activeTab === 'requirements';
+  const showDept = activeTab === 'overview' || activeTab === 'recruiters';
+
+  const hasFilters = !!(
+    filters.clientId ||
+    filters.serviceLineId ||
+    filters.businessUnitId ||
+    filters.departmentId ||
+    filters.createdById ||
+    filters.status ||
+    teamSelection
+  );
+
+  if (!open) return null;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn(
-            'h-8 gap-1.5 text-xs font-medium',
-            range?.from && 'border-primary/40 bg-primary/5 text-primary'
-          )}
-        >
-          <CalendarIcon size={13} />
-          {label}
-          {range?.from && (
-            <span
-              role="button"
-              aria-label="Clear date range"
-              onClick={e => {
-                e.stopPropagation();
-                onChange(undefined);
-              }}
-              className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
-            >
-              <X size={11} />
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="end">
-        <div className="flex">
-          <div className="flex flex-col gap-0.5 border-r border-border p-3 w-32">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1 px-1">
-              Quick select
-            </p>
-            {PRESETS.map(p => (
-              <button
-                key={p.label}
-                onClick={() => {
-                  onChange({ from: p.from(), to: p.to() });
-                  setOpen(false);
-                }}
-                className="text-left px-2 py-1.5 rounded-md text-[12px] text-foreground hover:bg-muted transition-colors"
-              >
-                {p.label}
-              </button>
-            ))}
+    <div className="fixed inset-0 z-40 flex">
+      <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="flex h-full w-full max-w-sm flex-col bg-[#0F172A] shadow-2xl">
+        {/* Panel header */}
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-indigo-400" />
+            <span className="text-[14px] font-black text-white">Filters</span>
           </div>
-          <div className="p-3">
-            <Calendar
-              mode="range"
-              selected={range}
-              onSelect={onChange}
-              numberOfMonths={2}
-              disabled={{ after: new Date() }}
-              initialFocus
-            />
-            <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-border">
-              <Button
-                variant="ghost"
-                size="sm"
+          <div className="flex items-center gap-3">
+            {hasFilters && (
+              <button
                 onClick={() => {
-                  onChange(undefined);
-                  setOpen(false);
+                  onChange({});
+                  onTeamSelection(null);
                 }}
+                className="text-[11px] font-semibold text-red-400 hover:text-red-300"
               >
-                Clear
-              </Button>
-              <Button size="sm" onClick={() => setOpen(false)}>
-                Apply
-              </Button>
-            </div>
+                Clear all
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      </PopoverContent>
-    </Popover>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Time window */}
+          <div>
+            <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-white/40">
+              Time Window
+            </p>
+            <div className="flex rounded-lg bg-white/5 p-0.5 mb-3">
+              {(['preset', 'hours', 'range'] as WindowMode[]).map((m, idx) => (
+                <button
+                  key={m}
+                  onClick={() => onWin({ ...win, mode: m })}
+                  className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition-all ${win.mode === m ? 'bg-indigo-600 text-white shadow' : 'text-white/50 hover:text-white'}`}
+                >
+                  {['Quick', 'Hours', 'Range'][idx]}
+                </button>
+              ))}
+            </div>
+
+            {win.mode === 'preset' && (
+              <div className="grid grid-cols-2 gap-1.5">
+                {PRESETS.map(p => (
+                  <button
+                    key={p.k}
+                    onClick={() => onWin({ ...win, range: p.k })}
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${win.range === p.k ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'}`}
+                  >
+                    {p.l}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {win.mode === 'hours' && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {HOUR_OPTS.map(h => (
+                    <button
+                      key={h}
+                      onClick={() => onWin({ ...win, hours: h })}
+                      className={`rounded-lg py-2 text-xs font-semibold transition-colors ${win.hours === h ? 'bg-indigo-600 text-white' : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'}`}
+                    >
+                      {h}h
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
+                  <span className="text-[10px] font-bold text-white/40">CUSTOM</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={win.hours}
+                    onChange={e =>
+                      onWin({ ...win, hours: Math.max(1, Number(e.target.value) || 1) })
+                    }
+                    className="flex-1 bg-transparent text-xs text-white outline-none"
+                  />
+                  <span className="text-[10px] font-bold text-white/40">hrs</span>
+                </div>
+              </div>
+            )}
+
+            {win.mode === 'range' && (
+              <div className="space-y-2">
+                {[
+                  ['FROM', 'fromDate'],
+                  ['TO', 'toDate'],
+                ].map(([label, key]) => (
+                  <div
+                    key={key}
+                    className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2"
+                  >
+                    <span className="text-[10px] font-bold text-white/40 w-8">{label}</span>
+                    <input
+                      type="date"
+                      value={(win as any)[key]}
+                      onChange={e => onWin({ ...win, [key]: e.target.value })}
+                      className="flex-1 bg-transparent text-xs text-white outline-none [color-scheme:dark]"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Entity filters */}
+          <div className="space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-white/40">
+              Entity Filters
+            </p>
+
+            {/* Client */}
+            <div>
+              <p className="mb-1 text-[10px] font-semibold text-white/40">Client</p>
+              <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
+                <SelectTrigger className="h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-white focus:ring-indigo-500 [&>svg]:text-white/40">
+                  <SelectValue placeholder="All clients" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All clients</SelectItem>
+                  {clients.map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Service line */}
+            <div>
+              <p className="mb-1 text-[10px] font-semibold text-white/40">Service Line</p>
+              <Select
+                value={filters.serviceLineId ?? 'ALL'}
+                onValueChange={v => set('serviceLineId', v)}
+              >
+                <SelectTrigger className="h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-white [&>svg]:text-white/40">
+                  <SelectValue placeholder="All service lines" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All service lines</SelectItem>
+                  {serviceLines.map(s => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* BU */}
+            {businessUnits.length > 0 && (
+              <div>
+                <p className="mb-1 text-[10px] font-semibold text-white/40">Business Unit</p>
+                <Select
+                  value={filters.businessUnitId ?? 'ALL'}
+                  onValueChange={v => set('businessUnitId', v)}
+                >
+                  <SelectTrigger className="h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-white [&>svg]:text-white/40">
+                    <SelectValue placeholder="All BUs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All business units</SelectItem>
+                    {businessUnits.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Dept */}
+            {showDept && departments.length > 0 && (
+              <div>
+                <p className="mb-1 text-[10px] font-semibold text-white/40">Department</p>
+                <Select
+                  value={filters.departmentId ?? 'ALL'}
+                  onValueChange={v => set('departmentId', v)}
+                >
+                  <SelectTrigger className="h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-white [&>svg]:text-white/40">
+                    <SelectValue placeholder="All departments" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All departments</SelectItem>
+                    {departments.map(d => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Status */}
+            {showStatus && (
+              <div>
+                <p className="mb-1 text-[10px] font-semibold text-white/40">Status</p>
+                <Select
+                  value={filters.status ?? 'ALL'}
+                  onValueChange={v => onChange({ ...filters, status: v === 'ALL' ? undefined : v })}
+                >
+                  <SelectTrigger className="h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-white [&>svg]:text-white/40">
+                    <SelectValue placeholder="All statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All statuses</SelectItem>
+                    {ALL_REPORT_STATUSES.map(s => (
+                      <SelectItem key={s.key} value={s.key}>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                          {s.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Created by */}
+            {showCreatedBy &&
+              sortedRoleGroups.map(([roleName, users]) => {
+                const sel = (users as any[]).find(u => u.id === filters.createdById);
+                const displayRole = roleName
+                  .replaceAll('_', ' ')
+                  .replace(/\b\w/g, c => c.toUpperCase());
+                return (
+                  <div key={roleName}>
+                    <p className="mb-1 text-[10px] font-semibold text-white/40">{displayRole}</p>
+                    <Select
+                      value={sel?.id ?? 'ALL'}
+                      onValueChange={v =>
+                        onChange({ ...filters, createdById: v === 'ALL' ? undefined : v })
+                      }
+                    >
+                      <SelectTrigger className="h-9 w-full border-white/10 bg-white/5 text-xs font-medium text-white [&>svg]:text-white/40">
+                        <SelectValue placeholder={`All ${displayRole}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All {displayRole}</SelectItem>
+                        {(users as any[])
+                          .sort((a, b) => a.label.localeCompare(b.label))
+                          .map(u => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.label}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
+
+            {/* Team picker */}
+            <div>
+              <p className="mb-1 text-[10px] font-semibold text-white/40">Team Scope</p>
+              <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
+            </div>
+          </div>
+
+          {/* Standard stages toggle */}
+          <div>
+            <button
+              onClick={() => onStandardOnly(!standardOnly)}
+              className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${standardOnly ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300' : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'}`}
+            >
+              {standardOnly ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+              Standard stages only
+            </button>
+          </div>
+        </div>
+
+        {/* Panel footer — apply button */}
+        <div className="border-t border-white/10 p-4">
+          <button
+            onClick={onClose}
+            className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-black text-white shadow-lg hover:bg-indigo-500 transition-colors"
+          >
+            Apply Filters
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE LINE TABS
+// ─────────────────────────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  accentColor,
-  loading,
-  onClick,
+const keyOf = (g: { serviceLine: ServiceLineRef | null }) => g.serviceLine?.id ?? '__none__';
+const nameOf = (g: { serviceLine: ServiceLineRef | null }) => g.serviceLine?.name ?? 'Unassigned';
+
+function LineTabs({
+  groups,
+  activeKey,
+  onSelect,
 }: {
-  label: string;
-  value: number;
-  sub?: string;
-  icon: React.ElementType;
-  accentColor: string;
-  loading?: boolean;
-  onClick?: () => void;
+  groups: { serviceLine: ServiceLineRef | null; total: number }[];
+  activeKey: string;
+  onSelect: (k: string) => void;
 }) {
   return (
-    <div
-      onClick={onClick}
-      style={{ borderLeftColor: accentColor, borderLeftWidth: 3 }}
-      className={cn(
-        'bg-card border border-border rounded-xl p-5 flex flex-col gap-2 relative overflow-hidden',
-        onClick && 'cursor-pointer hover:shadow-sm hover:border-border/80 transition-all'
-      )}
-    >
-      <div
-        className="absolute right-4 top-4 opacity-[0.07]"
-        style={{ color: accentColor }}
-        aria-hidden
-      >
-        <Icon size={40} />
+    <div className="flex items-center gap-1 overflow-x-auto border-b-2 border-slate-200">
+      {groups.map(g => {
+        const k = keyOf(g);
+        const active = k === activeKey;
+        return (
+          <button
+            key={k}
+            onClick={() => onSelect(k)}
+            className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-5 py-3 text-[14px] font-bold transition-colors ${active ? 'border-indigo-600 text-indigo-800' : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'}`}
+          >
+            <Layers className={`h-4 w-4 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+            {nameOf(g)}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[12px] font-black ${active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+            >
+              {g.total}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECRUITER SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RecruiterSection({
+  resp,
+  loading,
+  reqFilter,
+  onReqFilter,
+  onDownloadAll,
+  onDownloadSelected,
+}: {
+  resp?: RecruiterResponse;
+  loading: boolean;
+  reqFilter: string;
+  onReqFilter: (v: string) => void;
+  onDownloadAll: (
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
+  onDownloadSelected: (
+    ids: string[],
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
+}) {
+  const [activeKey, setActiveKey] = useState<string>('');
+  if (loading)
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-5 gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skel rows={6} />
       </div>
-
-      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-        {label}
-      </p>
-
-      {loading ? (
-        <Skeleton className="h-10 w-16 mt-1" />
-      ) : (
-        <p
-          className="text-[42px] font-semibold tabular-nums leading-none"
-          style={{ color: 'hsl(var(--foreground))' }}
-        >
-          {value}
-        </p>
-      )}
-
-      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
-
-      <div
-        className="absolute bottom-0 left-0 right-0 h-0.5 opacity-60"
-        style={{ background: accentColor }}
+    );
+  const groups: RecruiterGroup[] = resp?.groups ?? [];
+  if (!groups.length) return <Empty msg="No recruiter data for this window." />;
+  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+  const rows = active.data;
+  const reqOptions = (() => {
+    const m = new Map<string, string>();
+    for (const r of rows)
+      for (const rq of r.requirementBreakdown)
+        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
+    return [...m.entries()].map(([id, label]) => ({ id, label }));
+  })();
+  const totals = {
+    sourced: rows.reduce((s, r) => s + r.sourced, 0),
+    joined: rows.reduce((s, r) => s + r.joined, 0),
+    active: rows.reduce((s, r) => s + r.active, 0),
+    dropped: rows.reduce((s, r) => s + r.dropped, 0),
+    recruiters: new Set(rows.map(r => r.id)).size,
+  };
+  return (
+    <div className="space-y-5">
+      <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
+        <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
+        <KPI label="Active" value={totals.active} color="#059669" />
+        <KPI
+          label="Joined"
+          value={totals.joined}
+          color="#7C3AED"
+          trend="up"
+          sub={
+            totals.sourced > 0
+              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
+              : undefined
+          }
+        />
+        <KPI
+          label="Dropped"
+          value={totals.dropped}
+          color="#DC2626"
+          trend={totals.dropped > 0 ? 'down' : undefined}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
+          Filter by requirement
+        </span>
+        <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
+          <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
+            <SelectValue placeholder="All requirements" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All requirements</SelectItem>
+            {reqOptions.map(o => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {reqFilter && (
+          <button
+            onClick={() => onReqFilter('')}
+            className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
+          >
+            <X className="h-3.5 w-3.5" /> Clear
+          </button>
+        )}
+      </div>
+      <RecruiterTable
+        key={keyOf(active)}
+        title={active.serviceLine?.name ?? null}
+        serviceLineId={active.serviceLine?.id}
+        data={active.data}
+        stages={active.stages}
+        onDownloadAll={onDownloadAll}
+        onDownloadSelected={onDownloadSelected}
       />
     </div>
   );
 }
 
-// ─── Pipeline Funnel Chart ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUIREMENT SECTION
+// ─────────────────────────────────────────────────────────────────────────────
 
-function PipelineFunnelChart({
-  stages,
+function RequirementSection({
+  resp,
   loading,
+  onDownloadRow,
+  onDownloadAll,
+  onDownloadSelected,
 }: {
-  stages: PipelineStageOverview[];
+  resp?: RequirementReportResponse;
   loading: boolean;
+  onDownloadRow: (id: string, reqCode: string) => void;
+  onDownloadAll: (
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
+  onDownloadSelected: (
+    ids: string[],
+    slId?: string,
+    stageIds?: string[],
+    hiddenStageIds?: string[],
+    hiddenCandidateCols?: string[]
+  ) => void;
 }) {
-  if (loading) return <Skeleton className="h-55 w-full" />;
-
-  const data = stages.map(s => ({
-    name: s.label.length > 9 ? s.label.slice(0, 9) + '…' : s.label,
-    fullLabel: s.label,
-    active: s.active,
-    onHold: s.onHold,
-    inactive: s.inactive,
-    code: s.code,
-  }));
-
+  const [activeKey, setActiveKey] = useState<string>('');
+  if (loading) return <Skel rows={6} />;
+  const groups: RequirementGroup[] = resp?.groups ?? [];
+  if (!groups.length) return <Empty msg="No requirements found for this window." />;
+  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
   return (
-    <ChartContainer config={funnelChartConfig} className="h-55 w-full">
-      <BarChart data={data} barSize={16} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis
-          dataKey="name"
-          interval={0}
-          angle={-40}
-          textAnchor="end"
-          height={60}
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-        />
-        <YAxis
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-          allowDecimals={false}
-        />
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel ?? ''}
-            />
-          }
-        />
-        <Bar dataKey="active" stackId="a" fill="var(--color-active)" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="onHold" stackId="a" fill="var(--color-onHold)" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="inactive" stackId="a" fill="var(--color-inactive)" radius={[3, 3, 0, 0]} />
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
-// ─── BU Breakdown Chart ───────────────────────────────────────────────────────
-
-function BUBreakdownChart({
-  items,
-  loading,
-}: {
-  items: { id: string; name: string; count: number }[];
-  loading: boolean;
-}) {
-  if (loading) return <Skeleton className="h-55 w-full" />;
-
-  const data = items.slice(0, 6).map(i => ({
-    name: i.name.length > 18 ? i.name.slice(0, 18) + '…' : i.name,
-    fullName: i.name,
-    count: i.count,
-  }));
-
-  return (
-    <ChartContainer config={buChartConfig} className="h-55 w-full">
-      <BarChart
-        layout="vertical"
-        data={data}
-        barSize={14}
-        margin={{ top: 4, right: 28, left: 4, bottom: 0 }}
-      >
-        <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis
-          type="number"
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-          allowDecimals={false}
-        />
-        <YAxis
-          type="category"
-          dataKey="name"
-          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-          tickLine={false}
-          axisLine={false}
-          width={100}
-        />
-        <ChartTooltip
-          content={
-            <ChartTooltipContent
-              labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName ?? ''}
-            />
-          }
-        />
-        <Bar dataKey="count" fill="var(--color-count)" radius={[0, 4, 4, 0]}>
-          {data.map((_, i) => (
-            <Cell key={i} fill="#7F77DD" fillOpacity={1 - i * 0.12} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
-// ─── Resume: clickable grouped bar chart ──────────────────────────────────────
-
-function ResumeDimBarChart({
-  items,
-  loading,
-  onBarClick,
-  emptyMessage,
-}: {
-  items: { id: string; name: string; count: number }[];
-  loading: boolean;
-  onBarClick: (item: { id: string; name: string }) => void;
-  emptyMessage: React.ReactNode;
-}) {
-  if (loading) return <Skeleton className="h-50 w-full" />;
-
-  const data = items.slice(0, 7).map(i => ({
-    id: i.id,
-    name: i.name.length > 18 ? i.name.slice(0, 18) + '…' : i.name,
-    fullName: i.name,
-    count: i.count,
-  }));
-
-  if (data.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-50 gap-2 px-6 text-center">
-        <Info size={16} className="text-muted-foreground/40" />
-        <p className="text-[11.5px] text-muted-foreground leading-relaxed">{emptyMessage}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {data.map(item => (
-        <div
-          key={item.id}
-          onClick={() => onBarClick({ id: item.id, name: item.fullName })}
-          className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-muted p-2"
-        >
-          <div className="w-28 text-xs truncate">{item.name}</div>
-
-          <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full"
-              style={{
-                width: `${(item.count / data[0].count) * 100}%`,
-              }}
-            />
-          </div>
-
-          <div className="w-8 text-right text-xs font-semibold">{item.count}</div>
-        </div>
-      ))}
+    <div className="space-y-5">
+      <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
+      <RequirementTable
+        key={keyOf(active)}
+        title={active.serviceLine?.name ?? null}
+        serviceLineId={active.serviceLine?.id}
+        data={active.data}
+        stages={active.stages}
+        onDownloadAll={onDownloadAll}
+        onDownloadSelected={onDownloadSelected}
+        onDownloadRow={onDownloadRow}
+      />
     </div>
   );
 }
 
-// ─── Resume Parsed Card ───────────────────────────────────────────────────────
-// Popup overlay appears ON TOP of the chart when a bar is clicked.
-// No separate "By recruiter" tab — just click the chart to see who parsed.
+// ─────────────────────────────────────────────────────────────────────────────
+// CANDIDATES SECTION
+// ─────────────────────────────────────────────────────────────────────────────
 
-type ResumeDim = 'department' | 'teamLead' | 'businessUnit';
-
-const DIM_EMPTY: Record<ResumeDim, React.ReactNode> = {
-  department: 'No department data for this period.',
-  teamLead: (
-    <>
-      No team lead data.
-      <br />
-      Users may not have a team lead assigned to their profile.
-    </>
-  ),
-  businessUnit: (
-    <>
-      No business unit data.
-      <br />
-      Users may not have a BU assigned to their profile.
-    </>
-  ),
+const DISP_COLORS: Record<string, string> = {
+  ACTIVE: '#3B82F6',
+  PLACED: '#10B981',
+  DROPPED: '#EF4444',
+  DUPLICATE: '#94A3B8',
+  ON_HOLD: '#F59E0B',
 };
 
-async function downloadResumeReport(resumeStats: ResumeStats, dateFrom?: string, dateTo?: string) {
-  // Dynamic import keeps xlsx out of the initial bundle (SSR-safe in Next.js)
-  // const XLSX = (await import('xlsx')).default;
-  const XLSX = await import('xlsx');
-
-  const wb = XLSX.utils.book_new();
-  const total = resumeStats.total;
-
-  const period =
-    dateFrom && dateTo
-      ? `${dateFrom}  →  ${dateTo}`
-      : dateFrom
-        ? `From ${dateFrom}`
-        : dateTo
-          ? `Up to ${dateTo}`
-          : 'All time';
-
-  const generatedAt = new Date().toLocaleString('en-IN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-
-  const pct = (n: number) => (total > 0 ? `${((n / total) * 100).toFixed(1)}%` : '—');
-
-  const subPct = (n: number, sub: number) => (sub > 0 ? `${((n / sub) * 100).toFixed(1)}%` : '—');
-
-  // ── helper: set column widths ──────────────────────────────────────────────
-  function colWidths(ws: ReturnType<typeof XLSX.utils.aoa_to_sheet>, widths: number[]) {
-    ws['!cols'] = widths.map(w => ({ wch: w }));
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // SHEET 1 — Summary
-  // ──────────────────────────────────────────────────────────────────────────
-  const summaryRows: (string | number)[][] = [
-    ['Resume Parsing Report — SFJ Business Solutions'],
-    [],
-    ['Period', period],
-    ['Generated on', generatedAt],
-    ['Total resumes parsed', total],
-    [],
-    ['Breakdown by Source'],
-    ['Source', 'Count', '% of Total'],
-    ...resumeStats.bySource.map(s => [s.source, s.count, pct(s.count)]),
-    [],
-    ['Breakdown by Department'],
-    ['Department', 'Total Resumes', '% of Total'],
-    ...[...resumeStats.byDepartment]
-      .sort((a, b) => b.count - a.count)
-      .map(d => [d.name, d.count, pct(d.count)]),
-    [],
-    ['Breakdown by Team Lead'],
-    ['Team Lead', 'Total Resumes', '% of Total'],
-    ...[...resumeStats.byTeamLead]
-      .sort((a, b) => b.count - a.count)
-      .map(t => [t.name, t.count, pct(t.count)]),
-  ];
-
-  const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
-  colWidths(ws1, [32, 20, 14]);
-  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // SHEET 2 — By Department
-  // ──────────────────────────────────────────────────────────────────────────
-  const deptRows: (string | number)[][] = [
-    [`Resume Parsing — By Department  |  Period: ${period}  |  Generated: ${generatedAt}`],
-    [],
-    ['Department', 'Person Name', 'Resumes Parsed', '% of Dept', '% of Grand Total'],
-  ];
-
-  const deptsSorted = [...resumeStats.byDepartment].sort((a, b) => b.count - a.count);
-
-  for (const dept of deptsSorted) {
-    const people = resumeStats.byRecruiter
-      .filter(r => r.departmentId === dept.id)
-      .sort((a, b) => b.count - a.count);
-
-    for (const p of people) {
-      deptRows.push([dept.name, p.name, p.count, subPct(p.count, dept.count), pct(p.count)]);
-    }
-
-    // Subtotal row (blank dept col = visual separator from next group)
-    deptRows.push([`  ↳ ${dept.name} subtotal`, '', dept.count, '100%', pct(dept.count)]);
-    deptRows.push([]); // blank gap between groups
-  }
-
-  // People with no department assigned
-  const unassigned = resumeStats.byRecruiter
-    .filter(r => !r.departmentId)
-    .sort((a, b) => b.count - a.count);
-
-  if (unassigned.length > 0) {
-    for (const p of unassigned) {
-      deptRows.push(['Unassigned', p.name, p.count, '—', pct(p.count)]);
-    }
-    const uTotal = unassigned.reduce((s, r) => s + r.count, 0);
-    deptRows.push(['  ↳ Unassigned subtotal', '', uTotal, '—', pct(uTotal)]);
-    deptRows.push([]);
-  }
-
-  const ws2 = XLSX.utils.aoa_to_sheet(deptRows);
-  colWidths(ws2, [26, 24, 16, 12, 16]);
-  XLSX.utils.book_append_sheet(wb, ws2, 'By Department');
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // SHEET 3 — By Team Lead
-  // ──────────────────────────────────────────────────────────────────────────
-  const tlRows: (string | number)[][] = [
-    [`Resume Parsing — By Team Lead  |  Period: ${period}  |  Generated: ${generatedAt}`],
-    [],
-    ['Team Lead', 'Person Name', 'Resumes Parsed', '% of TL Group', '% of Grand Total'],
-  ];
-
-  const tlSorted = [...resumeStats.byTeamLead].sort((a, b) => b.count - a.count);
-
-  for (const tl of tlSorted) {
-    const people = resumeStats.byRecruiter
-      .filter(r => r.teamLeadId === tl.id)
-      .sort((a, b) => b.count - a.count);
-
-    for (const p of people) {
-      tlRows.push([tl.name, p.name, p.count, subPct(p.count, tl.count), pct(p.count)]);
-    }
-
-    tlRows.push([`  ↳ ${tl.name} subtotal`, '', tl.count, '100%', pct(tl.count)]);
-    tlRows.push([]);
-  }
-
-  // People with no team lead assigned
-  const noTL = resumeStats.byRecruiter.filter(r => !r.teamLeadId).sort((a, b) => b.count - a.count);
-
-  if (noTL.length > 0) {
-    for (const p of noTL) {
-      tlRows.push(['No Team Lead', p.name, p.count, '—', pct(p.count)]);
-    }
-    const ntTotal = noTL.reduce((s, r) => s + r.count, 0);
-    tlRows.push(['  ↳ No Team Lead subtotal', '', ntTotal, '—', pct(ntTotal)]);
-    tlRows.push([]);
-  }
-
-  const ws3 = XLSX.utils.aoa_to_sheet(tlRows);
-  colWidths(ws3, [26, 24, 16, 14, 16]);
-  XLSX.utils.book_append_sheet(wb, ws3, 'By Team Lead');
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // SHEET 4 — By Business Unit
-  // ──────────────────────────────────────────────────────────────────────────
-  const buRows: (string | number)[][] = [
-    [`Resume Parsing — By Business Unit  |  Period: ${period}  |  Generated: ${generatedAt}`],
-    [],
-    ['Business Unit', 'Person Name', 'Resumes Parsed', '% of BU', '% of Grand Total'],
-  ];
-
-  const buSorted = [...resumeStats.byBusinessUnit].sort((a, b) => b.count - a.count);
-
-  for (const bu of buSorted) {
-    const people = resumeStats.byRecruiter
-      .filter(r => r.buId === bu.id)
-      .sort((a, b) => b.count - a.count);
-
-    for (const p of people) {
-      buRows.push([bu.name, p.name, p.count, subPct(p.count, bu.count), pct(p.count)]);
-    }
-
-    buRows.push([`  ↳ ${bu.name} subtotal`, '', bu.count, '100%', pct(bu.count)]);
-    buRows.push([]);
-  }
-
-  const noBU = resumeStats.byRecruiter.filter(r => !r.buId).sort((a, b) => b.count - a.count);
-
-  if (noBU.length > 0) {
-    for (const p of noBU) {
-      buRows.push(['No BU', p.name, p.count, '—', pct(p.count)]);
-    }
-    const nbTotal = noBU.reduce((s, r) => s + r.count, 0);
-    buRows.push(['  ↳ No BU subtotal', '', nbTotal, '—', pct(nbTotal)]);
-  }
-
-  const ws4 = XLSX.utils.aoa_to_sheet(buRows);
-  colWidths(ws4, [26, 24, 16, 12, 16]);
-  XLSX.utils.book_append_sheet(wb, ws4, 'By Business Unit');
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // SHEET 5 — All People (flat ranked list)
-  // ──────────────────────────────────────────────────────────────────────────
-  const allRows: (string | number)[][] = [
-    [`Resume Parsing — All People  |  Period: ${period}  |  Generated: ${generatedAt}`],
-    [],
-    ['Rank', 'Name', 'Department', 'Team Lead', 'Business Unit', 'Resumes Parsed', '% of Total'],
-    ...[...resumeStats.byRecruiter]
-      .sort((a, b) => b.count - a.count)
-      .map((p, i) => [
-        i + 1,
-        p.name,
-        p.departmentName ?? '—',
-        p.teamLeadName ?? '—',
-        p.buName ?? '—',
-        p.count,
-        pct(p.count),
-      ]),
-  ];
-
-  const ws5 = XLSX.utils.aoa_to_sheet(allRows);
-  colWidths(ws5, [6, 24, 22, 22, 20, 16, 14]);
-  XLSX.utils.book_append_sheet(wb, ws5, 'All People');
-
-  // ── Download ───────────────────────────────────────────────────────────────
-  const dateSuffix = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  XLSX.writeFile(wb, `resume-parsing-${dateSuffix}.xlsx`);
-}
-
-// function ResumeParsedCard({
-//   resumeStats,
-//   loading,
-// }: {
-//   resumeStats: ResumeStats | undefined;
-//   loading: boolean;
-// }) {
-//   const [dim, setDim] = useState<ResumeDim>('department');
-//   const [popup, setPopup] = useState<{ id: string; name: string } | null>(null);
-
-//   const dimItems: { id: string; name: string; count: number }[] =
-//     dim === 'department'
-//       ? (resumeStats?.byDepartment ?? [])
-//       : dim === 'teamLead'
-//         ? (resumeStats?.byTeamLead ?? [])
-//         : (resumeStats?.byBusinessUnit ?? []);
-
-//   const popupPeople = popup
-//     ? (resumeStats?.byRecruiter ?? [])
-//         .filter(r =>
-//           dim === 'department'
-//             ? r.departmentId === popup.id
-//             : dim === 'teamLead'
-//               ? r.teamLeadId === popup.id
-//               : r.buId === popup.id
-//         )
-//         .sort((a, b) => b.count - a.count)
-//     : [];
-
-//   const popupTotal = popupPeople.reduce((s, r) => s + r.count, 0);
-//   const popupMax = popupPeople[0]?.count ?? 1;
-
-//   return (
-//     <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
-//       {/* ── Header ── */}
-//       <div className="flex items-start justify-between mb-3">
-//         <div>
-//           <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
-//           <p className="text-[11px] text-muted-foreground mt-0.5">
-//             {loading ? '—' : (resumeStats?.total ?? 0)} total
-//           </p>
-//         </div>
-//         <Select
-//           value={dim}
-//           onValueChange={v => {
-//             setDim(v as ResumeDim);
-//             setPopup(null);
-//           }}
-//         >
-//           <SelectTrigger className="h-7 w-40 text-[11px]">
-//             <SelectValue />
-//           </SelectTrigger>
-//           <SelectContent>
-//             <SelectItem value="department">By department</SelectItem>
-//             <SelectItem value="teamLead">By team lead</SelectItem>
-//             <SelectItem value="businessUnit">By business unit</SelectItem>
-//           </SelectContent>
-//         </Select>
-//       </div>
-
-//       {/* ── Source pills ── */}
-//       {!loading && (resumeStats?.bySource ?? []).length > 0 && (
-//         <div className="flex flex-wrap gap-1.5 mb-3">
-//           {resumeStats!.bySource.map(s => {
-//             const style = sourceStyle(s.source);
-//             return (
-//               <span
-//                 key={s.source}
-//                 className={cn(
-//                   'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
-//                   style.bg,
-//                   style.text
-//                 )}
-//               >
-//                 {s.source}
-//                 <span className="opacity-50">·</span>
-//                 {s.count}
-//               </span>
-//             );
-//           })}
-//         </div>
-//       )}
-
-//       {/* ── Chart + popup ── */}
-//       {/*
-//         FIX 2: overflow-visible so the popup (taller than the 200px chart)
-//         isn't clipped by this container. The popup uses top-0/left-0/right-0
-//         without bottom-0 and max-h-72, letting it grow as needed.
-//       */}
-//       <div className="relative" style={{ overflow: 'visible' }}>
-//         <ResumeDimBarChart
-//           items={dimItems}
-//           loading={loading}
-//           onBarClick={setPopup}
-//           emptyMessage={DIM_EMPTY[dim]}
-//         />
-
-//         {popup && (
-//           <div
-//             className={cn(
-//               'absolute top-0 left-0 right-0 z-20',
-//               'bg-card border border-emerald-500/20 rounded-lg shadow-xl',
-//               'flex flex-col overflow-hidden'
-//             )}
-//             style={{ height: '350px' }}
-//           >
-//             {/* Popup header */}
-//             <div
-//               className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0"
-//               style={{ borderLeftColor: '#10B981', borderLeftWidth: 3 }}
-//             >
-//               <div>
-//                 <p className="text-[12px] font-semibold text-foreground">{popup.name}</p>
-//                 <p className="text-[10px] text-muted-foreground mt-0.5">
-//                   {popupPeople.length} person{popupPeople.length !== 1 ? 's' : ''}
-//                   &nbsp;&middot;&nbsp;
-//                   {popupTotal} resumes
-//                 </p>
-//               </div>
-//               <button
-//                 onClick={() => setPopup(null)}
-//                 className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted"
-//                 aria-label="Close"
-//               >
-//                 <X size={13} />
-//               </button>
-//             </div>
-
-//             {/* Scrollable people list — min-h-0 is required for flex+scroll */}
-//             <div className="flex-1 overflow-y-auto">
-//               <div className="px-4 py-2 space-y-0.5">
-//                 {popupPeople.length === 0 ? (
-//                   <p className="text-[11px] text-muted-foreground py-6 text-center">
-//                     No data available for this group
-//                   </p>
-//                 ) : (
-//                   popupPeople.map((r, i) => (
-//                     <div
-//                       key={r.recruiterId}
-//                       className="flex items-center gap-2.5 py-1.5 px-1 rounded-md hover:bg-muted/50 transition-colors"
-//                     >
-//                       {/* rank */}
-//                       <span className="text-[10px] text-muted-foreground/40 tabular-nums w-4 text-right shrink-0 font-mono">
-//                         {i + 1}
-//                       </span>
-
-//                       {/* initials avatar */}
-//                       <div
-//                         className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
-//                         style={{
-//                           background: `hsl(${(i * 53 + 140) % 360}deg 55% 92%)`,
-//                           color: `hsl(${(i * 53 + 140) % 360}deg 45% 35%)`,
-//                         }}
-//                       >
-//                         {nameInitials(r.name)}
-//                       </div>
-
-//                       {/* name */}
-//                       <p className="flex-1 text-[11.5px] font-medium text-foreground truncate">
-//                         {r.name}
-//                       </p>
-
-//                       {/* mini bar */}
-//                       <div className="w-14 h-0.75 bg-muted rounded-full overflow-hidden shrink-0">
-//                         <div
-//                           className="h-full bg-emerald-500 rounded-full"
-//                           style={{ width: `${(r.count / popupMax) * 100}%` }}
-//                         />
-//                       </div>
-
-//                       {/* count */}
-//                       <span className="text-[12px] font-semibold tabular-nums text-foreground shrink-0 w-7 text-right">
-//                         {r.count}
-//                       </span>
-//                     </div>
-//                   ))
-//                 )}
-//               </div>
-//             </div>
-//           </div>
-//         )}
-//       </div>
-
-//       {/* Footer hint */}
-//       {!popup && dimItems.length > 0 && !loading && (
-//         <p className="text-[10px] text-muted-foreground/40 mt-3 pt-2 border-t border-border">
-//           Click anywhere on a row to see who parsed resumes
-//         </p>
-//       )}
-//     </div>
-//   );
-// }
-
-// ─── Stage Card ───────────────────────────────────────────────────────────────
-
-function ResumeParsedCard({
-  resumeStats,
+function CandidatesSection({
+  data,
   loading,
-  dateFrom,
-  dateTo,
+  onExportAll,
+  onExportStage,
+  selectedStageIds,
+  onStageToggle,
 }: {
-  resumeStats: ResumeStats | undefined;
+  data?: { data: CandidateReportData };
   loading: boolean;
-  dateFrom?: string;
-  dateTo?: string;
+  onExportAll: () => void;
+  onExportStage: (stageIds: string[]) => void;
+  selectedStageIds: string[];
+  onStageToggle: (stageId: string) => void;
 }) {
-  const [dim, setDim] = useState<ResumeDim>('department');
-  const [popup, setPopup] = useState<{ id: string; name: string } | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const dimItems: { id: string; name: string; count: number }[] =
-    dim === 'department'
-      ? (resumeStats?.byDepartment ?? [])
-      : dim === 'teamLead'
-        ? (resumeStats?.byTeamLead ?? [])
-        : (resumeStats?.byBusinessUnit ?? []);
-
-  const popupPeople = popup
-    ? (resumeStats?.byRecruiter ?? [])
-        .filter(r =>
-          dim === 'department'
-            ? r.departmentId === popup.id
-            : dim === 'teamLead'
-              ? r.teamLeadId === popup.id
-              : r.buId === popup.id
-        )
-        .sort((a, b) => b.count - a.count)
-    : [];
-
-  const popupTotal = popupPeople.reduce((s, r) => s + r.count, 0);
-  const popupMax = popupPeople[0]?.count ?? 1;
-
-  async function handleDownload() {
-    if (!resumeStats || isDownloading) return;
-    setIsDownloading(true);
-    try {
-      await downloadResumeReport(resumeStats, dateFrom, dateTo);
-    } finally {
-      setIsDownloading(false);
-    }
-  }
-
+  if (loading) return <Skel rows={8} />;
+  const d = data?.data;
+  if (!d || d.totalCandidates === 0) return <Empty msg="No candidates in this window." />;
+  const max = Math.max(1, ...d.funnelByStage.map(s => s.count));
   return (
-    <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="text-[13px] font-semibold text-foreground">Resumes parsed</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            {loading ? '—' : (resumeStats?.total ?? 0)} total
-          </p>
-        </div>
-
-        {/* Controls: download + dimension selector */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            onClick={handleDownload}
-            disabled={loading || !resumeStats || isDownloading}
-            title="Download Excel report (dept, team lead, BU, all people)"
-            className={cn(
-              'h-7 px-2 inline-flex items-center gap-1 rounded-md border border-border',
-              'text-[11px] font-medium transition-colors',
-              'text-muted-foreground hover:text-foreground hover:bg-muted',
-              'disabled:opacity-40 disabled:cursor-not-allowed'
-            )}
-          >
-            <Download size={12} className={isDownloading ? 'animate-bounce' : ''} />
-            {isDownloading ? 'Generating…' : 'Export'}
-          </button>
-
-          <Select
-            value={dim}
-            onValueChange={v => {
-              setDim(v as ResumeDim);
-              setPopup(null);
-            }}
-          >
-            <SelectTrigger className="h-7 w-38 text-[11px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="department">By department</SelectItem>
-              <SelectItem value="teamLead">By team lead</SelectItem>
-              <SelectItem value="businessUnit">By business unit</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KPI label="Total Candidates" value={d.totalCandidates} color="#4F46E5" />
+        <KPI label="Avg Pipeline Days" value={d.avgPipelineDays} color="#0891B2" />
+        <KPI label="Active" value={d.dispositionSummary['ACTIVE'] ?? 0} color="#059669" />
+        <KPI label="Dropped" value={d.dispositionSummary['DROPPED'] ?? 0} color="#DC2626" />
       </div>
-
-      {/* ── Source pills ── */}
-      {!loading && (resumeStats?.bySource ?? []).length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {resumeStats!.bySource.map(s => {
-            const style = sourceStyle(s.source);
-            return (
-              <span
-                key={s.source}
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
-                  style.bg,
-                  style.text
-                )}
-              >
-                {s.source}
-                <span className="opacity-50">·</span>
-                {s.count}
+      <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
+          Pipeline stages — click to select for export
+        </h3>
+        <div className="mb-4 flex items-center gap-2">
+          {selectedStageIds.length > 0 && (
+            <>
+              <span className="rounded-lg bg-indigo-100 px-3 py-1.5 text-[13px] font-black text-indigo-800">
+                {selectedStageIds.length} stage{selectedStageIds.length > 1 ? 's' : ''} selected
               </span>
+              <button
+                onClick={() => onExportStage(selectedStageIds)}
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-[13px] font-bold text-white hover:bg-indigo-700"
+              >
+                Export selected stages
+              </button>
+            </>
+          )}
+          <button
+            onClick={onExportAll}
+            className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border-2 border-slate-200 px-4 text-[13px] font-bold text-slate-700 hover:bg-slate-50"
+          >
+            Export all
+          </button>
+        </div>
+        <div className="space-y-2.5">
+          {d.funnelByStage.map((s, i) => {
+            const pct = Math.round((s.count / max) * 100);
+            const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+            const isSel = selectedStageIds.includes(s.stageId);
+            return (
+              <button
+                key={s.stageId}
+                onClick={() => onStageToggle(s.stageId)}
+                className={`flex w-full items-center gap-3 rounded-lg p-1.5 transition-all ${isSel ? 'bg-indigo-50 ring-2 ring-indigo-500 ring-offset-1' : 'hover:bg-slate-50'}`}
+              >
+                <span className="w-44 shrink-0 truncate text-right text-[13px] font-bold text-slate-800">
+                  {s.label}
+                </span>
+                <div className="relative h-9 flex-1 overflow-hidden rounded-md bg-slate-100">
+                  <div
+                    className="flex h-full items-center justify-between rounded-md px-3 transition-all duration-500"
+                    style={{
+                      width: `${Math.max(pct, 6)}%`,
+                      backgroundColor: color,
+                      opacity: isSel ? 1 : 0.85,
+                    }}
+                  >
+                    <span className="text-[13px] font-black text-white">{s.count}</span>
+                    <span className="text-[11px] font-bold text-white/90">{s.pct}%</span>
+                  </div>
+                </div>
+                {isSel && <CheckSquare className="h-5 w-5 shrink-0 text-indigo-600" />}
+              </button>
             );
           })}
         </div>
-      )}
-
-      {/* ── Chart + popup ── */}
-      <div className="relative" style={{ overflow: 'visible' }}>
-        <ResumeDimBarChart
-          items={dimItems}
-          loading={loading}
-          onBarClick={setPopup}
-          emptyMessage={DIM_EMPTY[dim]}
-        />
-
-        {popup && (
-          <div
-            className={cn(
-              'absolute top-0 left-0 right-0 z-20',
-              'bg-card border border-emerald-500/20 rounded-lg shadow-xl',
-              'flex flex-col overflow-hidden'
-            )}
-            style={{ height: '350px' }}
-          >
-            {/* Popup header */}
-            <div
-              className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0"
-              style={{ borderLeftColor: '#10B981', borderLeftWidth: 3 }}
-            >
-              <div>
-                <p className="text-[12px] font-semibold text-foreground">{popup.name}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {popupPeople.length} person{popupPeople.length !== 1 ? 's' : ''}
-                  &nbsp;&middot;&nbsp;
-                  {popupTotal} resumes
-                </p>
-              </div>
-              <button
-                onClick={() => setPopup(null)}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-muted"
-                aria-label="Close"
-              >
-                <X size={13} />
-              </button>
-            </div>
-
-            {/* Scrollable people list */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="px-4 py-2 space-y-0.5">
-                {popupPeople.length === 0 ? (
-                  <p className="text-[11px] text-muted-foreground py-6 text-center">
-                    No data available for this group
-                  </p>
-                ) : (
-                  popupPeople.map((r, i) => (
-                    <div
-                      key={r.recruiterId}
-                      className="flex items-center gap-2.5 py-1.5 px-1 rounded-md hover:bg-muted/50 transition-colors"
-                    >
-                      <span className="text-[10px] text-muted-foreground/40 tabular-nums w-4 text-right shrink-0 font-mono">
-                        {i + 1}
-                      </span>
-                      <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold"
-                        style={{
-                          background: `hsl(${(i * 53 + 140) % 360}deg 55% 92%)`,
-                          color: `hsl(${(i * 53 + 140) % 360}deg 45% 35%)`,
-                        }}
-                      >
-                        {nameInitials(r.name)}
-                      </div>
-                      <p className="flex-1 text-[11.5px] font-medium text-foreground truncate">
-                        {r.name}
-                      </p>
-                      <div className="w-14 h-0.75 bg-muted rounded-full overflow-hidden shrink-0">
-                        <div
-                          className="h-full bg-emerald-500 rounded-full"
-                          style={{ width: `${(r.count / popupMax) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-[12px] font-semibold tabular-nums text-foreground shrink-0 w-7 text-right">
-                        {r.count}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Footer hint */}
-      {!popup && dimItems.length > 0 && !loading && (
-        <p className="text-[10px] text-muted-foreground/40 mt-3 pt-2 border-t border-border">
-          Click any row to see who parsed resumes · Export for full report
-        </p>
-      )}
-    </div>
-  );
-}
-
-function StageCard({
-  stage,
-  dateFrom,
-  dateTo,
-}: {
-  stage: PipelineStageOverview;
-  dateFrom?: string;
-  dateTo?: string;
-}) {
-  const router = useRouter();
-  const color = stageColor(stage.code);
-  const pct = stage.total > 0 ? Math.round((stage.active / stage.total) * 100) : 0;
-
-  function go() {
-    const p = new URLSearchParams({ stageId: stage.stageId });
-    if (dateFrom) p.set('dateFrom', dateFrom);
-    if (dateTo) p.set('dateTo', dateTo);
-    router.push(`/requirements?${p.toString()}`);
-  }
-
-  return (
-    <div
-      onClick={go}
-      className="bg-card border border-border rounded-xl p-3.5 cursor-pointer hover:border-border/70 hover:shadow-sm transition-all group"
-      style={{ borderTopColor: color, borderTopWidth: 3 }}
-    >
-      <div className="flex items-start justify-between mb-1.5">
-        <span className="text-[10px] font-mono font-semibold tracking-wide" style={{ color }}>
-          {stage.code}
-        </span>
-        <ChevronRight
-          size={12}
-          className="text-muted-foreground/30 group-hover:text-muted-foreground transition-colors mt-px"
-        />
-      </div>
-      <p className="text-[11.5px] text-muted-foreground leading-tight mb-3 min-h-7.5 line-clamp-2">
-        {stage.label}
-      </p>
-      <p
-        className="text-[32px] font-semibold tabular-nums leading-none mb-3"
-        style={{ color: stage.total === 0 ? 'hsl(var(--muted-foreground))' : color }}
-      >
-        {stage.total}
-      </p>
-      <div className="h-0.75 rounded-full bg-muted overflow-hidden mb-2">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
-      </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground">
-        <span>{stage.active > 0 ? `${stage.active} active` : '—'}</span>
-        <span>{stage.onHold > 0 ? `${stage.onHold} hold` : '—'}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Assignment Row ───────────────────────────────────────────────────────────
-
-function AssignmentRow({ a }: { a: Assignment }) {
-  const router = useRouter();
-  const isBreached = a.requirement.isRespondByBreached || !!a.breachedAt;
-  const fillPct =
-    a.requirement.totalOpenings > 0
-      ? Math.round((a.filledOpenings / a.requirement.totalOpenings) * 100)
-      : 0;
-
-  const priorityColor = PRIORITY_COLOR[a.requirement.priority] ?? '#888780';
-
-  return (
-    <div
-      onClick={() => router.push(`/requirements/${a.requirement.id}`)}
-      className={cn(
-        'px-4 py-3.5 border-b border-border/60 hover:bg-muted/40 cursor-pointer transition-colors',
-        isBreached && 'border-l-2 border-l-destructive pl-3.5'
-      )}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        <p className="text-[10px] font-mono text-muted-foreground">{a.requirement.reqCode}</p>
-        {isBreached && (
-          <span className="flex items-center gap-1 text-[10px] font-medium text-destructive">
-            <AlertCircle size={10} />
-            breached
+        <div className="mt-4 flex items-center gap-4 rounded-lg border-2 border-indigo-200 bg-indigo-50 px-4 py-3">
+          <span className="w-44 shrink-0 text-right text-[13px] font-black text-indigo-800">
+            {selectedStageIds.length > 0 ? 'Selected total' : 'Grand total'}
           </span>
-        )}
-      </div>
-
-      <p className="text-[13px] font-semibold text-foreground leading-tight mb-1.5 flex items-center gap-1.5">
-        <span
-          className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-          style={{ backgroundColor: priorityColor }}
-        />
-        {a.requirement.title}
-      </p>
-
-      <p className="text-[11px] text-muted-foreground mb-2 truncate">
-        {a.requirement.client?.name}
-        {a.requirement.serviceLine ? ` · ${a.requirement.serviceLine.name}` : ''}
-      </p>
-
-      <div className="flex items-center gap-2">
-        <div className="flex-1 h-0.75 bg-muted rounded-full overflow-hidden">
-          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${fillPct}%` }} />
+          <span className="text-[18px] font-black text-indigo-900">
+            {selectedStageIds.length > 0
+              ? d.funnelByStage
+                  .filter(s => selectedStageIds.includes(s.stageId))
+                  .reduce((sum, s) => sum + s.count, 0)
+              : d.totalCandidates}{' '}
+            <span className="text-[14px] font-bold text-indigo-700">candidates</span>
+          </span>
         </div>
-        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-          {a.filledOpenings}/{a.requirement.totalOpenings} filled
-        </span>
+      </div>
+      <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
+          Disposition breakdown
+        </h3>
+        {(() => {
+          const entries = Object.entries(d.dispositionSummary)
+            .filter(([, v]) => v > 0)
+            .sort((a, b) => b[1] - a[1]);
+          const total = entries.reduce((s, [, v]) => s + v, 0);
+          if (!total) return <Empty msg="No disposition data." />;
+          return (
+            <div className="space-y-4">
+              <div className="flex h-6 w-full overflow-hidden rounded-full">
+                {entries.map(([k, v]) => (
+                  <div
+                    key={k}
+                    style={{
+                      width: `${(v / total) * 100}%`,
+                      backgroundColor: DISP_COLORS[k] ?? '#94A3B8',
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {entries.map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-2">
+                    <span
+                      className="h-3 w-3 rounded-sm"
+                      style={{ backgroundColor: DISP_COLORS[k] ?? '#94A3B8' }}
+                    />
+                    <span className="text-[12px] font-bold text-slate-700">
+                      {k.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-[13px] font-black text-slate-900">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
 }
 
-// ─── Recruiter Hero ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SALES DRILL DRAWER
+// ─────────────────────────────────────────────────────────────────────────────
 
-function RecruiterHero({ assignments, loading }: { assignments: Assignment[]; loading: boolean }) {
-  const total = assignments.length;
-  const breached = assignments.filter(
-    a => a.requirement.isRespondByBreached || !!a.breachedAt
-  ).length;
-  const submitted = assignments.reduce((s, a) => s + a.submissionsCount, 0);
-  const filled = assignments.reduce((s, a) => s + a.filledOpenings, 0);
-
-  return (
-    <div className="grid grid-cols-5 gap-3 px-5 py-4 shrink-0">
-      <StatCard
-        label="My assignments"
-        value={total}
-        sub="active requirements"
-        icon={Briefcase}
-        accentColor="#378ADD"
-        loading={loading}
-      />
-      <StatCard
-        label="Candidates submitted"
-        value={submitted}
-        sub="total submissions"
-        icon={Users}
-        accentColor="#639922"
-        loading={loading}
-      />
-      <StatCard
-        label="Openings filled"
-        value={filled}
-        sub="across assignments"
-        icon={CheckCircle2}
-        accentColor="#7F77DD"
-        loading={loading}
-      />
-      <StatCard
-        label="Breached"
-        value={breached}
-        sub="deadline passed"
-        icon={AlertTriangle}
-        accentColor="#E24B4A"
-        loading={loading}
-      />
-    </div>
-  );
+const STATUS_PILL: Record<string, string> = {
+  ACTIVE: 'bg-emerald-50 text-emerald-700',
+  DRAFT: 'bg-slate-100 text-slate-600',
+  PENDING_APPROVAL: 'bg-amber-50 text-amber-700',
+  ON_HOLD: 'bg-orange-50 text-orange-700',
+  CLOSED: 'bg-red-50 text-red-600',
+  CANCELLED: 'bg-gray-100 text-gray-500',
+};
+function fmtD(n: number): string {
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
-// ─── Utility functions ───────────────────────────────────────────────────────
-
-function fullName(u: HierarchyUser) {
-  return `${u.firstName} ${u.lastName}`.trim();
-}
-
-// ─── Filter Bar ──────────────────────────────────────────────────────────────
-
-function FilterBar({
-  dateRange,
-  onDateChange,
-  buId,
-  onBuChange,
-  deptId,
-  onDeptChange,
-  serviceLineId,
-  onSlChange,
-  teamLeadId,
-  onTeamLeadChange,
-  reportingToId,
-  onReportingToChange,
-  busData,
-  deptsData,
-  slData,
-  hierarchyData,
-  isRecruiter,
+function SalesDrillDrawer({
+  payload,
+  onClose,
 }: {
-  dateRange: DateRange | undefined;
-  onDateChange: (r: DateRange | undefined) => void;
-  buId: string;
-  onBuChange: (v: string) => void;
-  deptId: string;
-  onDeptChange: (v: string) => void;
-  serviceLineId: string;
-  onSlChange: (v: string) => void;
-  teamLeadId: string;
-  onTeamLeadChange: (v: string) => void;
-  reportingToId: string;
-  onReportingToChange: (v: string) => void;
-  busData: { id: string; name: string }[] | undefined;
-  deptsData: Department[] | undefined;
-  slData: { id: string; name: string }[] | undefined;
-  hierarchyData: { teamLeads: HierarchyUser[]; reportingTo: HierarchyUser[] } | undefined;
-  isRecruiter: boolean;
+  payload: SalesDrillPayload;
+  onClose: () => void;
 }) {
-  const hasAnyFilter =
-    !!buId || !!deptId || !!teamLeadId || !!reportingToId || !!serviceLineId || !!dateRange?.from;
-
-  function clearAll() {
-    onBuChange('');
-    onDeptChange('');
-    onTeamLeadChange('');
-    onReportingToChange('');
-    onSlChange('');
-    onDateChange(undefined);
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-border bg-background shrink-0">
-      <DateRangePicker range={dateRange} onChange={onDateChange} />
-
-      {!isRecruiter && busData && busData.length > 0 && (
-        <Select value={buId || '_all'} onValueChange={v => onBuChange(v === '_all' ? '' : v)}>
-          <SelectTrigger className="h-8 w-37.5 text-xs gap-1.5">
-            <Building2 size={12} className="text-muted-foreground shrink-0" />
-            <SelectValue placeholder="All BUs" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_all">All BUs</SelectItem>
-            {busData.map(b => (
-              <SelectItem key={b.id} value={b.id}>
-                {b.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {deptsData && deptsData.length > 0 && (
-        <Select value={deptId || '_all'} onValueChange={v => onDeptChange(v === '_all' ? '' : v)}>
-          <SelectTrigger className="h-8 w-42.5 text-xs gap-1.5">
-            <Building2 size={12} className="text-muted-foreground shrink-0" />
-            <SelectValue placeholder="All departments" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_all">All departments</SelectItem>
-            {deptsData.map(d => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {!isRecruiter && hierarchyData?.teamLeads && hierarchyData.teamLeads.length > 0 && (
-        <Select
-          value={teamLeadId || '_all'}
-          onValueChange={v => onTeamLeadChange(v === '_all' ? '' : v)}
-        >
-          <SelectTrigger className="h-8 w-42.5 text-xs gap-1.5">
-            <Users size={12} className="text-muted-foreground shrink-0" />
-            <SelectValue placeholder="All team leads" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_all">All team leads</SelectItem>
-            {hierarchyData.teamLeads.map(t => (
-              <SelectItem key={t.id} value={t.id}>
-                {fullName(t)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {!isRecruiter && hierarchyData?.reportingTo && hierarchyData.reportingTo.length > 0 && (
-        <Select
-          value={reportingToId || '_all'}
-          onValueChange={v => onReportingToChange(v === '_all' ? '' : v)}
-        >
-          <SelectTrigger className="h-8 w-45 text-xs gap-1.5">
-            <Users size={12} className="text-muted-foreground shrink-0" />
-            <SelectValue placeholder="All managers" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_all">All managers</SelectItem>
-            {hierarchyData.reportingTo.map(r => (
-              <SelectItem key={r.id} value={r.id}>
-                {fullName(r)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {!isRecruiter && slData && slData.length > 0 && (
-        <Select
-          value={serviceLineId || '_all'}
-          onValueChange={v => onSlChange(v === '_all' ? '' : v)}
-        >
-          <SelectTrigger className="h-8 w-40 text-xs">
-            <SelectValue placeholder="All service lines" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_all">All service lines</SelectItem>
-            {slData.map(s => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {hasAnyFilter && (
-        <button
-          onClick={clearAll}
-          className="text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1 ml-1"
-        >
-          <X size={11} /> Clear all
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Status Tabs ──────────────────────────────────────────────────────────────
-
-function StatusTabs({
-  statusFilter,
-  onStatusChange,
-  byStatus,
-}: {
-  statusFilter: string;
-  onStatusChange: (v: string) => void;
-  byStatus: Record<string, number>;
-}) {
-  // const total = Object.values(byStatus).reduce((s, n) => s + n, 0);
-  // const tabs = [
-  //   { key: '_all', label: 'All', count: total },
-  //   ...SIDEBAR_STATUSES.map(s => ({ key: s.key, label: s.label, count: byStatus[s.key] ?? 0 })),
-  // ];
-
-  return <div className="px-5 pt-3 shrink-0" />;
-}
-
-// ─── Right Panel ──────────────────────────────────────────────────────────────
-
-function RightPanel({
-  dateRange,
-  onDateChange,
-  assignments,
-  loading,
-}: {
-  dateRange: DateRange | undefined;
-  onDateChange: (r: DateRange | undefined) => void;
-  assignments: Assignment[];
-  loading: boolean;
-}) {
-  const breachedCount = assignments.filter(
-    a => a.requirement.isRespondByBreached || !!a.breachedAt
-  ).length;
-
-  const sorted = [...assignments].sort((a, b) => {
-    const aB = a.requirement.isRespondByBreached || !!a.breachedAt ? 1 : 0;
-    const bB = b.requirement.isRespondByBreached || !!b.breachedAt ? 1 : 0;
-    return bB - aB;
+  const axios = useAxios();
+  const drillQuery = useQuery({
+    queryKey: ['sales-drill-req', payload],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (payload.type) p.set('type', payload.type);
+      if (payload.stageId) p.set('stageId', payload.stageId);
+      if (payload.reqId) p.set('reqId', payload.reqId);
+      return (await axios.get(`/reports/sales/drill?${p}`)).data;
+    },
   });
-
+  const rows: any[] = drillQuery.data?.data?.rows ?? [];
+  const totals: any = drillQuery.data?.data?.totals ?? {};
+  const loading = drillQuery.isLoading;
   return (
-    <div
-      className="bg-card border-l border-border flex flex-col"
-      style={{ height: '100%', overflow: 'hidden' }}
-    >
-      <div className="px-4 py-5 border-b border-border shrink-0">
-        <div className="flex items-start justify-between mb-1">
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <p className="text-[13px] font-semibold text-foreground">My assignments</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {assignments.length} active
-              {breachedCount > 0 && (
-                <span className="text-destructive font-medium ml-1">
-                  · {breachedCount} breached
-                </span>
-              )}
+            <h2 className="text-[15px] font-black text-slate-900">{payload.label}</h2>
+            <p className="text-[12px] text-slate-400">
+              {loading ? 'Loading…' : `${rows.length} requirement${rows.length !== 1 ? 's' : ''}`}
             </p>
           </div>
-          {breachedCount > 0 && (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-destructive bg-destructive/10 px-2 py-1 rounded-md">
-              <AlertCircle size={11} />
-              {breachedCount}
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {!loading && rows.length > 0 && (
+          <div className="flex items-center gap-6 border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px]">
+            <span className="font-black text-slate-700">{totals.reqs} reqs</span>
+            <span className="font-black text-emerald-700">{totals.placed} placed</span>
+            <span className="font-semibold text-blue-600">{totals.active} active</span>
+            <span className="font-semibold text-red-500">{totals.dropped} dropped</span>
+            <span className="ml-auto font-black text-indigo-700">
+              {fmtD(totals.saleValue ?? 0)} total sale value
             </span>
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-[13px] text-slate-400">
+              No requirements match this filter.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((r: any) => {
+                const maxStage = Math.max(...(r.stageBreakdown ?? []).map((s: any) => s.count), 1);
+                return (
+                  <div
+                    key={r.id}
+                    className="rounded-xl border-2 border-slate-100 bg-white p-4 shadow-sm"
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+                            {r.reqCode}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_PILL[r.status] ?? 'bg-slate-100 text-slate-600'}`}
+                          >
+                            {r.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-[13px] font-black text-slate-900">
+                          {r.title}
+                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                          {r.client && <span>{r.client.name}</span>}
+                          {r.serviceLine && <span>· {r.serviceLine.name}</span>}
+                          <span>
+                            · {r.totalOpenings} opening{r.totalOpenings !== 1 ? 's' : ''}
+                          </span>
+                          <span>· Created by {r.createdBy}</span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[16px] font-black text-emerald-700">
+                          {fmtD(r.saleValue)}
+                        </p>
+                        <p className="text-[11px] text-slate-400">sale value</p>
+                      </div>
+                    </div>
+                    <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+                      <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">
+                        {r.pipeline.placed} placed
+                      </span>
+                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-bold text-indigo-600">
+                        {r.pipeline.active} active
+                      </span>
+                      {r.pipeline.nearTerminal > 0 && (
+                        <span className="rounded-lg bg-amber-50 px-2.5 py-1 font-bold text-amber-600">
+                          {r.pipeline.nearTerminal} near close
+                        </span>
+                      )}
+                      {r.pipeline.sourced > 0 && (
+                        <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                          {r.pipeline.sourced} sourced
+                        </span>
+                      )}
+                      {r.pipeline.dropped > 0 && (
+                        <span className="rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-500">
+                          {r.pipeline.dropped} dropped
+                        </span>
+                      )}
+                      <span className="ml-auto rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                        {r.pipeline.total} total
+                      </span>
+                      {r.fillRate > 0 && (
+                        <span className="rounded-lg bg-purple-50 px-2.5 py-1 font-bold text-purple-700">
+                          {r.fillRate}% fill rate
+                        </span>
+                      )}
+                    </div>
+                    {r.stageBreakdown?.length > 0 && (
+                      <div className="space-y-1.5">
+                        {r.stageBreakdown.map((s: any, idx: number) => {
+                          const barPct = Math.max((s.count / maxStage) * 100, 4);
+                          const color = s.isTerminal
+                            ? '#059669'
+                            : ['#4F46E5', '#7C3AED', '#0891B2', '#D97706', '#6366F1'][idx % 5];
+                          return (
+                            <div key={s.stageId} className="flex items-center gap-2">
+                              <span className="w-32 shrink-0 truncate text-right text-[10px] font-semibold text-slate-500">
+                                {s.label}
+                              </span>
+                              <div className="relative h-5 flex-1 overflow-hidden rounded-md bg-slate-100">
+                                <div
+                                  className="flex h-full items-center rounded-md px-2"
+                                  style={{ width: `${barPct}%`, backgroundColor: color }}
+                                >
+                                  <span className="text-[10px] font-black text-white">
+                                    {s.count}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TAB_CONFIG: { key: TabKey; label: string; icon: React.ElementType }[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { key: 'recruiters', label: 'Recruiters', icon: Users },
+  { key: 'requirements', label: 'Requirements', icon: FileText },
+  { key: 'candidates', label: 'Candidates', icon: UserCheck },
+  { key: 'sales', label: 'Sales', icon: TrendingUp },
+];
+
+export default function ReportsPage() {
+  const axios = useAxios();
+  const { user } = useAuth();
+  const { canView } = usePermission('reports');
+  const hasAccess = user?.isSuperAdmin || canView;
+
+  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [filters, setFilters] = useState<Filters>({});
+  const [win, setWin] = useState<WinState>(DEFAULT_WIN);
+  const [standardOnly, setStandardOnly] = useState(false);
+  const [recReqFilter, setRecReqFilter] = useState('');
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]);
+  const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
+  const [salesDrillPayload, setSalesDrillPayload] = useState<SalesDrillPayload | null>(null);
+  const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  const handleStageToggle = useCallback((stageId: string) => {
+    setSelectedStageIds(prev =>
+      prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]
+    );
+  }, []);
+
+  const baseParams = useMemo(() => {
+    const p = new URLSearchParams();
+    Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
+    if (filters.clientId) p.set('clientId', filters.clientId);
+    if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
+    if (filters.businessUnitId) p.set('businessUnitId', filters.businessUnitId);
+    if (filters.departmentId) p.set('departmentId', filters.departmentId);
+    if (filters.createdById) p.set('createdById', filters.createdById);
+    if (filters.status) p.set('status', filters.status);
+    if (standardOnly) p.set('standardOnly', 'true');
+    if (teamSelection) {
+      p.set('userIds', teamSelection.memberIds.join(','));
+      p.set('teamRootId', teamSelection.id);
+    }
+    return p;
+  }, [win, filters, standardOnly, teamSelection]);
+
+  const baseQs = baseParams.toString();
+  const recParams = useMemo(() => {
+    const p = new URLSearchParams(baseQs);
+    if (recReqFilter) p.set('requirementId', recReqFilter);
+    return p.toString();
+  }, [baseQs, recReqFilter]);
+
+  const overviewQuery = useQuery({
+    queryKey: ['report-overview-v2', baseQs],
+    queryFn: async () => (await axios.get(`/reports/overview?${baseQs}`)).data,
+    enabled: hasAccess && activeTab === 'overview',
+    staleTime: 60_000,
+  });
+  const recruiterQuery = useQuery({
+    queryKey: ['report-recruiters', recParams],
+    queryFn: async () =>
+      (await axios.get(`/reports/recruiters?${recParams}`)).data as RecruiterResponse,
+    enabled: hasAccess && activeTab === 'recruiters',
+    staleTime: 60_000,
+  });
+  const requirementQuery = useQuery({
+    queryKey: ['report-requirements', baseQs],
+    queryFn: async () =>
+      (await axios.get(`/reports/requirements?${baseQs}`)).data as RequirementReportResponse,
+    enabled: hasAccess && activeTab === 'requirements',
+    staleTime: 60_000,
+  });
+  const candidateQuery = useQuery({
+    queryKey: ['report-candidates', baseQs],
+    queryFn: async () => (await axios.get(`/reports/candidates?${baseQs}`)).data,
+    enabled: hasAccess && activeTab === 'candidates',
+    staleTime: 60_000,
+  });
+  const salesQuery = useQuery({
+    queryKey: ['report-sales', baseQs],
+    queryFn: async () => (await axios.get(`/reports/sales?${baseQs}`)).data,
+    enabled: hasAccess && activeTab === 'sales',
+    staleTime: 60_000,
+  });
+
+  const download = useCallback(
+    async (url: string, filename: string, key: string) => {
+      if (downloading) return;
+      setDownloading(key);
+      try {
+        const res = await axios.get(url, { responseType: 'blob' });
+        downloadBlob(res.data, filename);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setDownloading(null);
+      }
+    },
+    [axios, downloading]
+  );
+
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  const handleRecruiterAll = useCallback(
+    (
+      slId?: string,
+      stageIds?: string[],
+      hiddenStageIds?: string[],
+      hiddenCandidateCols?: string[]
+    ) => {
+      const p = new URLSearchParams(recParams);
+      if (slId) p.set('serviceLineId', slId);
+      if (stageIds?.length) p.set('stageIds', stageIds.join(','));
+      if (hiddenStageIds?.length) p.set('hiddenStageIds', hiddenStageIds.join(','));
+      if (hiddenCandidateCols?.length) p.set('hiddenCandidateCols', hiddenCandidateCols.join(','));
+      download(`/reports/recruiters/export?${p}`, `recruiter-report-${dateStr}.xlsx`, 'rec-all');
+    },
+    [recParams, download, dateStr]
+  );
+  const handleRecruiterSelected = useCallback(
+    (
+      ids: string[],
+      slId?: string,
+      stageIds?: string[],
+      hiddenStageIds?: string[],
+      hiddenCandidateCols?: string[]
+    ) => {
+      const p = new URLSearchParams(recParams);
+      if (slId) p.set('serviceLineId', slId);
+      p.set('ids', ids.join(','));
+      if (stageIds?.length) p.set('stageIds', stageIds.join(','));
+      if (hiddenStageIds?.length) p.set('hiddenStageIds', hiddenStageIds.join(','));
+      if (hiddenCandidateCols?.length) p.set('hiddenCandidateCols', hiddenCandidateCols.join(','));
+      download(
+        `/reports/recruiters/export?${p}`,
+        `recruiter-report-selected-${dateStr}.xlsx`,
+        'rec-sel'
+      );
+    },
+    [recParams, download, dateStr]
+  );
+  const handleRequirementAll = useCallback(
+    (
+      slId?: string,
+      stageIds?: string[],
+      hiddenStageIds?: string[],
+      hiddenCandidateCols?: string[]
+    ) => {
+      const p = new URLSearchParams(baseQs);
+      if (slId) p.set('serviceLineId', slId);
+      if (stageIds?.length) p.set('stageIds', stageIds.join(','));
+      if (hiddenStageIds?.length) p.set('hiddenStageIds', hiddenStageIds.join(','));
+      if (hiddenCandidateCols?.length) p.set('hiddenCandidateCols', hiddenCandidateCols.join(','));
+      download(`/reports/requirements/export?${p}`, `requirements-${dateStr}.xlsx`, 'req-all');
+    },
+    [baseQs, download, dateStr]
+  );
+  const handleRequirementSelected = useCallback(
+    (
+      ids: string[],
+      slId?: string,
+      stageIds?: string[],
+      hiddenStageIds?: string[],
+      hiddenCandidateCols?: string[]
+    ) => {
+      const p = new URLSearchParams(baseQs);
+      if (slId) p.set('serviceLineId', slId);
+      p.set('ids', ids.join(','));
+      if (stageIds?.length) p.set('stageIds', stageIds.join(','));
+      if (hiddenStageIds?.length) p.set('hiddenStageIds', hiddenStageIds.join(','));
+      if (hiddenCandidateCols?.length) p.set('hiddenCandidateCols', hiddenCandidateCols.join(','));
+      download(
+        `/reports/requirements/export?${p}`,
+        `requirements-selected-${dateStr}.xlsx`,
+        'req-sel'
+      );
+    },
+    [baseQs, download, dateStr]
+  );
+  const handleRequirementRow = useCallback(
+    (id: string, reqCode: string) => {
+      download(
+        `/reports/requirements/${id}/export`,
+        `requirement-${reqCode}-${dateStr}.xlsx`,
+        `req-${id}`
+      );
+    },
+    [download, dateStr]
+  );
+  const handleCandidateExportAll = useCallback(() => {
+    download(`/reports/candidates/export?${baseQs}`, `candidates-all-${dateStr}.xlsx`, 'cand-all');
+  }, [baseQs, download, dateStr]);
+  const handleCandidateExportStages = useCallback(
+    (stageIds: string[]) => {
+      const p = new URLSearchParams(baseQs);
+      p.set('stageIds', stageIds.join(','));
+      download(
+        `/reports/candidates/export?${p}`,
+        `candidates-stages-${dateStr}.xlsx`,
+        'cand-stages'
+      );
+    },
+    [baseQs, download, dateStr]
+  );
+
+  // Count active filters for the badge
+  const activeFilterCount = [
+    filters.clientId,
+    filters.serviceLineId,
+    filters.businessUnitId,
+    filters.departmentId,
+    filters.createdById,
+    filters.status,
+    teamSelection,
+  ].filter(Boolean).length;
+
+  if (!hasAccess)
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
+        <AlertCircle className="h-10 w-10 opacity-30" />
+        <p className="text-sm font-medium">You do not have access to reports.</p>
+      </div>
+    );
+
+  return (
+    <div className="flex min-h-screen flex-col bg-slate-100">
+      {/* ── DARK MASTHEAD ────────────────────────────────────────────────── */}
+      <div className="bg-[#0F172A] px-6 pb-0 pt-6">
+        <div className="mx-auto max-w-screen-2xl">
+          {/* Top row: title + actions */}
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-900/40">
+                  <BarChart2 className="h-4.5 w-4.5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-[22px] font-black tracking-tight text-white">
+                    Analytics & Reports
+                  </h1>
+                  <p className="text-[12px] font-medium text-white/40">
+                    {user?.firstName
+                      ? `${user.firstName}'s command centre`
+                      : 'Pipeline command centre'}{' '}
+                    · {winLabel(win)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Downloading indicator */}
+              {downloading && (
+                <div className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-white/70">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Preparing…
+                </div>
+              )}
+
+              {/* Filter button */}
+              <button
+                onClick={() => setFilterOpen(true)}
+                className={`relative flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${activeFilterCount > 0 ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300' : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'}`}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-black text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Tab bar — embedded in the dark header */}
+          <div className="flex items-center gap-1">
+            {TAB_CONFIG.map(({ key, label, icon: Icon }) => {
+              const active = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    if (key === 'overview' || key === 'candidates' || key === 'sales') {
+                      setFilters(f => ({ ...f, status: undefined, createdById: undefined }));
+                    }
+                    setSelectedStageIds([]);
+                    setActiveTab(key);
+                  }}
+                  className={`flex items-center gap-2 rounded-t-xl px-5 py-3 text-[13px] font-bold transition-all ${
+                    active
+                      ? 'bg-slate-100 text-slate-900 shadow-sm'
+                      : 'text-white/50 hover:bg-white/5 hover:text-white/80'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── CONTENT AREA ─────────────────────────────────────────────────── */}
+      <div className="flex-1 bg-slate-100">
+        <div className="mx-auto max-w-screen-2xl px-6 py-6">
+          {activeTab === 'overview' && (
+            <OverviewSection
+              data={overviewQuery.data}
+              loading={overviewQuery.isLoading}
+              onDrill={setDrillTarget}
+              baseQs={baseQs}
+            />
+          )}
+          {activeTab === 'recruiters' && (
+            <RecruiterSection
+              resp={recruiterQuery.data}
+              loading={recruiterQuery.isLoading}
+              reqFilter={recReqFilter}
+              onReqFilter={setRecReqFilter}
+              onDownloadAll={handleRecruiterAll}
+              onDownloadSelected={handleRecruiterSelected}
+            />
+          )}
+          {activeTab === 'requirements' && (
+            <RequirementSection
+              resp={requirementQuery.data}
+              loading={requirementQuery.isLoading}
+              onDownloadRow={handleRequirementRow}
+              onDownloadAll={handleRequirementAll}
+              onDownloadSelected={handleRequirementSelected}
+            />
+          )}
+          {activeTab === 'candidates' && (
+            <CandidatesSection
+              data={candidateQuery.data}
+              loading={candidateQuery.isLoading}
+              onExportAll={handleCandidateExportAll}
+              onExportStage={handleCandidateExportStages}
+              selectedStageIds={selectedStageIds}
+              onStageToggle={handleStageToggle}
+            />
+          )}
+          {activeTab === 'sales' && (
+            <SalesSection
+              data={salesQuery.data?.data ?? null}
+              loading={salesQuery.isLoading}
+              onDrill={setSalesDrillPayload}
+            />
           )}
         </div>
       </div>
 
-      <div className="px-4 py-3 border-b border-border shrink-0">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-2">
-          Date range
-        </p>
-        <Calendar
-          mode="range"
-          selected={dateRange}
-          onSelect={onDateChange}
-          numberOfMonths={1}
-          disabled={{ after: new Date() }}
-          className="p-0 text-xs [&_td]:p-0 [&_th]:p-0 [&_button]:h-7 [&_button]:w-7 [&_button]:text-[11px]"
-        />
-        <div className="grid grid-cols-2 gap-1.5 mt-2">
-          <div
-            className={cn(
-              'px-2 py-1.5 rounded-md border text-[10.5px] text-center',
-              dateRange?.from
-                ? 'border-primary/40 bg-primary/5 text-primary'
-                : 'border-border text-muted-foreground'
-            )}
-          >
-            {dateRange?.from ? format(dateRange.from, 'dd MMM yy') : 'Start'}
-          </div>
-          <div
-            className={cn(
-              'px-2 py-1.5 rounded-md border text-[10.5px] text-center',
-              dateRange?.to
-                ? 'border-primary/40 bg-primary/5 text-primary'
-                : 'border-border text-muted-foreground'
-            )}
-          >
-            {dateRange?.to ? format(dateRange.to, 'dd MMM yy') : 'End'}
-          </div>
-        </div>
-        {dateRange?.from && (
-          <button
-            onClick={() => onDateChange(undefined)}
-            className="w-full mt-1.5 text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center justify-center gap-1"
-          >
-            <X size={10} /> Clear range
-          </button>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="p-4 space-y-3">
-            {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="h-16 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-28 gap-2 text-muted-foreground">
-            <Briefcase size={20} className="opacity-40" />
-            <p className="text-[12px]">No active assignments</p>
-          </div>
-        ) : (
-          sorted.map(a => <AssignmentRow key={a.id} a={a} />)
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Content ─────────────────────────────────────────────────────────────
-
-function MainContent({
-  stats,
-  statsLoading,
-  stages,
-  pipelineLoading,
-  dateFrom,
-  dateTo,
-  isRecruiter,
-  assignments,
-  assignmentsLoading,
-  onNavigate,
-  resumeStats,
-  resumeStatsLoading,
-}: {
-  stats: StatsData | undefined;
-  statsLoading: boolean;
-  stages: PipelineStageOverview[];
-  pipelineLoading: boolean;
-  dateFrom: string | undefined;
-  dateTo: string | undefined;
-  isRecruiter: boolean;
-  assignments: Assignment[];
-  assignmentsLoading: boolean;
-  onNavigate: (params: Record<string, string>) => void;
-  resumeStats: ResumeStats | undefined;
-  resumeStatsLoading: boolean;
-}) {
-  return (
-    <div className="flex flex-col overflow-y-auto bg-background" style={{ height: '100%' }}>
-      {/* ── Recruiter hero OR admin stat cards ── */}
-      {isRecruiter ? (
-        <RecruiterHero assignments={assignments} loading={assignmentsLoading} />
-      ) : (
-        <div className="grid grid-cols-5 gap-3 px-5 py-4 shrink-0">
-          <StatCard
-            label="Active requirements"
-            value={stats?.active ?? 0}
-            sub={`of ${stats?.totalRequirements ?? 0} total`}
-            icon={Zap}
-            accentColor="#639922"
-            loading={statsLoading}
-            onClick={() => onNavigate({ status: 'ACTIVE' })}
-          />
-          <StatCard
-            label="High priority"
-            value={stats?.highPriority ?? 0}
-            sub="active requirements"
-            icon={TrendingUp}
-            accentColor="#E24B4A"
-            loading={statsLoading}
-            onClick={() => onNavigate({ status: 'ACTIVE', priority: 'HIGH' })}
-          />
-          <StatCard
-            label="Breached"
-            value={stats?.breached ?? 0}
-            sub="deadline passed"
-            icon={AlertTriangle}
-            accentColor="#BA7517"
-            loading={statsLoading}
-            onClick={() => onNavigate({ breached: 'true' })}
-          />
-          <StatCard
-            label="In pipeline"
-            value={stats?.totalCandidates ?? 0}
-            sub="across all stages"
-            icon={Users}
-            accentColor="#378ADD"
-            loading={statsLoading}
-          />
-          <StatCard
-            label="Resumes parsed"
-            value={resumeStats?.total ?? 0}
-            sub="across all sources"
-            icon={FileText}
-            accentColor="#10B981"
-            loading={resumeStatsLoading}
-          />
-        </div>
-      )}
-
-      {/* ── Charts (non-recruiter) ── */}
-      {!isRecruiter && (
-        <div className="px-5 pb-4 shrink-0 space-y-3">
-          {/* Pipeline funnel */}
-          <div className="bg-card border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[13px] font-semibold text-foreground">Pipeline funnel</p>
-              <p className="text-[11px] text-muted-foreground">candidates by stage</p>
-            </div>
-            <div className="flex gap-4 mb-3">
-              {[
-                { color: '#378ADD', label: 'Active' },
-                { color: '#EF9F27', label: 'On hold' },
-                { color: '#e2e8f0', label: 'Inactive', border: true },
-              ].map(l => (
-                <span
-                  key={l.label}
-                  className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-                >
-                  <span
-                    className="w-2 h-2 rounded-sm shrink-0"
-                    style={{
-                      backgroundColor: l.color,
-                      border: l.border ? '0.5px solid #cbd5e1' : undefined,
-                    }}
-                  />
-                  {l.label}
-                </span>
-              ))}
-            </div>
-            <PipelineFunnelChart stages={stages} loading={pipelineLoading} />
-          </div>
-
-          {/* Second row: Resume card + BU breakdown */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* ── REPLACED: ResumeParsedCard handles all resume breakdown logic ── */}
-            {/* <ResumeParsedCard resumeStats={resumeStats} loading={resumeStatsLoading} /> */}
-            <ResumeParsedCard
-              resumeStats={resumeStats}
-              loading={resumeStatsLoading}
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-            />
-
-            {/* BU breakdown */}
-            <div className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[13px] font-semibold text-foreground">By business unit</p>
-                <p className="text-[11px] text-muted-foreground">active requirements</p>
-              </div>
-              <div className="flex gap-4 mb-3">
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span
-                    className="w-2 h-2 rounded-sm shrink-0"
-                    style={{ backgroundColor: '#7F77DD' }}
-                  />
-                  Requirements
-                </span>
-              </div>
-              <BUBreakdownChart items={stats?.buBreakdown ?? []} loading={statsLoading} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Stage cards ── */}
-      <div className="px-5 pb-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[13px] font-semibold text-foreground">Candidate pipeline</p>
-          <p className="text-[11px] text-muted-foreground">click any stage to view candidates</p>
-        </div>
-
-        {pipelineLoading ? (
-          <div className="grid grid-cols-5 gap-2">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <Skeleton key={i} className="h-32 rounded-xl" />
-            ))}
-          </div>
-        ) : stages.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-[12px] text-muted-foreground border border-border rounded-xl">
-            No pipeline data for this period
-          </div>
-        ) : (
-          <div className="grid grid-cols-5 gap-2">
-            {stages.map(stage => (
-              <StageCard key={stage.stageId} stage={stage} dateFrom={dateFrom} dateTo={dateTo} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Dashboard Content ────────────────────────────────────────────────────────
-
-function DashboardContent() {
-  const { user } = useAuth();
-  const axios = useAxios();
-  const router = useRouter();
-
-  const isSuperAdmin = user?.isSuperAdmin ?? false;
-  const isRecruiter = user?.role?.name?.toLowerCase().includes('recruiter') ?? false;
-
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [buId, setBuId] = useState('');
-  const [serviceLineId, setServiceLineId] = useState('');
-  const [deptId, setDeptId] = useState('');
-  const [teamLeadId, setTeamLeadId] = useState('');
-  const [reportingToId, setReportingToId] = useState('');
-
-  const dateFrom = dateRange?.from ? format(dateRange.from, 'yyyy-MM-dd') : undefined;
-  const dateTo = dateRange?.to ? format(dateRange.to, 'yyyy-MM-dd') : undefined;
-
-  const qs = useMemo(() => {
-    const p = new URLSearchParams();
-    if (dateFrom) p.set('dateFrom', dateFrom);
-    if (dateTo) p.set('dateTo', dateTo);
-    if (teamLeadId) p.set('teamLeadId', teamLeadId);
-    if (reportingToId) p.set('reportingToId', reportingToId);
-    if (deptId) {
-      p.set('deptId', deptId);
-    } else if (buId) {
-      p.set('buId', buId);
-    }
-    if (serviceLineId) p.set('serviceLineId', serviceLineId);
-    return p.toString();
-  }, [dateFrom, dateTo, buId, deptId, teamLeadId, reportingToId, serviceLineId]);
-
-  const { data: hierarchyData } = useQuery({
-    queryKey: ['hierarchy-filters'],
-    queryFn: async () =>
-      (await axios.get('/users/hierarchy-filters')).data?.data as {
-        teamLeads: HierarchyUser[];
-        reportingTo: HierarchyUser[];
-      },
-    enabled: !isRecruiter,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats', qs],
-    queryFn: async () => (await axios.get(`/dashboard/stats?${qs}`)).data?.data as StatsData,
-    staleTime: 30_000,
-  });
-
-  const { data: pipelineRes, isLoading: pipelineLoading } = useQuery({
-    queryKey: ['dashboard-pipeline-overview', qs],
-    queryFn: async () =>
-      (await axios.get(`/dashboard/pipeline-overview?${qs}`)).data?.data as PipelineOverviewData,
-    staleTime: 30_000,
-  });
-
-  const { data: assignmentsRes, isLoading: assignmentsLoading } = useQuery({
-    queryKey: ['dashboard-my-assignments'],
-    queryFn: async () => (await axios.get('/dashboard/my-assignments')).data?.data as Assignment[],
-    staleTime: 30_000,
-  });
-
-  const { data: busData } = useQuery({
-    queryKey: ['bus-filter'],
-    queryFn: async () =>
-      (await axios.get('/business-units?limit=100')).data?.data as { id: string; name: string }[],
-    enabled: !isRecruiter,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: slData } = useQuery({
-    queryKey: ['sl-filter'],
-    queryFn: async () =>
-      (await axios.get('/service-lines')).data?.data as { id: string; name: string }[],
-    enabled: !isRecruiter,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: deptsData } = useQuery({
-    queryKey: ['departments-filter'],
-    queryFn: async () => (await axios.get('/departments?isActive=true')).data?.data as Department[],
-    enabled: isSuperAdmin,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const { data: resumeStats, isLoading: resumeStatsLoading } = useQuery({
-    queryKey: ['dashboard-resume-stats', qs],
-    queryFn: async () =>
-      (await axios.get(`/dashboard/resume-stats?${qs}`)).data?.data as ResumeStats,
-    staleTime: 30_000,
-  });
-
-  const stages = pipelineRes?.stages ?? [];
-  const assignments = assignmentsRes ?? [];
-
-  const byStatus: Record<string, number> = {
-    ACTIVE: stats?.active ?? 0,
-    ON_HOLD: stats?.onHold ?? 0,
-    CLOSED: stats?.closed ?? 0,
-    PENDING_APPROVAL: stats?.pendingApproval ?? 0,
-    DRAFT: stats?.draft ?? 0,
-  };
-
-  function navigate(params: Record<string, string>) {
-    const p = new URLSearchParams(params);
-    if (dateFrom) p.set('dateFrom', dateFrom);
-    if (dateTo) p.set('dateTo', dateTo);
-    router.push(`/requirements?${p.toString()}`);
-  }
-
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: 'calc(100vh - 64px)',
-        overflow: 'hidden',
-      }}
-    >
-      {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-background shrink-0">
-        <div>
-          <p className="text-[18px] font-semibold text-foreground leading-tight">
-            {greeting()}, {user?.firstName ?? ''}
-          </p>
-          <p className="text-[12px] text-muted-foreground mt-1">
-            {isSuperAdmin
-              ? 'Full org view — all requirements, assignments and pipeline.'
-              : isRecruiter
-                ? 'Your active assignments and candidate pipeline.'
-                : "Here's what's happening across your requirements."}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Filter bar ── */}
-      <FilterBar
-        dateRange={dateRange}
-        onDateChange={setDateRange}
-        buId={buId}
-        onBuChange={setBuId}
-        deptId={deptId}
-        onDeptChange={setDeptId}
-        serviceLineId={serviceLineId}
-        onSlChange={setServiceLineId}
-        teamLeadId={teamLeadId}
-        onTeamLeadChange={setTeamLeadId}
-        reportingToId={reportingToId}
-        onReportingToChange={setReportingToId}
-        busData={busData}
-        deptsData={deptsData}
-        slData={slData}
-        hierarchyData={hierarchyData}
-        isRecruiter={isRecruiter}
+      {/* ── FILTER PANEL ─────────────────────────────────────────────────── */}
+      <FilterPanel
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        filters={filters}
+        onChange={f => {
+          setFilters(f);
+          setSelectedStageIds([]);
+        }}
+        win={win}
+        onWin={setWin}
+        standardOnly={standardOnly}
+        onStandardOnly={setStandardOnly}
+        activeTab={activeTab}
+        teamSelection={teamSelection}
+        onTeamSelection={setTeamSelection}
       />
 
-      {/* ── Status tabs placeholder ── */}
-      {!isRecruiter && (
-        <StatusTabs
-          statusFilter={statusFilter}
-          onStatusChange={setStatusFilter}
-          byStatus={byStatus}
-        />
+      {/* ── DRAWERS ───────────────────────────────────────────────────────── */}
+      <DrillDrawer target={drillTarget} baseQs={baseQs} onClose={() => setDrillTarget(null)} />
+      {salesDrillPayload && (
+        <SalesDrillDrawer payload={salesDrillPayload} onClose={() => setSalesDrillPayload(null)} />
       )}
-
-      {/* ── 2-column layout ── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 256px',
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ height: '100%', overflow: 'hidden' }}>
-          <MainContent
-            stats={stats}
-            statsLoading={statsLoading}
-            stages={stages}
-            pipelineLoading={pipelineLoading}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            isRecruiter={isRecruiter}
-            assignments={assignments}
-            assignmentsLoading={assignmentsLoading}
-            onNavigate={navigate}
-            resumeStats={resumeStats}
-            resumeStatsLoading={resumeStatsLoading}
-          />
-        </div>
-
-        <div style={{ height: '100%', overflow: 'hidden' }}>
-          <RightPanel
-            dateRange={dateRange}
-            onDateChange={setDateRange}
-            assignments={assignments}
-            loading={assignmentsLoading}
-          />
-        </div>
-      </div>
     </div>
-  );
-}
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={null}>
-      <ScrollingGreetingBar />
-
-      <DashboardContent />
-    </Suspense>
   );
 }
