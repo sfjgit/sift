@@ -12,6 +12,7 @@ import {
   CalendarIcon,
   TrendingDown,
   Upload,
+  Download,
   RefreshCw,
   AlertTriangle,
   Users,
@@ -36,6 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAxios } from '@/hooks/useAxios';
+import * as XLSX from 'xlsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES  (mirror the candidate-service Naukri tables)
@@ -455,6 +457,91 @@ export default function NaukriLogsPage() {
     };
   }, [filteredSummary]);
 
+  // ── EXPORT TO EXCEL ─────────────────────────────────────────────────────────
+  // Exports whatever is currently on screen — i.e. the FILTERED rows, same
+  // data the stat cards and table already reflect. Two sheets per workbook:
+  // "Summary" (the six stat-card numbers) and the full recruiter breakdown/
+  // cumulative table, so nothing shown on the page is left out of the file.
+  const exportToExcel = () => {
+    const wb = XLSX.utils.book_new();
+
+    if (mode === 'single') {
+      if (filteredDaily.length === 0) return;
+
+      // ── Summary sheet — mirrors the stat cards at the top of the page ──
+      const summaryRows = [
+        { Metric: 'Naukri Consumed', Value: analytics.naukri, Note: 'CV Access (A+B+C)' },
+        { Metric: 'ATS Captured', Value: analytics.ats, Note: 'landed in the system' },
+        {
+          Metric: 'Complete Profiles',
+          Value: analytics.complete,
+          Note: 'viewed + phone + resume',
+        },
+        { Metric: 'Difference', Value: analytics.gap, Note: 'consumed − captured' },
+        { Metric: 'Not Filled', Value: analytics.notFilled, Note: 'recruiters' },
+        { Metric: 'Leaking', Value: analytics.leaking, Note: 'flagged recruiters' },
+      ];
+      const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
+      summaryWs['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 24 }];
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+      // ── Recruiter breakdown sheet ──
+      const rows = filteredDaily.map(r => ({
+        'Recruiter Name': r.recruiterName ?? r.recruiterEmail,
+        Email: r.recruiterEmail,
+        'Emp ID': r.empId ?? '',
+        BU: r.bu ?? '',
+        RM: r.rm ?? '',
+        'Service Line': r.serviceLine ?? '',
+        'Naukri Consumed': r.naukriCvConsumed ?? '',
+        'ATS Captured': r.atsCaptured,
+        'Profiles Viewed': r.naukriProfilesViewed,
+        'Phones Revealed': r.naukriPhonesRevealed,
+        'Resumes Downloaded': r.naukriCvsDownloaded,
+        'Complete Profiles': r.completeProfilesCaptured,
+        Difference: r.difference ?? '',
+        Status: FILL_STATUS[r.fillStatus]?.label ?? r.fillStatus,
+        Flags: r.flags.map(f => FLAG_STYLE[f]?.label ?? f).join(', '),
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 16 }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Recruiter Breakdown');
+
+      XLSX.writeFile(wb, `naukri-vs-ats_${dateStr}.xlsx`);
+    } else {
+      if (filteredSummary.length === 0) return;
+
+      // ── Summary sheet — mirrors the range-mode stat cards ──
+      const summaryRows = [
+        { Metric: 'Naukri Consumed', Value: rangeAnalytics.naukri },
+        { Metric: 'ATS Captured', Value: rangeAnalytics.ats },
+        { Metric: 'Total Gap', Value: rangeAnalytics.gap },
+        { Metric: 'Not-filled Days', Value: rangeAnalytics.notFilled },
+        { Metric: 'Leaking Days', Value: rangeAnalytics.leaking },
+      ];
+      const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
+      summaryWs['!cols'] = [{ wch: 20 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+
+      // ── Cumulative recruiter-wise sheet ──
+      const rows = filteredSummary.map(r => ({
+        'Recruiter Name': r.recruiterName ?? r.recruiterEmail,
+        Email: r.recruiterEmail,
+        BU: r.bu ?? '',
+        'Naukri Consumed': r.naukri_consumed,
+        'ATS Captured': r.ats_captured,
+        Gap: r.gap,
+        'Days Not Filled': r.days_not_filled,
+        'Days Leaking': r.days_leaking,
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 16 }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Summary Table');
+
+      XLSX.writeFile(wb, `naukri-vs-ats_${fmtApi(fromDate)}_to_${fmtApi(toDate)}.xlsx`);
+    }
+  };
+
   const hasUpload = (uploadsQ.data?.length ?? 0) > 0;
   const hasReconciled = daily.length > 0;
 
@@ -494,17 +581,32 @@ export default function NaukriLogsPage() {
               e.target.value = '';
             }}
           />
-          {mode === 'single' && (
+
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
+              variant="outline"
               className="gap-2 h-8 text-sm font-semibold"
-              disabled={uploadM.isPending}
-              onClick={() => fileRef.current?.click()}
+              disabled={
+                mode === 'single' ? filteredDaily.length === 0 : filteredSummary.length === 0
+              }
+              onClick={exportToExcel}
             >
-              <Upload className="w-3.5 h-3.5" />
-              {uploadM.isPending ? 'Uploading…' : `Upload ${fmtNice(singleDate)}`}
+              <Download className="w-3.5 h-3.5" />
+              Export
             </Button>
-          )}
+            {mode === 'single' && (
+              <Button
+                size="sm"
+                className="gap-2 h-8 text-sm font-semibold"
+                disabled={uploadM.isPending}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {uploadM.isPending ? 'Uploading…' : `Upload ${fmtNice(singleDate)}`}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* ── quick selects + mode toggle ── */}
