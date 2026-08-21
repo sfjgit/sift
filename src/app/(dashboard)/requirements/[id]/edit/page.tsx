@@ -27,7 +27,6 @@ import {
   Sparkles,
   CheckCircle,
   Tag,
-  Upload,
   ExternalLink,
   Wand2,
   RotateCcw,
@@ -1194,11 +1193,11 @@ const SECTIONS = [
 
 const SECTION_FIELDS: Record<string, (keyof EditFormValues)[]> = {
   'edit-basics': ['title', 'jobType', 'remoteType'],
-  'edit-location': [],
-  'edit-skills': [],
-  'edit-compensation': [],
+  'edit-location': ['city', 'state', 'country'],
+  'edit-skills': ['primarySkills', 'keySkills'],
+  'edit-compensation': ['salaryMin', 'salaryMax', 'salaryType', 'bonusAmount'],
   'edit-client': ['clientSpocId'],
-  'edit-timeline': [],
+  'edit-timeline': ['startDate', 'targetDate'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1283,6 +1282,7 @@ export default function EditRequirementPage() {
     const visibilityMap = new Map<string, number>();
     SECTIONS.forEach(sec => {
       const el = document.getElementById(sec.id);
+
       if (!el) return;
       const obs = new IntersectionObserver(
         entries => {
@@ -1297,6 +1297,7 @@ export default function EditRequirementPage() {
           });
           if (max > 0) setActiveSection(best);
         },
+
         { threshold: [0, 0.1, 0.25, 0.5, 0.75, 1], rootMargin: '-80px 0px -40% 0px' }
       );
       obs.observe(el);

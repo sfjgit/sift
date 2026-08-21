@@ -1320,10 +1320,12 @@ function MoveStageDialog({
   const [ivDuration, setIvDuration] = useState('');
   const currentOrder = pipeline.currentStage.order;
 
-  const selectableStages = useMemo(
-    () => [...stages].filter(s => !s.isTerminal).sort((a, b) => a.order - b.order),
-    [stages]
-  );
+  // const selectableStages = useMemo(
+  //   () => [...stages].filter(s => !s.isTerminal).sort((a, b) => a.order - b.order),
+  //   [stages]
+  // );
+
+  const selectableStages = useMemo(() => [...stages].sort((a, b) => a.order - b.order), [stages]);
 
   const selected = stages.find(s => s.id === stageId) ?? null;
   const showInterview = needsInterviewSchedule(selected?.canonicalStage);
