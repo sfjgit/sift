@@ -3,8 +3,8 @@
 // File: RequirementTable.tsx
 // Path: src/components/reports/RequirementTable.tsx
 
-import { useMemo } from 'react';
-import { FileDown } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { FileDown, TrendingUp } from 'lucide-react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
 import {
@@ -23,7 +23,19 @@ import {
   useStageSelection,
 } from './reportUi';
 import { useReportViewStore, useReportViewsReady } from '@/stores/reportViewStore';
-import type { RequirementRow, StageMeta } from './types';
+import type { RequirementRow, StageMeta, SaleValueBasis } from './types';
+import { RequirementCandidateDrillDialog } from './RequirementCandidateDrillDialog';
+import type { RequirementDrillTarget } from './RequirementCandidateDrillDialog';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE-LEVEL — stable reference, not recreated per render
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getId = (r: RequirementRow) => r.id;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface RequirementTableProps {
   title: string | null;
@@ -46,6 +58,66 @@ interface RequirementTableProps {
   onDownloadRow: (id: string, reqCode: string) => void;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fmtCurrency(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${n.toLocaleString('en-IN')}`;
+}
+
+const BASIS_STYLE: Record<SaleValueBasis, { label: string; cls: string }> = {
+  SALE_VALUE: { label: 'Direct', cls: 'bg-emerald-50 text-emerald-700' },
+  BAND: { label: 'Band', cls: 'bg-blue-50 text-blue-700' },
+  FIXED_PCT: { label: 'Fixed %', cls: 'bg-indigo-50 text-indigo-700' },
+  NOT_FOUND: { label: 'No data', cls: 'bg-red-50 text-red-500' },
+};
+
+function SaleValueCell({ row }: { row: RequirementRow }) {
+  if (!row.computedSaleValue) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-400">
+        No data
+      </span>
+    );
+  }
+  const basis = row.saleValueBasis as SaleValueBasis | null;
+  const basisMeta = basis ? BASIS_STYLE[basis] : null;
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-[13px] font-black text-emerald-700">
+        {fmtCurrency(row.computedSaleValue)}
+      </span>
+      {basisMeta && (
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${basisMeta.cls}`}>
+          {basisMeta.label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AchievedCell({ row }: { row: RequirementRow }) {
+  if (!row.terminalCount) {
+    return <span className="text-[13px] font-semibold text-slate-300">—</span>;
+  }
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-[13px] font-black text-purple-700">
+        {fmtCurrency(row.achievedValue)}
+      </span>
+      <span className="text-[9px] font-bold text-purple-400">
+        {row.achievedPct}% · {row.terminalCount} placed
+      </span>
+    </div>
+  );
+}
+
 function Detail({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div>
@@ -54,6 +126,68 @@ function Detail({ label, value, tone }: { label: string; value: string; tone?: s
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLICKABLE STAGE COUNT
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ClickableStageCount({
+  count,
+  base,
+  color,
+  onClick,
+}: {
+  count: number;
+  base: number;
+  color: string;
+  onClick: () => void;
+}) {
+  if (count === 0) return <span className="text-[13px] font-semibold text-slate-300">—</span>;
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="group flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-all hover:bg-indigo-50 hover:ring-2 hover:ring-indigo-200"
+      title={`View ${count} candidate${count !== 1 ? 's' : ''} in this stage`}
+    >
+      <span
+        className="text-[14px] font-black tabular-nums transition-colors group-hover:text-indigo-700"
+        style={{ color }}
+      >
+        {count}
+      </span>
+      {base > 0 && (
+        <span className="text-[9px] font-semibold text-slate-400 group-hover:text-indigo-400">
+          {Math.round((count / base) * 100)}%
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ClickableTotalCount({ count, onClick }: { count: number; onClick: () => void }) {
+  if (count === 0) return <span className="text-[14px] font-black text-slate-200">0</span>;
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="group rounded-lg px-2 py-1 transition-all hover:bg-indigo-50 hover:ring-2 hover:ring-indigo-200"
+      title={`View all ${count} candidates`}
+    >
+      <span className="text-[14px] font-black text-slate-900 group-hover:text-indigo-700">
+        {count}
+      </span>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function RequirementTable({
   title,
@@ -74,14 +208,32 @@ export function RequirementTable({
   const hiddenRaw = useReportViewStore(s => s.hiddenColumns[tableKey]);
   const hidden = ready ? (hiddenRaw ?? []) : [];
 
+  // ── Drill dialog ──────────────────────────────────────────────────────────
+  const [drillTarget, setDrillTarget] = useState<RequirementDrillTarget | null>(null);
+
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const openDrill = useCallback((row: RequirementRow, stageId?: string, stageLabel?: string) => {
+    setDrillTarget({
+      requirementId: row.id,
+      reqCode: row.reqCode,
+      reqTitle: row.title,
+      stageId,
+      stageLabel,
+      dialogTitle: stageLabel
+        ? `${stageLabel} — ${row.reqCode}`
+        : `All Candidates — ${row.reqCode}`,
+    });
+  }, []);
+
   const allIds = useMemo(() => data.map(r => r.id), [data]);
-  const getId = (r: RequirementRow) => r.id;
 
   const columns = useMemo<ColumnDef<RequirementRow>[]>(
     () => [
       makeSelectColumn<RequirementRow>(getId, allIds, selected, toggle, toggleAll),
       makeExpandColumn<RequirementRow>(getId, expanded, toggleExp),
       makeSrColumn<RequirementRow>(),
+
+      // ── Frozen: Requirement title + code ──────────────────────────────────
       {
         id: 'requirement',
         label: 'Requirement',
@@ -108,6 +260,8 @@ export function RequirementTable({
           </div>
         ),
       },
+
+      // ── Core requirement info ──────────────────────────────────────────────
       {
         id: 'status',
         label: 'Status',
@@ -134,7 +288,7 @@ export function RequirementTable({
         id: 'createdBy',
         label: 'Created by',
         align: 'center',
-        group: 'Dates',
+        group: 'Requirement',
         exportValue: r => `${r.createdBy.firstName} ${r.createdBy.lastName}`.trim(),
         cell: r => (
           <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
@@ -150,6 +304,8 @@ export function RequirementTable({
         exportValue: r => r.totalOpenings,
         cell: r => <span className="text-[13px] font-bold text-slate-700">{r.totalOpenings}</span>,
       },
+
+      // ── Salary ────────────────────────────────────────────────────────────
       {
         id: 'salaryMin',
         label: 'Min Salary',
@@ -157,7 +313,9 @@ export function RequirementTable({
         group: 'Salary',
         exportValue: r => r.salaryMin ?? '',
         cell: r => (
-          <span className="text-[13px] font-bold text-slate-700">{r.salaryMin ?? '—'}</span>
+          <span className="text-[12px] font-semibold text-slate-600">
+            {r.salaryMin != null ? fmtCurrency(r.salaryMin) : '—'}
+          </span>
         ),
       },
       {
@@ -167,64 +325,122 @@ export function RequirementTable({
         group: 'Salary',
         exportValue: r => r.salaryMax ?? '',
         cell: r => (
-          <span className="text-[13px] font-bold text-slate-700">{r.salaryMax ?? '—'}</span>
+          <span className="text-[12px] font-semibold text-slate-600">
+            {r.salaryMax != null ? fmtCurrency(r.salaryMax) : '—'}
+          </span>
         ),
       },
+
+      // ── Sale value ────────────────────────────────────────────────────────
+      {
+        id: 'computedSaleValue',
+        label: 'Sale Value',
+        align: 'center',
+        group: 'Sale Value',
+        headerTitle:
+          'Computed sale value per requirement (Direct / Band / Fixed %) — click No data to filter',
+        exportValue: r => r.computedSaleValue ?? '',
+        cell: r => <SaleValueCell row={r} />,
+      },
+      {
+        id: 'achievedValue',
+        label: 'Achieved',
+        align: 'center',
+        group: 'Sale Value',
+        headerTitle: 'Achieved value — (placed / openings) × computed sale value',
+        exportValue: r => r.achievedValue ?? '',
+        cell: r => <AchievedCell row={r} />,
+      },
+      {
+        id: 'bandCode',
+        label: 'Band',
+        align: 'center',
+        group: 'Sale Value',
+        exportValue: r => (r.bandCode ? `${r.bandCode} – ${r.bandName}` : ''),
+        cell: r =>
+          r.bandCode ? (
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-700">
+                {r.bandCode}
+              </span>
+              {r.bandValue != null && (
+                <span className="text-[9px] text-slate-400">{fmtCurrency(r.bandValue)}</span>
+              )}
+            </div>
+          ) : (
+            <span className="text-slate-300 text-[12px]">—</span>
+          ),
+      },
+      {
+        id: 'clientPct',
+        label: 'Client %',
+        align: 'center',
+        group: 'Sale Value',
+        exportValue: r => (r.clientPct != null ? `${r.clientPct}%` : ''),
+        cell: r =>
+          r.clientPct != null ? (
+            <span className="text-[12px] font-bold text-indigo-700">{r.clientPct}%</span>
+          ) : (
+            <span className="text-slate-300 text-[12px]">—</span>
+          ),
+      },
+
+      // ── Total candidates (clickable) ───────────────────────────────────────
       {
         id: 'totalCandidates',
         label: 'Total',
         align: 'center',
-        group: 'Requirement',
-        headerTitle: 'Total candidates in this requirement',
+        group: 'Pipeline',
+        headerTitle: 'Total candidates — click to view all',
         exportValue: r => r.totalCandidates,
-        cell: r => (
-          <span className="text-[14px] font-black text-slate-900">{r.totalCandidates}</span>
-        ),
+        cell: r => <ClickableTotalCount count={r.totalCandidates} onClick={() => openDrill(r)} />,
       },
 
-      // ── Stage columns — clicking header toggles stage for export filter ──────
+      // ── Stage columns — clicking count opens drill dialog ─────────────────
       ...stages.map<ColumnDef<RequirementRow>>((s, i) => {
         const stageSelected = selectedStageIds.has(s.id);
+        const color = stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length];
         return {
           id: `stage:${s.id}`,
           label: s.label,
-          align: 'center',
-          group: 'Pipeline stages',
-          dotColor: stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-          headerTitle: `${s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`} — click to toggle in export`,
-          exportValue: r => r.stageCounts[s.id] ?? 0,
+          align: 'center' as const,
+          group: s.isTerminal ? 'Placed' : s.isNearTerminal ? 'Near Close' : 'Pipeline stages',
+          dotColor: color,
+          headerTitle: `${s.serviceLine ? `${s.label} · ${s.serviceLine.name}` : `${s.label} · Common`} — click header to toggle export / click count to view candidates`,
+          exportValue: (r: RequirementRow) => r.stageCounts[s.id] ?? 0,
           header: (
             <button
               onClick={() => toggleStage(s.id)}
               title={stageSelected ? 'Remove from export filter' : 'Add to export filter'}
               className={`flex w-full flex-col items-center gap-0.5 rounded px-1 py-0.5 transition-all ${stageSelected ? 'ring-2 ring-indigo-500 ring-offset-1 bg-indigo-50' : 'hover:bg-slate-100'}`}
             >
-              <span
-                className="h-1.5 w-1.5 rounded-full"
-                style={{
-                  backgroundColor: stageSelected
-                    ? '#4F46E5'
-                    : FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-                }}
-              />
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
               <span
                 className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: stageSelected ? '#4F46E5' : undefined }}
               >
                 {s.label}
               </span>
+              {s.isTerminal && (
+                <span className="text-[8px] font-bold text-emerald-600 uppercase">✓ placed</span>
+              )}
+              {s.isNearTerminal && !s.isTerminal && (
+                <span className="text-[8px] font-bold text-amber-600 uppercase">≈ near</span>
+              )}
             </button>
           ),
-          cell: r => (
-            <StageCell
+          cell: (r: RequirementRow) => (
+            <ClickableStageCount
               count={r.stageCounts[s.id] ?? 0}
               base={r.totalCandidates}
-              color={stageSelected ? '#4F46E5' : FUNNEL_COLORS[i % FUNNEL_COLORS.length]}
+              color={color}
+              onClick={() => openDrill(r, s.id, s.label)}
             />
           ),
         };
       }),
 
+      // ── Ownership ─────────────────────────────────────────────────────────
       {
         id: 'client',
         label: 'Client',
@@ -245,6 +461,8 @@ export function RequirementTable({
           </span>
         ),
       },
+
+      // ── Dates ─────────────────────────────────────────────────────────────
       {
         id: 'respondBy',
         label: 'Respond by',
@@ -272,6 +490,8 @@ export function RequirementTable({
           </span>
         ),
       },
+
+      // ── Actions ───────────────────────────────────────────────────────────
       {
         id: 'export',
         label: 'Export',
@@ -298,120 +518,147 @@ export function RequirementTable({
       selectedStageIds,
       toggleStage,
       onDownloadRow,
+      openDrill,
     ]
   );
 
   const stageIdsArr = [...selectedStageIds];
-
   const hiddenStageIds = hidden
     .filter(id => id.startsWith('stage:'))
     .map(id => id.replace('stage:', ''));
 
   return (
-    <StickyTableCard>
-      <GroupHeader
-        title={title}
-        count={data.length}
-        countLabel="requirements"
-        leftSlot={
-          stageIdsArr.length > 0 ? (
-            <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-600">
-              {stageIdsArr.length} stage{stageIdsArr.length > 1 ? 's' : ''} selected for export
-              <button
-                onClick={clearStages}
-                className="ml-1 rounded-full p-0.5 hover:bg-indigo-200 transition-colors"
-                title="Clear stage filter"
-              >
-                ×
-              </button>
-            </span>
-          ) : (
-            <span className="text-[10px] font-medium text-slate-400">
-              Click stage column headers to filter candidates export
-            </span>
-          )
-        }
-        rightSlot={
-          <>
-            <ColumnViewMenu tableKey={tableKey} columns={columns} />
-            <DownloadMenu
-              scopeLabel={title ? 'This line' : 'All'}
-              rowCount={data.length}
-              selectedCount={selected.size}
-              selectedStageIds={stageIdsArr}
-              onServerAll={hiddenCandidateCols =>
-                onDownloadAll(
-                  serviceLineId,
-                  stageIdsArr.length > 0 ? stageIdsArr : undefined,
-                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
-                  hiddenCandidateCols
-                )
-              }
-              onServerSelected={hiddenCandidateCols =>
-                onDownloadSelected(
-                  [...selected],
-                  serviceLineId,
-                  stageIdsArr.length > 0 ? stageIdsArr : undefined,
-                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
-                  hiddenCandidateCols
-                )
-              }
-              onServerStageFiltered={hiddenCandidateCols =>
-                onDownloadAll(
-                  serviceLineId,
-                  stageIdsArr,
-                  hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
-                  hiddenCandidateCols
-                )
-              }
-            />
-          </>
-        }
-      />
-
-      <DataTable
-        columns={columns}
-        rows={data}
-        rowKey={getId}
-        hiddenColumns={hidden}
-        emptyMessage="No requirements found for this window."
-        isExpanded={r => expanded.has(r.id)}
-        rowClassName={r =>
-          [
-            expanded.has(r.id) ? 'bg-indigo-50' : 'hover:bg-slate-50',
-            r.isRespondByBreached ? 'border-l-2 border-l-red-400' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')
-        }
-        frozenBgClass={r =>
-          expanded.has(r.id) ? 'bg-indigo-50' : 'bg-white group-hover:bg-slate-50'
-        }
-        renderExpanded={r => (
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-[12px]">
-            {r.clientSpoc && (
-              <Detail label="SPOC" value={`${r.clientSpoc.firstName} ${r.clientSpoc.lastName}`} />
-            )}
-            {r.businessUnit && <Detail label="BU" value={r.businessUnit.name} />}
-            {r.serviceLine && <Detail label="Service line" value={r.serviceLine.name} />}
-            {r.city && <Detail label="City" value={r.city} />}
-            <Detail label="Job type" value={r.jobType} />
-            <Detail label="Remote" value={r.remoteType} />
-            <Detail label="Priority" value={r.priority} />
-            {r.respondBy && (
-              <Detail
-                label="Respond by"
-                value={`${fmtDate(r.respondBy)}${r.isRespondByBreached ? ' — breached' : ''}`}
-                tone={r.isRespondByBreached ? 'text-red-500' : undefined}
+    <>
+      <StickyTableCard>
+        <GroupHeader
+          title={title}
+          count={data.length}
+          countLabel="requirements"
+          leftSlot={
+            stageIdsArr.length > 0 ? (
+              <span className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-600">
+                {stageIdsArr.length} stage{stageIdsArr.length > 1 ? 's' : ''} selected for export
+                <button
+                  onClick={clearStages}
+                  className="ml-1 rounded-full p-0.5 hover:bg-indigo-200 transition-colors"
+                  title="Clear stage filter"
+                >
+                  ×
+                </button>
+              </span>
+            ) : (
+              <span className="text-[10px] font-medium text-slate-400">
+                Click stage headers to filter export · Click counts to view candidates
+              </span>
+            )
+          }
+          rightSlot={
+            <>
+              <ColumnViewMenu tableKey={tableKey} columns={columns} />
+              <DownloadMenu
+                scopeLabel={title ? 'This line' : 'All'}
+                rowCount={data.length}
+                selectedCount={selected.size}
+                selectedStageIds={stageIdsArr}
+                onServerAll={hiddenCandidateCols =>
+                  onDownloadAll(
+                    serviceLineId,
+                    stageIdsArr.length > 0 ? stageIdsArr : undefined,
+                    hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                    hiddenCandidateCols
+                  )
+                }
+                onServerSelected={hiddenCandidateCols =>
+                  onDownloadSelected(
+                    [...selected],
+                    serviceLineId,
+                    stageIdsArr.length > 0 ? stageIdsArr : undefined,
+                    hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                    hiddenCandidateCols
+                  )
+                }
+                onServerStageFiltered={hiddenCandidateCols =>
+                  onDownloadAll(
+                    serviceLineId,
+                    stageIdsArr,
+                    hiddenStageIds.length > 0 ? hiddenStageIds : undefined,
+                    hiddenCandidateCols
+                  )
+                }
               />
-            )}
-            <Detail label="Created by" value={`${r.createdBy.firstName} ${r.createdBy.lastName}`} />
-            {r.deletedAt && (
-              <Detail label="Deleted" value={fmtDate(r.deletedAt)} tone="text-red-500" />
-            )}
-          </div>
-        )}
-      />
-    </StickyTableCard>
+            </>
+          }
+        />
+
+        <DataTable
+          columns={columns}
+          rows={data}
+          rowKey={getId}
+          hiddenColumns={hidden}
+          emptyMessage="No requirements found for this window."
+          isExpanded={r => expanded.has(r.id)}
+          rowClassName={r =>
+            [
+              expanded.has(r.id) ? 'bg-indigo-50' : 'hover:bg-slate-50',
+              r.isRespondByBreached ? 'border-l-2 border-l-red-400' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+          }
+          frozenBgClass={r =>
+            expanded.has(r.id) ? 'bg-indigo-50' : 'bg-white group-hover:bg-slate-50'
+          }
+          renderExpanded={r => (
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-[12px]">
+              {r.clientSpoc && (
+                <Detail label="SPOC" value={`${r.clientSpoc.firstName} ${r.clientSpoc.lastName}`} />
+              )}
+              {r.businessUnit && <Detail label="BU" value={r.businessUnit.name} />}
+              {r.serviceLine && <Detail label="Service line" value={r.serviceLine.name} />}
+              {r.city && <Detail label="City" value={r.city} />}
+              <Detail label="Job type" value={r.jobType} />
+              <Detail label="Remote" value={r.remoteType} />
+              <Detail label="Priority" value={r.priority} />
+              {r.computedSaleValue != null && (
+                <Detail
+                  label="Sale value"
+                  value={`${fmtCurrency(r.computedSaleValue)} (${r.saleValueBasis})`}
+                  tone="text-emerald-700"
+                />
+              )}
+              {r.achievedValue != null && r.achievedValue > 0 && (
+                <Detail
+                  label="Achieved"
+                  value={`${fmtCurrency(r.achievedValue)} · ${r.achievedPct}%`}
+                  tone="text-purple-700"
+                />
+              )}
+              {r.respondBy && (
+                <Detail
+                  label="Respond by"
+                  value={`${fmtDate(r.respondBy)}${r.isRespondByBreached ? ' — breached' : ''}`}
+                  tone={r.isRespondByBreached ? 'text-red-500' : undefined}
+                />
+              )}
+              <Detail
+                label="Created by"
+                value={`${r.createdBy.firstName} ${r.createdBy.lastName}`}
+              />
+              {r.deletedAt && (
+                <Detail label="Deleted" value={fmtDate(r.deletedAt)} tone="text-red-500" />
+              )}
+              <button
+                onClick={() => openDrill(r)}
+                className="ml-auto flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-600 hover:bg-indigo-100 transition-colors"
+              >
+                View {r.totalCandidates} candidates →
+              </button>
+            </div>
+          )}
+        />
+      </StickyTableCard>
+
+      <RequirementCandidateDrillDialog target={drillTarget} onClose={() => setDrillTarget(null)} />
+    </>
   );
 }

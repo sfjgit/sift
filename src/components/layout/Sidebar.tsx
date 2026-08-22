@@ -35,6 +35,7 @@ import {
   Landmark,
   Ticket,
   BriefcaseBusiness,
+  ChartBarStacked,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,12 @@ const NAV: NavItem[] = [
       { label: 'Service lines', href: '/service-lines', icon: GitBranch, module: 'service-lines' },
       { label: 'Org tree', href: '/org', icon: Network },
       { label: 'Roles', href: '/roles', icon: UserSquare2, module: 'roles' },
+      {
+        label: 'Requirement categories',
+        href: '/requirement-categories',
+        icon: ChartBarStacked,
+        module: 'requirement-categories',
+      },
     ],
   },
 

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Empty, FUNNEL_COLORS } from './reportUi';
+import { Empty, FUNNEL_COLORS, Skel } from './reportUi';
 import type { DrillTarget } from './DrillDrawer';
 import { MyRequirementsSection } from './MyRequirementsSection';
 
@@ -1010,6 +1010,18 @@ export function OverviewSection({
     );
 
   const { kpis } = d;
+
+  // if (loading)
+  //   return (
+  //     <div className="space-y-4">
+  //       <div className="grid grid-cols-5 gap-3 ">
+  //         {Array.from({ length: 5 }).map((_, i) => (
+  //           <Skeleton key={i} className="h-24 rounded-xl bg-gray-900" />
+  //         ))}
+  //       </div>
+  //       <Skel rows={6} />
+  //     </div>
+  //   );
 
   return (
     <div className="space-y-6">

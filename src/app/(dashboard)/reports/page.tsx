@@ -19,6 +19,7 @@ import {
   Users,
   UserCheck,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,6 +39,7 @@ import type {
   RecruiterResponse,
   RequirementGroup,
   RequirementReportResponse,
+  SaleValueSummary,
   ServiceLineRef,
 } from '@/components/reports/types';
 import { DrillDrawer } from '@/components/reports/DrillDrawer';
@@ -46,7 +48,6 @@ import { OverviewSection } from '@/components/reports/OverviewSection';
 import { SalesSection } from '@/components/reports/SalesSection';
 import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
 import type { TeamSelection } from '@/components/reports/TeamTreePicker';
-
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable } from '@/components/reports/RequirementTable';
@@ -76,7 +77,6 @@ interface Filters {
 
 type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates' | 'sales';
 
-// Sales drill payload — matches what SalesSection passes to onDrill
 interface SalesDrillPayload {
   label: string;
   type?: string;
@@ -100,16 +100,10 @@ interface CandidateReportData {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATE / TIME WINDOW HELPERS
+// WINDOW HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_WIN: WinState = {
-  mode: 'preset',
-  range: '',
-  hours: 8,
-  fromDate: '',
-  toDate: '',
-};
+const DEFAULT_WIN: WinState = { mode: 'preset', range: '', hours: 8, fromDate: '', toDate: '' };
 
 const PRESETS: { k: WinState['range']; l: string }[] = [
   { k: '', l: 'All time' },
@@ -142,10 +136,6 @@ function winLabel(w: WinState): string {
   return PRESETS.find(p => p.k === w.range)?.l ?? 'All time';
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DOWNLOAD UTIL
-// ─────────────────────────────────────────────────────────────────────────────
-
 function downloadBlob(data: Blob, filename: string) {
   const url = URL.createObjectURL(data);
   const a = document.createElement('a');
@@ -155,8 +145,102 @@ function downloadBlob(data: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function fmtCurrency(n: number): string {
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// FILTERS BAR
+// REQUIREMENT STATS BAR
+// Shows total sale value, achieved, and basis breakdown — mirrors the overview
+// sale value KPIs but scoped to the Requirements tab filters.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RequirementStatsBar({
+  summary,
+  totalReqs,
+}: {
+  summary: SaleValueSummary;
+  totalReqs: number;
+}) {
+  const { totalSaleValue, totalAchievedValue, includedCount, omittedCount, byBasis } = summary;
+  const achievedPct =
+    totalSaleValue > 0 ? Math.round((totalAchievedValue / totalSaleValue) * 100) : 0;
+
+  return (
+    <div className="flex flex-wrap items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      {/* Total sale value */}
+      <div className="flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
+        <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
+          Total Sale Value
+        </p>
+        <p className="text-[22px] font-black text-emerald-800">{fmtCurrency(totalSaleValue)}</p>
+        <p className="text-[11px] font-semibold text-emerald-600">
+          {includedCount} computed
+          {omittedCount > 0 && (
+            <span className="ml-1 font-black text-red-500">· {omittedCount} no data</span>
+          )}
+        </p>
+      </div>
+
+      {/* Achieved */}
+      <div className="flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3">
+        <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">Achieved</p>
+        <p className="text-[22px] font-black text-purple-800">{fmtCurrency(totalAchievedValue)}</p>
+        <p className="text-[11px] font-semibold text-purple-600">{achievedPct}% of target</p>
+      </div>
+
+      <div className="hidden w-px self-stretch bg-slate-100 sm:block" />
+
+      {/* Basis breakdown */}
+      <div className="flex flex-1 flex-wrap items-center gap-2 self-center">
+        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+          Basis
+        </span>
+        {byBasis['SALE_VALUE']?.count > 0 && (
+          <span className="rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700">
+            Direct: <span className="font-black">{byBasis['SALE_VALUE'].count}</span>
+            <span className="ml-1 text-[10px] opacity-70">
+              {fmtCurrency(byBasis['SALE_VALUE'].total)}
+            </span>
+          </span>
+        )}
+        {byBasis['BAND']?.count > 0 && (
+          <span className="rounded-lg bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-blue-700">
+            Band: <span className="font-black">{byBasis['BAND'].count}</span>
+            <span className="ml-1 text-[10px] opacity-70">
+              {fmtCurrency(byBasis['BAND'].total)}
+            </span>
+          </span>
+        )}
+        {byBasis['FIXED_PCT']?.count > 0 && (
+          <span className="rounded-lg bg-indigo-50 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700">
+            Fixed %: <span className="font-black">{byBasis['FIXED_PCT'].count}</span>
+            <span className="ml-1 text-[10px] opacity-70">
+              {fmtCurrency(byBasis['FIXED_PCT'].total)}
+            </span>
+          </span>
+        )}
+        {omittedCount > 0 && (
+          <span className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-500">
+            ⚠ No data: {omittedCount}
+          </span>
+        )}
+      </div>
+
+      {/* Total count */}
+      <div className="flex flex-col items-end justify-center self-center pl-2">
+        <p className="text-[28px] font-black leading-none text-slate-800">{totalReqs}</p>
+        <p className="text-[11px] font-semibold text-slate-400">requirements</p>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTERS BAR — restructured to prevent dropdown overflow
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ALL_REPORT_STATUSES = [
@@ -190,6 +274,7 @@ function FiltersBar({
   onTeamSelection: (sel: TeamSelection | null) => void;
 }) {
   const axios = useAxios();
+  const [roleFiltersOpen, setRoleFiltersOpen] = useState(false);
 
   const { data: overviewFilters } = useQuery({
     queryKey: ['reports-overview-filters'],
@@ -247,9 +332,12 @@ function FiltersBar({
     teamSelection
   );
 
+  // Count how many role filters are active (for badge on the toggle button)
+  const activeRoleFilterCount = filters.createdById ? 1 : 0;
+
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      {/* Row 1: time window */}
+      {/* ── Row 1: time window ──────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
           {(['preset', 'hours', 'range'] as WindowMode[]).map((m, idx) => (
@@ -339,12 +427,10 @@ function FiltersBar({
         </span>
       </div>
 
-      {/* Row 2: entity filters */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-        <Filter className="h-4 w-4 shrink-0 text-slate-400" />
-
+      {/* ── Row 2: entity filters — fixed layout, no overflow ───────────────── */}
+      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
-          <SelectTrigger className="h-8 w-40 border-slate-200 text-xs font-medium">
+          <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All clients" />
           </SelectTrigger>
           <SelectContent>
@@ -358,7 +444,7 @@ function FiltersBar({
         </Select>
 
         <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
-          <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
+          <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All service lines" />
           </SelectTrigger>
           <SelectContent>
@@ -376,7 +462,7 @@ function FiltersBar({
             value={filters.businessUnitId ?? 'ALL'}
             onValueChange={v => set('businessUnitId', v)}
           >
-            <SelectTrigger className="h-8 w-40 border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All BUs" />
             </SelectTrigger>
             <SelectContent>
@@ -392,7 +478,7 @@ function FiltersBar({
 
         {showDept && departments.length > 0 && (
           <Select value={filters.departmentId ?? 'ALL'} onValueChange={v => set('departmentId', v)}>
-            <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All departments" />
             </SelectTrigger>
             <SelectContent>
@@ -411,7 +497,7 @@ function FiltersBar({
             value={filters.status ?? 'ALL'}
             onValueChange={v => onChange({ ...filters, status: v === 'ALL' ? undefined : v })}
           >
-            <SelectTrigger className="h-8 w-40 border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -419,7 +505,7 @@ function FiltersBar({
               {ALL_REPORT_STATUSES.map(s => (
                 <SelectItem key={s.key} value={s.key}>
                   <div className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${s.dot}`} />
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
                     {s.label}
                   </div>
                 </SelectItem>
@@ -428,39 +514,75 @@ function FiltersBar({
           </Select>
         )}
 
-        {showCreatedBy &&
-          sortedRoleGroups.map(([roleName, users]) => {
-            const sel = (users as any[]).find(u => u.id === filters.createdById);
-            const displayRole = roleName
-              .replaceAll('_', ' ')
-              .replace(/\b\w/g, c => c.toUpperCase());
-            return (
-              <Select
-                key={roleName}
-                value={sel?.id ?? 'ALL'}
-                onValueChange={v =>
-                  onChange({ ...filters, createdById: v === 'ALL' ? undefined : v })
-                }
-              >
-                <SelectTrigger className="h-8 w-44 border-slate-200 text-xs font-medium">
-                  <SelectValue placeholder={displayRole} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All {displayRole}</SelectItem>
-                  {(users as any[])
-                    .sort((a, b) => a.label.localeCompare(b.label))
-                    .map(u => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.label}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            );
-          })}
+        <div className="flex items-center gap-1.5">
+          <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
+        </div>
+      </div>
 
-        <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
+      {/* ── Row 3: role-grouped created-by filters (Requirements tab only) ──── */}
+      {showCreatedBy && sortedRoleGroups.length > 0 && (
+        <div className="border-t border-slate-100 pt-3">
+          {/* Toggle header */}
+          <button
+            onClick={() => setRoleFiltersOpen(o => !o)}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <Filter className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+              Filter by creator role
+            </span>
+            {activeRoleFilterCount > 0 && (
+              <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-black text-white">
+                {activeRoleFilterCount}
+              </span>
+            )}
+            <ChevronDown
+              className={`ml-auto h-3.5 w-3.5 text-slate-400 transition-transform ${roleFiltersOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
 
+          {roleFiltersOpen && (
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+              {sortedRoleGroups.map(([roleName, users]) => {
+                const sel = (users as any[]).find(u => u.id === filters.createdById);
+                const displayRole = roleName
+                  .replaceAll('_', ' ')
+                  .replace(/\b\w/g, c => c.toUpperCase());
+                return (
+                  <div key={roleName} className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 truncate">
+                      {displayRole}
+                    </span>
+                    <Select
+                      value={sel?.id ?? 'ALL'}
+                      onValueChange={v =>
+                        onChange({ ...filters, createdById: v === 'ALL' ? undefined : v })
+                      }
+                    >
+                      <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
+                        <SelectValue placeholder={`All`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All {displayRole}</SelectItem>
+                        {(users as any[])
+                          .sort((a, b) => a.label.localeCompare(b.label))
+                          .map(u => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.label}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Row 4: standard stages toggle + clear ───────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
         <button
           onClick={() => onStandardOnly(!standardOnly)}
           className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
@@ -485,12 +607,12 @@ function FiltersBar({
             }}
             className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs font-medium text-red-500 hover:bg-red-50"
           >
-            <X className="h-3 w-3" /> Clear all
+            <X className="h-3 w-3" /> Clear all filters
           </button>
         )}
 
         {!filters.serviceLineId && activeTab !== 'sales' && activeTab !== 'overview' && (
-          <span className="ml-1 text-[11px] font-semibold text-slate-400">
+          <span className="ml-auto text-[11px] font-semibold text-slate-400">
             Tables split by service line — pick one for flat view.
           </span>
         )}
@@ -764,7 +886,6 @@ function CandidatesSection({
         <KPI label="Active" value={d.dispositionSummary['ACTIVE'] ?? 0} color="#059669" />
         <KPI label="Dropped" value={d.dispositionSummary['DROPPED'] ?? 0} color="#DC2626" />
       </div>
-
       <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
         <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
           Pipeline stages — click to select for export
@@ -836,7 +957,6 @@ function CandidatesSection({
           </span>
         </div>
       </div>
-
       <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
         <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
           Disposition breakdown
@@ -883,12 +1003,7 @@ function CandidatesSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SALES DRILL DRAWER — standalone wrapper that fetches from /reports/sales/drill
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SALES DRILL DRAWER — shows REQUIREMENT stats, not candidate names
-// CSMs care: which reqs have activity, fill rate, sale value, stage counts
+// SALES DRILL DRAWER (unchanged from existing)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_PILL: Record<string, string> = {
@@ -900,13 +1015,6 @@ const STATUS_PILL: Record<string, string> = {
   CANCELLED: 'bg-gray-100 text-gray-500',
 };
 
-function fmtCurrencyDrill(n: number): string {
-  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
-  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
-  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-}
-
 function SalesDrillDrawer({
   payload,
   onClose,
@@ -915,7 +1023,6 @@ function SalesDrillDrawer({
   onClose: () => void;
 }) {
   const axios = useAxios();
-
   const drillQuery = useQuery({
     queryKey: ['sales-drill-req', payload],
     queryFn: async () => {
@@ -935,7 +1042,6 @@ function SalesDrillDrawer({
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
       <div className="flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h2 className="text-[15px] font-black text-slate-900">{payload.label}</h2>
@@ -950,8 +1056,6 @@ function SalesDrillDrawer({
             <X className="h-5 w-5" />
           </button>
         </div>
-
-        {/* Summary strip — totals across all rows in this drill */}
         {!loading && rows.length > 0 && (
           <div className="flex items-center gap-6 border-b border-slate-100 bg-slate-50 px-6 py-3 text-[12px]">
             <span className="font-black text-slate-700">{totals.reqs} reqs</span>
@@ -959,12 +1063,10 @@ function SalesDrillDrawer({
             <span className="font-semibold text-blue-600">{totals.active} active</span>
             <span className="font-semibold text-red-500">{totals.dropped} dropped</span>
             <span className="ml-auto font-black text-indigo-700">
-              {fmtCurrencyDrill(totals.saleValue ?? 0)} total sale value
+              {fmtCurrency(totals.saleValue ?? 0)} total sale value
             </span>
           </div>
         )}
-
-        {/* Body — requirement cards */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="space-y-3">
@@ -985,7 +1087,6 @@ function SalesDrillDrawer({
                     key={r.id}
                     className="rounded-xl border-2 border-slate-100 bg-white p-4 shadow-sm"
                   >
-                    {/* Req header */}
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1007,18 +1108,15 @@ function SalesDrillDrawer({
                           <span>
                             · {r.totalOpenings} opening{r.totalOpenings !== 1 ? 's' : ''}
                           </span>
-                          <span>· Created by {r.createdBy}</span>
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-[16px] font-black text-emerald-700">
-                          {fmtCurrencyDrill(r.saleValue)}
+                          {fmtCurrency(r.saleValue ?? 0)}
                         </p>
                         <p className="text-[11px] text-slate-400">sale value</p>
                       </div>
                     </div>
-
-                    {/* Pipeline stat pills */}
                     <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
                       <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">
                         {r.pipeline.placed} placed
@@ -1031,27 +1129,10 @@ function SalesDrillDrawer({
                           {r.pipeline.nearTerminal} near close
                         </span>
                       )}
-                      {r.pipeline.sourced > 0 && (
-                        <span className="rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
-                          {r.pipeline.sourced} sourced
-                        </span>
-                      )}
-                      {r.pipeline.dropped > 0 && (
-                        <span className="rounded-lg bg-red-50 px-2.5 py-1 font-semibold text-red-500">
-                          {r.pipeline.dropped} dropped
-                        </span>
-                      )}
                       <span className="ml-auto rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
                         {r.pipeline.total} total
                       </span>
-                      {r.fillRate > 0 && (
-                        <span className="rounded-lg bg-purple-50 px-2.5 py-1 font-bold text-purple-700">
-                          {r.fillRate}% fill rate
-                        </span>
-                      )}
                     </div>
-
-                    {/* Stage breakdown bars */}
                     {r.stageBreakdown?.length > 0 && (
                       <div className="space-y-1.5">
                         {r.stageBreakdown.map((s: any, idx: number) => {
@@ -1117,6 +1198,7 @@ export default function ReportsPage() {
     );
   }, []);
 
+  // baseParams — passes ALL filters including team to every query
   const baseParams = useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
@@ -1128,6 +1210,7 @@ export default function ReportsPage() {
     if (filters.status) p.set('status', filters.status);
     if (standardOnly) p.set('standardOnly', 'true');
     if (teamSelection) {
+      // Pass both the member IDs (for controller intersection) and teamRootId (for tree display)
       p.set('userIds', teamSelection.memberIds.join(','));
       p.set('teamRootId', teamSelection.id);
     }
@@ -1142,7 +1225,7 @@ export default function ReportsPage() {
     return p.toString();
   }, [baseQs, recReqFilter]);
 
-  // ── Queries ─────────────────────────────────────────────────────────────────
+  // ── Queries ──────────────────────────────────────────────────────────────
   const overviewQuery = useQuery({
     queryKey: ['report-overview-v2', baseQs],
     queryFn: async () => (await axios.get(`/reports/overview?${baseQs}`)).data,
@@ -1180,7 +1263,7 @@ export default function ReportsPage() {
     staleTime: 60_000,
   });
 
-  // ── Download helper ──────────────────────────────────────────────────────────
+  // ── Download helper ──────────────────────────────────────────────────────
   const download = useCallback(
     async (url: string, filename: string, key: string) => {
       if (downloading) return;
@@ -1315,6 +1398,11 @@ export default function ReportsPage() {
       </div>
     );
 
+  // Sale value summary from requirements query
+  const reqSaleValueSummary: SaleValueSummary | null =
+    requirementQuery.data?.saleValueSummary ?? null;
+  const reqTotalCount: number = requirementQuery.data?.meta?.total ?? 0;
+
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-slate-50 p-6">
       {/* Header */}
@@ -1353,6 +1441,11 @@ export default function ReportsPage() {
         teamSelection={teamSelection}
         onTeamSelection={setTeamSelection}
       />
+
+      {/* Requirements stats bar — only on Requirements tab, only when loaded */}
+      {activeTab === 'requirements' && reqSaleValueSummary && (
+        <RequirementStatsBar summary={reqSaleValueSummary} totalReqs={reqTotalCount} />
+      )}
 
       {/* Tabs */}
       <Tabs
@@ -1407,7 +1500,6 @@ export default function ReportsPage() {
             baseQs={baseQs}
           />
         </TabsContent>
-
         <TabsContent value="recruiters" className="mt-5">
           <RecruiterSection
             resp={recruiterQuery.data}
@@ -1418,7 +1510,6 @@ export default function ReportsPage() {
             onDownloadSelected={handleRecruiterSelected}
           />
         </TabsContent>
-
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
             resp={requirementQuery.data}
@@ -1428,7 +1519,6 @@ export default function ReportsPage() {
             onDownloadSelected={handleRequirementSelected}
           />
         </TabsContent>
-
         <TabsContent value="candidates" className="mt-5">
           <CandidatesSection
             data={candidateQuery.data}
@@ -1439,7 +1529,6 @@ export default function ReportsPage() {
             onStageToggle={handleStageToggle}
           />
         </TabsContent>
-
         <TabsContent value="sales" className="mt-5">
           <SalesSection
             data={salesQuery.data?.data ?? null}
@@ -1449,10 +1538,7 @@ export default function ReportsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Overview DrillDrawer — uses its own internal fetch via baseQs */}
       <DrillDrawer target={drillTarget} baseQs={baseQs} onClose={() => setDrillTarget(null)} />
-
-      {/* Sales DrillDrawer — separate component, fetches from /reports/sales/drill */}
       {salesDrillPayload && (
         <SalesDrillDrawer payload={salesDrillPayload} onClose={() => setSalesDrillPayload(null)} />
       )}

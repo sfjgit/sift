@@ -53,6 +53,7 @@ import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable } from '@/components/reports/RequirementTable';
+import ScrollingGreetingBar from '@/components/layout/ScrollingGreetingBar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -619,9 +620,9 @@ function RecruiterSection({
   if (loading)
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-5 gap-3 ">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-24 rounded-xl bg-gray-900" />
           ))}
         </div>
         <Skel rows={6} />
@@ -1337,6 +1338,8 @@ export default function ReportsPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100">
+      <ScrollingGreetingBar />
+
       {/* ── DARK MASTHEAD ────────────────────────────────────────────────── */}
       <div className="bg-[#0F172A] px-6 pb-0 pt-6">
         <div className="mx-auto max-w-screen-2xl">
