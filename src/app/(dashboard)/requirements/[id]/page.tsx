@@ -2148,7 +2148,7 @@ export default function RequirementDetailPage() {
               >
                 <span className="text-xs font-bold uppercase tracking-wide">All</span>
                 <span
-                  className={`text-sm font-black tabular-nums ${!activeStageId ? 'text-primary' : 'text-slate-700'}`}
+                  className={`text-sm  font-black tabular-nums ${!activeStageId ? 'text-primary' : 'text-slate-700'}`}
                 >
                   {summary?.total ?? 0}
                 </span>
@@ -2173,7 +2173,7 @@ export default function RequirementDetailPage() {
                       }`}
                     >
                       <span
-                        className={`text-xs font-semibold leading-tight max-w-[90px] truncate ${
+                        className={`text-xs font-semibold leading-tight max-w-22.5 truncate ${
                           isActive
                             ? c.text
                             : stage.count === 0
