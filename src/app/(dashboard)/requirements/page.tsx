@@ -23,7 +23,6 @@ import {
   LayoutList,
   Table2,
   UserCheck,
-  ChevronRight,
   UserPlus,
   Trash2,
   Pencil,
@@ -37,7 +36,6 @@ import {
   Save,
   Trash,
   Check,
-  PieChart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,7 +52,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAxios } from '@/hooks/useAxios';
-import { isReasonRequired, RequirementStatus, STATUS_FLOW } from '@/components/requirements/types';
+import { isReasonRequired, RequirementStatus } from '@/components/requirements/types';
 import {
   useRequirementsStore,
   useRequirementsStoreReady,
@@ -1869,7 +1867,7 @@ function RequirementsTable({
         <thead className="sticky top-0 z-20">
           <tr className="border-b-2 border-slate-200">
             {/* Sticky action col */}
-            <th className="sticky left-0 z-30 bg-slate-50 text-center px-1 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 w-10 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+            <th className="sticky left-0 z-30 bg-slate-50 text-center px-1 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 w-10 border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] overflow-hidden">
               •••
             </th>
             {visibleColDefs.map((col, i) => {
@@ -1939,11 +1937,11 @@ function RequirementsTable({
               >
                 {/* Sticky action cell */}
                 <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0">
-                  <div className="relative flex items-center justify-center h-full min-h-[44px]">
-                    <span className="group-hover:opacity-0 text-slate-300 text-[16px] leading-none select-none absolute transition-opacity duration-100">
+                  <div className=" flex items-center justify-center h-full min-h-11 px-0.5">
+                    <span className="group-hover:hidden text-slate-300 text-[16px] leading-none select-none">
                       ⋯
                     </span>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-100 absolute flex items-center gap-0.5 px-1">
+                    <div className="hidden group-hover:flex items-center gap-0.5">
                       <RowActions
                         req={req}
                         canEdit={canEdit}
