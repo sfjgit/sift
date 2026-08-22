@@ -1,72 +1,36 @@
 // File: types.ts
 // Path: src/components/reports/types.ts
 
-export interface StageMeta {
-  id: string;
-  code: string;
-  label: string;
-  order: number;
-  isStandard: boolean;
-  isTerminal: boolean;
-  canonicalStage: string | null;
-  serviceLineId: string | null;
-  serviceLine: { id: string; name: string } | null;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED REFS
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface ServiceLineRef {
   id: string;
   name: string;
 }
 
-export interface RequirementBreakdown {
-  requirementId: string;
-  reqCode: string;
-  title: string;
-  status: string;
-  totalOpenings: number;
-  client: { id: string; name: string } | null;
-  serviceLine: { id: string; name: string } | null;
-  businessUnit: { id: string; name: string } | null;
-  sourced: number;
-  submitted: number;
-  offered: number;
-  joined: number;
-  dropped: number;
-  active: number;
-  stageCounts: Record<string, number>;
-}
-
-export interface RecruiterStat {
+export interface StageMetaServiceLine {
   id: string;
   name: string;
-  email: string;
-  sourced: number;
-  submitted: number;
-  offered: number;
-  joined: number;
-  dropped: number;
-  active: number;
-  createdById: string;
-  submissionRate: number;
-  offerRate: number;
-  joinRate: number;
-  avgTimeToSubmitDays: number | null;
-  stageCounts: Record<string, number>;
-  requirementBreakdown: RequirementBreakdown[];
 }
 
-export interface RecruiterGroup {
-  serviceLine: ServiceLineRef | null;
-  stages: StageMeta[];
-  data: RecruiterStat[];
-  total: number;
+export interface StageMeta {
+  id: string;
+  label: string;
+  order: number;
+  isStandard: boolean;
+  isTerminal?: boolean;
+  isNearTerminal?: boolean;
+  serviceLineId: string | null;
+  serviceLine: StageMetaServiceLine | null;
 }
 
-export interface RecruiterResponse {
-  success: boolean;
-  groups: RecruiterGroup[];
-  meta: { scope?: string; window: string; standardOnly?: boolean; multiLine?: boolean };
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUIREMENT ROW
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SaleValueBasis = 'SALE_VALUE' | 'BAND' | 'FIXED_PCT' | 'NOT_FOUND';
 
 export interface RequirementRow {
   id: string;
@@ -74,26 +38,53 @@ export interface RequirementRow {
   title: string;
   status: string;
   priority: string;
+  jobType: string;
+  remoteType: string;
   totalOpenings: number;
-  totalCandidates: number;
   city: string | null;
   country: string | null;
-  jobType: string;
-  salaryMin: number | null;
-  salaryMax: number | null;
-  salaryType: string | null;
-  remoteType: string;
   respondBy: string | null;
   isRespondByBreached: boolean;
+  isTurnaroundBreached: boolean;
   createdAt: string;
-  createdById: string;
   deletedAt: string | null;
+
+  // Sale value fields
+  salaryMin: number | null;
+  salaryMax: number | null;
+  saleValue: number | null;
+  computedSaleValue: number | null;
+  saleValueBasis: SaleValueBasis | null;
+  bandCode: string | null;
+  bandName: string | null;
+  bandValue: number | null;
+  clientPct: number | null;
+  // Achieved
+  terminalCount: number;
+  achievedValue: number | null;
+  achievedPct: number;
+
+  // Stage counts keyed by stage id
+  stageCounts: Record<string, number>;
+  totalCandidates: number;
+
   client: { id: string; name: string } | null;
-  clientSpoc: { id: string; firstName: string; lastName: string; email: string } | null;
+  clientSpoc: { id: string; firstName: string; lastName: string } | null;
   businessUnit: { id: string; name: string } | null;
   serviceLine: { id: string; name: string } | null;
   createdBy: { id: string; firstName: string; lastName: string };
-  stageCounts: Record<string, number>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUIREMENT REPORT RESPONSE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SaleValueSummary {
+  totalSaleValue: number;
+  totalAchievedValue: number;
+  includedCount: number;
+  omittedCount: number;
+  byBasis: Record<string, { count: number; total: number }>;
 }
 
 export interface RequirementGroup {
@@ -106,77 +97,58 @@ export interface RequirementGroup {
 export interface RequirementReportResponse {
   success: boolean;
   groups: RequirementGroup[];
-  meta: { total?: number; window: string; standardOnly?: boolean; multiLine?: boolean };
-}
-
-export interface OverviewResponse {
-  success: boolean;
-  data: {
-    kpis: {
-      total: number;
-      submitted: number;
-      offered: number;
-      joined: number;
-      dropped: number;
-      active: number;
-      submissionRate: number;
-      offerRate: number;
-      joinRate: number;
-    };
-    funnel: {
-      stageId: string;
-      code: string;
-      label: string;
-      order: number;
-      isStandard: boolean;
-      serviceLine: ServiceLineRef | null;
-      count: number;
-    }[];
-    byServiceLine: {
-      serviceLineId: string | null;
-      name: string;
-      total: number;
-      submitted: number;
-      offered: number;
-      joined: number;
-      funnel: { stageId: string; label: string; order: number; count: number }[];
-    }[];
-    byBusinessUnit: {
-      businessUnitId: string | null;
-      name: string;
-      total: number;
-      joined: number;
-    }[];
-    dispositionCounts: Record<string, number>;
-    timeSeries: { bucket: string; count: number }[];
-    timeGranularity: 'hour' | 'day';
-    leaderboard: { id: string; name: string; sourced: number; joined: number }[];
+  saleValueSummary: SaleValueSummary;
+  meta: {
+    window: string;
+    standardOnly: boolean;
+    total: number;
+    multiLine: boolean;
   };
-  meta: { window: string; granularity: string; scope: string; multiLine: boolean };
 }
 
-// ── Candidate funnel report (GET /reports/candidates) ────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// RECRUITER ROW
+// ─────────────────────────────────────────────────────────────────────────────
 
-export interface CandidateFunnelStage {
-  stageId: string;
-  code: string;
-  label: string;
-  order: number;
-  isStandard: boolean;
+export interface RequirementBreakdown {
+  requirementId: string;
+  reqCode: string;
+  title: string;
+  client: { id: string; name: string } | null;
+  status: string;
+  sourced: number;
+  joined: number;
+  active: number;
+  dropped: number;
+  stageCounts: Record<string, number>;
+}
+
+export interface RecruiterRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  sourced: number;
+  joined: number;
+  active: number;
+  dropped: number;
+  stageCounts: Record<string, number>;
+  requirementBreakdown: RequirementBreakdown[];
+}
+
+export interface RecruiterGroup {
   serviceLine: ServiceLineRef | null;
-  count: number;
-  pct: number;
+  stages: StageMeta[];
+  data: RecruiterRow[];
+  total: number;
 }
 
-export interface CandidateReportData {
-  totalCandidates: number;
-  funnelByStage: CandidateFunnelStage[];
-  dispositionSummary: Record<string, number>;
-  avgPipelineDays: number;
-}
-
-export interface CandidateReportResponse {
+export interface RecruiterResponse {
   success: boolean;
-  data: CandidateReportData;
-  meta: { window: string };
+  groups: RecruiterGroup[];
+  meta: {
+    window: string;
+    standardOnly: boolean;
+  };
 }
