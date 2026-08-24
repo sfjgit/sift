@@ -16,10 +16,8 @@ import {
   Users,
   FileText,
   ArrowRightLeft,
-  TrendingUp,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAxios } from '@/hooks/useAxios';
 import type {
@@ -167,7 +165,7 @@ function PipelineTab({ assignments }: { assignments: AssignmentReceived[] }) {
       </div>
 
       {/* Skills */}
-      {a.requirement.skills.length > 0 && (
+      {(a.requirement.skills ?? []).length > 0 && (
         <div className="flex flex-wrap gap-1">
           {a.requirement.skills.slice(0, 4).map(sk => (
             <span
@@ -371,7 +369,7 @@ function CreatedTab({ requirements }: { requirements: RequirementCreated[] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ClientsTab({ spocs }: { spocs: UserCardData['clientSpocs'] }) {
-  if (spocs.length === 0)
+  if ((spocs ?? []).length === 0)
     return (
       <div className="py-8 text-center">
         <Building2 className="h-6 w-6 text-muted-foreground/30 mx-auto mb-2" />

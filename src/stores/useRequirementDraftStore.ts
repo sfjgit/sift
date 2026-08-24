@@ -68,6 +68,9 @@ export interface RequirementDraft {
 
   // meta
   lastSavedAt: string | null;
+
+  //req category
+  requirementCategoryId: string;
 }
 
 interface RequirementDraftStore {
@@ -135,6 +138,8 @@ const DEFAULT_DRAFT: RequirementDraft = {
   turnaroundDays: null,
 
   lastSavedAt: null,
+
+  requirementCategoryId: '',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

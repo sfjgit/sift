@@ -244,6 +244,7 @@ const schema = z.object({
   jdParseStatus: z.enum(['PARSED', 'FAILED', 'MANUALLY_OVERRIDDEN']).optional().nullable(),
   jdParsedFields: z.array(z.string()).default([]),
   parsedJDId: z.string().optional().nullable(),
+  requirementCategoryId: z.string().optional().nullable(),
 
   bandId: z.string().optional().nullable(),
   saleValue: z.preprocess(coerceNumber, z.number().min(0).optional().nullable()),
@@ -294,6 +295,14 @@ interface LibraryResult {
   jobType: string | null;
   remoteType: string | null;
   city: string | null;
+}
+
+interface RequirementCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  order: number | null;
+  isActive: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1393,6 +1402,7 @@ export default function NewRequirementPage() {
       jdParsedFields: [],
       startDate: todayISO(),
       bonusAmount: null, // ← explicit null, never undefined → never NaN
+      requirementCategoryId: null,
     },
   });
 
@@ -1429,6 +1439,7 @@ export default function NewRequirementPage() {
     setValue('jdParseStatus', draft.jdParseStatus as any);
     setValue('jdParsedFields', draft.jdParsedFields);
     setValue('parsedJDId', draft.parsedJDId);
+    setValue('requirementCategoryId', draft.requirementCategoryId ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1531,6 +1542,7 @@ export default function NewRequirementPage() {
       jdParseStatus: v.jdParseStatus ?? null,
       jdParsedFields: v.jdParsedFields ?? [],
       parsedJDId: v.parsedJDId ?? null,
+      requirementCategoryId: v.requirementCategoryId ?? undefined,
     });
   }
 
@@ -1547,6 +1559,13 @@ export default function NewRequirementPage() {
     enabled: !!selectedClientId,
     staleTime: 30_000,
   });
+
+  const { data: categoriesRes } = useQuery<{ data: RequirementCategory[] }>({
+    queryKey: ['requirement-categories'],
+    queryFn: async () => (await axios.get('/requirementCategories?isActive=true')).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const categories = categoriesRes?.data ?? [];
 
   const clients = clientsRes?.data ?? [];
   const selectedClient = clients.find(c => c.id === selectedClientId) ?? null;
@@ -2000,6 +2019,51 @@ export default function NewRequirementPage() {
                     rows={4}
                     className="text-[14px] font-medium border-slate-200 rounded-xl resize-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary transition-colors"
                     {...register('description')}
+                  />
+                </div>
+                {/* Requirement Category */}
+                <div>
+                  <FieldLabel>
+                    Category{' '}
+                    <span className="text-[11px] font-normal text-slate-400 ">(optional)</span>
+                  </FieldLabel>
+                  <Controller
+                    control={control}
+                    name="requirementCategoryId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value ?? '__none__'}
+                        onValueChange={v => field.onChange(v === '__none__' ? null : v)}
+                        disabled={categories.length === 0}
+                      >
+                        <SelectTrigger className={selectCls}>
+                          <SelectValue
+                            placeholder={
+                              categories.length === 0
+                                ? 'No categories configured'
+                                : 'Select category…'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">
+                            <span className="text-slate-400">No category</span>
+                          </SelectItem>
+                          {categories.map(cat => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-[13px]">{cat.name}</span>
+                                {cat.description && (
+                                  <span className="text-[11px] text-slate-400">
+                                    {cat.description}
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
