@@ -51,6 +51,8 @@ import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable } from '@/components/reports/RequirementTable';
+import { RecruiterSection } from '@/components/reports/RecruiterSection';
+import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -670,130 +672,130 @@ function LineTabs({
 // RECRUITER SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RecruiterSection({
-  resp,
-  loading,
-  reqFilter,
-  onReqFilter,
-  onDownloadAll,
-  onDownloadSelected,
-}: {
-  resp?: RecruiterResponse;
-  loading: boolean;
-  reqFilter: string;
-  onReqFilter: (v: string) => void;
-  onDownloadAll: (
-    slId?: string,
-    stageIds?: string[],
-    hiddenStageIds?: string[],
-    hiddenCandidateCols?: string[]
-  ) => void;
-  onDownloadSelected: (
-    ids: string[],
-    slId?: string,
-    stageIds?: string[],
-    hiddenStageIds?: string[],
-    hiddenCandidateCols?: string[]
-  ) => void;
-}) {
-  const [activeKey, setActiveKey] = useState<string>('');
-  if (loading)
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
-        <Skel rows={6} />
-      </div>
-    );
+// function RecruiterSection({
+//   resp,
+//   loading,
+//   reqFilter,
+//   onReqFilter,
+//   onDownloadAll,
+//   onDownloadSelected,
+// }: {
+//   resp?: RecruiterResponse;
+//   loading: boolean;
+//   reqFilter: string;
+//   onReqFilter: (v: string) => void;
+//   onDownloadAll: (
+//     slId?: string,
+//     stageIds?: string[],
+//     hiddenStageIds?: string[],
+//     hiddenCandidateCols?: string[]
+//   ) => void;
+//   onDownloadSelected: (
+//     ids: string[],
+//     slId?: string,
+//     stageIds?: string[],
+//     hiddenStageIds?: string[],
+//     hiddenCandidateCols?: string[]
+//   ) => void;
+// }) {
+//   const [activeKey, setActiveKey] = useState<string>('');
+//   if (loading)
+//     return (
+//       <div className="space-y-4">
+//         <div className="grid grid-cols-5 gap-3">
+//           {Array.from({ length: 5 }).map((_, i) => (
+//             <Skeleton key={i} className="h-24 rounded-xl" />
+//           ))}
+//         </div>
+//         <Skel rows={6} />
+//       </div>
+//     );
 
-  const groups: RecruiterGroup[] = resp?.groups ?? [];
-  if (!groups.length) return <Empty msg="No recruiter data for this window." />;
+//   const groups: RecruiterGroup[] = resp?.groups ?? [];
+//   if (!groups.length) return <Empty msg="No recruiter data for this window." />;
 
-  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
-  const rows = active.data;
+//   const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+//   const rows = active.data;
 
-  const reqOptions = (() => {
-    const m = new Map<string, string>();
-    for (const r of rows)
-      for (const rq of r.requirementBreakdown)
-        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
-    return [...m.entries()].map(([id, label]) => ({ id, label }));
-  })();
+//   const reqOptions = (() => {
+//     const m = new Map<string, string>();
+//     for (const r of rows)
+//       for (const rq of r.requirementBreakdown)
+//         m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
+//     return [...m.entries()].map(([id, label]) => ({ id, label }));
+//   })();
 
-  const totals = {
-    sourced: rows.reduce((s, r) => s + r.sourced, 0),
-    joined: rows.reduce((s, r) => s + r.joined, 0),
-    active: rows.reduce((s, r) => s + r.active, 0),
-    dropped: rows.reduce((s, r) => s + r.dropped, 0),
-    recruiters: new Set(rows.map(r => r.id)).size,
-  };
+//   const totals = {
+//     sourced: rows.reduce((s, r) => s + r.sourced, 0),
+//     joined: rows.reduce((s, r) => s + r.joined, 0),
+//     active: rows.reduce((s, r) => s + r.active, 0),
+//     dropped: rows.reduce((s, r) => s + r.dropped, 0),
+//     recruiters: new Set(rows.map(r => r.id)).size,
+//   };
 
-  return (
-    <div className="space-y-5">
-      <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
-        <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
-        <KPI label="Active" value={totals.active} color="#059669" />
-        <KPI
-          label="Joined"
-          value={totals.joined}
-          color="#7C3AED"
-          trend="up"
-          sub={
-            totals.sourced > 0
-              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
-              : undefined
-          }
-        />
-        <KPI
-          label="Dropped"
-          value={totals.dropped}
-          color="#DC2626"
-          trend={totals.dropped > 0 ? 'down' : undefined}
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
-          Filter by requirement
-        </span>
-        <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
-          <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
-            <SelectValue placeholder="All requirements" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All requirements</SelectItem>
-            {reqOptions.map(o => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {reqFilter && (
-          <button
-            onClick={() => onReqFilter('')}
-            className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
-          >
-            <X className="h-3.5 w-3.5" /> Clear
-          </button>
-        )}
-      </div>
-      <RecruiterTable
-        key={keyOf(active)}
-        title={active.serviceLine?.name ?? null}
-        serviceLineId={active.serviceLine?.id}
-        data={active.data}
-        stages={active.stages}
-        onDownloadAll={onDownloadAll}
-        onDownloadSelected={onDownloadSelected}
-      />
-    </div>
-  );
-}
+//   return (
+//     <div className="space-y-5">
+//       <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
+//       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+//         <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
+//         <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
+//         <KPI label="Active" value={totals.active} color="#059669" />
+//         <KPI
+//           label="Joined"
+//           value={totals.joined}
+//           color="#7C3AED"
+//           trend="up"
+//           sub={
+//             totals.sourced > 0
+//               ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
+//               : undefined
+//           }
+//         />
+//         <KPI
+//           label="Dropped"
+//           value={totals.dropped}
+//           color="#DC2626"
+//           trend={totals.dropped > 0 ? 'down' : undefined}
+//         />
+//       </div>
+//       <div className="flex flex-wrap items-center gap-2">
+//         <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
+//           Filter by requirement
+//         </span>
+//         <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
+//           <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
+//             <SelectValue placeholder="All requirements" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="ALL">All requirements</SelectItem>
+//             {reqOptions.map(o => (
+//               <SelectItem key={o.id} value={o.id}>
+//                 {o.label}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//         {reqFilter && (
+//           <button
+//             onClick={() => onReqFilter('')}
+//             className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
+//           >
+//             <X className="h-3.5 w-3.5" /> Clear
+//           </button>
+//         )}
+//       </div>
+//       <RecruiterTable
+//         key={keyOf(active)}
+//         title={active.serviceLine?.name ?? null}
+//         serviceLineId={active.serviceLine?.id}
+//         data={active.data}
+//         stages={active.stages}
+//         onDownloadAll={onDownloadAll}
+//         onDownloadSelected={onDownloadSelected}
+//       />
+//     </div>
+//   );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REQUIREMENT SECTION
@@ -1501,6 +1503,7 @@ export default function ReportsPage() {
           />
         </TabsContent>
         <TabsContent value="recruiters" className="mt-5">
+          <RecruiterStatsBar baseQs={recParams} />
           <RecruiterSection
             resp={recruiterQuery.data}
             loading={recruiterQuery.isLoading}
@@ -1508,7 +1511,16 @@ export default function ReportsPage() {
             onReqFilter={setRecReqFilter}
             onDownloadAll={handleRecruiterAll}
             onDownloadSelected={handleRecruiterSelected}
+            baseQs={baseQs}
           />
+          {/* <RecruiterSection
+            resp={recruiterQuery.data}
+            loading={recruiterQuery.isLoading}
+            reqFilter={recReqFilter}
+            onReqFilter={setRecReqFilter}
+            onDownloadAll={handleRecruiterAll}
+            onDownloadSelected={handleRecruiterSelected}
+          /> */}
         </TabsContent>
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
