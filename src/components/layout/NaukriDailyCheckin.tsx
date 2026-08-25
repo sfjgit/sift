@@ -126,7 +126,9 @@ export default function NaukriDailyCheckin() {
   return (
     <AlertDialog open={open}>
       <AlertDialogContent
-        className="max-w-lg overflow-hidden border-2 border-red-500 p-0 shadow-2xl shadow-red-900/30 ring-4 ring-red-500/20"
+        // FIX: max-h-[90vh] caps the dialog so it can never exceed the viewport.
+        // FIX: flex flex-col lets us pin the alert bar + footer and scroll only the middle.
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden border-2 border-red-500 p-0 shadow-2xl shadow-red-900/30 ring-4 ring-red-500/20"
         // ── make it truly blocking ──
         onEscapeKeyDown={e => e.preventDefault()}
         // @ts-expect-error err
@@ -142,15 +144,18 @@ export default function NaukriDailyCheckin() {
           </div>
         ) : (
           <>
-            {/* ── red alert bar ── */}
-            <div className="flex items-center gap-2 bg-red-600 px-5 py-3 text-white">
+            {/* ── red alert bar — FIX: shrink-0 keeps it pinned, never scrolls away ── */}
+            <div className="flex shrink-0 items-center gap-2 bg-red-600 px-5 py-3 text-white">
               <AlertTriangle className="h-5 w-5 shrink-0 animate-pulse" />
               <span className="text-sm font-bold uppercase tracking-widest">
                 Action required · Sourcing variance
               </span>
             </div>
 
-            <div className="px-5 pb-5 pt-4">
+            {/* FIX: this wrapper is the ONLY scrollable region now.
+                overflow-y-auto here (not on AlertDialogContent) means long content
+                scrolls internally instead of pushing the footer off-screen. */}
+            <div className="overflow-y-auto px-5 pb-4 pt-4">
               <AlertDialogHeader>
                 <h2 className="text-lg font-bold leading-snug text-slate-900">
                   Date {format(yesterday, 'dd MMM yyyy')} · Naukri Source vs Sourced to TalentOS
@@ -240,18 +245,19 @@ export default function NaukriDailyCheckin() {
                   Comments are required to continue into TalentOS.
                 </p>
               </div>
-
-              <AlertDialogFooter className="mt-4">
-                <Button
-                  className="w-full gap-2 bg-red-600 font-bold text-white hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-red-300"
-                  disabled={reason.trim().length < 3 || submitM.isPending}
-                  onClick={() => submitM.mutate()}
-                >
-                  {submitM.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {submitM.isPending ? 'Saving…' : 'Submit & continue'}
-                </Button>
-              </AlertDialogFooter>
             </div>
+
+            {/* FIX: footer moved OUTSIDE the scrolling div and marked shrink-0,  */}
+            <AlertDialogFooter className="shrink-0 border-t border-slate-100 px-5 py-4">
+              <Button
+                className="w-full gap-2 bg-red-600 font-bold text-white hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-red-300"
+                disabled={reason.trim().length < 3 || submitM.isPending}
+                onClick={() => submitM.mutate()}
+              >
+                {submitM.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {submitM.isPending ? 'Saving…' : 'Submit & continue'}
+              </Button>
+            </AlertDialogFooter>
           </>
         )}
       </AlertDialogContent>
