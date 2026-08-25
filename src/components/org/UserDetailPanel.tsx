@@ -165,9 +165,9 @@ function PipelineTab({ assignments }: { assignments: AssignmentReceived[] }) {
       </div>
 
       {/* Skills */}
-      {(a.requirement.skills ?? []).length > 0 && (
+      {(a.requirement.skills?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1">
-          {a.requirement.skills.slice(0, 4).map(sk => (
+          {a.requirement.skills?.slice(0, 4).map(sk => (
             <span
               key={sk}
               className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
@@ -175,9 +175,9 @@ function PipelineTab({ assignments }: { assignments: AssignmentReceived[] }) {
               {sk}
             </span>
           ))}
-          {a.requirement.skills.length > 4 && (
+          {(a.requirement.skills?.length ?? 0) > 4 && (
             <span className="text-[9px] text-muted-foreground">
-              +{a.requirement.skills.length - 4}
+              +{(a.requirement.skills?.length ?? 0) - 4}
             </span>
           )}
         </div>

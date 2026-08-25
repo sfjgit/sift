@@ -66,6 +66,7 @@ interface DailyRow {
   naukriPhonesRevealed: number;
   naukriCvsDownloaded: number;
   completeProfilesCaptured: number;
+  reason: string | null;
 }
 
 interface SummaryRow {
@@ -154,6 +155,7 @@ function StatCard({
     amber: 'bg-amber-50 text-amber-700',
     blue: 'bg-blue-50 text-blue-700',
   };
+
   return (
     <div className="flex-1 min-w-[150px] rounded-xl border border-slate-200 bg-white px-4 py-3">
       <div className="flex items-center gap-2">
@@ -269,11 +271,10 @@ export default function NaukriLogsPage() {
   const [mode, setMode] = useState<Mode>('single');
   const [preset, setPreset] = useState<Preset>('yesterday');
 
-  const [singleDate, setSingleDate] = useState<Date>(subDays(today, 1)); // default: yesterday
+  const [singleDate, setSingleDate] = useState<Date>(subDays(today, 1));
   const [fromDate, setFromDate] = useState<Date>(subDays(today, 6));
   const [toDate, setToDate] = useState<Date>(today);
 
-  // ── filters ──
   const [search, setSearch] = useState('');
   const [fBu, setFBu] = useState('');
   const [fRm, setFRm] = useState('');
@@ -291,11 +292,12 @@ export default function NaukriLogsPage() {
     setFFlag('');
     setFStatus('');
   };
+
   const hasFilters = !!(search || fBu || fRm || fServiceLine || fFlag || fStatus);
 
-  // ── quick selections ──────────────────────────────────────────────────────
   const applyPreset = (p: Preset) => {
     setPreset(p);
+
     if (p === 'today') {
       setMode('single');
       setSingleDate(today);
@@ -317,7 +319,6 @@ export default function NaukriLogsPage() {
     }
   };
 
-  // ── queries ─────────────────────────────────────────────────────────────────
   const dateStr = fmtApi(singleDate);
 
   const uploadsQ = useQuery<UploadRow[]>({
@@ -354,16 +355,17 @@ export default function NaukriLogsPage() {
       ).data,
   });
 
-  // ── mutations: upload + reconcile ─────────────────────────────────────────────
   const uploadM = useMutation({
     mutationFn: async (file: File) => {
       const form = new FormData();
       form.append('file', file);
       form.append('reportDate', dateStr);
+
       await axios.post('/candidate/api/naurki-logs/upload', form, {
         baseURL: '/api/proxy',
         headers: { 'Content-Type': undefined },
       });
+
       await axios.post(
         '/candidate/api/naurki-logs/reconcile',
         { reportDate: dateStr },
@@ -387,54 +389,58 @@ export default function NaukriLogsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['naukri-daily', dateStr] }),
   });
 
-  // ── raw data ──
   const daily = dailyQ.data ?? [];
   const summary = summaryQ.data ?? [];
 
-  // ── filter option lists (derived from loaded rows) ──
   const uniq = (arr: (string | null)[]) =>
     [...new Set(arr.filter(Boolean) as string[])].sort().map(v => ({ value: v, label: v }));
+
   const buOptions = useMemo(
     () => uniq(mode === 'single' ? daily.map(r => r.bu) : summary.map(r => r.bu)),
     [daily, summary, mode]
   );
+
   const rmOptions = useMemo(() => uniq(daily.map(r => r.rm)), [daily]);
   const slOptions = useMemo(() => uniq(daily.map(r => r.serviceLine)), [daily]);
 
-  // ── apply filters ──
   const filteredDaily = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return daily.filter(r => {
       if (
         q &&
         !`${r.recruiterName ?? ''} ${r.recruiterEmail} ${r.empId ?? ''}`.toLowerCase().includes(q)
       )
         return false;
+
       if (fBu && r.bu !== fBu) return false;
       if (fRm && r.rm !== fRm) return false;
       if (fServiceLine && r.serviceLine !== fServiceLine) return false;
       if (fStatus && r.fillStatus !== fStatus) return false;
       if (fFlag && !r.flags.includes(fFlag)) return false;
+
       return true;
     });
   }, [daily, search, fBu, fRm, fServiceLine, fStatus, fFlag]);
 
   const filteredSummary = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     return summary.filter(r => {
       if (q && !`${r.recruiterName ?? ''} ${r.recruiterEmail}`.toLowerCase().includes(q))
         return false;
+
       if (fBu && r.bu !== fBu) return false;
+
       return true;
     });
   }, [summary, search, fBu]);
 
-  // ── analytics reflect the FILTERED view (so filtering by BU shows that BU's stats) ──
   const analytics = useMemo(() => {
     const naukri = filteredDaily.reduce((s, r) => s + (r.naukriCvConsumed ?? 0), 0);
     const ats = filteredDaily.reduce((s, r) => s + r.atsCaptured, 0);
-    // NEW — total complete profiles across the filtered view
     const complete = filteredDaily.reduce((s, r) => s + (r.completeProfilesCaptured ?? 0), 0);
+
     return {
       naukri,
       ats,
@@ -448,6 +454,7 @@ export default function NaukriLogsPage() {
   const rangeAnalytics = useMemo(() => {
     const naukri = filteredSummary.reduce((s, r) => s + Number(r.naukri_consumed), 0);
     const ats = filteredSummary.reduce((s, r) => s + Number(r.ats_captured), 0);
+
     return {
       naukri,
       ats,
@@ -457,18 +464,12 @@ export default function NaukriLogsPage() {
     };
   }, [filteredSummary]);
 
-  // ── EXPORT TO EXCEL ─────────────────────────────────────────────────────────
-  // Exports whatever is currently on screen — i.e. the FILTERED rows, same
-  // data the stat cards and table already reflect. Two sheets per workbook:
-  // "Summary" (the six stat-card numbers) and the full recruiter breakdown/
-  // cumulative table, so nothing shown on the page is left out of the file.
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
 
     if (mode === 'single') {
       if (filteredDaily.length === 0) return;
 
-      // ── Summary sheet — mirrors the stat cards at the top of the page ──
       const summaryRows = [
         { Metric: 'Naukri Consumed', Value: analytics.naukri, Note: 'CV Access (A+B+C)' },
         { Metric: 'ATS Captured', Value: analytics.ats, Note: 'landed in the system' },
@@ -481,11 +482,11 @@ export default function NaukriLogsPage() {
         { Metric: 'Not Filled', Value: analytics.notFilled, Note: 'recruiters' },
         { Metric: 'Leaking', Value: analytics.leaking, Note: 'flagged recruiters' },
       ];
+
       const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
       summaryWs['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 24 }];
       XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
-      // ── Recruiter breakdown sheet ──
       const rows = filteredDaily.map(r => ({
         'Recruiter Name': r.recruiterName ?? r.recruiterEmail,
         Email: r.recruiterEmail,
@@ -502,7 +503,9 @@ export default function NaukriLogsPage() {
         Difference: r.difference ?? '',
         Status: FILL_STATUS[r.fillStatus]?.label ?? r.fillStatus,
         Flags: r.flags.map(f => FLAG_STYLE[f]?.label ?? f).join(', '),
+        Reason: r.reason ?? '',
       }));
+
       const ws = XLSX.utils.json_to_sheet(rows);
       ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 16 }));
       XLSX.utils.book_append_sheet(wb, ws, 'Recruiter Breakdown');
@@ -511,7 +514,6 @@ export default function NaukriLogsPage() {
     } else {
       if (filteredSummary.length === 0) return;
 
-      // ── Summary sheet — mirrors the range-mode stat cards ──
       const summaryRows = [
         { Metric: 'Naukri Consumed', Value: rangeAnalytics.naukri },
         { Metric: 'ATS Captured', Value: rangeAnalytics.ats },
@@ -519,11 +521,11 @@ export default function NaukriLogsPage() {
         { Metric: 'Not-filled Days', Value: rangeAnalytics.notFilled },
         { Metric: 'Leaking Days', Value: rangeAnalytics.leaking },
       ];
+
       const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
       summaryWs['!cols'] = [{ wch: 20 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
 
-      // ── Cumulative recruiter-wise sheet ──
       const rows = filteredSummary.map(r => ({
         'Recruiter Name': r.recruiterName ?? r.recruiterEmail,
         Email: r.recruiterEmail,
@@ -534,6 +536,7 @@ export default function NaukriLogsPage() {
         'Days Not Filled': r.days_not_filled,
         'Days Leaking': r.days_leaking,
       }));
+
       const ws = XLSX.utils.json_to_sheet(rows);
       ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 16 }));
       XLSX.utils.book_append_sheet(wb, ws, 'Summary Table');
@@ -595,6 +598,7 @@ export default function NaukriLogsPage() {
               <Download className="w-3.5 h-3.5" />
               Export
             </Button>
+
             {mode === 'single' && (
               <Button
                 size="sm"
@@ -609,7 +613,6 @@ export default function NaukriLogsPage() {
           </div>
         </div>
 
-        {/* ── quick selects + mode toggle ── */}
         <div className="mt-3 flex items-center gap-1.5 flex-wrap">
           {PRESETS.map(p => (
             <button
@@ -624,7 +627,9 @@ export default function NaukriLogsPage() {
               {p.label}
             </button>
           ))}
+
           <div className="w-px h-5 bg-slate-200 mx-1" />
+
           <div className="flex items-center rounded-full border border-slate-200 p-0.5">
             <button
               onClick={() => {
@@ -637,6 +642,7 @@ export default function NaukriLogsPage() {
             >
               Single day
             </button>
+
             <button
               onClick={() => {
                 setMode('range');
@@ -651,7 +657,6 @@ export default function NaukriLogsPage() {
           </div>
         </div>
 
-        {/* ── date pickers: separate calendars ── */}
         <div className="mt-3 flex items-end gap-4 flex-wrap">
           {mode === 'single' ? (
             <DatePicker
@@ -672,7 +677,9 @@ export default function NaukriLogsPage() {
                   setPreset('custom');
                 }}
               />
+
               <ArrowRight className="w-4 h-4 text-slate-300 mb-2.5" />
+
               <DatePicker
                 label="To"
                 value={toDate}
@@ -685,7 +692,6 @@ export default function NaukriLogsPage() {
           )}
         </div>
 
-        {/* ── FILTER BAR ── */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -714,6 +720,7 @@ export default function NaukriLogsPage() {
                 placeholder="All RM"
                 width="w-32"
               />
+
               {slOptions.length > 0 && (
                 <FilterSelect
                   value={fServiceLine}
@@ -723,13 +730,18 @@ export default function NaukriLogsPage() {
                   width="w-40"
                 />
               )}
+
               <FilterSelect
                 value={fFlag}
                 onChange={setFFlag}
-                options={FLAG_FILTERS.map(f => ({ value: f, label: FLAG_STYLE[f]?.label ?? f }))}
+                options={FLAG_FILTERS.map(f => ({
+                  value: f,
+                  label: FLAG_STYLE[f]?.label ?? f,
+                }))}
                 placeholder="All flags"
                 width="w-36"
               />
+
               <FilterSelect
                 value={fStatus}
                 onChange={setFStatus}
@@ -759,7 +771,6 @@ export default function NaukriLogsPage() {
 
       {/* ═══ BODY ═══ */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-        {/* ── ANALYTICS OVERVIEW (reflects filters) ── */}
         <div className="flex gap-3 flex-wrap">
           {mode === 'single' ? (
             <>
@@ -777,7 +788,6 @@ export default function NaukriLogsPage() {
                 tone="emerald"
                 sub="landed in the system"
               />
-              {/* NEW — total complete profiles (all 3 steps, same day) */}
               <StatCard
                 icon={CheckCircle2}
                 label="Complete profiles"
@@ -843,7 +853,6 @@ export default function NaukriLogsPage() {
           )}
         </div>
 
-        {/* ── SINGLE-DAY banners ── */}
         {mode === 'single' && !uploadsQ.isLoading && !hasUpload && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -909,6 +918,7 @@ export default function NaukriLogsPage() {
                 ? `Recruiter breakdown · ${fmtNice(singleDate)}`
                 : `Cumulative · ${fmtNice(fromDate)} → ${fmtNice(toDate)}`}
             </span>
+
             <span className="text-xs text-slate-400">
               {mode === 'single'
                 ? `${filteredDaily.length}${hasFilters ? ` / ${daily.length}` : ''} recruiters`
@@ -937,7 +947,6 @@ export default function NaukriLogsPage() {
                       <th className="text-left font-semibold px-3 py-2.5">RM</th>
                       <th className="text-right font-semibold px-3 py-2.5">Naukri</th>
                       <th className="text-right font-semibold px-3 py-2.5">ATS</th>
-                      {/* NEW — 3-step breakdown, placed right after ATS since it explains that number */}
                       <th className="text-right font-semibold px-3 py-2.5">Profiles</th>
                       <th className="text-right font-semibold px-3 py-2.5">Phones</th>
                       <th className="text-right font-semibold px-3 py-2.5">Resumes</th>
@@ -945,11 +954,14 @@ export default function NaukriLogsPage() {
                       <th className="text-right font-semibold px-3 py-2.5">Diff</th>
                       <th className="text-left font-semibold px-3 py-2.5">Status</th>
                       <th className="text-left font-semibold px-5 py-2.5">Flags</th>
+                      <th className="text-left font-semibold px-5 py-2.5">Reason</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {filteredDaily.map(r => {
                       const sources = Object.entries(r.atsBySource ?? {}).filter(([, v]) => v > 0);
+
                       return (
                         <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50/70">
                           <td className="px-5 py-3">
@@ -958,16 +970,22 @@ export default function NaukriLogsPage() {
                             </div>
                             <div className="text-xs text-slate-400">{r.recruiterEmail}</div>
                           </td>
+
                           <td className="px-3 py-3 text-xs text-slate-500 tabular-nums">
                             {r.empId ?? '—'}
                           </td>
+
                           <td className="px-3 py-3 text-xs text-slate-500">{r.bu ?? '—'}</td>
+
                           <td className="px-3 py-3 text-xs text-slate-500">{r.rm ?? '—'}</td>
+
                           <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700">
                             {r.naukriCvConsumed ?? <span className="text-amber-500">—</span>}
                           </td>
+
                           <td className="px-3 py-3 text-right">
                             <div className="tabular-nums text-slate-700">{r.atsCaptured}</div>
+
                             {sources.length > 0 && (
                               <div className="text-[10px] text-slate-400 mt-0.5">
                                 {sources
@@ -976,19 +994,23 @@ export default function NaukriLogsPage() {
                               </div>
                             )}
                           </td>
-                          {/* NEW — 3-step breakdown cells */}
+
                           <td className="px-3 py-3 text-right tabular-nums text-slate-600">
                             {r.naukriProfilesViewed}
                           </td>
+
                           <td className="px-3 py-3 text-right tabular-nums text-slate-600">
                             {r.naukriPhonesRevealed}
                           </td>
+
                           <td className="px-3 py-3 text-right tabular-nums text-slate-600">
                             {r.naukriCvsDownloaded}
                           </td>
+
                           <td className="px-3 py-3 text-right tabular-nums font-bold text-emerald-600">
                             {r.completeProfilesCaptured}
                           </td>
+
                           <td
                             className={`px-3 py-3 text-right tabular-nums font-bold ${
                               r.difference == null
@@ -1004,13 +1026,17 @@ export default function NaukriLogsPage() {
                                 ? `+${r.difference}`
                                 : r.difference}
                           </td>
+
                           <td className="px-3 py-3">
                             <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${FILL_STATUS[r.fillStatus]?.cls ?? ''}`}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                FILL_STATUS[r.fillStatus]?.cls ?? ''
+                              }`}
                             >
                               {FILL_STATUS[r.fillStatus]?.label ?? r.fillStatus}
                             </span>
                           </td>
+
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap gap-1">
                               {r.flags.length === 0 ? (
@@ -1019,13 +1045,23 @@ export default function NaukriLogsPage() {
                                 r.flags.map(f => (
                                   <span
                                     key={f}
-                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${FLAG_STYLE[f]?.cls ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}
+                                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                      FLAG_STYLE[f]?.cls ??
+                                      'bg-slate-100 text-slate-600 border-slate-200'
+                                    }`}
                                   >
                                     {FLAG_STYLE[f]?.label ?? f}
                                   </span>
                                 ))
                               )}
                             </div>
+                          </td>
+
+                          <td
+                            className="px-5 py-3 text-xs text-slate-600 max-w-[220px] truncate"
+                            title={r.reason ?? ''}
+                          >
+                            {r.reason ?? '—'}
                           </td>
                         </tr>
                       );
@@ -1059,6 +1095,7 @@ export default function NaukriLogsPage() {
                       <th className="text-right font-semibold px-5 py-2.5">Leaking</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {filteredSummary.map(r => (
                       <tr
@@ -1071,21 +1108,29 @@ export default function NaukriLogsPage() {
                           </div>
                           <div className="text-xs text-slate-400">{r.recruiterEmail}</div>
                         </td>
+
                         <td className="px-3 py-3 text-slate-500 text-xs">{r.bu ?? '—'}</td>
+
                         <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700">
                           {r.naukri_consumed}
                         </td>
+
                         <td className="px-3 py-3 text-right tabular-nums text-slate-700">
                           {r.ats_captured}
                         </td>
+
                         <td
-                          className={`px-3 py-3 text-right tabular-nums font-bold ${Number(r.gap) > 0 ? 'text-rose-600' : 'text-emerald-600'}`}
+                          className={`px-3 py-3 text-right tabular-nums font-bold ${
+                            Number(r.gap) > 0 ? 'text-rose-600' : 'text-emerald-600'
+                          }`}
                         >
                           {Number(r.gap) > 0 ? `+${r.gap}` : r.gap}
                         </td>
+
                         <td className="px-3 py-3 text-right tabular-nums text-amber-600 font-semibold">
                           {r.days_not_filled}
                         </td>
+
                         <td className="px-5 py-3 text-right tabular-nums text-rose-600 font-semibold">
                           {r.days_leaking}
                         </td>
