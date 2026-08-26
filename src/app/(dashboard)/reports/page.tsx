@@ -26,7 +26,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -68,8 +70,18 @@ interface WinState {
   toDate: string;
 }
 
+// interface Filters {
+//   clientId?: string;
+//   serviceLineId?: string;
+//   businessUnitId?: string;
+//   departmentId?: string;
+//   createdById?: string;
+//   status?: string;
+// }
+
 interface Filters {
   clientId?: string;
+  clientSpocId?: string; // ← ADD THIS LINE
   serviceLineId?: string;
   businessUnitId?: string;
   departmentId?: string;
@@ -303,6 +315,29 @@ function FiltersBar({
   const businessUnits: any[] = overviewFilters?.businessUnits ?? [];
   const departments: any[] = overviewFilters?.departments ?? [];
   const clients: any[] = overviewFilters?.clients ?? [];
+  const allSpocs: {
+    id: string;
+    name: string;
+    designation: string | null;
+    clientId: string;
+    clientName: string;
+  }[] = overviewFilters?.spocs ?? [];
+
+  // If a client is selected show only that client's spocs, otherwise show all
+  const visibleSpocs = useMemo(
+    () => (filters.clientId ? allSpocs.filter(s => s.clientId === filters.clientId) : allSpocs),
+    [allSpocs, filters.clientId]
+  );
+
+  // Group spocs by client for the "all clients" case
+  const spocsByClient = useMemo(() => {
+    const map = new Map<string, { clientName: string; spocs: typeof allSpocs }>();
+    for (const s of visibleSpocs) {
+      if (!map.has(s.clientId)) map.set(s.clientId, { clientName: s.clientName, spocs: [] });
+      map.get(s.clientId)!.spocs.push(s);
+    }
+    return [...map.values()].sort((a, b) => a.clientName.localeCompare(b.clientName));
+  }, [visibleSpocs]);
 
   const createdBys = (createdByRes ?? []) as any[];
   const createdByGroups = createdBys.reduce(
@@ -319,6 +354,18 @@ function FiltersBar({
   const set = (k: keyof Filters, v: string) =>
     onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
 
+  const handleClientChange = (v: string) => {
+    const newClientId = v === 'ALL' ? undefined : v;
+    const spocStillValid =
+      !newClientId ||
+      allSpocs.some(s => s.id === filters.clientSpocId && s.clientId === newClientId);
+    onChange({
+      ...filters,
+      clientId: newClientId,
+      clientSpocId: spocStillValid ? filters.clientSpocId : undefined,
+    });
+  };
+
   const showStatus =
     activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
   const showCreatedBy = activeTab === 'requirements';
@@ -326,6 +373,7 @@ function FiltersBar({
 
   const hasFilters = !!(
     filters.clientId ||
+    filters.clientSpocId ||
     filters.serviceLineId ||
     filters.businessUnitId ||
     filters.departmentId ||
@@ -334,7 +382,6 @@ function FiltersBar({
     teamSelection
   );
 
-  // Count how many role filters are active (for badge on the toggle button)
   const activeRoleFilterCount = filters.createdById ? 1 : 0;
 
   return (
@@ -429,9 +476,10 @@ function FiltersBar({
         </span>
       </div>
 
-      {/* ── Row 2: entity filters — fixed layout, no overflow ───────────────── */}
+      {/* ── Row 2: entity filters ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-        <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
+        {/* Client */}
+        <Select value={filters.clientId ?? 'ALL'} onValueChange={handleClientChange}>
           <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All clients" />
           </SelectTrigger>
@@ -445,6 +493,51 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
+        {/* Client SPOC */}
+        <Select
+          value={filters.clientSpocId ?? 'ALL'}
+          onValueChange={v => set('clientSpocId', v)}
+          disabled={allSpocs.length === 0}
+        >
+          <SelectTrigger
+            className={`h-8 w-full border-slate-200 text-xs font-medium ${
+              filters.clientSpocId ? 'border-indigo-400 text-indigo-700' : ''
+            }`}
+          >
+            <SelectValue placeholder="All SPOCs" />
+          </SelectTrigger>
+          <SelectContent className="max-h-72">
+            <SelectItem value="ALL">All SPOCs</SelectItem>
+            {filters.clientId
+              ? // Single client selected — flat list, no grouping needed
+                visibleSpocs.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    <span className="font-semibold">{s.name}</span>
+                    {s.designation && (
+                      <span className="ml-1 text-[10px] text-slate-400">· {s.designation}</span>
+                    )}
+                  </SelectItem>
+                ))
+              : // All clients — grouped by client name
+                spocsByClient.map(group => (
+                  <SelectGroup key={group.clientName}>
+                    <SelectLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      {group.clientName}
+                    </SelectLabel>
+                    {group.spocs.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="font-semibold">{s.name}</span>
+                        {s.designation && (
+                          <span className="ml-1 text-[10px] text-slate-400">· {s.designation}</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+          </SelectContent>
+        </Select>
+
+        {/* Service Line */}
         <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
           <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All service lines" />
@@ -459,6 +552,7 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
+        {/* Business Unit */}
         {businessUnits.length > 0 && (
           <Select
             value={filters.businessUnitId ?? 'ALL'}
@@ -478,6 +572,7 @@ function FiltersBar({
           </Select>
         )}
 
+        {/* Department */}
         {showDept && departments.length > 0 && (
           <Select value={filters.departmentId ?? 'ALL'} onValueChange={v => set('departmentId', v)}>
             <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
@@ -494,6 +589,7 @@ function FiltersBar({
           </Select>
         )}
 
+        {/* Status */}
         {showStatus && (
           <Select
             value={filters.status ?? 'ALL'}
@@ -516,6 +612,7 @@ function FiltersBar({
           </Select>
         )}
 
+        {/* Team picker */}
         <div className="flex items-center gap-1.5">
           <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
         </div>
@@ -524,7 +621,6 @@ function FiltersBar({
       {/* ── Row 3: role-grouped created-by filters (Requirements tab only) ──── */}
       {showCreatedBy && sortedRoleGroups.length > 0 && (
         <div className="border-t border-slate-100 pt-3">
-          {/* Toggle header */}
           <button
             onClick={() => setRoleFiltersOpen(o => !o)}
             className="flex w-full items-center gap-2 text-left"
@@ -539,7 +635,9 @@ function FiltersBar({
               </span>
             )}
             <ChevronDown
-              className={`ml-auto h-3.5 w-3.5 text-slate-400 transition-transform ${roleFiltersOpen ? 'rotate-180' : ''}`}
+              className={`ml-auto h-3.5 w-3.5 text-slate-400 transition-transform ${
+                roleFiltersOpen ? 'rotate-180' : ''
+              }`}
             />
           </button>
 
@@ -552,7 +650,7 @@ function FiltersBar({
                   .replace(/\b\w/g, c => c.toUpperCase());
                 return (
                   <div key={roleName} className="flex flex-col gap-1">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 truncate">
+                    <span className="truncate text-[9px] font-black uppercase tracking-wider text-slate-400">
                       {displayRole}
                     </span>
                     <Select
@@ -562,7 +660,7 @@ function FiltersBar({
                       }
                     >
                       <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-                        <SelectValue placeholder={`All`} />
+                        <SelectValue placeholder="All" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ALL">All {displayRole}</SelectItem>
@@ -1205,6 +1303,7 @@ export default function ReportsPage() {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
     if (filters.clientId) p.set('clientId', filters.clientId);
+    if (filters.clientSpocId) p.set('clientSpocId', filters.clientSpocId); // ← NEW
     if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
     if (filters.businessUnitId) p.set('businessUnitId', filters.businessUnitId);
     if (filters.departmentId) p.set('departmentId', filters.departmentId);
@@ -1212,7 +1311,6 @@ export default function ReportsPage() {
     if (filters.status) p.set('status', filters.status);
     if (standardOnly) p.set('standardOnly', 'true');
     if (teamSelection) {
-      // Pass both the member IDs (for controller intersection) and teamRootId (for tree display)
       p.set('userIds', teamSelection.memberIds.join(','));
       p.set('teamRootId', teamSelection.id);
     }
