@@ -35,7 +35,7 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
-
+import { CandidatesSection } from '@/components/reports/CandidatesSection';
 import type {
   RecruiterGroup,
   RecruiterResponse,
@@ -958,7 +958,7 @@ const DISP_COLORS: Record<string, string> = {
   ON_HOLD: '#F59E0B',
 };
 
-function CandidatesSection({
+function CandidatesSection1({
   data,
   loading,
   onExportAll,
@@ -1630,14 +1630,16 @@ export default function ReportsPage() {
           />
         </TabsContent>
         <TabsContent value="candidates" className="mt-5">
-          <CandidatesSection
+          <CandidatesSection baseQs={baseQs} />
+
+          {/* <CandidatesSection
             data={candidateQuery.data}
             loading={candidateQuery.isLoading}
             onExportAll={handleCandidateExportAll}
             onExportStage={handleCandidateExportStages}
             selectedStageIds={selectedStageIds}
             onStageToggle={handleStageToggle}
-          />
+          /> */}
         </TabsContent>
         <TabsContent value="sales" className="mt-5">
           <SalesSection
