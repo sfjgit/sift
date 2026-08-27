@@ -26,7 +26,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -51,6 +53,8 @@ import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable } from '@/components/reports/RequirementTable';
+import { RecruiterSection } from '@/components/reports/RecruiterSection';
+import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -66,8 +70,18 @@ interface WinState {
   toDate: string;
 }
 
+// interface Filters {
+//   clientId?: string;
+//   serviceLineId?: string;
+//   businessUnitId?: string;
+//   departmentId?: string;
+//   createdById?: string;
+//   status?: string;
+// }
+
 interface Filters {
   clientId?: string;
+  clientSpocId?: string; // ← ADD THIS LINE
   serviceLineId?: string;
   businessUnitId?: string;
   departmentId?: string;
@@ -301,6 +315,29 @@ function FiltersBar({
   const businessUnits: any[] = overviewFilters?.businessUnits ?? [];
   const departments: any[] = overviewFilters?.departments ?? [];
   const clients: any[] = overviewFilters?.clients ?? [];
+  const allSpocs: {
+    id: string;
+    name: string;
+    designation: string | null;
+    clientId: string;
+    clientName: string;
+  }[] = overviewFilters?.spocs ?? [];
+
+  // If a client is selected show only that client's spocs, otherwise show all
+  const visibleSpocs = useMemo(
+    () => (filters.clientId ? allSpocs.filter(s => s.clientId === filters.clientId) : allSpocs),
+    [allSpocs, filters.clientId]
+  );
+
+  // Group spocs by client for the "all clients" case
+  const spocsByClient = useMemo(() => {
+    const map = new Map<string, { clientName: string; spocs: typeof allSpocs }>();
+    for (const s of visibleSpocs) {
+      if (!map.has(s.clientId)) map.set(s.clientId, { clientName: s.clientName, spocs: [] });
+      map.get(s.clientId)!.spocs.push(s);
+    }
+    return [...map.values()].sort((a, b) => a.clientName.localeCompare(b.clientName));
+  }, [visibleSpocs]);
 
   const createdBys = (createdByRes ?? []) as any[];
   const createdByGroups = createdBys.reduce(
@@ -317,6 +354,18 @@ function FiltersBar({
   const set = (k: keyof Filters, v: string) =>
     onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
 
+  const handleClientChange = (v: string) => {
+    const newClientId = v === 'ALL' ? undefined : v;
+    const spocStillValid =
+      !newClientId ||
+      allSpocs.some(s => s.id === filters.clientSpocId && s.clientId === newClientId);
+    onChange({
+      ...filters,
+      clientId: newClientId,
+      clientSpocId: spocStillValid ? filters.clientSpocId : undefined,
+    });
+  };
+
   const showStatus =
     activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
   const showCreatedBy = activeTab === 'requirements';
@@ -324,6 +373,7 @@ function FiltersBar({
 
   const hasFilters = !!(
     filters.clientId ||
+    filters.clientSpocId ||
     filters.serviceLineId ||
     filters.businessUnitId ||
     filters.departmentId ||
@@ -332,7 +382,6 @@ function FiltersBar({
     teamSelection
   );
 
-  // Count how many role filters are active (for badge on the toggle button)
   const activeRoleFilterCount = filters.createdById ? 1 : 0;
 
   return (
@@ -427,9 +476,10 @@ function FiltersBar({
         </span>
       </div>
 
-      {/* ── Row 2: entity filters — fixed layout, no overflow ───────────────── */}
+      {/* ── Row 2: entity filters ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-        <Select value={filters.clientId ?? 'ALL'} onValueChange={v => set('clientId', v)}>
+        {/* Client */}
+        <Select value={filters.clientId ?? 'ALL'} onValueChange={handleClientChange}>
           <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All clients" />
           </SelectTrigger>
@@ -443,6 +493,51 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
+        {/* Client SPOC */}
+        <Select
+          value={filters.clientSpocId ?? 'ALL'}
+          onValueChange={v => set('clientSpocId', v)}
+          disabled={allSpocs.length === 0}
+        >
+          <SelectTrigger
+            className={`h-8 w-full border-slate-200 text-xs font-medium ${
+              filters.clientSpocId ? 'border-indigo-400 text-indigo-700' : ''
+            }`}
+          >
+            <SelectValue placeholder="All SPOCs" />
+          </SelectTrigger>
+          <SelectContent className="max-h-72">
+            <SelectItem value="ALL">All SPOCs</SelectItem>
+            {filters.clientId
+              ? // Single client selected — flat list, no grouping needed
+                visibleSpocs.map(s => (
+                  <SelectItem key={s.id} value={s.id}>
+                    <span className="font-semibold">{s.name}</span>
+                    {s.designation && (
+                      <span className="ml-1 text-[10px] text-slate-400">· {s.designation}</span>
+                    )}
+                  </SelectItem>
+                ))
+              : // All clients — grouped by client name
+                spocsByClient.map(group => (
+                  <SelectGroup key={group.clientName}>
+                    <SelectLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      {group.clientName}
+                    </SelectLabel>
+                    {group.spocs.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="font-semibold">{s.name}</span>
+                        {s.designation && (
+                          <span className="ml-1 text-[10px] text-slate-400">· {s.designation}</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+          </SelectContent>
+        </Select>
+
+        {/* Service Line */}
         <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
           <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All service lines" />
@@ -457,6 +552,7 @@ function FiltersBar({
           </SelectContent>
         </Select>
 
+        {/* Business Unit */}
         {businessUnits.length > 0 && (
           <Select
             value={filters.businessUnitId ?? 'ALL'}
@@ -476,6 +572,7 @@ function FiltersBar({
           </Select>
         )}
 
+        {/* Department */}
         {showDept && departments.length > 0 && (
           <Select value={filters.departmentId ?? 'ALL'} onValueChange={v => set('departmentId', v)}>
             <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
@@ -492,6 +589,7 @@ function FiltersBar({
           </Select>
         )}
 
+        {/* Status */}
         {showStatus && (
           <Select
             value={filters.status ?? 'ALL'}
@@ -514,6 +612,7 @@ function FiltersBar({
           </Select>
         )}
 
+        {/* Team picker */}
         <div className="flex items-center gap-1.5">
           <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
         </div>
@@ -522,7 +621,6 @@ function FiltersBar({
       {/* ── Row 3: role-grouped created-by filters (Requirements tab only) ──── */}
       {showCreatedBy && sortedRoleGroups.length > 0 && (
         <div className="border-t border-slate-100 pt-3">
-          {/* Toggle header */}
           <button
             onClick={() => setRoleFiltersOpen(o => !o)}
             className="flex w-full items-center gap-2 text-left"
@@ -537,7 +635,9 @@ function FiltersBar({
               </span>
             )}
             <ChevronDown
-              className={`ml-auto h-3.5 w-3.5 text-slate-400 transition-transform ${roleFiltersOpen ? 'rotate-180' : ''}`}
+              className={`ml-auto h-3.5 w-3.5 text-slate-400 transition-transform ${
+                roleFiltersOpen ? 'rotate-180' : ''
+              }`}
             />
           </button>
 
@@ -550,7 +650,7 @@ function FiltersBar({
                   .replace(/\b\w/g, c => c.toUpperCase());
                 return (
                   <div key={roleName} className="flex flex-col gap-1">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 truncate">
+                    <span className="truncate text-[9px] font-black uppercase tracking-wider text-slate-400">
                       {displayRole}
                     </span>
                     <Select
@@ -560,7 +660,7 @@ function FiltersBar({
                       }
                     >
                       <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-                        <SelectValue placeholder={`All`} />
+                        <SelectValue placeholder="All" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ALL">All {displayRole}</SelectItem>
@@ -670,130 +770,130 @@ function LineTabs({
 // RECRUITER SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RecruiterSection({
-  resp,
-  loading,
-  reqFilter,
-  onReqFilter,
-  onDownloadAll,
-  onDownloadSelected,
-}: {
-  resp?: RecruiterResponse;
-  loading: boolean;
-  reqFilter: string;
-  onReqFilter: (v: string) => void;
-  onDownloadAll: (
-    slId?: string,
-    stageIds?: string[],
-    hiddenStageIds?: string[],
-    hiddenCandidateCols?: string[]
-  ) => void;
-  onDownloadSelected: (
-    ids: string[],
-    slId?: string,
-    stageIds?: string[],
-    hiddenStageIds?: string[],
-    hiddenCandidateCols?: string[]
-  ) => void;
-}) {
-  const [activeKey, setActiveKey] = useState<string>('');
-  if (loading)
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
-        <Skel rows={6} />
-      </div>
-    );
+// function RecruiterSection({
+//   resp,
+//   loading,
+//   reqFilter,
+//   onReqFilter,
+//   onDownloadAll,
+//   onDownloadSelected,
+// }: {
+//   resp?: RecruiterResponse;
+//   loading: boolean;
+//   reqFilter: string;
+//   onReqFilter: (v: string) => void;
+//   onDownloadAll: (
+//     slId?: string,
+//     stageIds?: string[],
+//     hiddenStageIds?: string[],
+//     hiddenCandidateCols?: string[]
+//   ) => void;
+//   onDownloadSelected: (
+//     ids: string[],
+//     slId?: string,
+//     stageIds?: string[],
+//     hiddenStageIds?: string[],
+//     hiddenCandidateCols?: string[]
+//   ) => void;
+// }) {
+//   const [activeKey, setActiveKey] = useState<string>('');
+//   if (loading)
+//     return (
+//       <div className="space-y-4">
+//         <div className="grid grid-cols-5 gap-3">
+//           {Array.from({ length: 5 }).map((_, i) => (
+//             <Skeleton key={i} className="h-24 rounded-xl" />
+//           ))}
+//         </div>
+//         <Skel rows={6} />
+//       </div>
+//     );
 
-  const groups: RecruiterGroup[] = resp?.groups ?? [];
-  if (!groups.length) return <Empty msg="No recruiter data for this window." />;
+//   const groups: RecruiterGroup[] = resp?.groups ?? [];
+//   if (!groups.length) return <Empty msg="No recruiter data for this window." />;
 
-  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
-  const rows = active.data;
+//   const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+//   const rows = active.data;
 
-  const reqOptions = (() => {
-    const m = new Map<string, string>();
-    for (const r of rows)
-      for (const rq of r.requirementBreakdown)
-        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
-    return [...m.entries()].map(([id, label]) => ({ id, label }));
-  })();
+//   const reqOptions = (() => {
+//     const m = new Map<string, string>();
+//     for (const r of rows)
+//       for (const rq of r.requirementBreakdown)
+//         m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
+//     return [...m.entries()].map(([id, label]) => ({ id, label }));
+//   })();
 
-  const totals = {
-    sourced: rows.reduce((s, r) => s + r.sourced, 0),
-    joined: rows.reduce((s, r) => s + r.joined, 0),
-    active: rows.reduce((s, r) => s + r.active, 0),
-    dropped: rows.reduce((s, r) => s + r.dropped, 0),
-    recruiters: new Set(rows.map(r => r.id)).size,
-  };
+//   const totals = {
+//     sourced: rows.reduce((s, r) => s + r.sourced, 0),
+//     joined: rows.reduce((s, r) => s + r.joined, 0),
+//     active: rows.reduce((s, r) => s + r.active, 0),
+//     dropped: rows.reduce((s, r) => s + r.dropped, 0),
+//     recruiters: new Set(rows.map(r => r.id)).size,
+//   };
 
-  return (
-    <div className="space-y-5">
-      <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
-        <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
-        <KPI label="Active" value={totals.active} color="#059669" />
-        <KPI
-          label="Joined"
-          value={totals.joined}
-          color="#7C3AED"
-          trend="up"
-          sub={
-            totals.sourced > 0
-              ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
-              : undefined
-          }
-        />
-        <KPI
-          label="Dropped"
-          value={totals.dropped}
-          color="#DC2626"
-          trend={totals.dropped > 0 ? 'down' : undefined}
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
-          Filter by requirement
-        </span>
-        <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
-          <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
-            <SelectValue placeholder="All requirements" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All requirements</SelectItem>
-            {reqOptions.map(o => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {reqFilter && (
-          <button
-            onClick={() => onReqFilter('')}
-            className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
-          >
-            <X className="h-3.5 w-3.5" /> Clear
-          </button>
-        )}
-      </div>
-      <RecruiterTable
-        key={keyOf(active)}
-        title={active.serviceLine?.name ?? null}
-        serviceLineId={active.serviceLine?.id}
-        data={active.data}
-        stages={active.stages}
-        onDownloadAll={onDownloadAll}
-        onDownloadSelected={onDownloadSelected}
-      />
-    </div>
-  );
-}
+//   return (
+//     <div className="space-y-5">
+//       <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
+//       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+//         <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
+//         <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
+//         <KPI label="Active" value={totals.active} color="#059669" />
+//         <KPI
+//           label="Joined"
+//           value={totals.joined}
+//           color="#7C3AED"
+//           trend="up"
+//           sub={
+//             totals.sourced > 0
+//               ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
+//               : undefined
+//           }
+//         />
+//         <KPI
+//           label="Dropped"
+//           value={totals.dropped}
+//           color="#DC2626"
+//           trend={totals.dropped > 0 ? 'down' : undefined}
+//         />
+//       </div>
+//       <div className="flex flex-wrap items-center gap-2">
+//         <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
+//           Filter by requirement
+//         </span>
+//         <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
+//           <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
+//             <SelectValue placeholder="All requirements" />
+//           </SelectTrigger>
+//           <SelectContent>
+//             <SelectItem value="ALL">All requirements</SelectItem>
+//             {reqOptions.map(o => (
+//               <SelectItem key={o.id} value={o.id}>
+//                 {o.label}
+//               </SelectItem>
+//             ))}
+//           </SelectContent>
+//         </Select>
+//         {reqFilter && (
+//           <button
+//             onClick={() => onReqFilter('')}
+//             className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
+//           >
+//             <X className="h-3.5 w-3.5" /> Clear
+//           </button>
+//         )}
+//       </div>
+//       <RecruiterTable
+//         key={keyOf(active)}
+//         title={active.serviceLine?.name ?? null}
+//         serviceLineId={active.serviceLine?.id}
+//         data={active.data}
+//         stages={active.stages}
+//         onDownloadAll={onDownloadAll}
+//         onDownloadSelected={onDownloadSelected}
+//       />
+//     </div>
+//   );
+// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REQUIREMENT SECTION
@@ -1203,6 +1303,7 @@ export default function ReportsPage() {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
     if (filters.clientId) p.set('clientId', filters.clientId);
+    if (filters.clientSpocId) p.set('clientSpocId', filters.clientSpocId); // ← NEW
     if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
     if (filters.businessUnitId) p.set('businessUnitId', filters.businessUnitId);
     if (filters.departmentId) p.set('departmentId', filters.departmentId);
@@ -1210,7 +1311,6 @@ export default function ReportsPage() {
     if (filters.status) p.set('status', filters.status);
     if (standardOnly) p.set('standardOnly', 'true');
     if (teamSelection) {
-      // Pass both the member IDs (for controller intersection) and teamRootId (for tree display)
       p.set('userIds', teamSelection.memberIds.join(','));
       p.set('teamRootId', teamSelection.id);
     }
@@ -1501,6 +1601,7 @@ export default function ReportsPage() {
           />
         </TabsContent>
         <TabsContent value="recruiters" className="mt-5">
+          <RecruiterStatsBar baseQs={recParams} />
           <RecruiterSection
             resp={recruiterQuery.data}
             loading={recruiterQuery.isLoading}
@@ -1508,7 +1609,16 @@ export default function ReportsPage() {
             onReqFilter={setRecReqFilter}
             onDownloadAll={handleRecruiterAll}
             onDownloadSelected={handleRecruiterSelected}
+            baseQs={baseQs}
           />
+          {/* <RecruiterSection
+            resp={recruiterQuery.data}
+            loading={recruiterQuery.isLoading}
+            reqFilter={recReqFilter}
+            onReqFilter={setRecReqFilter}
+            onDownloadAll={handleRecruiterAll}
+            onDownloadSelected={handleRecruiterSelected}
+          /> */}
         </TabsContent>
         <TabsContent value="requirements" className="mt-5">
           <RequirementSection
