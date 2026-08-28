@@ -11,7 +11,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
@@ -25,6 +25,10 @@ import {
   Filter,
   ChevronDown,
   AlertCircle,
+  Columns3,
+  Check,
+  Square,
+  CheckSquare,
 } from 'lucide-react';
 import {
   Select,
@@ -38,6 +42,685 @@ import { useAxios } from '@/hooks/useAxios';
 import { CandidateExportMenu } from './CandidateExportMenu';
 import { CandidateDrillDialog, type CandidateDrillTarget } from './CandidateDrillDialog';
 
+const MONTHS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLE COLUMN REGISTRY
+//
+// Showing the data beats filtering it. ~30 columns available; `on` marks the
+// default-visible set, the rest are one click away in the column menu.
+// The whole joining chain is visible — LWD, Expected, Actual, Derived, Source —
+// so nobody has to guess which filter would surface a date.
+//
+// `w` is a min-width, so horizontal scrolling behaves predictably.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface TableCol {
+  key: string;
+  label: string;
+  group: string;
+  on: boolean;
+  w: number;
+  align?: 'left' | 'center' | 'right';
+  cell: (r: any) => React.ReactNode;
+}
+
+const COLS: TableCol[] = [
+  // ── Requirement ──
+  {
+    key: 'requirement',
+    label: 'Requirement',
+    group: 'Requirement',
+    on: true,
+    w: 200,
+    cell: r => (
+      <>
+        <p className="font-mono text-[11px] font-bold text-slate-700">{r.reqCode}</p>
+        <p className="max-w-[190px] truncate text-[10px] text-slate-400">{r.reqTitle}</p>
+        <p className="max-w-[190px] truncate text-[10px] text-slate-400">{r.clientName}</p>
+      </>
+    ),
+  },
+  {
+    key: 'reqStatus',
+    label: 'Req Status',
+    group: 'Requirement',
+    on: true,
+    w: 110,
+    align: 'center',
+    cell: r => (
+      <span
+        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+          r.reqStatus === 'ACTIVE'
+            ? 'bg-emerald-50 text-emerald-700'
+            : 'bg-slate-100 text-slate-500'
+        }`}
+      >
+        {(r.reqStatus ?? '').replace(/_/g, ' ') || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'reqPriority',
+    label: 'Priority',
+    group: 'Requirement',
+    on: false,
+    w: 90,
+    align: 'center',
+    cell: r => (
+      <span className="text-[11px] font-semibold text-slate-600">{r.reqPriority || '—'}</span>
+    ),
+  },
+  {
+    key: 'totalOpenings',
+    label: 'Openings',
+    group: 'Requirement',
+    on: false,
+    w: 90,
+    align: 'center',
+    cell: r => (
+      <span className="text-[12px] font-bold text-slate-700">{r.totalOpenings ?? '—'}</span>
+    ),
+  },
+  {
+    key: 'clientSpocName',
+    label: 'Client SPOC',
+    group: 'Requirement',
+    on: false,
+    w: 150,
+    cell: r => <span className="text-[11px] text-slate-600">{r.clientSpocName || '—'}</span>,
+  },
+  {
+    key: 'serviceLineName',
+    label: 'Service Line',
+    group: 'Requirement',
+    on: false,
+    w: 140,
+    cell: r => <span className="text-[11px] text-slate-600">{r.serviceLineName || '—'}</span>,
+  },
+  {
+    key: 'businessUnitName',
+    label: 'Business Unit',
+    group: 'Requirement',
+    on: false,
+    w: 140,
+    cell: r => <span className="text-[11px] text-slate-600">{r.businessUnitName || '—'}</span>,
+  },
+  {
+    key: 'reqCreatedBy',
+    label: 'Req Created By',
+    group: 'Requirement',
+    on: false,
+    w: 150,
+    cell: r => <span className="text-[11px] text-slate-600">{r.reqCreatedBy || '—'}</span>,
+  },
+
+  // ── Stage ──
+  {
+    key: 'stage',
+    label: 'Stage',
+    group: 'Stage',
+    on: true,
+    w: 150,
+    cell: r => (
+      <>
+        <span
+          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${BUCKET_STYLE[r.bucket] ?? 'bg-slate-100 text-slate-600 ring-slate-200'}`}
+          title={`${r.stageLabel} · ${r.bucket}`}
+        >
+          {r.stageLabel}
+        </span>
+        <p className="mt-0.5 text-[10px] text-slate-400">{r.stageAging} in stage</p>
+      </>
+    ),
+  },
+  {
+    key: 'bucket',
+    label: 'Bucket',
+    group: 'Stage',
+    on: false,
+    w: 110,
+    align: 'center',
+    cell: r => (
+      <span
+        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${BUCKET_STYLE[r.bucket] ?? 'bg-slate-100'}`}
+      >
+        {r.bucket}
+      </span>
+    ),
+  },
+  {
+    key: 'disposition',
+    label: 'Disposition',
+    group: 'Stage',
+    on: true,
+    w: 110,
+    align: 'center',
+    cell: r => <span className="text-[11px] font-semibold text-slate-600">{r.disposition}</span>,
+  },
+  {
+    key: 'recruiter',
+    label: 'Recruiter',
+    group: 'Stage',
+    on: true,
+    w: 150,
+    cell: r => (
+      <>
+        <p className="max-w-[140px] truncate text-[12px] font-semibold text-slate-700">
+          {r.recruiterName}
+        </p>
+        <p className="max-w-[140px] truncate text-[10px] text-slate-400">{r.recruiterEmail}</p>
+      </>
+    ),
+  },
+
+  // ── Candidate profile ──
+  {
+    key: 'candidatePhone',
+    label: 'Phone',
+    group: 'Candidate',
+    on: true,
+    w: 130,
+    cell: r => <span className="text-[11px] text-slate-600">{r.candidatePhone || '—'}</span>,
+  },
+  {
+    key: 'currentTitle',
+    label: 'Current Title',
+    group: 'Candidate',
+    on: false,
+    w: 170,
+    cell: r => (
+      <span className="block max-w-[160px] truncate text-[11px] text-slate-600">
+        {r.currentTitle || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'currentCompany',
+    label: 'Current Company',
+    group: 'Candidate',
+    on: true,
+    w: 170,
+    cell: r => (
+      <span className="block max-w-[160px] truncate text-[11px] text-slate-600">
+        {r.currentCompany || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'expYears',
+    label: 'Exp (yrs)',
+    group: 'Candidate',
+    on: true,
+    w: 85,
+    align: 'center',
+    cell: r => <span className="text-[12px] font-bold text-slate-700">{r.expYears ?? '—'}</span>,
+  },
+  {
+    key: 'topSkills',
+    label: 'Top Skills',
+    group: 'Candidate',
+    on: false,
+    w: 240,
+    cell: r => (
+      <span className="block max-w-[230px] truncate text-[11px] text-slate-500" title={r.topSkills}>
+        {r.topSkills || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'snapshotType',
+    label: 'Source',
+    group: 'Candidate',
+    on: false,
+    w: 110,
+    align: 'center',
+    cell: r => (
+      <span
+        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+          r.snapshotType === 'APPLICANT'
+            ? 'bg-violet-50 text-violet-700'
+            : 'bg-slate-100 text-slate-600'
+        }`}
+      >
+        {r.snapshotType === 'APPLICANT' ? 'Self applied' : 'Sourced'}
+      </span>
+    ),
+  },
+  {
+    key: 'candidateCode',
+    label: 'Candidate Code',
+    group: 'Candidate',
+    on: false,
+    w: 130,
+    cell: r => (
+      <span className="font-mono text-[10px] text-slate-500">{r.candidateCode || '—'}</span>
+    ),
+  },
+
+  // ── CTC ──
+  {
+    key: 'currentCtc',
+    label: 'Current CTC',
+    group: 'CTC',
+    on: true,
+    w: 110,
+    align: 'right',
+    cell: r => <span className="text-[11px] text-slate-600">{fmtCtc(r.currentCtc)}</span>,
+  },
+  {
+    key: 'expectedCtc',
+    label: 'Expected CTC',
+    group: 'CTC',
+    on: true,
+    w: 110,
+    align: 'right',
+    cell: r => <span className="text-[11px] text-slate-600">{fmtCtc(r.expectedCtc)}</span>,
+  },
+  {
+    key: 'negotiatedCtc',
+    label: 'Negotiated CTC',
+    group: 'CTC',
+    on: false,
+    w: 120,
+    align: 'right',
+    cell: r => <span className="text-[11px] text-slate-600">{fmtCtc(r.negotiatedCtc)}</span>,
+  },
+  {
+    key: 'offeredCtc',
+    label: 'Offered CTC',
+    group: 'CTC',
+    on: true,
+    w: 110,
+    align: 'right',
+    cell: r => (
+      <span
+        className={`text-[11px] ${r.offeredCtc != null ? 'font-bold text-emerald-700' : 'text-slate-300'}`}
+      >
+        {fmtCtc(r.offeredCtc)}
+      </span>
+    ),
+  },
+  {
+    key: 'offerStatus',
+    label: 'Offer Status',
+    group: 'CTC',
+    on: false,
+    w: 110,
+    align: 'center',
+    cell: r => (
+      <span className="text-[11px] font-semibold text-slate-600">{r.offerStatus || '—'}</span>
+    ),
+  },
+
+  // ── Joining — the whole chain, visible ──
+  {
+    key: 'noticePeriod',
+    label: 'Notice Period',
+    group: 'Joining',
+    on: true,
+    w: 110,
+    align: 'center',
+    cell: r => <span className="text-[11px] text-slate-600">{r.noticePeriod || '—'}</span>,
+  },
+  {
+    key: 'lastWorkingDate',
+    label: 'Last Working Day',
+    group: 'Joining',
+    on: true,
+    w: 125,
+    align: 'center',
+    cell: r => (
+      <span className="text-[11px] font-semibold text-slate-700">{fmtDate(r.lastWorkingDate)}</span>
+    ),
+  },
+  {
+    key: 'expectedJoiningDate',
+    label: 'Expected Joining',
+    group: 'Joining',
+    on: true,
+    w: 125,
+    align: 'center',
+    cell: r => <span className="text-[11px] text-slate-600">{fmtDate(r.expectedJoiningDate)}</span>,
+  },
+  {
+    key: 'actualJoiningDate',
+    label: 'Actual Joining',
+    group: 'Joining',
+    on: true,
+    w: 120,
+    align: 'center',
+    cell: r => (
+      <span
+        className={`text-[11px] ${r.actualJoiningDate ? 'font-bold text-emerald-700' : 'text-slate-300'}`}
+      >
+        {fmtDate(r.actualJoiningDate)}
+      </span>
+    ),
+  },
+  {
+    key: 'derivedJoiningDate',
+    label: 'Derived Joining',
+    group: 'Joining',
+    on: true,
+    w: 125,
+    align: 'center',
+    cell: r => (
+      <span
+        className={`text-[11px] ${r.joiningSource === 'Actual' ? 'font-semibold text-slate-700' : 'italic text-slate-500'}`}
+        title={r.joiningSource ? `Source: ${r.joiningSource}` : undefined}
+      >
+        {fmtDate(r.derivedJoiningDate)}
+      </span>
+    ),
+  },
+  {
+    key: 'monthOfJoining',
+    label: 'Month of Joining',
+    group: 'Joining',
+    on: true,
+    w: 135,
+    align: 'center',
+    cell: r =>
+      r.monthOfJoining ? (
+        <div title={r.joiningSource ? `Derived from: ${r.joiningSource}` : undefined}>
+          <p className="text-[12px] font-bold text-indigo-700">{r.monthOfJoining}</p>
+          <p
+            className={`text-[9px] ${r.joiningSource === 'Actual' ? 'text-emerald-600' : 'italic text-slate-400'}`}
+          >
+            {r.joiningSource || '—'}
+          </p>
+        </div>
+      ) : (
+        <span className="text-[11px] text-slate-300">—</span>
+      ),
+  },
+  {
+    key: 'joiningSource',
+    label: 'Joining Source',
+    group: 'Joining',
+    on: false,
+    w: 130,
+    align: 'center',
+    cell: r => (
+      <span
+        className={`text-[10px] font-bold ${r.joiningSource === 'Actual' ? 'text-emerald-700' : 'italic text-slate-400'}`}
+      >
+        {r.joiningSource || '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'daysToJoin',
+    label: 'Days to Join',
+    group: 'Joining',
+    on: false,
+    w: 100,
+    align: 'center',
+    cell: r =>
+      r.daysToJoin != null ? (
+        <span
+          className={`text-[12px] font-bold ${r.daysToJoin < 0 ? 'text-red-600' : 'text-slate-700'}`}
+        >
+          {r.daysToJoin}
+        </span>
+      ) : (
+        <span className="text-[11px] text-slate-300">—</span>
+      ),
+  },
+
+  // ── Flags & duplicates ──
+  {
+    key: 'duplicates',
+    label: 'Also In',
+    group: 'Flags',
+    on: true,
+    w: 115,
+    align: 'center',
+    cell: r =>
+      r.isCrossRequirement ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-0.5 text-[11px] font-black text-amber-800"
+          title={`Same person also in: ${r.duplicateIn.map((d: any) => `${d.reqCode} (${d.stageLabel})`).join(', ')}`}
+        >
+          <Copy className="h-3 w-3" />
+          {r.duplicateCount} req{r.duplicateCount !== 1 ? 's' : ''}
+        </span>
+      ) : (
+        <span className="text-[11px] text-slate-300">—</span>
+      ),
+  },
+  {
+    key: 'flags',
+    label: 'Flags',
+    group: 'Flags',
+    on: false,
+    w: 130,
+    align: 'center',
+    cell: r => (
+      <div className="flex flex-wrap justify-center gap-1">
+        {r.isRejected && (
+          <span className="rounded bg-red-100 px-1 text-[9px] font-bold text-red-700">REJ</span>
+        )}
+        {r.isWithdrawn && (
+          <span className="rounded bg-slate-200 px-1 text-[9px] font-bold text-slate-600">WD</span>
+        )}
+        {r.isOnHold && (
+          <span className="rounded bg-orange-100 px-1 text-[9px] font-bold text-orange-700">
+            HOLD
+          </span>
+        )}
+        {r.isDuplicateFlag && (
+          <span className="rounded bg-red-100 px-1 text-[9px] font-bold text-red-700">DUP</span>
+        )}
+        {!r.isRejected && !r.isWithdrawn && !r.isOnHold && !r.isDuplicateFlag && (
+          <span className="text-[11px] text-slate-300">—</span>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: 'dropReason',
+    label: 'Drop / Reject Reason',
+    group: 'Flags',
+    on: false,
+    w: 200,
+    cell: r => {
+      const v = r.dropReason || r.rejectionReason || r.withdrawnReason;
+      return (
+        <span className="block max-w-[190px] truncate text-[11px] text-slate-500" title={v || ''}>
+          {v || '—'}
+        </span>
+      );
+    },
+  },
+
+  // ── Timeline ──
+  {
+    key: 'submittedAt',
+    label: 'Submitted At',
+    group: 'Timeline',
+    on: false,
+    w: 120,
+    align: 'center',
+    cell: r => <span className="text-[11px] text-slate-600">{fmtDate(r.submittedAt)}</span>,
+  },
+  {
+    key: 'addedOn',
+    label: 'Added On',
+    group: 'Timeline',
+    on: true,
+    w: 110,
+    align: 'right',
+    cell: r => (
+      <>
+        <p className="text-[11px] font-semibold text-slate-700">{fmtDate(r.addedOn)}</p>
+        <p className="text-[10px] text-slate-400">{r.pipelineDays}d</p>
+      </>
+    ),
+  },
+  {
+    key: 'pipelineDays',
+    label: 'Days in Pipeline',
+    group: 'Timeline',
+    on: false,
+    w: 120,
+    align: 'center',
+    cell: r => <span className="text-[12px] font-bold text-slate-700">{r.pipelineDays}</span>,
+  },
+];
+
+const DEFAULT_ON = new Set(COLS.filter(c => c.on).map(c => c.key));
+const COL_GROUPS = ['Requirement', 'Stage', 'Candidate', 'CTC', 'Joining', 'Flags', 'Timeline'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLE COLUMN PICKER
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TableColumnMenu({
+  visible,
+  setVisible,
+}: {
+  visible: Set<string>;
+  setVisible: (s: Set<string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const toggle = (k: string) => {
+    const n = new Set(visible);
+    n.has(k) ? n.delete(k) : n.add(k);
+    setVisible(n);
+  };
+
+  const toggleGroup = (g: string) => {
+    const keys = COLS.filter(c => c.group === g).map(c => c.key);
+    const n = new Set(visible);
+    const allOn = keys.every(k => n.has(k));
+    keys.forEach(k => (allOn ? n.delete(k) : n.add(k)));
+    setVisible(n);
+  };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+        title="Show or hide table columns"
+      >
+        <Columns3 className="h-3.5 w-3.5" />
+        {visible.size}/{COLS.length}
+        <ChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-9 z-50 w-[380px] rounded-xl border border-slate-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+            <p className="text-[12px] font-black text-slate-800">Table columns</p>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setVisible(new Set(COLS.map(c => c.key)))}
+                className="rounded-lg border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+              >
+                All
+              </button>
+              <button
+                onClick={() => setVisible(new Set(DEFAULT_ON))}
+                className="rounded-lg border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Default
+              </button>
+            </div>
+          </div>
+          <div className="max-h-[420px] overflow-y-auto p-2">
+            {COL_GROUPS.map(g => {
+              const cols = COLS.filter(c => c.group === g);
+              if (!cols.length) return null;
+              const keys = cols.map(c => c.key);
+              const allOn = keys.every(k => visible.has(k));
+              const someOn = keys.some(k => visible.has(k));
+              return (
+                <div key={g} className="mb-2">
+                  <button
+                    onClick={() => toggleGroup(g)}
+                    className="mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50"
+                  >
+                    {allOn ? (
+                      <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                    ) : someOn ? (
+                      <div className="flex h-3.5 w-3.5 items-center justify-center rounded border-2 border-indigo-600">
+                        <div className="h-1.5 w-1.5 bg-indigo-600" />
+                      </div>
+                    ) : (
+                      <Square className="h-3.5 w-3.5 text-slate-300" />
+                    )}
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      {g}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-300">
+                      {keys.filter(k => visible.has(k)).length}/{keys.length}
+                    </span>
+                  </button>
+                  <div className="grid grid-cols-2 gap-0.5 pl-5">
+                    {cols.map(c => {
+                      const on = visible.has(c.key);
+                      return (
+                        <button
+                          key={c.key}
+                          onClick={() => toggle(c.key)}
+                          className={`flex items-center gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${
+                            on
+                              ? 'font-semibold text-slate-700 hover:bg-indigo-50'
+                              : 'text-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          {on ? (
+                            <Check className="h-3 w-3 shrink-0 text-indigo-600" />
+                          ) : (
+                            <Square className="h-3 w-3 shrink-0" />
+                          )}
+                          <span className="truncate">{c.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="border-t border-slate-100 px-4 py-2">
+            <p className="text-[10px] text-slate-400">
+              Candidate stays frozen on the left. Scroll sideways for the rest.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCAL FILTER STATE — candidate-specific, on top of the page-level baseQs
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,9 +733,9 @@ interface CandFilters {
   bucket: string;
   disposition: string;
   reqStatus: string;
-  reqActive: string; // '' | 'true' | 'false'
   snapshotType: string;
-  mojMonth: string;
+  mojMonthNum: string;
+  mojYear: string;
   joinFrom: string;
   joinTo: string;
   duplicatesOnly: boolean;
@@ -70,9 +753,9 @@ const EMPTY_FILTERS: CandFilters = {
   bucket: '',
   disposition: '',
   reqStatus: '',
-  reqActive: '',
   snapshotType: '',
-  mojMonth: '',
+  mojMonthNum: '',
+  mojYear: '',
   joinFrom: '',
   joinTo: '',
   duplicatesOnly: false,
@@ -178,6 +861,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [drillTarget, setDrillTarget] = useState<CandidateDrillTarget | null>(null);
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(DEFAULT_ON));
 
   const set = <K extends keyof CandFilters>(k: K, v: CandFilters[K]) => {
     setF(prev => ({ ...prev, [k]: v }));
@@ -202,9 +886,9 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     if (f.bucket) p.set('bucket', f.bucket);
     if (f.disposition) p.set('disposition', f.disposition);
     if (f.reqStatus) p.set('reqStatus', f.reqStatus);
-    if (f.reqActive) p.set('reqActive', f.reqActive);
     if (f.snapshotType) p.set('snapshotType', f.snapshotType);
-    if (f.mojMonth) p.set('mojMonth', f.mojMonth);
+    if (f.mojMonthNum) p.set('mojMonthNum', f.mojMonthNum);
+    if (f.mojYear) p.set('mojYear', f.mojYear);
     if (f.joinFrom) p.set('joinFrom', f.joinFrom);
     if (f.joinTo) p.set('joinTo', f.joinTo);
     if (f.dateField) p.set('dateField', f.dateField);
@@ -258,9 +942,9 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     if (f.bucket) n++;
     if (f.disposition) n++;
     if (f.reqStatus) n++;
-    if (f.reqActive) n++;
     if (f.snapshotType) n++;
-    if (f.mojMonth) n++;
+    if (f.mojMonthNum) n++;
+    if (f.mojYear) n++;
     if (f.joinFrom || f.joinTo) n++;
     if (f.dateField) n++;
     if (f.duplicatesOnly) n++;
@@ -277,6 +961,14 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   };
 
   const drill = (t: CandidateDrillTarget) => setDrillTarget(t);
+
+  const activeCols = useMemo(() => COLS.filter(c => visibleCols.has(c.key)), [visibleCols]);
+
+  // Current year ± 3 — no query needed, covers every realistic joining window
+  const yearOptions = useMemo(() => {
+    const y = new Date().getFullYear();
+    return Array.from({ length: 7 }, (_, i) => String(y - 3 + i));
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -532,18 +1224,38 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             </SelectContent>
           </Select>
 
+          {/* Static Jan–Dec. The old version fetched distinct monthOfJoining
+              values from the DB — a column null on almost every row — so it
+              only ever offered two months. Months are months. */}
           <Select
-            value={f.mojMonth || 'ALL'}
-            onValueChange={v => set('mojMonth', v === 'ALL' ? '' : v)}
+            value={f.mojMonthNum || 'ALL'}
+            onValueChange={v => set('mojMonthNum', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[170px] border-slate-200 text-xs font-medium">
-              <SelectValue placeholder="Any month of joining" />
+            <SelectTrigger className="h-9 w-[150px] border-slate-200 text-xs font-medium">
+              <SelectValue placeholder="Any joining month" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ALL">Any month of joining</SelectItem>
-              {(opts.mojOptions ?? []).map((m: any) => (
-                <SelectItem key={m.value} value={m.value}>
-                  {m.label}
+              <SelectItem value="ALL">Any joining month</SelectItem>
+              {MONTHS.map((m, i) => (
+                <SelectItem key={m} value={String(i + 1)}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={f.mojYear || 'ALL'}
+            onValueChange={v => set('mojYear', v === 'ALL' ? '' : v)}
+          >
+            <SelectTrigger className="h-9 w-[105px] border-slate-200 text-xs font-medium">
+              <SelectValue placeholder="Any year" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Any year</SelectItem>
+              {yearOptions.map(y => (
+                <SelectItem key={y} value={y}>
+                  {y}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -675,6 +1387,9 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                 onChange={e => set('joinTo', e.target.value)}
                 className="h-8 rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none"
               />
+              <span className="text-[10px] text-slate-400">
+                matches actual, expected or last working day
+              </span>
 
               <span className="ml-4 text-[10px] font-black uppercase tracking-wider text-slate-400">
                 Window means
@@ -749,6 +1464,8 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <TableColumnMenu visible={visibleCols} setVisible={setVisibleCols} />
+
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-bold text-slate-400">SORT</span>
               <Select
@@ -851,30 +1568,32 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
               )}
             </div>
           ) : (
-            <table className="w-full border-separate border-spacing-0 text-left">
+            <table className="border-separate border-spacing-0 text-left">
               <thead>
                 <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                  <th className="sticky left-0 top-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-4 py-2.5">
+                  {/* Frozen candidate header */}
+                  <th
+                    className="sticky left-0 top-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-4 py-2.5"
+                    style={{ minWidth: 250 }}
+                  >
                     Candidate
                   </th>
-                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
-                    Requirement
-                  </th>
-                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
-                    Stage
-                  </th>
-                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
-                    Recruiter
-                  </th>
-                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
-                    CTC
-                  </th>
-                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
-                    Joining
-                  </th>
-                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-right">
-                    Added
-                  </th>
+                  {activeCols.map(c => (
+                    <th
+                      key={c.key}
+                      className={`sticky top-0 z-20 whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-2.5 ${
+                        c.align === 'right'
+                          ? 'text-right'
+                          : c.align === 'center'
+                            ? 'text-center'
+                            : ''
+                      }`}
+                      style={{ minWidth: c.w }}
+                      title={`${c.label} · ${c.group}`}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -883,9 +1602,10 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                   const stripe = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60';
                   return (
                     <tr key={r.pipelineId} className={`group ${dimmed ? 'opacity-55' : ''}`}>
-                      {/* Frozen candidate column */}
+                      {/* Frozen candidate cell — content scrolls behind this */}
                       <td
                         className={`sticky left-0 z-10 border-b border-r border-slate-100 px-4 py-3 ${stripe} group-hover:bg-indigo-50`}
+                        style={{ minWidth: 250 }}
                       >
                         <div className="flex items-start gap-2">
                           <div className="min-w-0 max-w-[210px] flex-1">
@@ -914,13 +1634,6 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                             <p className="truncate text-[11px] text-slate-400">
                               {r.candidateEmail}
                             </p>
-                            {(r.currentTitle || r.currentCompany) && (
-                              <p className="truncate text-[10px] text-slate-500">
-                                {r.currentTitle}
-                                {r.currentTitle && r.currentCompany ? ' · ' : ''}
-                                {r.currentCompany}
-                              </p>
-                            )}
                           </div>
                           {r.resumeUrl && (
                             <a
@@ -936,93 +1649,21 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                         </div>
                       </td>
 
-                      <td
-                        className={`border-b border-slate-100 px-3 py-3 ${stripe} group-hover:bg-indigo-50/40`}
-                      >
-                        <p className="font-mono text-[11px] font-bold text-slate-700">
-                          {r.reqCode}
-                        </p>
-                        <p className="max-w-[180px] truncate text-[10px] text-slate-400">
-                          {r.reqTitle}
-                        </p>
-                        <p className="max-w-[180px] truncate text-[10px] text-slate-400">
-                          {r.clientName}
-                          {r.reqStatus && r.reqStatus !== 'ACTIVE' && (
-                            <span className="ml-1 rounded bg-slate-100 px-1 text-[9px] font-bold text-slate-500">
-                              {r.reqStatus.replace(/_/g, ' ')}
-                            </span>
-                          )}
-                        </p>
-                      </td>
-
-                      <td
-                        className={`border-b border-slate-100 px-3 py-3 ${stripe} group-hover:bg-indigo-50/40`}
-                      >
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${BUCKET_STYLE[r.bucket] ?? 'bg-slate-100 text-slate-600 ring-slate-200'}`}
-                          title={`${r.stageLabel} · ${r.bucket}`}
+                      {activeCols.map(c => (
+                        <td
+                          key={c.key}
+                          className={`border-b border-slate-100 px-3 py-3 ${stripe} group-hover:bg-indigo-50/40 ${
+                            c.align === 'right'
+                              ? 'text-right'
+                              : c.align === 'center'
+                                ? 'text-center'
+                                : ''
+                          }`}
+                          style={{ minWidth: c.w }}
                         >
-                          {r.stageLabel}
-                        </span>
-                        <p className="mt-0.5 text-[10px] text-slate-400">{r.stageAging} in stage</p>
-                      </td>
-
-                      <td
-                        className={`border-b border-slate-100 px-3 py-3 ${stripe} group-hover:bg-indigo-50/40`}
-                      >
-                        <p className="max-w-[130px] truncate text-[12px] font-semibold text-slate-700">
-                          {r.recruiterName}
-                        </p>
-                        <p className="text-[10px] text-slate-400">{r.disposition}</p>
-                      </td>
-
-                      <td
-                        className={`border-b border-slate-100 px-3 py-3 ${stripe} group-hover:bg-indigo-50/40`}
-                      >
-                        <div className="flex flex-col gap-0.5 text-[11px]">
-                          {r.currentCtc != null && (
-                            <span className="text-slate-500">Curr {fmtCtc(r.currentCtc)}</span>
-                          )}
-                          {r.offeredCtc != null && (
-                            <span className="font-bold text-emerald-700">
-                              Offer {fmtCtc(r.offeredCtc)}
-                            </span>
-                          )}
-                          {r.currentCtc == null && r.offeredCtc == null && (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td
-                        className={`border-b border-slate-100 px-3 py-3 ${stripe} group-hover:bg-indigo-50/40`}
-                      >
-                        {r.monthOfJoining ? (
-                          <div
-                            title={`${r.joiningSource || 'unknown source'}${r.daysToJoin != null ? ` · ${r.daysToJoin} days` : ''}`}
-                          >
-                            <p className="text-[12px] font-bold text-indigo-700">
-                              {r.monthOfJoining}
-                            </p>
-                            <p
-                              className={`text-[10px] ${r.joiningSource === 'Actual' ? 'text-emerald-600' : 'italic text-slate-400'}`}
-                            >
-                              {r.joiningSource || '—'}
-                            </p>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-slate-300">—</span>
-                        )}
-                      </td>
-
-                      <td
-                        className={`border-b border-slate-100 px-3 py-3 text-right ${stripe} group-hover:bg-indigo-50/40`}
-                      >
-                        <p className="text-[11px] font-semibold text-slate-700">
-                          {fmtDate(r.addedOn)}
-                        </p>
-                        <p className="text-[10px] text-slate-400">{r.pipelineDays}d</p>
-                      </td>
+                          {c.cell(r)}
+                        </td>
+                      ))}
                     </tr>
                   );
                 })}
@@ -1038,8 +1679,8 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
               Showing {((page - 1) * limit + 1).toLocaleString('en-IN')}–
               {Math.min(page * limit, total).toLocaleString('en-IN')} of{' '}
               {total.toLocaleString('en-IN')} ·{' '}
-              <span className="font-semibold text-amber-700">⧉ badge</span> means the same person
-              sits in another requirement
+              <span className="font-semibold text-amber-700">⧉</span> same person in another req ·{' '}
+              <span className="italic">italic</span> joining dates are inferred, not confirmed
             </p>
             <div className="flex items-center gap-1">
               <button
