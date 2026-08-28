@@ -1128,6 +1128,8 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
   const achievedPct =
     kpi.totalSaleValue > 0 ? Math.round((kpi.achievedSaleValue / kpi.totalSaleValue) * 100) : 0;
 
+  const totalOpenings = data.requirements.reduce((s, r) => s + r.totalOpenings, 0);
+
   return (
     <div className="space-y-6">
       {/* ── KPI Cards — 8 cards matching Overview style ─────────────────── */}
@@ -1140,6 +1142,17 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
           sub="in scope"
           onClick={() => onDrill({ label: 'All Requirements' })}
         />
+
+        {/* // AFTER */}
+        <KpiCard
+          label="Total Openings"
+          value={totalOpenings}
+          color="#8F48E5"
+          icon={Target}
+          sub={`${totalOpenings} total openings`}
+          // onClick={() => onDrill({ label: 'All Requirements' })}
+        />
+
         <KpiCard
           label="Funneel / Total Sale Value AMOUNT"
           value={fmtCurrency(kpi.totalSaleValue)}
