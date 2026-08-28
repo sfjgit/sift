@@ -1141,7 +1141,7 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
           onClick={() => onDrill({ label: 'All Requirements' })}
         />
         <KpiCard
-          label="Total Value"
+          label="Funneel / Total Sale Value AMOUNT"
           value={fmtCurrency(kpi.totalSaleValue)}
           color="#059669"
           icon={IndianRupee}
@@ -1149,7 +1149,7 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
           onClick={() => onDrill({ label: 'All Pipeline' })}
         />
         <KpiCard
-          label="Achieved"
+          label=" Achieved Amount"
           value={fmtCurrency(kpi.achievedSaleValue)}
           color="#7C3AED"
           icon={TrendingUp}
@@ -1158,7 +1158,7 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
           onClick={() => onDrill({ type: 'placed', label: 'Placed Candidates' })}
         />
         <KpiCard
-          label="Placed"
+          label="DEAL / JOINED / TRAINING STARTED"
           value={kpi.placed}
           color="#059669"
           icon={CheckCircle2}
@@ -1166,23 +1166,23 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
           trend="up"
           onClick={() => onDrill({ type: 'placed', label: 'Placed Candidates' })}
         />
-        <KpiCard
+        {/* <KpiCard
           label="Active"
           value={kpi.active}
           color="#0891B2"
           icon={Activity}
           sub="in pipeline"
           onClick={() => onDrill({ type: 'active', label: 'Active Candidates' })}
-        />
+        /> */}
         <KpiCard
-          label="Near Closure"
+          label="Pipeline"
           value={kpi.nearTerminal}
           color="#D97706"
           icon={Medal}
           sub="approaching final"
           onClick={() => onDrill({ type: 'nearTerminal', label: 'Near Terminal' })}
         />
-        <KpiCard
+        {/* <KpiCard
           label="Sourced"
           value={kpi.sourced}
           color="#6366F1"
@@ -1198,7 +1198,7 @@ export function SalesSection({ data, loading, onDrill }: SalesSectionProps) {
           sub="exited"
           trend="down"
           onClick={() => onDrill({ type: 'dropped', label: 'Dropped' })}
-        />
+        /> */}
       </div>
 
       {/* ── Achievement progress bar — mirrors overview sale value cards ─── */}
