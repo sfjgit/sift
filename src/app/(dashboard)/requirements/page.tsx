@@ -36,6 +36,7 @@ import {
   Save,
   Trash,
   Check,
+  Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +60,7 @@ import {
   ColKey,
   DEFAULT_COLS,
 } from '@/stores/requirementsStore';
+import { DuplicateRequirementDialog } from './_components/DuplicateReq';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1027,6 +1029,7 @@ function RowActions({
   const [toStatus, setToStatus] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [statusErr, setStatusErr] = useState<string | null>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
 
   const { mutate: doDelete, isPending: deleting } = useMutation({
     mutationFn: async () => (await axios.delete(`/requirements/${req.id}`)).data,
@@ -1067,6 +1070,17 @@ function RowActions({
           className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
         >
           <Pencil size={12} />
+        </button>
+      )}
+
+      {/* ── Duplicate button ── */}
+      {canEdit && (
+        <button
+          onClick={() => setDuplicateOpen(true)}
+          title="Duplicate requirement"
+          className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+        >
+          <Copy size={12} />
         </button>
       )}
       <button
@@ -1203,6 +1217,13 @@ function RowActions({
           </PopoverContent>
         </Popover>
       )}
+      {/* ── Duplicate dialog ── */}
+      <DuplicateRequirementDialog
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        requirementId={req.id}
+        reqCode={req.reqCode}
+      />
     </div>
   );
 }
@@ -1235,7 +1256,7 @@ function DropdownFilter({
           className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${value ? 'bg-primary/10 border-primary/30 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
         >
           {icon}
-          <span className="max-w-[100px] truncate">{selected ? selected.name : label}</span>
+          <span className="max-w-25 truncate">{selected ? selected.name : label}</span>
           <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
       </PopoverTrigger>
@@ -1585,7 +1606,7 @@ function CandidateDrawer({
   useMemo(() => {
     // eslint-disable-next-line react-hooks/set-state-in-render
     setActiveStageId(stageId);
-  }, [stageId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stageId]);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (activeStageId) p.set('stageId', activeStageId);
@@ -1612,7 +1633,7 @@ function CandidateDrawer({
         if (!o) onClose();
       }}
     >
-      <SheetContent side="right" className="w-full sm:w-[500px] sm:max-w-[500px] p-0 flex flex-col">
+      <SheetContent side="right" className="w-full sm:w-125 sm:max-w-125 p-0 flex flex-col">
         <SheetHeader className="px-5 pt-5 pb-0 border-b border-border shrink-0">
           <SheetTitle className="text-sm font-semibold truncate">{requirementTitle}</SheetTitle>
           <p className="text-[12px] text-muted-foreground pb-2">
@@ -2343,10 +2364,10 @@ function RequirementsPageInner() {
   // Zustand column state
   const {
     visibleCols: _rawCols,
-    toggleCol,
+    // toggleCol,
     setVisibleCols,
     visibleTerminalCols: _rawTerminalCols,
-    setVisibleTerminalCols,
+    // setVisibleTerminalCols,
   } = useRequirementsStore();
   const storeReady = useRequirementsStoreReady();
   // Always arrays — safe regardless of hydration state
