@@ -250,7 +250,6 @@ export function Sidebar() {
         }
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   const toggleGroup = useCallback((key: string) => {
@@ -390,7 +389,7 @@ export function Sidebar() {
           aria-hidden
           className={cn(
             'fixed left-0 top-1/2 z-30 pointer-events-none',
-            'h-16 w-[3px] rounded-r-full bg-primary/50 sidebar-grabber',
+            'h-16 w-0.75 rounded-r-full bg-primary/50 sidebar-grabber',
             'transition-opacity duration-200',
             shown ? 'opacity-0' : 'opacity-100'
           )}
@@ -399,8 +398,8 @@ export function Sidebar() {
 
       {/* First-run coach mark */}
       {showHint && !pinned && !shown && (
-        <div className="fixed left-5 top-1/2 z-[60] sidebar-hint" role="status" aria-live="polite">
-          <div className="relative flex items-start gap-3 max-w-[290px] rounded-xl border border-border bg-background/95 backdrop-blur px-4 py-3 shadow-2xl">
+        <div className="fixed left-5 top-1/2 z-60 sidebar-hint" role="status" aria-live="polite">
+          <div className="relative flex items-start gap-3 max-w-72.5 rounded-xl border border-border bg-background/95 backdrop-blur px-4 py-3 shadow-2xl">
             <MoveLeft className="h-5 w-5 shrink-0 text-primary mt-0.5 sidebar-hint-arrow" />
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-foreground leading-tight">
@@ -432,7 +431,7 @@ export function Sidebar() {
       <div
         className={cn(
           'shrink-0 transition-[width] duration-200 ease-in-out',
-          pinned ? 'w-[220px]' : 'w-0'
+          pinned ? 'w-55' : 'w-0'
         )}
       />
 
@@ -440,7 +439,7 @@ export function Sidebar() {
         onMouseEnter={keepAlive}
         onMouseLeave={scheduleHide}
         className={cn(
-          'fixed left-0 top-0 h-screen w-[220px] z-40 flex flex-col min-h-0',
+          'fixed left-0 top-0 h-screen w-55 z-40 flex flex-col min-h-0',
           'border-r border-border bg-background',
           'transition-transform duration-200 ease-in-out will-change-transform',
           shown ? 'translate-x-0' : '-translate-x-full',
@@ -579,7 +578,7 @@ export function Sidebar() {
                         isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
                       )}
                     >
-                      <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-[18px]">
+                      <div className="mt-0.5 mb-0.5 flex flex-col gap-0.5 pl-3 border-l border-border ml-4.5">
                         {item.children.map(child => {
                           const ChildIcon = child.icon;
                           const isActive =
@@ -598,7 +597,7 @@ export function Sidebar() {
                             >
                               <ChildIcon
                                 className={cn(
-                                  'h-[18px] w-[18px] shrink-0',
+                                  'h-4.5 w-4.5 shrink-0',
                                   isActive ? 'text-primary' : 'text-foreground/50'
                                 )}
                                 strokeWidth={isActive ? 2.2 : 1.8}

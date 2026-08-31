@@ -57,6 +57,7 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import { ResumeViewButton } from './ResumeViewButton';
 import { ResumeReplaceButton } from './ResumeReplaceButton';
+import { ResumeReparseButton } from './ReparseResumeButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -1733,6 +1734,7 @@ export default function CandidateDetailPage() {
                         </div>
                         <div className="flex items-center gap-3">
                           <ResumeViewButton resumeId={r.id} fileName={r.fileName} />
+                          {/* <ResumeReparseButton candidateId={c.id} existingEmail="" /> */}
                           <ResumeReplaceButton candidateId={c.id} />
                         </div>
                       </div>

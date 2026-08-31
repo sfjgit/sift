@@ -16,7 +16,6 @@ import {
   X,
   ChevronRight,
   CalendarClock,
-  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -244,7 +243,7 @@ function CanonicalFunnelBar({
             </span>
             <span
               className={cn(
-                'text-[9px] font-bold tracking-wider uppercase leading-none text-center max-w-[56px] truncate',
+                'text-[9px] font-bold tracking-wider uppercase leading-none text-center max-w-14 truncate',
                 isActive
                   ? 'text-slate-300'
                   : count > 0
@@ -570,7 +569,7 @@ export default function AssignmentCandidatesPage() {
             <ChevronRight className="w-4 h-4 text-slate-300" />
             <span className="text-sm text-slate-400">Assignments</span>
             <ChevronRight className="w-4 h-4 text-slate-300" />
-            <span className="text-sm font-medium text-slate-700 truncate max-w-[260px]">
+            <span className="text-sm font-medium text-slate-700 truncate max-w-65">
               {assignmentLoading ? (
                 <Skeleton className="h-4 w-40 inline-block" />
               ) : (
