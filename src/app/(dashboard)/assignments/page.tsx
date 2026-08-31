@@ -24,6 +24,7 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,7 +39,6 @@ import {
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
-import { se } from 'date-fns/locale';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -237,7 +237,7 @@ function CanonicalBar({
             </span>
             <span
               className={cn(
-                'text-[9px] font-bold tracking-wider uppercase leading-none text-center max-w-[56px] truncate',
+                'text-[9px] font-bold tracking-wider uppercase leading-none text-center max-w-14 truncate',
                 count > 0 ? 'text-slate-600 group-hover:text-blue-500' : 'text-slate-200'
               )}
             >
@@ -392,7 +392,20 @@ function AssignmentCard({ a }: { a: Assignment }) {
               {a.assignedBy && ` · from ${a.assignedBy.firstName}`}
             </p>
           </div>
-          <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mt-1.5 group-hover:text-slate-600" />
+          {/* <ChevronRight className="w-5 h-5 text-slate-300 shrink-0 mt-1.5 group-hover:text-slate-600" /> */}
+          {/* Open in new tab + chevron */}
+          <div className="flex items-center gap-1 shrink-0 mt-1" onClick={e => e.stopPropagation()}>
+            <a
+              href={`/assignments/${a.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in new tab"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-slate-600" />
+          </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap mb-4">
           <button
@@ -591,11 +604,17 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b-2 border-slate-100">
-              <th className="px-4 py-3 text-left w-8"></th>
+              <th className="px-4 py-3 w-10"></th>
+              <th className="px-4 py-3 text-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Actions
+                </span>
+              </th>
+              <th className="px-4 py-3 w-10"></th>
               <Th
                 col="title"
                 label="Requirement"
-                className="min-w-[260px]"
+                className="min-w-65"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -603,7 +622,7 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
               <Th
                 col="assignedTo"
                 label="Assignee"
-                className="min-w-[160px]"
+                className="min-w-40"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -621,7 +640,7 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
               <Th
                 col="total"
                 label="Pipeline"
-                className="min-w-[80px]"
+                className="min-w-20"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -629,14 +648,14 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
               <Th
                 col="placed"
                 label="Placed"
-                className="min-w-[70px]"
+                className="min-w-17.5"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={handleSort}
               />
               {/* canonical stage mini-cols */}
               {canonicalStages.slice(0, 5).map(s => (
-                <th key={s.key} className="px-2 py-3 text-center min-w-[52px]">
+                <th key={s.key} className="px-2 py-3 text-center min-w-13">
                   <span className="flex flex-col items-center gap-1">
                     <span className={cn('w-2 h-2 rounded-full', canonicalDot(s.key))} />
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">
@@ -648,7 +667,7 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
               <Th
                 col="deadline"
                 label="Deadline"
-                className="min-w-[100px]"
+                className="min-w-25"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -656,12 +675,11 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
               <Th
                 col="assignedAt"
                 label="Age"
-                className="min-w-[70px]"
+                className="min-w-17.5"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={handleSort}
               />
-              <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -683,8 +701,23 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
                   )}
                 >
                   {/* breach indicator */}
-                  <td className="px-4 py-3.5">
+                  <td className="p-2">
                     {isBreached && <Flame className="w-4 h-4 text-amber-500" />}
+                  </td>
+                  {/* Arrow + new tab */}
+                  <td className="px-1 py-3.5" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <a
+                        href={`/assignments/${a.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Open in new tab"
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                    </div>
                   </td>
 
                   {/* Requirement */}
@@ -715,10 +748,10 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
                           </span>
                         )}
                       </div>
-                      <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors truncate max-w-[240px]">
+                      <span className="text-sm font-semibold text-slate-900 group-hover:text-blue-700 transition-colors truncate max-w-60">
                         {req.title}
                       </span>
-                      <span className="text-[11px] text-slate-400 truncate max-w-[240px]">
+                      <span className="text-[11px] text-slate-400 truncate max-w-60">
                         {[req.client?.name, req.businessUnit?.name].filter(Boolean).join(' · ')}
                         {req.totalOpenings > 1 && ` · ${req.totalOpenings} openings`}
                       </span>
@@ -844,9 +877,9 @@ function TableView({ assignments }: { assignments: Assignment[] }) {
                   </td>
 
                   {/* Arrow */}
-                  <td className="px-4 py-3.5">
+                  {/* <td className="px-4 py-3.5">
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-400 transition-colors" />
-                  </td>
+                  </td> */}
                 </tr>
               );
             })}
@@ -937,7 +970,7 @@ export default function AssignmentsPage() {
   const [sortBy, setSortBy] = useState('assignedAt');
   const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(1);
-  const limit = 20;
+  const limit = 50;
 
   const { data: buData } = useQuery({
     queryKey: ['business-units'],
@@ -1136,7 +1169,7 @@ export default function AssignmentsPage() {
             </div>
 
             {/* Depth */}
-            <Select
+            {/* <Select
               value={depth || '_all'}
               onValueChange={v => {
                 setDepth(v === '_all' ? '' : v);
@@ -1152,10 +1185,10 @@ export default function AssignmentsPage() {
                 <SelectItem value="1">TL (depth 1)</SelectItem>
                 <SelectItem value="2">Recruiter (depth 2)</SelectItem>
               </SelectContent>
-            </Select>
+            </Select> */}
 
             {/* BU */}
-            <Select
+            {/* <Select
               value={buId || '_all'}
               onValueChange={v => {
                 setBuId(v === '_all' ? '' : v);
@@ -1174,10 +1207,10 @@ export default function AssignmentsPage() {
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+            </Select> */}
 
             {/* Sort */}
-            <Select
+            {/* <Select
               value={`${sortBy}_${sortDir}`}
               onValueChange={v => {
                 const parts = v.split('_');
@@ -1196,7 +1229,7 @@ export default function AssignmentsPage() {
                 <SelectItem value="assignedAt_asc">Oldest first</SelectItem>
                 <SelectItem value="deadline_asc">Deadline soonest</SelectItem>
               </SelectContent>
-            </Select>
+            </Select> */}
 
             {hasFilters && (
               <button

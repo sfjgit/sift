@@ -2373,15 +2373,14 @@ function CandidateTable({
                     </button>
                     {canEdit && (
                       <>
-                        {!isTerminated && (
-                          <button
-                            title="Move Stage"
-                            onClick={() => onAction('move', p)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
-                          >
-                            <ArrowUpDown className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <button
+                          title="Move Stage"
+                          onClick={() => onAction('move', p)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                        >
+                          <ArrowUpDown className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           title="Update Candidate Details"
                           onClick={() => onAction('details', p)}
