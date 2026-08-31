@@ -68,7 +68,6 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ca } from 'date-fns/locale';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -2354,7 +2353,7 @@ function CandidateTable({
               <tr
                 key={p.id}
                 // onClick={() => router.push(`/candidates/${p.snapshot.candidateServiceId}`)}
-                className={`hover:bg-blue-50/30 transition-colors ${isTerminated ? 'opacity-50' : ''}`}
+                className={`hover:bg-blue-50/30 transition-colors }`}
               >
                 {/* <td className="px-3 py-3 align-top">
                   <input type="checkbox" className="rounded border-slate-400 w-3.5 h-3.5" />

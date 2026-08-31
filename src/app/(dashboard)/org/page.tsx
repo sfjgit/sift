@@ -4,7 +4,6 @@ import { useState } from 'react';
 import useSWR from 'swr';
 import { Network, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
 import { OrgCanvas } from '@/components/org/OrgCanvas';
