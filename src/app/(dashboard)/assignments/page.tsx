@@ -17,8 +17,6 @@ import {
   Layers,
   CalendarClock,
   GitBranch,
-  SlidersHorizontal,
-  Building2,
   LayoutList,
   TableProperties,
   ArrowUpDown,
@@ -29,13 +27,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useAxios } from '@/hooks/useAxios';
 import { canonicalDot, useCandidateMeta } from '@/hooks/useCandidateMeta';
