@@ -385,6 +385,7 @@ function useFilters() {
   const viewMode = get('view', 'table') as 'cards' | 'table';
   const page = Number(get('page', '1'));
   const limit = Number(get('limit', '25'));
+  const noData = get('noData');
 
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
@@ -411,6 +412,7 @@ function useFilters() {
       createdById: null,
       dateFrom: null,
       dateTo: null,
+      noData: null,
     });
   const activeFiltersCount = [
     status,
@@ -422,6 +424,7 @@ function useFilters() {
     createdById,
     dateFrom,
     dateTo,
+    noData,
   ].filter(Boolean).length;
 
   return {
@@ -438,6 +441,7 @@ function useFilters() {
     viewMode,
     page,
     limit,
+    noData,
     setSearch: set('search'),
     setStatus: set('status'),
     setPriority: set('priority'),
@@ -451,6 +455,7 @@ function useFilters() {
     setViewMode: (v: 'cards' | 'table') => setParams({ view: v }),
     setPage: (v: number) => setParams({ page: String(v) }),
     setLimit: (v: number) => setParams({ limit: String(v), page: null }),
+    setNoData: set('noData'),
     clearAll,
     activeFiltersCount,
   };
@@ -1462,12 +1467,18 @@ function SaleValueSummaryBar({
   stats,
   achievedTotal,
   onStatsClick,
+  noData,
+  onToggleNoData,
 }: {
   stats: SaleValueStats | undefined;
   achievedTotal: number;
   onStatsClick: () => void;
+  noData: string;
+  onToggleNoData: () => void;
 }) {
   if (!stats) return null;
+  const isActive = noData === 'true';
+
   return (
     <div className="flex items-center gap-4 px-4 py-1.5 bg-emerald-50 border-b border-emerald-100 flex-wrap shrink-0">
       <div className="flex items-center gap-1.5">
@@ -1480,7 +1491,20 @@ function SaleValueSummaryBar({
       <span className="text-[11px] text-emerald-600">
         {stats.includedCount} computed
         {stats.omittedCount > 0 && (
-          <span className="text-amber-600 ml-1 font-semibold">· {stats.omittedCount} no data</span>
+          <>
+            {' · '}
+            <button
+              onClick={onToggleNoData}
+              className={`font-semibold transition-colors inline-flex items-center gap-0.5 ${
+                isActive
+                  ? 'text-amber-700 underline underline-offset-2'
+                  : 'text-amber-600 hover:text-amber-700 hover:underline underline-offset-2'
+              }`}
+            >
+              {stats.omittedCount} no data
+              {isActive && <X size={9} />}
+            </button>
+          </>
         )}
       </span>
       {achievedTotal > 0 && (
@@ -1549,6 +1573,7 @@ function ExportButton({
       if (filters.createdById) p.set('createdById', filters.createdById);
       if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) p.set('dateTo', filters.dateTo);
+      if (filters.noData) p.set('noData', filters.noData);
       // Tell backend which static cols + which terminal stage cols to include
       p.set('cols', [...visibleCols].join(','));
       p.set('terminalCols', [...visibleTerminalCols].join(','));
@@ -2381,6 +2406,9 @@ function RequirementsPageInner() {
   const showFilters = filterPinned || filterHovered;
   const [statsOpen, setStatsOpen] = useState(false);
 
+  const handleToggleNoData = useCallback(() => {
+    filters.setNoData(filters.noData === 'true' ? '' : 'true');
+  }, [filters]);
   const [drawer, setDrawer] = useState<{
     open: boolean;
     requirementId: string;
@@ -2429,6 +2457,7 @@ function RequirementsPageInner() {
     if (filters.createdById) p.set('createdById', filters.createdById);
     if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
     if (filters.dateTo) p.set('dateTo', filters.dateTo);
+    if (filters.noData) p.set('noData', filters.noData);
     return p.toString();
   }, [
     filters.search,
@@ -2441,6 +2470,7 @@ function RequirementsPageInner() {
     filters.createdById,
     filters.dateFrom,
     filters.dateTo,
+    filters.noData,
   ]);
 
   // Sale value stats — full dataset, no page/limit
@@ -2690,17 +2720,23 @@ function RequirementsPageInner() {
           stats={saleStatsData}
           achievedTotal={achievedTotal}
           onStatsClick={() => setStatsOpen(true)}
+          noData={filters.noData}
+          onToggleNoData={handleToggleNoData}
         />
 
         {/* Active filter chips */}
         {activeFiltersCount > 0 && (
           <div className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-50 border-b border-slate-100 flex-wrap shrink-0">
             <span className="text-[11px] text-slate-400 font-medium shrink-0">Filters:</span>
+
             {filters.status && (
               <FilterChip
                 label={STATUS_LABEL[filters.status] ?? filters.status}
                 onRemove={() => filters.setStatus('')}
               />
+            )}
+            {filters.noData === 'true' && (
+              <FilterChip label="No sale data" onRemove={() => filters.setNoData('')} />
             )}
             {filters.priority && (
               <FilterChip label={filters.priority} onRemove={() => filters.setPriority('')} />
