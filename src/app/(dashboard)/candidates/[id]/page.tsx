@@ -311,6 +311,7 @@ interface EditState {
   doNotContact: boolean;
   doNotContactReason: string;
   sourceNote: string;
+  email: string;
 }
 
 function buildEditState(c: CandidateDetail): EditState {
@@ -332,6 +333,7 @@ function buildEditState(c: CandidateDetail): EditState {
     doNotContact: c.doNotContact,
     doNotContactReason: c.doNotContactReason ?? '',
     sourceNote: c.sourceNote ?? '',
+    email: c.email ?? '',
   };
 }
 
@@ -1501,8 +1503,8 @@ export default function CandidateDetailPage() {
                     {
                       icon: <Mail className="w-3.5 h-3.5 text-slate-400" />,
                       label: 'Email',
-                      value: c.email,
-                      editable: false,
+                      value: editing ? es?.email : c.email,
+                      editKey: 'email' as const,
                     },
                     {
                       icon: <Phone className="w-3.5 h-3.5 text-slate-400" />,
