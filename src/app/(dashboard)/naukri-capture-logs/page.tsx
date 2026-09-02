@@ -18,6 +18,15 @@
 // Data:
 //   Aggregates → GET /candidate/api/naukri/capture-logs?include=stats,byRecruiter
 //   Drill-down → GET /candidate/api/naukri/capture-logs?include=list&recruiterId=…
+//
+// CHANGES (frontend-only, no functionality removed/altered elsewhere):
+//   1. Drawer summary chips (Total/Success/Failed/Complete) are now clickable
+//      and filter the attempts list below them, instead of just being a
+//      static readout you had to scroll past to find failures.
+//   2. The top search box's value is now also passed into the drawer's
+//      attempts query — previously it only affected the recruiter breakdown
+//      table's aggregate numbers, never the drawer's own attempts list, so
+//      searching while a drawer was open appeared to "do nothing".
 // =============================================================================
 
 import { Suspense, useMemo, useState, useEffect } from 'react';
@@ -353,18 +362,32 @@ interface RecruiterRow extends RecruiterAgg {
   name: string;
 }
 
+// Which summary chip is currently active, filtering the attempts list below.
+type DrawerFilter = 'ALL' | 'SUCCESS' | 'FAILED' | 'COMPLETE';
+
 function RecruiterDrawer({
   recruiter,
   dateFrom,
   dateTo,
+  search,
   onClose,
 }: {
   recruiter: RecruiterRow | null;
   dateFrom?: string;
   dateTo?: string;
+  search?: string;
   onClose: () => void;
 }) {
   const axios = useAxios();
+
+  // CHANGE 2: which chip is active. Resetting this back to "ALL" whenever a
+  // different recruiter's drawer opens is handled by giving this component a
+  // `key={recruiter.recruiterId}` where it's rendered (see below in
+  // NaukriCaptureLogsContent) — React remounts the component on key change,
+  // which gives us a fresh 'ALL' state for free. (Not done via useEffect +
+  // setState here — that pattern triggers an avoidable extra render and an
+  // eslint react-hooks/set-state-in-effect warning.)
+  const [drawerFilter, setDrawerFilter] = useState<DrawerFilter>('ALL');
 
   const attemptsQs = useMemo(() => {
     if (!recruiter) return '';
@@ -376,8 +399,12 @@ function RecruiterDrawer({
     p.set('sortDir', 'desc');
     if (dateFrom) p.set('from', dateFrom);
     if (dateTo) p.set('to', dateTo);
+    // CHANGE 1: the top search box's value now reaches the drawer's own
+    // attempts query too — previously this param was never sent here, so
+    // typing a candidate name/email while a drawer was open had no effect.
+    if (search) p.set('search', search);
     return p.toString();
-  }, [recruiter, dateFrom, dateTo]);
+  }, [recruiter, dateFrom, dateTo, search]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['naukri-recruiter-attempts', attemptsQs],
@@ -397,17 +424,86 @@ function RecruiterDrawer({
 
   const attempts: AttemptRow[] = data?.list?.rows ?? [];
 
+  // CHANGE 2: resIds that have all 3 capture types SUCCEEDED, computed from
+  // whatever attempts are currently loaded — used to power the "Complete"
+  // chip filter below.
+  const completeResIds = useMemo(() => {
+    const byResId = new Map<string, Set<CaptureType>>();
+    for (const a of attempts) {
+      if (!a.resId || a.status !== 'SUCCESS') continue;
+      const set = byResId.get(a.resId) ?? new Set<CaptureType>();
+      set.add(a.captureType);
+      byResId.set(a.resId, set);
+    }
+    const complete = new Set<string>();
+    for (const [resId, types] of byResId) {
+      if (types.has('PROFILE') && types.has('PHONE_REVEAL') && types.has('RESUME')) {
+        complete.add(resId);
+      }
+    }
+    return complete;
+  }, [attempts]);
+
+  // CHANGE 2: apply the active chip filter to the attempts actually rendered.
+  const filteredAttempts = useMemo(() => {
+    switch (drawerFilter) {
+      case 'SUCCESS':
+        return attempts.filter(a => a.status === 'SUCCESS');
+      case 'FAILED':
+        return attempts.filter(a => a.status === 'FAILED');
+      case 'COMPLETE':
+        return attempts.filter(a => a.resId && completeResIds.has(a.resId));
+      default:
+        return attempts;
+    }
+  }, [attempts, drawerFilter, completeResIds]);
+
   if (!recruiter) return null;
 
   const success = recruiter.status.SUCCESS ?? 0;
   const rate = pct(success, recruiter.total);
 
-  const summary: { key: string; label: string; count: number; color: string }[] = [
-    { key: 'total', label: 'Total', count: recruiter.total, color: 'hsl(var(--foreground))' },
-    { key: 'success', label: 'Success', count: success, color: '#10B981' },
-    { key: 'failed', label: 'Failed', count: recruiter.status.FAILED ?? 0, color: '#E24B4A' },
-    { key: 'complete', label: 'Complete', count: recruiter.complete, color: '#10B981' },
+  // CHANGE 2: each summary chip now maps to a DrawerFilter value so it can
+  // be clicked to filter the list below.
+  const summary: {
+    key: string;
+    label: string;
+    count: number;
+    color: string;
+    filter: DrawerFilter;
+  }[] = [
+    {
+      key: 'total',
+      label: 'Total',
+      count: recruiter.total,
+      color: 'hsl(var(--foreground))',
+      filter: 'ALL',
+    },
+    { key: 'success', label: 'Success', count: success, color: '#10B981', filter: 'SUCCESS' },
+    {
+      key: 'failed',
+      label: 'Failed',
+      count: recruiter.status.FAILED ?? 0,
+      color: '#E24B4A',
+      filter: 'FAILED',
+    },
+    {
+      key: 'complete',
+      label: 'Complete',
+      count: recruiter.complete,
+      color: '#10B981',
+      filter: 'COMPLETE',
+    },
   ];
+
+  const filterLabel =
+    drawerFilter === 'SUCCESS'
+      ? 'success'
+      : drawerFilter === 'FAILED'
+        ? 'failed'
+        : drawerFilter === 'COMPLETE'
+          ? 'complete'
+          : '';
 
   return (
     <>
@@ -438,19 +534,32 @@ function RecruiterDrawer({
             </button>
           </div>
 
-          {/* summary chips */}
+          {/* summary chips — CHANGE 2: now clickable, filter the list below */}
           <div className="flex flex-wrap gap-1.5 mt-3">
-            {summary.map(s => (
-              <span
-                key={s.key}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-muted/60"
-                style={{ color: s.color }}
-              >
-                {s.label}
-                <span className="opacity-50">·</span>
-                {s.count}
-              </span>
-            ))}
+            {summary.map(s => {
+              const active = drawerFilter === s.filter;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setDrawerFilter(active ? 'ALL' : s.filter)}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-medium bg-muted/60 transition-all',
+                    'hover:bg-muted cursor-pointer',
+                    active && 'ring-1 ring-offset-0'
+                  )}
+                  style={{
+                    color: s.color,
+                    boxShadow: active ? `inset 0 0 0 1px ${s.color}` : undefined,
+                  }}
+                  aria-pressed={active}
+                >
+                  {s.label}
+                  <span className="opacity-50">·</span>
+                  {s.count}
+                </button>
+              );
+            })}
           </div>
 
           {/* capture type split */}
@@ -475,22 +584,36 @@ function RecruiterDrawer({
         {/* attempts list */}
         <div className="flex-1 overflow-y-auto">
           <div className="px-5 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">
-              Attempts (newest first)
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                Attempts (newest first)
+              </p>
+              {drawerFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setDrawerFilter('ALL')}
+                  className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+                >
+                  <X size={10} />
+                  Clear filter
+                </button>
+              )}
+            </div>
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3, 4, 5].map(i => (
                   <Skeleton key={i} className="h-14 w-full rounded-lg" />
                 ))}
               </div>
-            ) : attempts.length === 0 ? (
+            ) : filteredAttempts.length === 0 ? (
               <p className="text-[12px] text-muted-foreground py-8 text-center">
-                No attempts in this period
+                {attempts.length === 0
+                  ? 'No attempts in this period'
+                  : `No ${filterLabel} attempts in this period`}
               </p>
             ) : (
               <div className="space-y-2">
-                {attempts.map(a => {
+                {filteredAttempts.map(a => {
                   const isBad = a.status === 'FAILED';
                   return (
                     <div
@@ -633,9 +756,16 @@ function NaukriCaptureLogsContent() {
       let page = 1;
       let all: any[] = [];
       while (true) {
+        // FIX: this call was 400ing (Bad Request) on every page — the shared
+        // axios instance was attaching a form-data content-type to this GET
+        // request. Same fix already applied a few dozen lines up in this
+        // file for the RecruiterDrawer's attempts fetch; this call just
+        // hadn't been given the same override yet.
         const res = await axios.get('/core/api/users', {
           baseURL: '/api/proxy',
           params: { page, limit: 100 },
+          headers: { 'Content-Type': undefined },
+          transformRequest: (d: any) => d,
         });
         const body = res.data;
         all = all.concat(body.data ?? []);
@@ -946,9 +1076,11 @@ function NaukriCaptureLogsContent() {
       </div>
 
       <RecruiterDrawer
+        key={selected?.recruiterId ?? 'none'}
         recruiter={selected}
         dateFrom={dateFrom}
         dateTo={dateTo}
+        search={debouncedSearch}
         onClose={() => setSelected(null)}
       />
     </div>
