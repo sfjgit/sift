@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <AuthGate>
+      <ScrollingGreetingBar />
       <NaukriDailyCheckin />
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar />
