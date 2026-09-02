@@ -36,6 +36,7 @@ import {
   Save,
   Trash,
   Check,
+  Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +60,7 @@ import {
   ColKey,
   DEFAULT_COLS,
 } from '@/stores/requirementsStore';
+import { DuplicateRequirementDialog } from './_components/DuplicateReq';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -383,6 +385,7 @@ function useFilters() {
   const viewMode = get('view', 'table') as 'cards' | 'table';
   const page = Number(get('page', '1'));
   const limit = Number(get('limit', '25'));
+  const noData = get('noData');
 
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
@@ -409,6 +412,7 @@ function useFilters() {
       createdById: null,
       dateFrom: null,
       dateTo: null,
+      noData: null,
     });
   const activeFiltersCount = [
     status,
@@ -420,6 +424,7 @@ function useFilters() {
     createdById,
     dateFrom,
     dateTo,
+    noData,
   ].filter(Boolean).length;
 
   return {
@@ -436,6 +441,7 @@ function useFilters() {
     viewMode,
     page,
     limit,
+    noData,
     setSearch: set('search'),
     setStatus: set('status'),
     setPriority: set('priority'),
@@ -449,6 +455,7 @@ function useFilters() {
     setViewMode: (v: 'cards' | 'table') => setParams({ view: v }),
     setPage: (v: number) => setParams({ page: String(v) }),
     setLimit: (v: number) => setParams({ limit: String(v), page: null }),
+    setNoData: set('noData'),
     clearAll,
     activeFiltersCount,
   };
@@ -1027,6 +1034,7 @@ function RowActions({
   const [toStatus, setToStatus] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [statusErr, setStatusErr] = useState<string | null>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
 
   const { mutate: doDelete, isPending: deleting } = useMutation({
     mutationFn: async () => (await axios.delete(`/requirements/${req.id}`)).data,
@@ -1067,6 +1075,17 @@ function RowActions({
           className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
         >
           <Pencil size={12} />
+        </button>
+      )}
+
+      {/* ── Duplicate button ── */}
+      {canEdit && (
+        <button
+          onClick={() => setDuplicateOpen(true)}
+          title="Duplicate requirement"
+          className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+        >
+          <Copy size={12} />
         </button>
       )}
       <button
@@ -1203,6 +1222,13 @@ function RowActions({
           </PopoverContent>
         </Popover>
       )}
+      {/* ── Duplicate dialog ── */}
+      <DuplicateRequirementDialog
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        requirementId={req.id}
+        reqCode={req.reqCode}
+      />
     </div>
   );
 }
@@ -1235,7 +1261,7 @@ function DropdownFilter({
           className={`flex items-center gap-1.5 px-2.5 h-8 border rounded-lg text-[12px] font-medium transition-all shrink-0 ${value ? 'bg-primary/10 border-primary/30 text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
         >
           {icon}
-          <span className="max-w-[100px] truncate">{selected ? selected.name : label}</span>
+          <span className="max-w-25 truncate">{selected ? selected.name : label}</span>
           <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
       </PopoverTrigger>
@@ -1441,12 +1467,18 @@ function SaleValueSummaryBar({
   stats,
   achievedTotal,
   onStatsClick,
+  noData,
+  onToggleNoData,
 }: {
   stats: SaleValueStats | undefined;
   achievedTotal: number;
   onStatsClick: () => void;
+  noData: string;
+  onToggleNoData: () => void;
 }) {
   if (!stats) return null;
+  const isActive = noData === 'true';
+
   return (
     <div className="flex items-center gap-4 px-4 py-1.5 bg-emerald-50 border-b border-emerald-100 flex-wrap shrink-0">
       <div className="flex items-center gap-1.5">
@@ -1459,7 +1491,20 @@ function SaleValueSummaryBar({
       <span className="text-[11px] text-emerald-600">
         {stats.includedCount} computed
         {stats.omittedCount > 0 && (
-          <span className="text-amber-600 ml-1 font-semibold">· {stats.omittedCount} no data</span>
+          <>
+            {' · '}
+            <button
+              onClick={onToggleNoData}
+              className={`font-semibold transition-colors inline-flex items-center gap-0.5 ${
+                isActive
+                  ? 'text-amber-700 underline underline-offset-2'
+                  : 'text-amber-600 hover:text-amber-700 hover:underline underline-offset-2'
+              }`}
+            >
+              {stats.omittedCount} no data
+              {isActive && <X size={9} />}
+            </button>
+          </>
         )}
       </span>
       {achievedTotal > 0 && (
@@ -1528,6 +1573,7 @@ function ExportButton({
       if (filters.createdById) p.set('createdById', filters.createdById);
       if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) p.set('dateTo', filters.dateTo);
+      if (filters.noData) p.set('noData', filters.noData);
       // Tell backend which static cols + which terminal stage cols to include
       p.set('cols', [...visibleCols].join(','));
       p.set('terminalCols', [...visibleTerminalCols].join(','));
@@ -1585,7 +1631,7 @@ function CandidateDrawer({
   useMemo(() => {
     // eslint-disable-next-line react-hooks/set-state-in-render
     setActiveStageId(stageId);
-  }, [stageId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stageId]);
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     if (activeStageId) p.set('stageId', activeStageId);
@@ -1612,7 +1658,7 @@ function CandidateDrawer({
         if (!o) onClose();
       }}
     >
-      <SheetContent side="right" className="w-full sm:w-[500px] sm:max-w-[500px] p-0 flex flex-col">
+      <SheetContent side="right" className="w-full sm:w-125 sm:max-w-125 p-0 flex flex-col">
         <SheetHeader className="px-5 pt-5 pb-0 border-b border-border shrink-0">
           <SheetTitle className="text-sm font-semibold truncate">{requirementTitle}</SheetTitle>
           <p className="text-[12px] text-muted-foreground pb-2">
@@ -2343,10 +2389,10 @@ function RequirementsPageInner() {
   // Zustand column state
   const {
     visibleCols: _rawCols,
-    toggleCol,
+    // toggleCol,
     setVisibleCols,
     visibleTerminalCols: _rawTerminalCols,
-    setVisibleTerminalCols,
+    // setVisibleTerminalCols,
   } = useRequirementsStore();
   const storeReady = useRequirementsStoreReady();
   // Always arrays — safe regardless of hydration state
@@ -2360,6 +2406,9 @@ function RequirementsPageInner() {
   const showFilters = filterPinned || filterHovered;
   const [statsOpen, setStatsOpen] = useState(false);
 
+  const handleToggleNoData = useCallback(() => {
+    filters.setNoData(filters.noData === 'true' ? '' : 'true');
+  }, [filters]);
   const [drawer, setDrawer] = useState<{
     open: boolean;
     requirementId: string;
@@ -2408,6 +2457,7 @@ function RequirementsPageInner() {
     if (filters.createdById) p.set('createdById', filters.createdById);
     if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
     if (filters.dateTo) p.set('dateTo', filters.dateTo);
+    if (filters.noData) p.set('noData', filters.noData);
     return p.toString();
   }, [
     filters.search,
@@ -2420,6 +2470,7 @@ function RequirementsPageInner() {
     filters.createdById,
     filters.dateFrom,
     filters.dateTo,
+    filters.noData,
   ]);
 
   // Sale value stats — full dataset, no page/limit
@@ -2669,17 +2720,23 @@ function RequirementsPageInner() {
           stats={saleStatsData}
           achievedTotal={achievedTotal}
           onStatsClick={() => setStatsOpen(true)}
+          noData={filters.noData}
+          onToggleNoData={handleToggleNoData}
         />
 
         {/* Active filter chips */}
         {activeFiltersCount > 0 && (
           <div className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-50 border-b border-slate-100 flex-wrap shrink-0">
             <span className="text-[11px] text-slate-400 font-medium shrink-0">Filters:</span>
+
             {filters.status && (
               <FilterChip
                 label={STATUS_LABEL[filters.status] ?? filters.status}
                 onRemove={() => filters.setStatus('')}
               />
+            )}
+            {filters.noData === 'true' && (
+              <FilterChip label="No sale data" onRemove={() => filters.setNoData('')} />
             )}
             {filters.priority && (
               <FilterChip label={filters.priority} onRemove={() => filters.setPriority('')} />

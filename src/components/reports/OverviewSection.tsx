@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 // File: OverviewSection.tsx
@@ -20,8 +21,13 @@ import {
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Empty, FUNNEL_COLORS, Skel } from './reportUi';
-import type { DrillTarget } from './DrillDrawer';
+// import type { DrillTarget } from './DrillDrawer';
 import { MyRequirementsSection } from './MyRequirementsSection';
+// import { StatsDrawer } from './StatsDrawer';
+
+import type { DrillTarget } from './DrillDrawer';
+import { StatsDrawer } from './StatsDrawer';
+import type { StatsDrawerTarget } from './StatsDrawer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -40,6 +46,8 @@ interface KpiData {
   achievedPct: number;
   saleValueIncluded: number;
   saleValueOmitted: number;
+  nearTerminalCount: number;
+  nearTerminalPipelineValue: number;
 }
 
 interface FunnelStage {
@@ -117,10 +125,23 @@ interface TimeSeries {
   count: number;
 }
 
+interface StageDetail {
+  stageId: string;
+  label: string;
+  code: string;
+  order: number;
+  isNearTerminal?: boolean;
+  serviceLineId: string | null;
+  serviceLineName: string | null;
+  count: number;
+}
+
 interface OverviewData {
   kpis: KpiData;
   funnelStages: FunnelStage[];
   terminalBreakdown: TerminalStage[];
+  pipelineStageDetails: StageDetail[];
+  terminalStageDetails: StageDetail[];
   byServiceLine: SlBreakdown[];
   byBusinessUnit: BuBreakdown[];
   byDepartment: DeptBreakdown[];
@@ -141,6 +162,7 @@ export interface OverviewResponse {
     multiLine: boolean;
     hasSaleValueData: boolean;
     hasTeamTree: boolean;
+    hasNearTerminal: boolean;
   };
 }
 
@@ -995,10 +1017,16 @@ export function OverviewSection({
   onDrill: (target: DrillTarget) => void;
   baseQs: string;
 }) {
-  if (loading) return <OverviewSkeleton />;
-
+  // const { kpis } = d;
   const d = data?.data;
   const meta = data?.meta;
+
+  // const { kpis } = d;
+
+  const kpis: any = data?.data.kpis || {};
+  const [statsDrawerTarget, setStatsDrawerTarget] = useState<StatsDrawerTarget | null>(null);
+
+  if (loading) return <OverviewSkeleton />;
 
   if (!d || d.kpis.total === 0)
     return (
@@ -1008,8 +1036,6 @@ export function OverviewSection({
         <p className="text-[12px]">Try a different date range or remove filters.</p>
       </div>
     );
-
-  const { kpis } = d;
 
   // if (loading)
   //   return (
@@ -1023,58 +1049,313 @@ export function OverviewSection({
   //     </div>
   //   );
 
+  if (!kpis) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-400">
+        <Activity className="h-12 w-12 opacity-20" />
+        <p className="text-[14px] font-semibold">No activity in this window.</p>
+        <p className="text-[12px]">Try a different date range or remove filters.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Primary KPIs */}
+      {/* Row 1 — counts: Total · In Pipeline · Near Close · one card per terminal stage */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <KpiCard
+        {/* <KpiCard
           label="Total"
           value={kpis.total}
           color="#4F46E5"
           icon={Users}
-          sub="in pipeline"
+          sub="in funnel"
           onClick={() => onDrill({ type: 'active_pipeline', label: 'All pipeline candidates' })}
         />
         <KpiCard
-          label="In Progress"
+          label="In Process"
           value={kpis.inProgress}
           color="#0891B2"
           icon={Activity}
-          sub="active stages"
+          sub="actively moving"
           onClick={() => onDrill({ type: 'active_pipeline', label: 'In progress candidates' })}
-        />
-        <KpiCard
-          label="Placed"
-          value={kpis.placed}
-          color="#059669"
-          icon={CheckCircle2}
-          trend="up"
-          sub={`${kpis.fillRate}% fill rate`}
-          onClick={() => onDrill({ type: 'placed', label: 'Placed candidates' })}
-        />
-        <KpiCard
-          label="Active"
-          value={kpis.active}
-          color="#7C3AED"
-          icon={Target}
-          onClick={() => onDrill({ type: 'active_pipeline', label: 'Active candidates' })}
-        />
-        <KpiCard
-          label="Dropped"
-          value={kpis.dropped}
-          color="#DC2626"
-          icon={XCircle}
-          trend={kpis.dropped > 0 ? 'down' : undefined}
-          onClick={() => onDrill({ type: 'dropped', label: 'Dropped / fell out' })}
-        />
-        <KpiCard
-          label="Avg Days"
-          value={kpis.avgPipelineDays}
-          color="#D97706"
-          icon={Clock}
-          sub="per candidate"
-        />
+        /> */}
+        {(kpis.nearTerminalCount ?? 0) > 0 && (
+          <div
+            onClick={() =>
+              setStatsDrawerTarget({
+                drillTarget: { type: 'near_terminal', label: 'Near close candidates' },
+                label: 'Pipeline Counts — Near Close',
+                breakdown: (d.pipelineStageDetails ?? [])
+                  .filter(s => s.isNearTerminal && s.count > 0)
+                  .map(s => ({
+                    serviceLineName: s.serviceLineName,
+                    stageName: s.label,
+                    count: s.count,
+                  })),
+              })
+            }
+            className="flex flex-col gap-2 rounded-xl border-2 border-amber-100 bg-white p-4 shadow-sm transition-all hover:shadow-md cursor-pointer hover:border-amber-300"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Pipeline Counts
+              </span>
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50">
+                <TrendingUp className="h-4 w-4 text-amber-500" />
+              </div>
+            </div>
+            <span className="text-[28px] font-black leading-none text-amber-500">
+              {kpis.nearTerminalCount}
+            </span>
+            <div className="flex flex-col gap-0.5">
+              {(d.pipelineStageDetails ?? [])
+                .filter(s => s.isNearTerminal && s.count > 0)
+                .map(s => (
+                  <span key={s.stageId} className="text-[10px] leading-tight text-slate-500">
+                    {s.serviceLineName && (
+                      <span className="mr-1 rounded bg-amber-50 px-1 text-[9px] font-black uppercase text-amber-600">
+                        {s.serviceLineName}
+                      </span>
+                    )}
+                    {s.label}: <span className="font-black text-slate-700">{s.count}</span>
+                  </span>
+                ))}
+            </div>
+            <span className="text-[10px] font-semibold text-indigo-400">click to drill →</span>
+          </div>
+        )}
+        {(d.terminalStageDetails ?? []).filter(s => s.count > 0).length > 0 && (
+          <div
+            onClick={() =>
+              setStatsDrawerTarget({
+                drillTarget: { type: 'placed', label: 'Deals Closed' },
+                label: 'Deals Closed',
+                breakdown: (d.terminalStageDetails ?? [])
+                  .filter(s => s.count > 0)
+                  .map(s => ({
+                    serviceLineName: s.serviceLineName,
+                    stageName: s.label,
+                    count: s.count,
+                  })),
+              })
+            }
+            className="flex flex-col gap-2 rounded-xl border-2 border-emerald-100 bg-white p-4 shadow-sm transition-all hover:shadow-md cursor-pointer hover:border-emerald-300"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                Deals Closed
+              </span>
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              </div>
+            </div>
+            <span className="text-[28px] font-black leading-none text-emerald-600">
+              {kpis.placed}
+            </span>
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              {(d.terminalStageDetails ?? [])
+                .filter(s => s.count > 0)
+                .map(s => (
+                  <span key={s.stageId} className="text-[10px] leading-tight text-slate-500">
+                    {s.serviceLineName && (
+                      <span className="mr-1 rounded bg-emerald-50 px-1 text-[9px] font-black uppercase text-emerald-600">
+                        {s.serviceLineName}
+                      </span>
+                    )}
+                    {s.label}: <span className="font-black text-slate-700">{s.count}</span>
+                  </span>
+                ))}
+            </div>
+            <span className="text-[10px] font-semibold text-indigo-400">click to drill →</span>
+          </div>
+        )}
       </div>
+
+      {/* Row 2 — money: Total Sale Value · Near Pipeline Value · Achieved Value */}
+      {meta?.hasSaleValueData && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-1 rounded-xl border-2 border-emerald-100 bg-emerald-50 p-4">
+            <div className="flex items-center gap-2">
+              <IndianRupee className="h-4 w-4 text-emerald-600" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">
+                Total Sale Value
+              </span>
+            </div>
+            <p className="text-[24px] font-black text-emerald-900">
+              {fmtCurrency(kpis.totalSaleValue)}
+            </p>
+            <p className="text-[11px] text-emerald-600">
+              {kpis.saleValueIncluded} computed
+              {kpis.saleValueOmitted > 0 && (
+                <span className="ml-1 font-bold text-amber-600">
+                  · {kpis.saleValueOmitted} no data
+                </span>
+              )}
+            </p>
+          </div>
+          {(kpis.nearTerminalPipelineValue ?? 0) > 0 && (
+            <div className="flex flex-col gap-1 rounded-xl border-2 border-amber-100 bg-amber-50 p-4">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-amber-600" />
+                <span className="text-[11px] font-black uppercase tracking-wider text-amber-700">
+                  Pipeline Value
+                </span>
+              </div>
+              <p className="text-[24px] font-black text-amber-900">
+                {fmtCurrency(kpis.nearTerminalPipelineValue)}
+              </p>
+              <p className="text-[11px] text-amber-600">in transit · near close</p>
+            </div>
+          )}
+          <div className="flex flex-col gap-1 rounded-xl border-2 border-purple-100 bg-purple-50 p-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-purple-600" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-purple-700">
+                Achieved Value
+              </span>
+            </div>
+            <p className="text-[24px] font-black text-purple-900">
+              {fmtCurrency(kpis.totalAchievedValue)}
+            </p>
+            <p className="text-[11px] text-purple-600">{kpis.achievedPct}% of target</p>
+          </div>
+        </div>
+      )}
+
+      {/* Terminal stages — real names from DB */}
+      {/* {d.terminalStageDetails && d.terminalStageDetails.length > 0 && (
+        <div className="rounded-xl border-2 border-emerald-100 bg-emerald-50 p-4">
+          <p className="mb-3 text-[11px] font-black uppercase tracking-wider text-emerald-700">
+            Achieved / Placed — {kpis.placed} total · {kpis.fillRate}% fill rate
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {d.terminalStageDetails.map(s => (
+              <button
+                key={s.stageId}
+                onClick={() =>
+                  onDrill({
+                    type: 'stage',
+                    label: s.label,
+                    stageId: s.stageId,
+                    stageLabel: s.label,
+                  })
+                }
+                className="flex flex-col rounded-xl border-2 border-emerald-200 bg-white px-4 py-3 text-left hover:border-emerald-400 transition-colors cursor-pointer shadow-sm"
+              >
+                {s.serviceLineName && (
+                  <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500 mb-0.5">
+                    {s.serviceLineName}
+                  </span>
+                )}
+                <span className="text-[26px] font-black leading-none text-emerald-800">
+                  {s.count}
+                </span>
+                <span className="text-[12px] font-bold text-emerald-700 mt-1">{s.label}</span>
+                <span className="text-[10px] text-emerald-400 mt-0.5">click to drill →</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )} */}
+
+      {/* Near-terminal — candidates close to conversion with pipeline value */}
+      {/* {(kpis.nearTerminalCount ?? 0) > 0 && (
+        <div className="rounded-xl border-2 border-amber-100 bg-amber-50 p-4">
+          <p className="mb-3 text-[11px] font-black uppercase tracking-wider text-amber-700">
+            Near Conversion — about to be placed
+          </p>
+          <div className="flex flex-wrap items-stretch gap-3">
+            <div className="flex flex-col justify-center rounded-xl border-2 border-amber-200 bg-white px-4 py-3 shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-600">
+                Total Near
+              </span>
+              <span className="text-[26px] font-black leading-none text-amber-800">
+                {kpis.nearTerminalCount}
+              </span>
+              <span className="text-[11px] font-semibold text-amber-600">candidates</span>
+            </div>
+            {meta?.hasSaleValueData && (kpis.nearTerminalPipelineValue ?? 0) > 0 && (
+              <div className="flex flex-col justify-center rounded-xl border-2 border-amber-200 bg-white px-4 py-3 shadow-sm">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-600">
+                  Pipeline Value
+                </span>
+                <span className="text-[22px] font-black leading-none text-amber-800">
+                  {fmtCurrency(kpis.nearTerminalPipelineValue)}
+                </span>
+                <span className="text-[11px] font-semibold text-amber-600">
+                  estimated conversion
+                </span>
+              </div>
+            )}
+            {d.pipelineStageDetails
+              ?.filter(s => s.isNearTerminal)
+              .map(s => (
+                <button
+                  key={s.stageId}
+                  onClick={() =>
+                    onDrill({
+                      type: 'near_terminal',
+                      label: s.label,
+                      stageId: s.stageId,
+                      stageLabel: s.label,
+                    })
+                  }
+                  className="flex flex-col rounded-xl border-2 border-amber-200 bg-white px-3 py-2 text-left hover:border-amber-400 transition-colors cursor-pointer shadow-sm"
+                >
+                  {s.serviceLineName && (
+                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 mb-0.5">
+                      {s.serviceLineName}
+                    </span>
+                  )}
+                  <span className="text-[20px] font-black leading-none text-amber-800">
+                    {s.count}
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-700 mt-1">{s.label}</span>
+                  <span className="text-[9px] text-amber-400 mt-0.5">drill →</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      )} */}
+
+      {/* Pipeline stages — real names, non-sourced, non-near-terminal */}
+      {d.pipelineStageDetails &&
+        d.pipelineStageDetails.filter(s => !s.isNearTerminal).length > 0 && (
+          <div className="rounded-xl border-2 border-blue-100 bg-blue-50 p-4">
+            <p className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">
+              Pipeline Stages — {kpis.inProgress} in progress
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {d.pipelineStageDetails
+                .filter(s => !s.isNearTerminal)
+                .map(s => (
+                  <button
+                    key={s.stageId}
+                    onClick={() =>
+                      onDrill({
+                        type: 'stage',
+                        label: s.label,
+                        stageId: s.stageId,
+                        stageLabel: s.label,
+                      })
+                    }
+                    className="flex flex-col rounded-xl border-2 border-blue-200 bg-white px-3 py-2 text-left hover:border-blue-400 transition-colors cursor-pointer shadow-sm"
+                  >
+                    {s.serviceLineName && (
+                      <span className="text-[9px] font-black uppercase tracking-wider text-blue-400 mb-0.5">
+                        {s.serviceLineName}
+                      </span>
+                    )}
+                    <span className="text-[20px] font-black leading-none text-blue-800">
+                      {s.count}
+                    </span>
+                    <span className="text-[11px] font-bold text-blue-700 mt-1">{s.label}</span>
+                    <span className="text-[9px] text-blue-400 mt-0.5">drill →</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
 
       {/* Sale value KPIs */}
       {meta?.hasSaleValueData && (
@@ -1264,9 +1545,13 @@ export function OverviewSection({
           </Card>
         )}
       </div>
-
+      <StatsDrawer
+        target={statsDrawerTarget}
+        baseQs={baseQs}
+        onClose={() => setStatsDrawerTarget(null)}
+      />
       {/* My requirements — shown for users who create requirements (CSM/SR CSM etc.) */}
-      <MyRequirementsSection baseQs={baseQs} />
+      {/* <MyRequirementsSection baseQs={baseQs} /> */}
     </div>
   );
 }
