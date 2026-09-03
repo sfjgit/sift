@@ -71,7 +71,9 @@ interface DrillRow {
   expectedCtc: number | null;
   negotiatedCtc: number | null;
   expectedJoiningDate: string | null;
+  monthOfJoining: string | null;
   actualJoiningDate: string | null;
+  daysToJoin: number | null;
   lastWorkingDate: string | null;
   noticePeriod: string | null;
   candidateName: string;
@@ -269,6 +271,86 @@ function CandidateRow({ row }: { row: DrillRow }) {
           <StatusBadge row={row} />
         </td>
 
+        {/* ── NEW: CTC ── */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.offeredCtc != null ? (
+            <div>
+              <p className="text-[11px] text-slate-400">Offered</p>
+              <p className="text-[12px] font-bold text-emerald-700">{fmtCtc(row.offeredCtc)}</p>
+            </div>
+          ) : row.currentCtc != null || row.expectedCtc != null ? (
+            <div className="space-y-0.5">
+              {row.currentCtc != null && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400 w-11">Current</span>
+                  <span className="text-[11px] font-semibold text-slate-700">
+                    {fmtCtc(row.currentCtc)}
+                  </span>
+                </div>
+              )}
+              {row.expectedCtc != null && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400 w-11">Expected</span>
+                  <span className="text-[11px] font-semibold text-indigo-600">
+                    {fmtCtc(row.expectedCtc)}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* ── NEW: Last Working Date ── */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.lastWorkingDate ? (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-700">
+                {fmtDate(row.lastWorkingDate)}
+              </p>
+              {row.noticePeriod && (
+                <p className="text-[10px] text-slate-400">{row.noticePeriod} notice</p>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* ── NEW: Joining Date ── */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.actualJoiningDate ? (
+            <div>
+              <p className="text-[12px] font-bold text-emerald-700">
+                {fmtDate(row.actualJoiningDate)}
+              </p>
+              <p className="text-[10px] text-slate-400">Actual</p>
+            </div>
+          ) : row.expectedJoiningDate ? (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-700">
+                {fmtDate(row.expectedJoiningDate)}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Expected
+                {row.daysToJoin != null && row.daysToJoin >= 0 ? ` · ${row.daysToJoin}d` : ''}
+              </p>
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* ── NEW: Month of Joining ── */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.monthOfJoining ? (
+            <p className="text-[12px] font-semibold text-slate-700">{row.monthOfJoining}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
         {/* Recruiter */}
         <td className="px-3 py-3">
           <p className="text-[12px] font-semibold text-slate-700">{row.recruiterName}</p>
@@ -283,10 +365,10 @@ function CandidateRow({ row }: { row: DrillRow }) {
         </td>
       </tr>
 
-      {/* Expanded detail row */}
+      {/* Expanded detail row — colSpan bumped to 9 */}
       {expanded && (
         <tr className="bg-indigo-50/40">
-          <td colSpan={5} className="px-6 py-3">
+          <td colSpan={9} className="px-6 py-3">
             <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-[12px] sm:grid-cols-3 lg:grid-cols-4">
               {row.candidatePhone && (
                 <div>
@@ -306,32 +388,6 @@ function CandidateRow({ row }: { row: DrillRow }) {
                   <span className="font-semibold">{row.topSkills}</span>
                 </div>
               )}
-              {row.noticePeriod && (
-                <div>
-                  <span className="text-slate-400">Notice </span>
-                  <span className="font-semibold">{row.noticePeriod}</span>
-                </div>
-              )}
-              {row.lastWorkingDate && (
-                <div>
-                  <span className="text-slate-400">LWD </span>
-                  <span className="font-semibold">{fmtDate(row.lastWorkingDate)}</span>
-                </div>
-              )}
-              {row.expectedJoiningDate && (
-                <div>
-                  <span className="text-slate-400">Exp Joining </span>
-                  <span className="font-semibold">{fmtDate(row.expectedJoiningDate)}</span>
-                </div>
-              )}
-              {row.actualJoiningDate && (
-                <div>
-                  <span className="text-slate-400">Actual Joining </span>
-                  <span className="font-semibold text-emerald-700">
-                    {fmtDate(row.actualJoiningDate)}
-                  </span>
-                </div>
-              )}
               {row.submittedAt && (
                 <div>
                   <span className="text-slate-400">Submitted </span>
@@ -340,32 +396,14 @@ function CandidateRow({ row }: { row: DrillRow }) {
               )}
               {row.offerStatus && (
                 <div>
-                  <span className="text-slate-400">Offer </span>
+                  <span className="text-slate-400">Offer Status </span>
                   <span className="font-semibold">{row.offerStatus}</span>
-                </div>
-              )}
-              {row.currentCtc != null && (
-                <div>
-                  <span className="text-slate-400">Current CTC </span>
-                  <span className="font-semibold">{fmtCtc(row.currentCtc)}</span>
-                </div>
-              )}
-              {row.expectedCtc != null && (
-                <div>
-                  <span className="text-slate-400">Expected CTC </span>
-                  <span className="font-semibold">{fmtCtc(row.expectedCtc)}</span>
                 </div>
               )}
               {row.negotiatedCtc != null && (
                 <div>
                   <span className="text-slate-400">Negotiated CTC </span>
                   <span className="font-semibold">{fmtCtc(row.negotiatedCtc)}</span>
-                </div>
-              )}
-              {row.offeredCtc != null && (
-                <div>
-                  <span className="text-slate-400">Offered CTC </span>
-                  <span className="font-semibold text-emerald-700">{fmtCtc(row.offeredCtc)}</span>
                 </div>
               )}
               {row.serviceLineName && (

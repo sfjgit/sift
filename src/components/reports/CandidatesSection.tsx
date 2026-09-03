@@ -89,8 +89,8 @@ const COLS: TableCol[] = [
     cell: r => (
       <>
         <p className="font-mono text-[11px] font-bold text-slate-700">{r.reqCode}</p>
-        <p className="max-w-[190px] truncate text-[10px] text-slate-400">{r.reqTitle}</p>
-        <p className="max-w-[190px] truncate text-[10px] text-slate-400">{r.clientName}</p>
+        <p className="max-w-47.5 truncate text-[10px] text-slate-400">{r.reqTitle}</p>
+        <p className="max-w-47.5 truncate text-[10px] text-slate-400">{r.clientName}</p>
       </>
     ),
   },
@@ -219,10 +219,10 @@ const COLS: TableCol[] = [
     w: 150,
     cell: r => (
       <>
-        <p className="max-w-[140px] truncate text-[12px] font-semibold text-slate-700">
+        <p className="max-w-35 truncate text-[12px] font-semibold text-slate-700">
           {r.recruiterName}
         </p>
-        <p className="max-w-[140px] truncate text-[10px] text-slate-400">{r.recruiterEmail}</p>
+        <p className="max-w-35 truncate text-[10px] text-slate-400">{r.recruiterEmail}</p>
       </>
     ),
   },
@@ -243,7 +243,7 @@ const COLS: TableCol[] = [
     on: false,
     w: 170,
     cell: r => (
-      <span className="block max-w-[160px] truncate text-[11px] text-slate-600">
+      <span className="block max-w-40 truncate text-[11px] text-slate-600">
         {r.currentTitle || '—'}
       </span>
     ),
@@ -255,7 +255,7 @@ const COLS: TableCol[] = [
     on: true,
     w: 170,
     cell: r => (
-      <span className="block max-w-[160px] truncate text-[11px] text-slate-600">
+      <span className="block max-w-40 truncate text-[11px] text-slate-600">
         {r.currentCompany || '—'}
       </span>
     ),
@@ -276,7 +276,7 @@ const COLS: TableCol[] = [
     on: false,
     w: 240,
     cell: r => (
-      <span className="block max-w-[230px] truncate text-[11px] text-slate-500" title={r.topSkills}>
+      <span className="block max-w-57.5 truncate text-[11px] text-slate-500" title={r.topSkills}>
         {r.topSkills || '—'}
       </span>
     ),
@@ -541,7 +541,7 @@ const COLS: TableCol[] = [
     cell: r => {
       const v = r.dropReason || r.rejectionReason || r.withdrawnReason;
       return (
-        <span className="block max-w-[190px] truncate text-[11px] text-slate-500" title={v || ''}>
+        <span className="block max-w-47.5 truncate text-[11px] text-slate-500" title={v || ''}>
           {v || '—'}
         </span>
       );
@@ -636,7 +636,7 @@ function TableColumnMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 z-50 w-[380px] rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div className="absolute right-0 top-9 z-50 w-95 rounded-xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <p className="text-[12px] font-black text-slate-800">Table columns</p>
             <div className="flex gap-1.5">
@@ -654,7 +654,7 @@ function TableColumnMenu({
               </button>
             </div>
           </div>
-          <div className="max-h-[420px] overflow-y-auto p-2">
+          <div className="max-h-105 overflow-y-auto p-2">
             {COL_GROUPS.map(g => {
               const cols = COLS.filter(c => c.group === g);
               if (!cols.length) return null;
@@ -828,7 +828,7 @@ function StatCard({
           ? `Open the ${value.toLocaleString('en-IN')} candidates behind this number`
           : undefined
       }
-      className={`flex min-w-[105px] flex-1 flex-col justify-between rounded-xl border px-3.5 py-3 text-left transition-all ${bg} ${border}
+      className={`flex min-w-26.25 flex-1 flex-col justify-between rounded-xl border px-3.5 py-3 text-left transition-all ${bg} ${border}
         ${
           clickable
             ? 'cursor-pointer hover:shadow-md hover:ring-2 hover:ring-indigo-300 hover:ring-offset-1 active:scale-[0.98]'
@@ -976,7 +976,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
       {statsQuery.isLoading ? (
         <div className="flex gap-3">
           {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={i} className="h-[80px] flex-1 rounded-xl" />
+            <Skeleton key={i} className="h-20 flex-1 rounded-xl" />
           ))}
         </div>
       ) : totals ? (
@@ -1160,7 +1160,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         {/* Search + primary filters */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[260px] flex-1">
+          <div className="relative min-w-65 flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={searchInput}
@@ -1194,7 +1194,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.recruiterId || 'ALL'}
             onValueChange={v => set('recruiterId', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[180px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-45 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All recruiters" />
             </SelectTrigger>
             <SelectContent>
@@ -1211,7 +1211,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.bucket || 'ALL'}
             onValueChange={v => set('bucket', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[150px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-37.5 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All buckets" />
             </SelectTrigger>
             <SelectContent>
@@ -1231,7 +1231,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.mojMonthNum || 'ALL'}
             onValueChange={v => set('mojMonthNum', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[150px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-37.5 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="Any joining month" />
             </SelectTrigger>
             <SelectContent>
@@ -1248,7 +1248,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.mojYear || 'ALL'}
             onValueChange={v => set('mojYear', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[105px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-26.25 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="Any year" />
             </SelectTrigger>
             <SelectContent>
@@ -1398,7 +1398,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                 value={f.dateField || 'any'}
                 onValueChange={v => set('dateField', v === 'any' ? '' : v)}
               >
-                <SelectTrigger className="h-8 w-[150px] border-slate-200 text-xs">
+                <SelectTrigger className="h-8 w-37.5 border-slate-200 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1475,7 +1475,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] border-slate-200 text-xs">
+                <SelectTrigger className="h-7 w-35 border-slate-200 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1506,7 +1506,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-7 w-[70px] border-slate-200 text-xs">
+                <SelectTrigger className="h-7 w-17.5 border-slate-200 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1608,7 +1608,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                         style={{ minWidth: 250 }}
                       >
                         <div className="flex items-start gap-2">
-                          <div className="min-w-0 max-w-[210px] flex-1">
+                          <div className="min-w-0 max-w-52.5 flex-1">
                             <div className="flex items-center gap-1.5">
                               <p className="truncate text-[13px] font-bold text-slate-900">
                                 {r.candidateName}
