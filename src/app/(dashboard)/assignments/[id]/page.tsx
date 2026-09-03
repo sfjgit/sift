@@ -1197,16 +1197,36 @@ function AddCandidateModal({
                 desc: 'Upload multiple resumes at once',
                 onClickOverride: () => setBulkUploadOpen(true),
               },
+
               {
                 iconBg: 'bg-blue-100',
                 icon: <Database className="w-4 h-4 text-blue-600" />,
-                title: 'From Database',
-                desc: 'Search existing candidate pool',
+                title: 'InternalPool',
+                desc: 'Search 10L+ candidates in your DB',
                 onClickOverride: () => {
-                  router.push(`/assignments/${assignmentId}/database`);
+                  // Pass requirement context so InternalPool auto-fills and enables "Source" buttons
+                  const params = new URLSearchParams({
+                    assignmentId,
+                    requirementId: req.id,
+                    reqCode: req.reqCode,
+                    requirementTitle: req.title ?? req.reqCode,
+                    // Auto-fill skills from requirement so recruiter starts with relevant results
+                    ...(req.primarySkills?.length ? { skills: req.primarySkills.join(',') } : {}),
+                  });
+                  router.push(`/internal-pool?${params.toString()}`);
                   onClose();
                 },
               },
+              // {
+              //   iconBg: 'bg-blue-100',
+              //   icon: <Database className="w-4 h-4 text-blue-600" />,
+              //   title: 'From Database',
+              //   desc: 'Search existing candidate pool',
+              //   onClickOverride: () => {
+              //     router.push(`/assignments/${assignmentId}/database`);
+              //     onClose();
+              //   },
+              // },
             ].map(row => (
               <button
                 key={row.title}

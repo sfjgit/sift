@@ -89,8 +89,8 @@ const COLS: TableCol[] = [
     cell: r => (
       <>
         <p className="font-mono text-[11px] font-bold text-slate-700">{r.reqCode}</p>
-        <p className="max-w-[190px] truncate text-[10px] text-slate-400">{r.reqTitle}</p>
-        <p className="max-w-[190px] truncate text-[10px] text-slate-400">{r.clientName}</p>
+        <p className="max-w-47.5 truncate text-[10px] text-slate-400">{r.reqTitle}</p>
+        <p className="max-w-47.5 truncate text-[10px] text-slate-400">{r.clientName}</p>
       </>
     ),
   },
@@ -219,10 +219,10 @@ const COLS: TableCol[] = [
     w: 150,
     cell: r => (
       <>
-        <p className="max-w-[140px] truncate text-[12px] font-semibold text-slate-700">
+        <p className="max-w-35 truncate text-[12px] font-semibold text-slate-700">
           {r.recruiterName}
         </p>
-        <p className="max-w-[140px] truncate text-[10px] text-slate-400">{r.recruiterEmail}</p>
+        <p className="max-w-35 truncate text-[10px] text-slate-400">{r.recruiterEmail}</p>
       </>
     ),
   },
@@ -243,7 +243,7 @@ const COLS: TableCol[] = [
     on: false,
     w: 170,
     cell: r => (
-      <span className="block max-w-[160px] truncate text-[11px] text-slate-600">
+      <span className="block max-w-40 truncate text-[11px] text-slate-600">
         {r.currentTitle || '—'}
       </span>
     ),
@@ -255,7 +255,7 @@ const COLS: TableCol[] = [
     on: true,
     w: 170,
     cell: r => (
-      <span className="block max-w-[160px] truncate text-[11px] text-slate-600">
+      <span className="block max-w-40 truncate text-[11px] text-slate-600">
         {r.currentCompany || '—'}
       </span>
     ),
@@ -276,7 +276,7 @@ const COLS: TableCol[] = [
     on: false,
     w: 240,
     cell: r => (
-      <span className="block max-w-[230px] truncate text-[11px] text-slate-500" title={r.topSkills}>
+      <span className="block max-w-57.5 truncate text-[11px] text-slate-500" title={r.topSkills}>
         {r.topSkills || '—'}
       </span>
     ),
@@ -541,7 +541,7 @@ const COLS: TableCol[] = [
     cell: r => {
       const v = r.dropReason || r.rejectionReason || r.withdrawnReason;
       return (
-        <span className="block max-w-[190px] truncate text-[11px] text-slate-500" title={v || ''}>
+        <span className="block max-w-47.5 truncate text-[11px] text-slate-500" title={v || ''}>
           {v || '—'}
         </span>
       );
@@ -626,7 +626,10 @@ function TableColumnMenu({
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(o => !o)}
+        onMouseDown={e => {
+          e.stopPropagation();
+          setOpen(o => !o);
+        }}
         className="flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
         title="Show or hide table columns"
       >
@@ -636,7 +639,10 @@ function TableColumnMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 z-50 w-[380px] rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute right-0 top-9 z-50 w-95 rounded-xl border border-slate-200 bg-white shadow-2xl"
+        >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <p className="text-[12px] font-black text-slate-800">Table columns</p>
             <div className="flex gap-1.5">
@@ -654,7 +660,7 @@ function TableColumnMenu({
               </button>
             </div>
           </div>
-          <div className="max-h-[420px] overflow-y-auto p-2">
+          <div className="max-h-105 overflow-y-auto p-2">
             {COL_GROUPS.map(g => {
               const cols = COLS.filter(c => c.group === g);
               if (!cols.length) return null;
@@ -722,6 +728,109 @@ function TableColumnMenu({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// STAGE MULTI-SELECT — hoisted out so hooks are never called inside a render fn
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StageMultiSelect({
+  stageIds,
+  stages,
+  onChange,
+  open,
+  setOpen,
+}: {
+  stageIds: string[];
+  stages: { id: string; label: string }[];
+  onChange: (ids: string[]) => void;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, setOpen]);
+
+  const toggle = (id: string) =>
+    onChange(stageIds.includes(id) ? stageIds.filter(x => x !== id) : [...stageIds, id]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onMouseDown={e => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        className={`flex h-8 w-full items-center justify-between gap-1 rounded-md border px-2 text-xs ${
+          stageIds.length
+            ? 'border-indigo-400 bg-indigo-50 font-bold text-indigo-700'
+            : 'border-slate-200 text-slate-500'
+        }`}
+      >
+        {stageIds.length
+          ? `${stageIds.length} stage${stageIds.length > 1 ? 's' : ''}`
+          : 'All stages'}
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute left-0 top-9 z-50 min-w-52 rounded-xl border border-slate-200 bg-white shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Stages
+            </span>
+            {stageIds.length > 0 && (
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  onChange([]);
+                }}
+                className="text-[10px] font-bold text-red-500 hover:text-red-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {stages.map(s => {
+              const on = stageIds.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  onMouseDown={e => {
+                    e.stopPropagation();
+                    toggle(s.id);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${
+                    on ? 'font-semibold text-indigo-700' : 'text-slate-600'
+                  }`}
+                >
+                  {on ? (
+                    <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                  )}
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LOCAL FILTER STATE — candidate-specific, on top of the page-level baseQs
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -729,7 +838,7 @@ interface CandFilters {
   search: string;
   recruiterId: string;
   requirementId: string;
-  stageId: string;
+  stageIds: string[];
   bucket: string;
   disposition: string;
   reqStatus: string;
@@ -749,7 +858,7 @@ const EMPTY_FILTERS: CandFilters = {
   search: '',
   recruiterId: '',
   requirementId: '',
-  stageId: '',
+  stageIds: [],
   bucket: '',
   disposition: '',
   reqStatus: '',
@@ -828,7 +937,7 @@ function StatCard({
           ? `Open the ${value.toLocaleString('en-IN')} candidates behind this number`
           : undefined
       }
-      className={`flex min-w-[105px] flex-1 flex-col justify-between rounded-xl border px-3.5 py-3 text-left transition-all ${bg} ${border}
+      className={`flex min-w-26.25 flex-1 flex-col justify-between rounded-xl border px-3.5 py-3 text-left transition-all ${bg} ${border}
         ${
           clickable
             ? 'cursor-pointer hover:shadow-md hover:ring-2 hover:ring-indigo-300 hover:ring-offset-1 active:scale-[0.98]'
@@ -862,6 +971,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [drillTarget, setDrillTarget] = useState<CandidateDrillTarget | null>(null);
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(DEFAULT_ON));
+  const [stageSelectOpen, setStageSelectOpen] = useState(false);
 
   const set = <K extends keyof CandFilters>(k: K, v: CandFilters[K]) => {
     setF(prev => ({ ...prev, [k]: v }));
@@ -876,13 +986,36 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   });
   const opts = filtersQuery.data?.data ?? {};
 
+  // ADD this right above filterQs
+  const statsQs = useMemo(() => {
+    const p = new URLSearchParams(baseQs);
+    if (f.search.trim()) p.set('search', f.search.trim());
+    if (f.recruiterId) p.set('recruiterId', f.recruiterId);
+    if (f.requirementId) p.set('requirementId', f.requirementId);
+    if (f.bucket) p.set('bucket', f.bucket);
+    if (f.disposition) p.set('disposition', f.disposition);
+    if (f.reqStatus) p.set('reqStatus', f.reqStatus);
+    if (f.snapshotType) p.set('snapshotType', f.snapshotType);
+    if (f.mojMonthNum) p.set('mojMonthNum', f.mojMonthNum);
+    if (f.mojYear) p.set('mojYear', f.mojYear);
+    if (f.joinFrom) p.set('joinFrom', f.joinFrom);
+    if (f.joinTo) p.set('joinTo', f.joinTo);
+    if (f.dateField) p.set('dateField', f.dateField);
+    if (f.duplicatesOnly) p.set('duplicatesOnly', 'true');
+    if (f.hasJoined) p.set('hasJoined', 'true');
+    if (f.hasOffer) p.set('hasOffer', 'true');
+    if (f.isSubmitted) p.set('isSubmitted', 'true');
+    return p.toString();
+  }, [baseQs, f]);
+
   // ── Query string: page-level baseQs + this tab's filters ──────────────────
   const filterQs = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (f.search.trim()) p.set('search', f.search.trim());
     if (f.recruiterId) p.set('recruiterId', f.recruiterId);
     if (f.requirementId) p.set('requirementId', f.requirementId);
-    if (f.stageId) p.set('stageId', f.stageId);
+    // if (f.stageId) p.set('stageId', f.stageId);
+    f.stageIds.forEach(id => p.append('stageId', id));
     if (f.bucket) p.set('bucket', f.bucket);
     if (f.disposition) p.set('disposition', f.disposition);
     if (f.reqStatus) p.set('reqStatus', f.reqStatus);
@@ -917,8 +1050,9 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   });
 
   const statsQuery = useQuery({
-    queryKey: ['candidates-stats', filterQs],
-    queryFn: async () => (await axios.get(`/reports/candidates/stats?${filterQs}`)).data,
+    queryKey: ['candidates-stats', statsQs],
+    queryFn: async () => (await axios.get(`/reports/candidates/stats?${statsQs}`)).data,
+    placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 
@@ -938,7 +1072,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     let n = 0;
     if (f.recruiterId) n++;
     if (f.requirementId) n++;
-    if (f.stageId) n++;
+    if (f.stageIds.length) n++;
     if (f.bucket) n++;
     if (f.disposition) n++;
     if (f.reqStatus) n++;
@@ -976,7 +1110,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
       {statsQuery.isLoading ? (
         <div className="flex gap-3">
           {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={i} className="h-[80px] flex-1 rounded-xl" />
+            <Skeleton key={i} className="h-20 flex-1 rounded-xl" />
           ))}
         </div>
       ) : totals ? (
@@ -1129,7 +1263,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
           )}
 
           {/* Stage chips — clickable */}
-          {byStage.length > 0 && (
+          {/* {byStage.length > 0 && (
             <div className="border-t border-slate-100 pt-2.5">
               <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
                 By stage — click to filter
@@ -1152,6 +1286,70 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                 ))}
               </div>
             </div>
+          )} */}
+
+          {byStage.length > 0 && (
+            <div className="border-t border-slate-100 pt-2.5">
+              <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                By stage — click to filter
+                {f.stageIds.length > 0 && (
+                  <button
+                    onClick={() => set('stageIds', [])}
+                    className="ml-2 normal-case font-bold text-indigo-500 hover:text-indigo-700"
+                  >
+                    Clear ({f.stageIds.length})
+                  </button>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {byStage.map(s => {
+                  const active = f.stageIds.includes(s.stageId);
+                  return (
+                    <button
+                      key={s.stageId}
+                      onClick={() => {
+                        const next = active
+                          ? f.stageIds.filter(id => id !== s.stageId)
+                          : [...f.stageIds, s.stageId];
+                        set('stageIds', next);
+                      }}
+                      title={`${s.label} · ${s.bucket} · ${s.pct}% of the filtered set`}
+                      className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold ring-1 transition-all ${
+                        active
+                          ? 'bg-indigo-600 text-white ring-indigo-600'
+                          : (BUCKET_STYLE[s.bucket] ?? 'bg-slate-100 text-slate-600 ring-slate-200')
+                      }`}
+                    >
+                      {/* mini checkbox */}
+                      <span
+                        className={`flex h-3 w-3 shrink-0 items-center justify-center rounded border ${
+                          active ? 'border-white bg-white' : 'border-current bg-transparent'
+                        }`}
+                      >
+                        {active && (
+                          <svg
+                            viewBox="0 0 8 8"
+                            className="h-2 w-2"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                          >
+                            <path
+                              d="M1 4l2 2 4-4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="text-indigo-600"
+                            />
+                          </svg>
+                        )}
+                      </span>
+                      {s.label}
+                      <span className="opacity-70">{s.count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       ) : null}
@@ -1160,7 +1358,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         {/* Search + primary filters */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[260px] flex-1">
+          <div className="relative min-w-65 flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={searchInput}
@@ -1194,7 +1392,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.recruiterId || 'ALL'}
             onValueChange={v => set('recruiterId', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[180px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-45 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All recruiters" />
             </SelectTrigger>
             <SelectContent>
@@ -1211,7 +1409,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.bucket || 'ALL'}
             onValueChange={v => set('bucket', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[150px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-37.5 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All buckets" />
             </SelectTrigger>
             <SelectContent>
@@ -1231,7 +1429,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.mojMonthNum || 'ALL'}
             onValueChange={v => set('mojMonthNum', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[150px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-37.5 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="Any joining month" />
             </SelectTrigger>
             <SelectContent>
@@ -1248,7 +1446,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
             value={f.mojYear || 'ALL'}
             onValueChange={v => set('mojYear', v === 'ALL' ? '' : v)}
           >
-            <SelectTrigger className="h-9 w-[105px] border-slate-200 text-xs font-medium">
+            <SelectTrigger className="h-9 w-26.25 border-slate-200 text-xs font-medium">
               <SelectValue placeholder="Any year" />
             </SelectTrigger>
             <SelectContent>
@@ -1284,7 +1482,10 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
 
         {/* Advanced filters */}
         {advancedOpen && (
-          <div className="space-y-3 border-t border-slate-100 pt-3">
+          <div
+            className="space-y-3 border-t border-slate-100 pt-3"
+            onMouseDown={e => e.stopPropagation()}
+          >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               <Select
                 value={f.requirementId || 'ALL'}
@@ -1303,7 +1504,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                 </SelectContent>
               </Select>
 
-              <Select
+              {/* <Select
                 value={f.stageId || 'ALL'}
                 onValueChange={v => set('stageId', v === 'ALL' ? '' : v)}
               >
@@ -1318,7 +1519,16 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select> */}
+
+              {/* Stage multi-select — replaces the old single Select */}
+              <StageMultiSelect
+                stageIds={f.stageIds}
+                stages={opts.stages ?? []}
+                onChange={ids => set('stageIds', ids)}
+                open={stageSelectOpen}
+                setOpen={setStageSelectOpen}
+              />
 
               <Select
                 value={f.disposition || 'ALL'}
@@ -1398,7 +1608,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                 value={f.dateField || 'any'}
                 onValueChange={v => set('dateField', v === 'any' ? '' : v)}
               >
-                <SelectTrigger className="h-8 w-[150px] border-slate-200 text-xs">
+                <SelectTrigger className="h-8 w-37.5 border-slate-200 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1475,7 +1685,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] border-slate-200 text-xs">
+                <SelectTrigger className="h-7 w-35 border-slate-200 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1506,7 +1716,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-7 w-[70px] border-slate-200 text-xs">
+                <SelectTrigger className="h-7 w-17.5 border-slate-200 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1608,7 +1818,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                         style={{ minWidth: 250 }}
                       >
                         <div className="flex items-start gap-2">
-                          <div className="min-w-0 max-w-[210px] flex-1">
+                          <div className="min-w-0 max-w-52.5 flex-1">
                             <div className="flex items-center gap-1.5">
                               <p className="truncate text-[13px] font-bold text-slate-900">
                                 {r.candidateName}

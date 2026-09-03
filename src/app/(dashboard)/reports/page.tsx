@@ -4,7 +4,7 @@
 // File: page.tsx
 // Path: src/app/(dashboard)/reports/page.tsx
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
@@ -80,13 +80,13 @@ interface WinState {
 // }
 
 interface Filters {
-  clientId?: string;
-  clientSpocId?: string; // ← ADD THIS LINE
-  serviceLineId?: string;
+  clientIds?: string[];
+  clientSpocIds?: string[];
+  serviceLineIds?: string[];
   businessUnitId?: string;
-  departmentId?: string;
+  departmentIds?: string[];
   createdById?: string;
-  status?: string;
+  statuses?: string[];
 }
 
 type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates' | 'sales';
@@ -266,6 +266,141 @@ const ALL_REPORT_STATUSES = [
   { key: 'CANCELLED', label: 'Cancelled', dot: 'bg-gray-500' },
 ] as const;
 
+function MultiSelectDropdown({
+  label,
+  options,
+  selected,
+  onChange,
+  disabled,
+  grouped,
+}: {
+  label: string;
+  options?: { id: string; label: string }[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  disabled?: boolean;
+  grouped?: { groupLabel: string; options: { id: string; label: string }[] }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const allOptions = grouped ? grouped.flatMap(g => g.options) : (options ?? []);
+
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        disabled={disabled}
+        onMouseDown={e => {
+          e.stopPropagation();
+          if (!disabled) setOpen(o => !o);
+        }}
+        className={`flex h-8 w-full items-center justify-between gap-1 rounded-md border px-2 text-xs ${
+          selected.length
+            ? 'border-indigo-400 bg-indigo-50 font-bold text-indigo-700'
+            : 'border-slate-200 text-slate-500'
+        } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      >
+        <span className="truncate">
+          {selected.length === 0
+            ? label
+            : selected.length === 1
+              ? (allOptions.find(o => o.id === selected[0])?.label ?? label)
+              : `${selected.length} selected`}
+        </span>
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute left-0 top-9 z-50 min-w-56 max-w-72 rounded-xl border border-slate-200 bg-white shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              {label}
+            </span>
+            {selected.length > 0 && (
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  onChange([]);
+                }}
+                className="text-[10px] font-bold text-red-500 hover:text-red-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {grouped
+              ? grouped.map(g => (
+                  <div key={g.groupLabel}>
+                    <p className="px-3 pt-2 pb-1 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                      {g.groupLabel}
+                    </p>
+                    {g.options.map(o => {
+                      const on = selected.includes(o.id);
+                      return (
+                        <button
+                          key={o.id}
+                          onMouseDown={e => {
+                            e.stopPropagation();
+                            toggle(o.id);
+                          }}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${on ? 'font-semibold text-indigo-700' : 'text-slate-600'}`}
+                        >
+                          {on ? (
+                            <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                          ) : (
+                            <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                          )}
+                          {o.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))
+              : (options ?? []).map(o => {
+                  const on = selected.includes(o.id);
+                  return (
+                    <button
+                      key={o.id}
+                      onMouseDown={e => {
+                        e.stopPropagation();
+                        toggle(o.id);
+                      }}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${on ? 'font-semibold text-indigo-700' : 'text-slate-600'}`}
+                    >
+                      {on ? (
+                        <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                      ) : (
+                        <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                      )}
+                      {o.label}
+                    </button>
+                  );
+                })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FiltersBar({
   filters,
   onChange,
@@ -325,8 +460,11 @@ function FiltersBar({
 
   // If a client is selected show only that client's spocs, otherwise show all
   const visibleSpocs = useMemo(
-    () => (filters.clientId ? allSpocs.filter(s => s.clientId === filters.clientId) : allSpocs),
-    [allSpocs, filters.clientId]
+    () =>
+      filters.clientIds?.length
+        ? allSpocs.filter(s => filters.clientIds!.includes(s.clientId))
+        : allSpocs,
+    [allSpocs, filters.clientIds]
   );
 
   // Group spocs by client for the "all clients" case
@@ -354,17 +492,17 @@ function FiltersBar({
   const set = (k: keyof Filters, v: string) =>
     onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
 
-  const handleClientChange = (v: string) => {
-    const newClientId = v === 'ALL' ? undefined : v;
-    const spocStillValid =
-      !newClientId ||
-      allSpocs.some(s => s.id === filters.clientSpocId && s.clientId === newClientId);
-    onChange({
-      ...filters,
-      clientId: newClientId,
-      clientSpocId: spocStillValid ? filters.clientSpocId : undefined,
-    });
-  };
+  // const handleClientChange = (v: string) => {
+  //   const newClientId = v === 'ALL' ? undefined : v;
+  //   const spocStillValid =
+  //     !newClientId ||
+  //     allSpocs.some(s => s.id === filters.clientSpocIds && s.clientId === newClientId);
+  //   onChange({
+  //     ...filters,
+  //     clientIds: newClientId,
+  //     clientSpocId: spocStillValid ? filters.clientSpocIds : undefined,
+  //   });
+  // };
 
   const showStatus =
     activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
@@ -372,13 +510,13 @@ function FiltersBar({
   const showDept = activeTab === 'overview' || activeTab === 'recruiters';
 
   const hasFilters = !!(
-    filters.clientId ||
-    filters.clientSpocId ||
-    filters.serviceLineId ||
+    filters.clientIds ||
+    filters.clientSpocIds ||
+    filters.serviceLineIds ||
     filters.businessUnitId ||
-    filters.departmentId ||
+    filters.departmentIds ||
     filters.createdById ||
-    filters.status ||
+    filters.statuses ||
     teamSelection
   );
 
@@ -477,9 +615,9 @@ function FiltersBar({
       </div>
 
       {/* ── Row 2: entity filters ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-        {/* Client */}
-        <Select value={filters.clientId ?? 'ALL'} onValueChange={handleClientChange}>
+      {/* <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"> */}
+      {/* Client */}
+      {/* <Select value={filters.clientId ?? 'ALL'} onValueChange={handleClientChange}>
           <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All clients" />
           </SelectTrigger>
@@ -491,10 +629,10 @@ function FiltersBar({
               </SelectItem>
             ))}
           </SelectContent>
-        </Select>
+        </Select> */}
 
-        {/* Client SPOC */}
-        <Select
+      {/* Client SPOC */}
+      {/* <Select
           value={filters.clientSpocId ?? 'ALL'}
           onValueChange={v => set('clientSpocId', v)}
           disabled={allSpocs.length === 0}
@@ -535,10 +673,10 @@ function FiltersBar({
                   </SelectGroup>
                 ))}
           </SelectContent>
-        </Select>
+        </Select> */}
 
-        {/* Service Line */}
-        <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
+      {/* Service Line */}
+      {/* <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
           <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
             <SelectValue placeholder="All service lines" />
           </SelectTrigger>
@@ -550,10 +688,10 @@ function FiltersBar({
               </SelectItem>
             ))}
           </SelectContent>
-        </Select>
+        </Select> */}
 
-        {/* Business Unit */}
-        {businessUnits.length > 0 && (
+      {/* Business Unit */}
+      {/* {businessUnits.length > 0 && (
           <Select
             value={filters.businessUnitId ?? 'ALL'}
             onValueChange={v => set('businessUnitId', v)}
@@ -570,10 +708,10 @@ function FiltersBar({
               ))}
             </SelectContent>
           </Select>
-        )}
+        )} */}
 
-        {/* Department */}
-        {showDept && departments.length > 0 && (
+      {/* Department */}
+      {/* {showDept && departments.length > 0 && (
           <Select value={filters.departmentId ?? 'ALL'} onValueChange={v => set('departmentId', v)}>
             <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
               <SelectValue placeholder="All departments" />
@@ -587,10 +725,10 @@ function FiltersBar({
               ))}
             </SelectContent>
           </Select>
-        )}
+        )} */}
 
-        {/* Status */}
-        {showStatus && (
+      {/* Status */}
+      {/* {showStatus && (
           <Select
             value={filters.status ?? 'ALL'}
             onValueChange={v => onChange({ ...filters, status: v === 'ALL' ? undefined : v })}
@@ -610,9 +748,82 @@ function FiltersBar({
               ))}
             </SelectContent>
           </Select>
+        )} */}
+
+      {/* Team picker */}
+      {/* <div className="flex items-center gap-1.5">
+          <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
+        </div> */}
+      {/* </div> */}
+
+      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+        <MultiSelectDropdown
+          label="All clients"
+          options={clients.map(c => ({ id: c.id, label: c.name }))}
+          selected={filters.clientIds ?? []}
+          onChange={ids => onChange({ ...filters, clientIds: ids, clientSpocIds: [] })}
+        />
+
+        <MultiSelectDropdown
+          label="All SPOCs"
+          disabled={allSpocs.length === 0}
+          grouped={spocsByClient.map(g => ({
+            groupLabel: g.clientName,
+            options: g.spocs.map(s => ({
+              id: s.id,
+              label: s.name + (s.designation ? ` · ${s.designation}` : ''),
+            })),
+          }))}
+          selected={filters.clientSpocIds ?? []}
+          onChange={ids => onChange({ ...filters, clientSpocIds: ids })}
+        />
+
+        <MultiSelectDropdown
+          label="All service lines"
+          options={serviceLines.map(s => ({ id: s.id, label: s.name }))}
+          selected={filters.serviceLineIds ?? []}
+          onChange={ids => onChange({ ...filters, serviceLineIds: ids })}
+        />
+
+        {businessUnits.length > 0 && (
+          <Select
+            value={filters.businessUnitId ?? 'ALL'}
+            onValueChange={v =>
+              onChange({ ...filters, businessUnitId: v === 'ALL' ? undefined : v })
+            }
+          >
+            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
+              <SelectValue placeholder="All BUs" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All business units</SelectItem>
+              {businessUnits.map(b => (
+                <SelectItem key={b.id} value={b.id}>
+                  {b.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
 
-        {/* Team picker */}
+        {showDept && departments.length > 0 && (
+          <MultiSelectDropdown
+            label="All departments"
+            options={departments.map(d => ({ id: d.id, label: d.name }))}
+            selected={filters.departmentIds ?? []}
+            onChange={ids => onChange({ ...filters, departmentIds: ids })}
+          />
+        )}
+
+        {showStatus && (
+          <MultiSelectDropdown
+            label="All statuses"
+            options={ALL_REPORT_STATUSES.map(s => ({ id: s.key, label: s.label }))}
+            selected={filters.statuses ?? []}
+            onChange={ids => onChange({ ...filters, statuses: ids })}
+          />
+        )}
+
         <div className="flex items-center gap-1.5">
           <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
         </div>
@@ -711,7 +922,7 @@ function FiltersBar({
           </button>
         )}
 
-        {!filters.serviceLineId && activeTab !== 'sales' && activeTab !== 'overview' && (
+        {!filters.serviceLineIds?.length && activeTab !== 'sales' && activeTab !== 'overview' && (
           <span className="ml-auto text-[11px] font-semibold text-slate-400">
             Tables split by service line — pick one for flat view.
           </span>
@@ -1302,13 +1513,13 @@ export default function ReportsPage() {
   const baseParams = useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
-    if (filters.clientId) p.set('clientId', filters.clientId);
-    if (filters.clientSpocId) p.set('clientSpocId', filters.clientSpocId); // ← NEW
-    if (filters.serviceLineId) p.set('serviceLineId', filters.serviceLineId);
+    (filters.clientIds ?? []).forEach(id => p.append('clientId', id));
+    (filters.clientSpocIds ?? []).forEach(id => p.append('clientSpocId', id));
+    (filters.serviceLineIds ?? []).forEach(id => p.append('serviceLineId', id));
     if (filters.businessUnitId) p.set('businessUnitId', filters.businessUnitId);
-    if (filters.departmentId) p.set('departmentId', filters.departmentId);
+    (filters.departmentIds ?? []).forEach(id => p.append('departmentId', id));
     if (filters.createdById) p.set('createdById', filters.createdById);
-    if (filters.status) p.set('status', filters.status);
+    (filters.statuses ?? []).forEach(s => p.append('status', s));
     if (standardOnly) p.set('standardOnly', 'true');
     if (teamSelection) {
       p.set('userIds', teamSelection.memberIds.join(','));
@@ -1553,7 +1764,7 @@ export default function ReportsPage() {
         onValueChange={v => {
           const next = v as TabKey;
           if (next === 'overview' || next === 'candidates' || next === 'sales') {
-            setFilters(f => ({ ...f, status: undefined, createdById: undefined }));
+            setFilters(f => ({ ...f, statuses: undefined, createdById: undefined }));
           }
           setSelectedStageIds([]);
           setActiveTab(next);
