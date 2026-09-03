@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: RecruiterCandidateDrillDialog.tsx
 // Path: src/components/reports/RecruiterCandidateDrillDialog.tsx
 //
@@ -25,7 +26,6 @@ import {
   TrendingUp,
   UserX,
   PauseCircle,
-  ArrowRight,
 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import * as XLSX from 'xlsx';
@@ -221,7 +221,8 @@ function ThBtn({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATE ROW — expandable
+// CANDIDATE ROW
+// skills, client, experience, service line → expanded only
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CandidateRow({ row }: { row: DrillRow }) {
@@ -231,7 +232,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
   return (
     <>
       <tr
-        className={`group cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50
+        className={`cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50
           ${dimmed ? 'opacity-50' : ''}
           ${row.isTerminal ? 'bg-emerald-50/30' : ''}
           ${row.isNearTerminal && !row.isTerminal ? 'bg-amber-50/20' : ''}`}
@@ -271,7 +272,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
         {/* Requirement */}
         <td className="px-3 py-3">
           <p className="text-[11px] font-bold text-slate-700">{row.reqCode}</p>
-          <p className="max-w-[180px] truncate text-[10px] text-slate-400">{row.reqTitle}</p>
+          <p className="max-w-45 truncate text-[10px] text-slate-400">{row.reqTitle}</p>
         </td>
 
         {/* Stage */}
@@ -280,7 +281,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
         </td>
 
         {/* CTC */}
-        <td className="px-3 py-3">
+        {/* <td className="px-3 py-3">
           <div className="flex flex-col gap-0.5 text-[11px]">
             {row.currentCtc != null && (
               <span className="text-slate-500">Curr: {fmtCtc(row.currentCtc)}</span>
@@ -295,10 +296,10 @@ function CandidateRow({ row }: { row: DrillRow }) {
               <span className="text-slate-300">—</span>
             )}
           </div>
-        </td>
+        </td> */}
 
         {/* Joining */}
-        <td className="px-3 py-3">
+        {/* <td className="px-3 py-3">
           {row.monthOfJoining ? (
             <div>
               <p className="text-[12px] font-bold text-indigo-700">{row.monthOfJoining}</p>
@@ -309,10 +310,86 @@ function CandidateRow({ row }: { row: DrillRow }) {
           ) : (
             <span className="text-[11px] text-slate-300">—</span>
           )}
+        </td> */}
+
+        {/* Offered CTC */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.offeredCtc != null ? (
+            <p className="text-[12px] font-bold text-emerald-700">{fmtCtc(row.offeredCtc)}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* Current CTC */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.currentCtc != null ? (
+            <p className="text-[12px] font-semibold text-slate-700">{fmtCtc(row.currentCtc)}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* Expected CTC */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.expectedCtc != null ? (
+            <p className="text-[12px] font-semibold text-indigo-600">{fmtCtc(row.expectedCtc)}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* Last Working Date */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.lastWorkingDate ? (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-700">
+                {fmtDate(row.lastWorkingDate)}
+              </p>
+              {row.noticePeriod && (
+                <p className="text-[10px] text-slate-400">{row.noticePeriod} notice</p>
+              )}
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* Date of Joining (actualJoiningDate) */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.actualJoiningDate ? (
+            <div>
+              <p className="text-[12px] font-bold text-emerald-700">
+                {fmtDate(row.actualJoiningDate)}
+              </p>
+              <p className="text-[10px] text-slate-400">Actual</p>
+            </div>
+          ) : row.expectedJoiningDate ? (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-700">
+                {fmtDate(row.expectedJoiningDate)}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Expected
+                {row.daysToJoin != null && row.daysToJoin >= 0 ? ` · ${row.daysToJoin}d` : ''}
+              </p>
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* Month of Joining */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.monthOfJoining ? (
+            <p className="text-[12px] font-semibold text-slate-700">{row.monthOfJoining}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
         </td>
 
         {/* Added + aging */}
-        <td className="px-3 py-3 text-right">
+        <td className="px-3 py-3 text-right whitespace-nowrap">
           <p className="text-[11px] font-semibold text-slate-700">{fmtDate(row.addedOn)}</p>
           <p className="text-[10px] text-slate-400">
             {row.pipelineDays}d · {row.stageAging} in stage
@@ -321,9 +398,9 @@ function CandidateRow({ row }: { row: DrillRow }) {
       </tr>
 
       {/* Expanded */}
-      {expanded && (
+      {/* {expanded && (
         <tr className="bg-indigo-50/40">
-          <td colSpan={6} className="px-6 py-4">
+          <td colSpan={7} className="px-6 py-4">
             <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-[12px] sm:grid-cols-3 lg:grid-cols-4">
               {row.candidatePhone && (
                 <div>
@@ -397,6 +474,69 @@ function CandidateRow({ row }: { row: DrillRow }) {
                 <div>
                   <span className="text-slate-400">Service Line </span>
                   <span className="font-semibold">{row.serviceLineName}</span>
+                </div>
+              )}
+            </div>
+          </td>
+        </tr>
+      )} */}
+      {/* Expanded — skills, client, exp, service line only */}
+      {expanded && (
+        <tr className="bg-indigo-50/40">
+          <td colSpan={10} className="px-6 py-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-[12px] sm:grid-cols-3 lg:grid-cols-4">
+              {row.candidatePhone && (
+                <div>
+                  <span className="text-slate-400">Phone </span>
+                  <span className="font-semibold">{row.candidatePhone}</span>
+                </div>
+              )}
+              {row.expYears != null && (
+                <div>
+                  <span className="text-slate-400">Exp </span>
+                  <span className="font-semibold">{row.expYears} yrs</span>
+                </div>
+              )}
+              {row.topSkills && (
+                <div className="col-span-2">
+                  <span className="text-slate-400">Skills </span>
+                  <span className="font-semibold">{row.topSkills}</span>
+                </div>
+              )}
+              {row.clientName && (
+                <div>
+                  <span className="text-slate-400">Client </span>
+                  <span className="font-semibold">{row.clientName}</span>
+                </div>
+              )}
+              {row.serviceLineName && (
+                <div>
+                  <span className="text-slate-400">Service Line </span>
+                  <span className="font-semibold">{row.serviceLineName}</span>
+                </div>
+              )}
+              {row.businessUnitName && (
+                <div>
+                  <span className="text-slate-400">BU </span>
+                  <span className="font-semibold">{row.businessUnitName}</span>
+                </div>
+              )}
+              {row.negotiatedCtc != null && (
+                <div>
+                  <span className="text-slate-400">Negotiated CTC </span>
+                  <span className="font-semibold">{fmtCtc(row.negotiatedCtc)}</span>
+                </div>
+              )}
+              {row.offerStatus && (
+                <div>
+                  <span className="text-slate-400">Offer Status </span>
+                  <span className="font-semibold">{row.offerStatus}</span>
+                </div>
+              )}
+              {row.submittedAt && (
+                <div>
+                  <span className="text-slate-400">Submitted </span>
+                  <span className="font-semibold">{fmtDate(row.submittedAt)}</span>
                 </div>
               )}
             </div>
@@ -629,6 +769,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
       expectedJoiningDate: r.expectedJoiningDate ?? null,
       actualJoiningDate: r.actualJoiningDate ?? null,
       monthOfJoining: r.monthOfJoining ?? null,
+      dateOfJoining: r.dateOfJoining ?? null,
       daysToJoin: r.daysToJoin ?? r.remainingDaysToJoin ?? null,
       reqCode: r.reqCode ?? r.requirement?.reqCode ?? '—',
       reqTitle: r.reqTitle ?? r.requirement?.title ?? '—',
@@ -872,7 +1013,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="candidateName"
                     label="Candidate"
-                    className="px-4 min-w-[200px]"
+                    className="px-4 min-w-50"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -880,7 +1021,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="reqCode"
                     label="Requirement"
-                    className="min-w-[140px]"
+                    className="min-w-35"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -888,31 +1029,67 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="stageLabel"
                     label="Stage"
-                    className="min-w-[120px]"
+                    className="min-w-30"
                   />
+
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
-                    k="offeredCtc"
-                    label="CTC"
-                    className="min-w-[120px]"
+                    k="lastWorkingDate"
+                    label="Last Working Date"
+                    className="min-w-30"
+                  />
+
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="actualJoiningDate"
+                    label="Date of Joining"
+                    className="min-w-27.5"
                   />
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
                     k="monthOfJoining"
-                    label="Joining"
-                    className="min-w-[110px]"
+                    label="Month of Joining"
+                    className="min-w-27.5"
                   />
+
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="offeredCtc"
+                    label="Offered CTC"
+                    className="min-w-30"
+                  />
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="currentCtc"
+                    label="Current CTC"
+                    className="min-w-30"
+                  />
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="expectedCtc"
+                    label="Expected CTC"
+                    className="min-w-27.5"
+                  />
+
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
                     k="addedOn"
                     label="Added · Aging"
-                    className="min-w-[120px] text-right"
+                    className="min-w-32.5 text-right" // was min-w-[120px]
                   />
                 </tr>
               </thead>
