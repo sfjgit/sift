@@ -96,7 +96,13 @@ const NAV: NavItem[] = [
       { label: 'My assignments', href: '/my-assignments', icon: ClipboardList },
     ],
   },
-
+  {
+    type: 'link',
+    label: 'Internal Pool',
+    href: '/internal-pool',
+    icon: UserSearch,
+    module: 'candidates',
+  },
   {
     type: 'link',
     label: 'Candidates',
