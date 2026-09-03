@@ -626,7 +626,10 @@ function TableColumnMenu({
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(o => !o)}
+        onMouseDown={e => {
+          e.stopPropagation();
+          setOpen(o => !o);
+        }}
         className="flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
         title="Show or hide table columns"
       >
@@ -636,7 +639,10 @@ function TableColumnMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-9 z-50 w-95 rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute right-0 top-9 z-50 w-95 rounded-xl border border-slate-200 bg-white shadow-2xl"
+        >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <p className="text-[12px] font-black text-slate-800">Table columns</p>
             <div className="flex gap-1.5">
@@ -722,6 +728,109 @@ function TableColumnMenu({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// STAGE MULTI-SELECT — hoisted out so hooks are never called inside a render fn
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StageMultiSelect({
+  stageIds,
+  stages,
+  onChange,
+  open,
+  setOpen,
+}: {
+  stageIds: string[];
+  stages: { id: string; label: string }[];
+  onChange: (ids: string[]) => void;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, setOpen]);
+
+  const toggle = (id: string) =>
+    onChange(stageIds.includes(id) ? stageIds.filter(x => x !== id) : [...stageIds, id]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onMouseDown={e => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        className={`flex h-8 w-full items-center justify-between gap-1 rounded-md border px-2 text-xs ${
+          stageIds.length
+            ? 'border-indigo-400 bg-indigo-50 font-bold text-indigo-700'
+            : 'border-slate-200 text-slate-500'
+        }`}
+      >
+        {stageIds.length
+          ? `${stageIds.length} stage${stageIds.length > 1 ? 's' : ''}`
+          : 'All stages'}
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute left-0 top-9 z-50 min-w-52 rounded-xl border border-slate-200 bg-white shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Stages
+            </span>
+            {stageIds.length > 0 && (
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  onChange([]);
+                }}
+                className="text-[10px] font-bold text-red-500 hover:text-red-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {stages.map(s => {
+              const on = stageIds.includes(s.id);
+              return (
+                <button
+                  key={s.id}
+                  onMouseDown={e => {
+                    e.stopPropagation();
+                    toggle(s.id);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${
+                    on ? 'font-semibold text-indigo-700' : 'text-slate-600'
+                  }`}
+                >
+                  {on ? (
+                    <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                  )}
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LOCAL FILTER STATE — candidate-specific, on top of the page-level baseQs
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -729,7 +838,7 @@ interface CandFilters {
   search: string;
   recruiterId: string;
   requirementId: string;
-  stageId: string;
+  stageIds: string[];
   bucket: string;
   disposition: string;
   reqStatus: string;
@@ -749,7 +858,7 @@ const EMPTY_FILTERS: CandFilters = {
   search: '',
   recruiterId: '',
   requirementId: '',
-  stageId: '',
+  stageIds: [],
   bucket: '',
   disposition: '',
   reqStatus: '',
@@ -862,6 +971,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [drillTarget, setDrillTarget] = useState<CandidateDrillTarget | null>(null);
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(DEFAULT_ON));
+  const [stageSelectOpen, setStageSelectOpen] = useState(false);
 
   const set = <K extends keyof CandFilters>(k: K, v: CandFilters[K]) => {
     setF(prev => ({ ...prev, [k]: v }));
@@ -876,13 +986,36 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   });
   const opts = filtersQuery.data?.data ?? {};
 
+  // ADD this right above filterQs
+  const statsQs = useMemo(() => {
+    const p = new URLSearchParams(baseQs);
+    if (f.search.trim()) p.set('search', f.search.trim());
+    if (f.recruiterId) p.set('recruiterId', f.recruiterId);
+    if (f.requirementId) p.set('requirementId', f.requirementId);
+    if (f.bucket) p.set('bucket', f.bucket);
+    if (f.disposition) p.set('disposition', f.disposition);
+    if (f.reqStatus) p.set('reqStatus', f.reqStatus);
+    if (f.snapshotType) p.set('snapshotType', f.snapshotType);
+    if (f.mojMonthNum) p.set('mojMonthNum', f.mojMonthNum);
+    if (f.mojYear) p.set('mojYear', f.mojYear);
+    if (f.joinFrom) p.set('joinFrom', f.joinFrom);
+    if (f.joinTo) p.set('joinTo', f.joinTo);
+    if (f.dateField) p.set('dateField', f.dateField);
+    if (f.duplicatesOnly) p.set('duplicatesOnly', 'true');
+    if (f.hasJoined) p.set('hasJoined', 'true');
+    if (f.hasOffer) p.set('hasOffer', 'true');
+    if (f.isSubmitted) p.set('isSubmitted', 'true');
+    return p.toString();
+  }, [baseQs, f]);
+
   // ── Query string: page-level baseQs + this tab's filters ──────────────────
   const filterQs = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (f.search.trim()) p.set('search', f.search.trim());
     if (f.recruiterId) p.set('recruiterId', f.recruiterId);
     if (f.requirementId) p.set('requirementId', f.requirementId);
-    if (f.stageId) p.set('stageId', f.stageId);
+    // if (f.stageId) p.set('stageId', f.stageId);
+    f.stageIds.forEach(id => p.append('stageId', id));
     if (f.bucket) p.set('bucket', f.bucket);
     if (f.disposition) p.set('disposition', f.disposition);
     if (f.reqStatus) p.set('reqStatus', f.reqStatus);
@@ -917,8 +1050,9 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   });
 
   const statsQuery = useQuery({
-    queryKey: ['candidates-stats', filterQs],
-    queryFn: async () => (await axios.get(`/reports/candidates/stats?${filterQs}`)).data,
+    queryKey: ['candidates-stats', statsQs],
+    queryFn: async () => (await axios.get(`/reports/candidates/stats?${statsQs}`)).data,
+    placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 
@@ -938,7 +1072,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     let n = 0;
     if (f.recruiterId) n++;
     if (f.requirementId) n++;
-    if (f.stageId) n++;
+    if (f.stageIds.length) n++;
     if (f.bucket) n++;
     if (f.disposition) n++;
     if (f.reqStatus) n++;
@@ -1129,7 +1263,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
           )}
 
           {/* Stage chips — clickable */}
-          {byStage.length > 0 && (
+          {/* {byStage.length > 0 && (
             <div className="border-t border-slate-100 pt-2.5">
               <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
                 By stage — click to filter
@@ -1150,6 +1284,70 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                     <span className="ml-1 opacity-70">{s.count}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+          )} */}
+
+          {byStage.length > 0 && (
+            <div className="border-t border-slate-100 pt-2.5">
+              <p className="mb-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                By stage — click to filter
+                {f.stageIds.length > 0 && (
+                  <button
+                    onClick={() => set('stageIds', [])}
+                    className="ml-2 normal-case font-bold text-indigo-500 hover:text-indigo-700"
+                  >
+                    Clear ({f.stageIds.length})
+                  </button>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {byStage.map(s => {
+                  const active = f.stageIds.includes(s.stageId);
+                  return (
+                    <button
+                      key={s.stageId}
+                      onClick={() => {
+                        const next = active
+                          ? f.stageIds.filter(id => id !== s.stageId)
+                          : [...f.stageIds, s.stageId];
+                        set('stageIds', next);
+                      }}
+                      title={`${s.label} · ${s.bucket} · ${s.pct}% of the filtered set`}
+                      className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-bold ring-1 transition-all ${
+                        active
+                          ? 'bg-indigo-600 text-white ring-indigo-600'
+                          : (BUCKET_STYLE[s.bucket] ?? 'bg-slate-100 text-slate-600 ring-slate-200')
+                      }`}
+                    >
+                      {/* mini checkbox */}
+                      <span
+                        className={`flex h-3 w-3 shrink-0 items-center justify-center rounded border ${
+                          active ? 'border-white bg-white' : 'border-current bg-transparent'
+                        }`}
+                      >
+                        {active && (
+                          <svg
+                            viewBox="0 0 8 8"
+                            className="h-2 w-2"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                          >
+                            <path
+                              d="M1 4l2 2 4-4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="text-indigo-600"
+                            />
+                          </svg>
+                        )}
+                      </span>
+                      {s.label}
+                      <span className="opacity-70">{s.count}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1284,7 +1482,10 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
 
         {/* Advanced filters */}
         {advancedOpen && (
-          <div className="space-y-3 border-t border-slate-100 pt-3">
+          <div
+            className="space-y-3 border-t border-slate-100 pt-3"
+            onMouseDown={e => e.stopPropagation()}
+          >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               <Select
                 value={f.requirementId || 'ALL'}
@@ -1303,7 +1504,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                 </SelectContent>
               </Select>
 
-              <Select
+              {/* <Select
                 value={f.stageId || 'ALL'}
                 onValueChange={v => set('stageId', v === 'ALL' ? '' : v)}
               >
@@ -1318,7 +1519,16 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </Select>
+              </Select> */}
+
+              {/* Stage multi-select — replaces the old single Select */}
+              <StageMultiSelect
+                stageIds={f.stageIds}
+                stages={opts.stages ?? []}
+                onChange={ids => set('stageIds', ids)}
+                open={stageSelectOpen}
+                setOpen={setStageSelectOpen}
+              />
 
               <Select
                 value={f.disposition || 'ALL'}
