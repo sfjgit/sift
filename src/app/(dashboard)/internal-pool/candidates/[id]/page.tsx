@@ -31,10 +31,14 @@ import {
   Tag,
   Building2,
   Zap,
-  Calendar,
   Info,
+  Calendar,
+  AlertCircle,
+  Link2,
+  DollarSign,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -79,7 +83,6 @@ interface CandidateFull {
   salaryFixed: number | null;
   salaryVariable: number | null;
   expectedSalary: number | null;
-  expectedSalaryFixed: number | null;
   cachedCurrentTitle: string | null;
   cachedCurrentCompany: string | null;
   cachedTotalExpYears: number | null;
@@ -93,30 +96,24 @@ interface CandidateFull {
   lastActivityAt: string;
   createdAt: string;
   updatedAt: string;
-
   skills: {
     id: string;
     rawSkill: string;
     normalizedSkill: string;
     category: string | null;
-    subcategory: string | null;
     yearsExp: number | null;
-    lastUsedYear: number | null;
     proficiency: string | null;
     isVerified: boolean;
     source: string;
   }[];
-
   experiences: {
     id: string;
     company: string;
-    companyNormalized: string | null;
     role: string;
     industry: string | null;
     employmentType: string | null;
     city: string | null;
     state: string | null;
-    country: string | null;
     isRemote: boolean;
     startDate: string | null;
     endDate: string | null;
@@ -126,22 +123,18 @@ interface CandidateFull {
     achievements: string | null;
     source: string;
   }[];
-
   educations: {
     id: string;
     institution: string;
-    institutionNormalized: string | null;
     degree: string | null;
     fieldOfStudy: string | null;
     grade: string | null;
-    gradeNumeric: number | null;
     startYear: number | null;
     endYear: number | null;
     isCurrent: boolean;
     institutionTier: string | null;
     source: string;
   }[];
-
   certifications: {
     id: string;
     name: string;
@@ -152,29 +145,18 @@ interface CandidateFull {
     expiryDate: string | null;
     isExpired: boolean;
   }[];
-
   languages: { id: string; language: string; proficiency: string | null }[];
-
   locations: {
     id: string;
     type: string;
     city: string | null;
     state: string | null;
     country: string;
-    pincode: string | null;
     isRemoteOk: boolean;
     isHybridOk: boolean;
   }[];
-
   tags: { id: string; tag: string }[];
-
-  notes: {
-    id: string;
-    note: string;
-    createdAt: string;
-    createdById: string;
-  }[];
-
+  notes: { id: string; note: string; createdAt: string; createdById: string }[];
   resumes: {
     id: string;
     url: string;
@@ -187,7 +169,6 @@ interface CandidateFull {
     source: string;
     createdAt: string;
   }[];
-
   requirements: {
     id: string;
     requirementId: string;
@@ -214,114 +195,154 @@ const SOURCE_LABELS: Record<string, string> = {
   NAUKRI_TALENT_POOL: 'Naukri TP',
 };
 
-function avatarColor(seed: string) {
-  const c = [
-    'bg-blue-500',
-    'bg-violet-500',
-    'bg-emerald-500',
-    'bg-amber-500',
-    'bg-rose-500',
-    'bg-cyan-500',
-    'bg-indigo-500',
-    'bg-teal-500',
-    'bg-orange-500',
-    'bg-pink-500',
-  ];
-  return c[seed.charCodeAt(0) % c.length];
-}
-function initials(name: string) {
-  return name
+const initials = (name: string) =>
+  name
     .split(' ')
     .map(w => w[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
-}
+
+const avatarColor = (seed: string) => {
+  const p = [
+    'bg-violet-200 text-violet-800',
+    'bg-blue-200 text-blue-800',
+    'bg-emerald-200 text-emerald-800',
+    'bg-amber-200 text-amber-800',
+    'bg-rose-200 text-rose-800',
+    'bg-cyan-200 text-cyan-800',
+    'bg-indigo-200 text-indigo-800',
+    'bg-orange-200 text-orange-800',
+  ];
+  return p[seed.charCodeAt(0) % p.length];
+};
+
 function fmtExp(years: number | null) {
   if (years == null) return null;
   const y = Math.floor(years);
   const m = Math.round((years % 1) * 12);
   return `${y}y ${m}m`;
 }
-function fmtSalary(val: number | null, currency = 'INR') {
-  if (!val) return null;
-  return `₹ ${(val / 100000).toFixed(1)} Lacs`;
+
+function fmtSalary(val: number | null) {
+  if (!val || val === 0) return null;
+  // If value > 1000, it's stored in raw rupees (e.g. 1500000 = 15L)
+  // If value <= 1000, it's already in lacs (e.g. 15 = 15L)
+  const inLacs = val > 1000 ? val / 100000 : val;
+  if (inLacs >= 100) return `₹${(inLacs / 100).toFixed(1)}Cr`;
+  return `₹${inLacs % 1 === 0 ? inLacs.toFixed(0) : inLacs.toFixed(1)}L`;
 }
+
 function fmtDate(d: string | null | undefined) {
   if (!d) return null;
   return format(new Date(d), 'MMM yyyy');
 }
+
 function fmtDateFull(d: string | null | undefined) {
   if (!d) return null;
   return format(new Date(d), 'dd MMM yyyy');
 }
+
+function fmtDatetime(d: string | null | undefined) {
+  if (!d) return null;
+  return format(new Date(d), 'dd MMM yyyy, HH:mm');
+}
+
 function timeAgo(d: string) {
   const diff = Date.now() - new Date(d).getTime();
   const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
   if (days < 30) return `${days} days ago`;
-  const months = Math.floor(days / 30);
-  return `${months} month${months > 1 ? 's' : ''} ago`;
+  return `${Math.floor(days / 30)} months ago`;
 }
+
+function durationLabel(months: number | null) {
+  if (!months) return null;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (y === 0) return `${m}m`;
+  if (m === 0) return `${y}y`;
+  return `${y}y ${m}m`;
+}
+
 function noticePeriodLabel(days: number | null, isImmediate: boolean) {
-  if (isImmediate || days === 0) return 'Available to join immediately';
+  if (isImmediate || days === 0) return 'Immediate joiner';
   if (!days) return null;
-  if (days <= 15) return `Available to join in ${days} days or less`;
-  if (days <= 30) return `1 month notice period`;
-  if (days <= 60) return `2 months notice period`;
-  if (days <= 90) return `3 months notice period`;
-  return `${Math.round(days / 30)} months notice period`;
+  if (days <= 15) return `${days} days notice`;
+  if (days <= 30) return '1 month notice';
+  if (days <= 60) return '2 months notice';
+  if (days <= 90) return '3 months notice';
+  return `${Math.round(days / 30)} months notice`;
 }
 
 // =============================================================================
-// TIMELINE BAR — like Naukri's horizontal career timeline
+// SECTION WRAPPER — matches existing candidates page style exactly
 // =============================================================================
 
-function CareerTimeline({ experiences }: { experiences: CandidateFull['experiences'] }) {
-  if (!experiences.length) return null;
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden">
+      <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{title}</p>
+      </div>
+      <div className="bg-white">{children}</div>
+    </div>
+  );
+}
 
-  const sorted = [...experiences].sort((a, b) => {
-    const da = a.startDate ? new Date(a.startDate).getTime() : 0;
-    const db = b.startDate ? new Date(b.startDate).getTime() : 0;
-    return da - db;
-  });
+// =============================================================================
+// RESUME VIEW BUTTON — fetches presigned URL then opens it
+// Route: GET /candidate/api/resume/:resumeId/view
+// If you get 404, share your candidate routes file to get the exact path
+// =============================================================================
 
-  const first = sorted[0];
-  const startYear = first.startDate ? new Date(first.startDate).getFullYear() : null;
-  const now = new Date();
+function ResumeOpenButton({
+  resumeId,
+  fileName,
+  axios,
+}: {
+  resumeId: string;
+  fileName: string;
+  axios: any;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleOpen() {
+    try {
+      setLoading(true);
+      const res = await axios.get(`/candidate/api/resume/${resumeId}/view`, {
+        baseURL: '/api/proxy',
+        withCredentials: true,
+      });
+      const url = res.data?.data?.presignedUrl;
+      if (!url) throw new Error('No presigned URL in response');
+      window.open(url, '_blank');
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 404) {
+        toast.error('Resume endpoint not found — share your candidate routes file to fix the path');
+      } else {
+        toast.error('Could not open resume. Try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="flex items-center gap-3 mt-4 mb-1">
-      {startYear && <span className="text-xs text-slate-500 shrink-0">{startYear}</span>}
-      <div className="flex-1 flex items-center h-2 bg-slate-100 rounded-full overflow-hidden">
-        {sorted.map((exp, i) => {
-          const start = exp.startDate ? new Date(exp.startDate) : null;
-          const end = exp.endDate ? new Date(exp.endDate) : now;
-          const totalMs =
-            now.getTime() - (sorted[0].startDate ? new Date(sorted[0].startDate).getTime() : 0);
-          const width = start ? ((end.getTime() - start.getTime()) / totalMs) * 100 : 0;
-          const colors = [
-            'bg-blue-400',
-            'bg-violet-400',
-            'bg-emerald-400',
-            'bg-amber-400',
-            'bg-rose-400',
-          ];
-          return (
-            <div
-              key={exp.id}
-              title={`${exp.role} at ${exp.company}`}
-              className={cn('h-full', colors[i % colors.length], i > 0 ? 'ml-px' : '')}
-              style={{ width: `${Math.max(width, 2)}%` }}
-            />
-          );
-        })}
-      </div>
-      <span className="text-xs text-slate-500 shrink-0">
-        {fmtDate(experiences.find(e => e.isCurrent)?.startDate ?? null) ?? 'till date'}
-      </span>
-    </div>
+    <button
+      onClick={handleOpen}
+      disabled={loading}
+      className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-50 transition-colors"
+    >
+      {loading ? (
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      ) : (
+        <ExternalLink className="w-3.5 h-3.5" />
+      )}
+      {loading ? 'Opening…' : 'View'}
+    </button>
   );
 }
 
@@ -358,14 +379,11 @@ function SourceDialog({
         </DialogHeader>
         <div className="space-y-3 py-1">
           <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-            <div
-              className={cn(
-                'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0',
-                avatarColor(candidate.id)
-              )}
-            >
-              {initials(candidate.fullName)}
-            </div>
+            <Avatar className="h-10 w-10 shrink-0">
+              <AvatarFallback className={cn('text-sm font-bold', avatarColor(candidate.id))}>
+                {initials(candidate.fullName)}
+              </AvatarFallback>
+            </Avatar>
             <div className="min-w-0">
               <p className="text-sm font-bold text-slate-900 truncate">{candidate.fullName}</p>
               <p className="text-xs text-slate-500 truncate">
@@ -406,78 +424,29 @@ function SourceDialog({
 }
 
 // =============================================================================
-// SECTION WRAPPER
-// =============================================================================
-
-function Section({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-200">
-        <span className="text-slate-500">{icon}</span>
-        <h3 className="text-base font-bold text-slate-800">{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// =============================================================================
-// PROFICIENCY BADGE
-// =============================================================================
-
-function ProficiencyBadge({ level }: { level: string | null }) {
-  if (!level) return null;
-  const map: Record<string, string> = {
-    BEGINNER: 'bg-slate-100 text-slate-600',
-    INTERMEDIATE: 'bg-blue-50 text-blue-700',
-    ADVANCED: 'bg-violet-50 text-violet-700',
-    EXPERT: 'bg-emerald-50 text-emerald-700',
-  };
-  return (
-    <span
-      className={cn(
-        'text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide',
-        map[level] ?? 'bg-slate-100 text-slate-600'
-      )}
-    >
-      {level.toLowerCase()}
-    </span>
-  );
-}
-
-// =============================================================================
 // PAGE SKELETON
 // =============================================================================
 
 function PageSkeleton() {
   return (
-    <div className="min-h-screen bg-[#F1F4F8]">
-      <div className="max-w-5xl mx-auto px-6 py-6 space-y-4">
-        <div className="bg-white rounded-2xl p-6">
-          <div className="flex gap-5">
-            <Skeleton className="w-24 h-24 rounded-full shrink-0" />
-            <div className="flex-1 space-y-3">
-              <Skeleton className="h-7 w-64" />
-              <Skeleton className="h-4 w-48" />
-              <div className="flex gap-4">
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-            </div>
-          </div>
+    <div className="flex flex-col h-screen bg-white">
+      <div className="border-b border-slate-200 px-6 py-5 flex items-center gap-4">
+        <Skeleton className="w-8 h-8 rounded-xl" />
+        <Skeleton className="w-12 h-12 rounded-full" />
+        <div className="flex flex-col gap-2">
+          <Skeleton className="w-48 h-5" />
+          <Skeleton className="w-32 h-4" />
         </div>
-        <div className="bg-white rounded-2xl p-6 space-y-3">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full" />
+      </div>
+      <div className="flex-1 overflow-y-auto p-6 grid grid-cols-3 gap-5">
+        <div className="col-span-2 flex flex-col gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="col-span-1 flex flex-col gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full rounded-xl" />
           ))}
         </div>
       </div>
@@ -502,7 +471,7 @@ export default function CandidateProfilePage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['candidate-full', id],
     queryFn: async () => {
-      const res = await axios.get(`/candidate/api/internal-pool/candidates/${id}`, {
+      const res = await axios.get(`/candidate/api/candidates/${id}`, {
         baseURL: '/api/proxy',
         withCredentials: true,
       });
@@ -551,70 +520,104 @@ export default function CandidateProfilePage() {
   });
 
   if (isLoading) return <PageSkeleton />;
+
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-[#F1F4F8] flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-base font-bold text-slate-700">Candidate not found</p>
-          <Button variant="outline" className="mt-4" onClick={() => router.back()}>
-            Go back
-          </Button>
-        </div>
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <AlertCircle className="w-10 h-10 text-rose-400" />
+        <p className="text-base font-medium text-slate-600">Candidate not found.</p>
+        <Button variant="ghost" onClick={() => router.back()}>
+          Go back
+        </Button>
       </div>
     );
   }
 
   const c = data;
-  const activeResume = c.resumes?.find(r => r.isActive);
+  const activeResume = c.resumes?.find(r => r.isActive) ?? c.resumes?.[0];
   const expLabel = fmtExp(c.cachedTotalExpYears);
-  const currentSalaryLabel = fmtSalary(c.currentSalary);
-  const expectedSalaryLabel = fmtSalary(c.expectedSalary);
   const location = [c.cachedLocationCity, c.cachedLocationState].filter(Boolean).join(', ');
   const currentExp = c.experiences?.find(e => e.isCurrent) ?? null;
-  const previousExp = c.experiences?.filter(e => !e.isCurrent)?.[0] ?? null;
   const topEdu = c.educations?.[0] ?? null;
 
   // Group skills by category
   const skillsByCategory: Record<string, typeof c.skills> = {};
-  for (const s of c.skills) {
-    const cat = s.category ?? 'Other';
+  for (const s of c.skills ?? []) {
+    const cat = s.category ?? 'Skills';
     if (!skillsByCategory[cat]) skillsByCategory[cat] = [];
     skillsByCategory[cat].push(s);
   }
 
   return (
-    <div className="min-h-screen bg-[#F1F4F8]">
-      {/* ── Top action bar — like Naukri ─────────────────────────────────── */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-6 py-3 flex items-center gap-4">
+    <div className="flex flex-col h-screen overflow-hidden bg-white">
+      {/* ═══ HEADER — matches existing candidates page exactly ═══ */}
+      <div className="border-b border-slate-200 bg-white shrink-0 px-6 py-4">
+        <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+            className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div className="flex items-center gap-2 flex-1">
-            {activeResume && (
-              <a
-                href={activeResume.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors"
-              >
-                <FileText className="w-4 h-4 text-slate-500" />
-                Attached CV
-              </a>
+          <Avatar className="h-11 w-11 shrink-0">
+            <AvatarFallback className={cn('text-sm font-bold', avatarColor(c.id))}>
+              {initials(c.fullName)}
+            </AvatarFallback>
+          </Avatar>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base font-bold text-slate-900">{c.fullName}</h1>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                {SOURCE_LABELS[c.source] ?? c.source}
+              </span>
+              {c.isImmediateJoiner && (
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                  Immediate Joiner
+                </span>
+              )}
+              {!c.isActive && (
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                  Inactive
+                </span>
+              )}
+              {c.isBlocked && (
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                  Blocked
+                </span>
+              )}
+              {c.doNotContact && (
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                  Do Not Contact
+                </span>
+              )}
+            </div>
+            {(c.cachedCurrentTitle || c.cachedCurrentCompany) && (
+              <p className="text-sm text-slate-500 mt-0.5">
+                {c.cachedCurrentTitle}
+                {c.cachedCurrentTitle && c.cachedCurrentCompany ? ' · ' : ''}
+                {c.cachedCurrentCompany}
+              </p>
             )}
           </div>
 
+          {/* Right actions */}
           <div className="flex items-center gap-2 shrink-0">
+            {activeResume && (
+              <ResumeOpenButton
+                resumeId={activeResume.id}
+                fileName={activeResume.fileName}
+                axios={axios}
+              />
+            )}
             {activeContext ? (
               <Button
                 disabled={sourced || sourceMut.isPending}
                 onClick={() => setSourceDialogOpen(true)}
+                size="sm"
                 className={cn(
-                  'gap-2 font-bold',
+                  'gap-2 font-bold h-8',
                   sourced ? 'bg-emerald-600 hover:bg-emerald-600' : 'bg-blue-600 hover:bg-blue-700'
                 )}
               >
@@ -632,663 +635,539 @@ export default function CandidateProfilePage() {
                     : `Source to ${activeContext.reqCode}`}
               </Button>
             ) : (
-              <div className="text-xs text-slate-400 border border-slate-200 rounded-lg px-3 py-2">
+              <span className="text-xs text-slate-400 border border-slate-200 rounded-lg px-3 py-1.5">
                 Open from an assignment to source
-              </div>
+              </span>
             )}
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-5 flex gap-5">
-        {/* ═══ MAIN CONTENT ════════════════════════════════════════════════ */}
-        <div className="flex-1 min-w-0 space-y-4">
-          {/* ── HEADER CARD ─────────────────────────────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <div className="p-6">
-              <div className="flex gap-5">
-                {/* Big avatar */}
-                <div
-                  className={cn(
-                    'w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-white shrink-0',
-                    avatarColor(c.id)
-                  )}
-                >
-                  {initials(c.fullName)}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  {/* Name + meta */}
-                  <h1 className="text-2xl font-bold text-slate-900">{c.fullName}</h1>
-
-                  {/* Exp | Salary | Location */}
-                  <div className="flex items-center gap-4 mt-1.5 text-sm text-slate-600 flex-wrap">
-                    {expLabel && (
-                      <span className="flex items-center gap-1.5">
-                        <Briefcase className="w-4 h-4 text-slate-400" />
-                        {expLabel}
-                      </span>
-                    )}
-                    {(currentSalaryLabel || expectedSalaryLabel) && (
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-slate-400">₹</span>
-                        {currentSalaryLabel && <span>{currentSalaryLabel}</span>}
-                        {expectedSalaryLabel && (
-                          <span className="text-slate-400">(expects: {expectedSalaryLabel})</span>
-                        )}
-                      </span>
-                    )}
-                    {location && (
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="w-4 h-4 text-slate-400" />
-                        {location}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Previous */}
-                  {previousExp && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-slate-600">
-                      <span className="text-slate-400 text-xs">Previous</span>
-                      <span>
-                        {previousExp.role} at {previousExp.company}
-                      </span>
+      {/* ═══ BODY — same 3-col layout as existing candidates page ═══ */}
+      <div className="flex-1 overflow-hidden">
+        <div className="grid grid-cols-3 divide-x divide-slate-200 h-full">
+          {/* ── LEFT col-span-2 ─────────────────────────────────────────── */}
+          <div className="col-span-2 overflow-y-auto px-6 py-5 space-y-5">
+            {/* Skills */}
+            {c.skills?.length > 0 && (
+              <Section title={`Skills (${c.skills.length})`}>
+                <div className="px-4 py-3 flex flex-wrap gap-2">
+                  {c.skills.map((s, i) => (
+                    <div
+                      key={s.id ?? i}
+                      className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-full px-3 py-1"
+                    >
+                      <span className="text-xs font-semibold text-slate-800">{s.rawSkill}</span>
+                      {s.yearsExp && (
+                        <span className="text-[10px] text-slate-400">{s.yearsExp}y</span>
+                      )}
+                      {s.proficiency && (
+                        <span
+                          className={cn(
+                            'text-[10px] font-bold uppercase',
+                            s.proficiency === 'EXPERT'
+                              ? 'text-emerald-600'
+                              : s.proficiency === 'ADVANCED'
+                                ? 'text-violet-600'
+                                : s.proficiency === 'INTERMEDIATE'
+                                  ? 'text-blue-600'
+                                  : 'text-slate-400'
+                          )}
+                        >
+                          {s.proficiency.slice(0, 3)}
+                        </span>
+                      )}
+                      {s.isVerified && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
                     </div>
-                  )}
-
-                  {/* Highest degree */}
-                  {topEdu && (
-                    <div className="flex items-center gap-2 mt-1 text-sm text-slate-600">
-                      <span className="text-slate-400 text-xs">Highest degree</span>
-                      <span>
-                        {[topEdu.degree, topEdu.fieldOfStudy].filter(Boolean).join(' / ')}
-                        {topEdu.institution ? ` ${topEdu.institution}` : ''}
-                        {topEdu.endYear ? ` ${topEdu.endYear}` : ''}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Preferred location */}
-                  {location && (
-                    <div className="flex items-center gap-2 mt-1 text-sm text-slate-600">
-                      <span className="text-slate-400 text-xs">Pref. location</span>
-                      <span>{location}</span>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              </div>
+              </Section>
+            )}
 
-              {/* Notice period notice */}
-              {noticePeriodLabel(c.noticePeriodDays, c.isImmediateJoiner) && (
-                <div
-                  className={cn(
-                    'mt-4 flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg w-fit',
-                    c.isImmediateJoiner
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'bg-slate-100 text-slate-600'
-                  )}
-                >
-                  {c.isImmediateJoiner ? (
-                    <Zap className="w-4 h-4" />
-                  ) : (
-                    <Clock className="w-4 h-4" />
-                  )}
-                  {noticePeriodLabel(c.noticePeriodDays, c.isImmediateJoiner)}
-                </div>
-              )}
-
-              {/* Contact row */}
-              <div className="flex items-center gap-3 mt-4 flex-wrap">
-                {c.phone && (
-                  <button className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors">
-                    <Phone className="w-4 h-4 text-slate-500" />
-                    View phone number
-                  </button>
-                )}
-                {c.phone && (
-                  <button className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors">
-                    <Phone className="w-4 h-4 text-slate-500" />
-                    Call candidate
-                  </button>
-                )}
-                {c.linkedinUrl && (
-                  <a
-                    href={c.linkedinUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm font-semibold text-blue-700 border border-blue-200 rounded-lg px-4 py-2 hover:bg-blue-50 transition-colors"
-                  >
-                    <Linkedin className="w-4 h-4" />
-                    LinkedIn
-                  </a>
-                )}
-                {c.githubUrl && (
-                  <a
-                    href={c.githubUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors"
-                  >
-                    <Github className="w-4 h-4" />
-                    GitHub
-                  </a>
-                )}
-                {c.portfolioUrl && (
-                  <a
-                    href={c.portfolioUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 border border-slate-300 rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors"
-                  >
-                    <Globe className="w-4 h-4" />
-                    Portfolio
-                  </a>
-                )}
-              </div>
-
-              {/* Email row */}
-              <div className="flex items-center gap-3 mt-3 text-sm text-slate-500">
-                <Mail className="w-4 h-4 text-slate-400" />
-                {c.email}
-                {c.altPhone && (
-                  <>
-                    <span>·</span>
-                    <Phone className="w-4 h-4 text-slate-400" />
-                    {c.altPhone}
-                  </>
-                )}
-              </div>
-
-              {/* Career timeline */}
-              {c.experiences?.length > 0 && <CareerTimeline experiences={c.experiences} />}
-
-              {/* Bottom meta */}
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
-                <span
-                  className={cn(
-                    'font-semibold px-2 py-0.5 rounded-full border',
-                    'bg-slate-100 text-slate-600 border-slate-200'
-                  )}
-                >
-                  {SOURCE_LABELS[c.source] ?? c.source}
-                </span>
-                {c.tags?.map(t => (
-                  <span
-                    key={t.id}
-                    className="flex items-center gap-1 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full text-slate-600 font-medium"
-                  >
-                    <Tag className="w-3 h-3" />
-                    {t.tag}
-                  </span>
-                ))}
-                <span className="ml-auto">Modified {timeAgo(c.lastActivityAt)}</span>
-                <span>Active {timeAgo(c.lastActivityAt)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ── TABS: Profile Detail | Attached CV ───────────────────────── */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <Tabs defaultValue="profile">
-              <TabsList className="h-12 bg-transparent p-0 border-b border-slate-200 w-full rounded-none justify-start">
-                <TabsTrigger
-                  value="profile"
-                  className="h-12 px-6 rounded-none border-b-2 border-transparent data-[state=active]:border-red-500 data-[state=active]:text-slate-900 data-[state=active]:shadow-none bg-transparent text-slate-500 font-semibold"
-                >
-                  Profile detail
-                </TabsTrigger>
-                <TabsTrigger
-                  value="cv"
-                  className="h-12 px-6 rounded-none border-b-2 border-transparent data-[state=active]:border-red-500 data-[state=active]:text-slate-900 data-[state=active]:shadow-none bg-transparent text-slate-500 font-semibold"
-                >
-                  Attached CV
-                </TabsTrigger>
-              </TabsList>
-
-              {/* ── PROFILE DETAIL TAB ─────────────────────────────────── */}
-              <TabsContent value="profile" className="p-6 mt-0">
-                {/* Key skills */}
-                {c.skills.length > 0 && (
-                  <Section title="Key skills" icon={<Briefcase className="w-4 h-4" />}>
-                    {Object.keys(skillsByCategory).length > 1 ? (
-                      Object.entries(skillsByCategory).map(([cat, skills]) => (
-                        <div key={cat} className="mb-4">
-                          <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">
-                            {cat}
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {skills.map(s => (
-                              <div
-                                key={s.id}
-                                className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5"
-                              >
-                                <span className="text-sm text-slate-800 font-medium">
-                                  {s.rawSkill}
-                                </span>
-                                {s.yearsExp && (
-                                  <span className="text-xs text-slate-400">{s.yearsExp}y</span>
-                                )}
-                                <ProficiencyBadge level={s.proficiency} />
-                                {s.isVerified && (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                )}
-                              </div>
-                            ))}
-                          </div>
+            {/* Experience */}
+            {c.experiences?.length > 0 && (
+              <Section title={`Experience (${c.experiences.length})`}>
+                <div className="divide-y divide-slate-100">
+                  {c.experiences.map(exp => (
+                    <div key={exp.id} className="px-4 py-4 flex gap-4">
+                      <div className="shrink-0 mt-0.5">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                          <Building2 className="w-4 h-4 text-slate-400" />
                         </div>
-                      ))
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {c.skills.map(s => (
-                          <div
-                            key={s.id}
-                            className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5"
-                          >
-                            <span className="text-sm text-slate-800 font-medium">{s.rawSkill}</span>
-                            {s.yearsExp && (
-                              <span className="text-xs text-slate-400">{s.yearsExp}y</span>
-                            )}
-                            <ProficiencyBadge level={s.proficiency} />
-                          </div>
-                        ))}
                       </div>
-                    )}
-                  </Section>
-                )}
-
-                {/* Employment */}
-                {c.experiences?.length > 0 && (
-                  <Section title="Employment" icon={<Building2 className="w-4 h-4" />}>
-                    <div className="space-y-6">
-                      {c.experiences.map((exp, i) => (
-                        <div key={exp.id} className="flex gap-4">
-                          {/* Timeline dot */}
-                          <div className="flex flex-col items-center">
-                            <div
-                              className={cn(
-                                'w-3 h-3 rounded-full mt-1 shrink-0',
-                                exp.isCurrent ? 'bg-blue-500' : 'bg-slate-300'
-                              )}
-                            />
-                            {i < c.experiences.length - 1 && (
-                              <div className="w-px flex-1 bg-slate-200 mt-2" />
-                            )}
-                          </div>
-                          <div className="flex-1 pb-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="text-base font-bold text-slate-900">{exp.role}</p>
-                                <p className="text-sm font-semibold text-slate-700 mt-0.5">
-                                  {exp.company}
-                                </p>
-                              </div>
-                              {exp.isCurrent && (
-                                <span className="text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full shrink-0">
-                                  Current
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
-                              <span>
-                                {fmtDate(exp.startDate) ?? '—'} –{' '}
-                                {exp.isCurrent ? 'Present' : (fmtDate(exp.endDate) ?? '—')}
-                              </span>
-                              {exp.durationMonths && (
-                                <span className="text-slate-400">
-                                  · {Math.floor(exp.durationMonths / 12)}y {exp.durationMonths % 12}
-                                  m
-                                </span>
-                              )}
-                              {exp.employmentType && (
-                                <span className="text-slate-400">· {exp.employmentType}</span>
-                              )}
-                              {exp.city && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {exp.city}
-                                </span>
-                              )}
-                              {exp.isRemote && (
-                                <span className="text-emerald-600 font-semibold">Remote</span>
-                              )}
-                            </div>
-                            {exp.description && (
-                              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-                                {exp.description}
-                              </p>
-                            )}
-                            {exp.achievements && (
-                              <div className="mt-2 pl-3 border-l-2 border-blue-200">
-                                <p className="text-xs font-bold text-slate-500 mb-1">
-                                  Achievements
-                                </p>
-                                <p className="text-sm text-slate-600">{exp.achievements}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {/* Education */}
-                {c.educations?.length > 0 && (
-                  <Section title="Education" icon={<GraduationCap className="w-4 h-4" />}>
-                    <div className="space-y-4">
-                      {c.educations.map(edu => (
-                        <div
-                          key={edu.id}
-                          className="flex gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl"
-                        >
-                          <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0">
-                            <GraduationCap className="w-5 h-5 text-slate-400" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-bold text-slate-900">
-                              {[edu.degree, edu.fieldOfStudy].filter(Boolean).join(' / ') ||
-                                'Degree not specified'}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900">{exp.role}</p>
+                            <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                              {exp.company}
                             </p>
-                            <p className="text-sm text-slate-600 mt-0.5">{edu.institution}</p>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                              {(edu.startYear || edu.endYear) && (
-                                <span>
-                                  {edu.startYear ?? ''}
-                                  {edu.startYear && edu.endYear ? ' – ' : ''}
-                                  {edu.endYear ?? ''}
-                                  {edu.isCurrent ? ' (Ongoing)' : ''}
-                                </span>
-                              )}
-                              {edu.grade && <span>Grade: {edu.grade}</span>}
-                              {edu.institutionTier && (
-                                <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-semibold">
-                                  {edu.institutionTier}
-                                </span>
-                              )}
-                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {/* Certifications */}
-                {c.certifications?.length > 0 && (
-                  <Section title="Certifications" icon={<Award className="w-4 h-4" />}>
-                    <div className="space-y-3">
-                      {c.certifications.map(cert => (
-                        <div
-                          key={cert.id}
-                          className="flex items-start gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl"
-                        >
-                          <Award className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-bold text-slate-900">{cert.name}</p>
-                            {cert.issuer && (
-                              <p className="text-xs text-slate-500 mt-0.5">{cert.issuer}</p>
-                            )}
-                            <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                              {cert.issueDate && <span>Issued {fmtDateFull(cert.issueDate)}</span>}
-                              {cert.expiryDate && (
-                                <span>Expires {fmtDateFull(cert.expiryDate)}</span>
-                              )}
-                              {cert.isExpired && (
-                                <span className="text-rose-600 font-semibold">Expired</span>
-                              )}
-                              {cert.verifyUrl && (
-                                <a
-                                  href={cert.verifyUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Verify
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {/* Languages */}
-                {c.languages?.length > 0 && (
-                  <Section title="Languages" icon={<Languages className="w-4 h-4" />}>
-                    <div className="flex flex-wrap gap-2">
-                      {c.languages.map(lang => (
-                        <div
-                          key={lang.id}
-                          className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl"
-                        >
-                          <span className="text-sm font-semibold text-slate-800">
-                            {lang.language}
-                          </span>
-                          {lang.proficiency && (
-                            <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
-                              {lang.proficiency.toLowerCase()}
+                          {exp.isCurrent && (
+                            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              Current
                             </span>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {/* Notes */}
-                {c.notes?.length > 0 && (
-                  <Section title="Notes" icon={<Info className="w-4 h-4" />}>
-                    <div className="space-y-3">
-                      {c.notes.map(note => (
-                        <div
-                          key={note.id}
-                          className="p-4 bg-amber-50 border border-amber-200 rounded-xl"
-                        >
-                          <p className="text-sm text-slate-700 leading-relaxed">{note.note}</p>
-                          <p className="text-xs text-slate-400 mt-2">
-                            {fmtDateFull(note.createdAt)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-              </TabsContent>
-
-              {/* ── ATTACHED CV TAB ────────────────────────────────────── */}
-              <TabsContent value="cv" className="p-6 mt-0">
-                {c.resumes?.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400">
-                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-semibold">No resume attached</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {c.resumes.map(r => (
-                      <div
-                        key={r.id}
-                        className={cn(
-                          'flex items-center gap-4 p-4 border rounded-xl',
-                          r.isActive ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'
-                        )}
-                      >
-                        <FileText
-                          className={cn(
-                            'w-8 h-8 shrink-0',
-                            r.isActive ? 'text-blue-500' : 'text-slate-400'
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {(exp.startDate || exp.endDate) && (
+                            <span className="flex items-center gap-1 text-xs text-slate-400">
+                              <Calendar className="w-3 h-3" />
+                              {fmtDate(exp.startDate) ?? '?'} –{' '}
+                              {exp.isCurrent ? 'Present' : (fmtDate(exp.endDate) ?? '?')}
+                            </span>
                           )}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-900 truncate">{r.fileName}</p>
-                          <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
-                            <span>v{r.version}</span>
-                            {r.fileSizeKb && <span>{Math.round(r.fileSizeKb)} KB</span>}
-                            <span>{SOURCE_LABELS[r.source] ?? r.source}</span>
-                            <span>{fmtDateFull(r.createdAt)}</span>
-                            {r.isActive && <span className="text-blue-600 font-bold">Active</span>}
+                          {exp.durationMonths && (
+                            <span className="text-xs text-slate-400">
+                              · {durationLabel(exp.durationMonths)}
+                            </span>
+                          )}
+                          {(exp.city || exp.state) && (
+                            <span className="flex items-center gap-1 text-xs text-slate-400">
+                              <MapPin className="w-3 h-3" />
+                              {[exp.city, exp.state].filter(Boolean).join(', ')}
+                            </span>
+                          )}
+                          {exp.employmentType && (
+                            <span className="text-xs text-slate-400">· {exp.employmentType}</span>
+                          )}
+                          {exp.isRemote && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              Remote
+                            </span>
+                          )}
+                        </div>
+                        {exp.description && (
+                          <p className="text-xs text-slate-500 mt-2 leading-relaxed line-clamp-4">
+                            {exp.description}
+                          </p>
+                        )}
+                        {exp.achievements && (
+                          <div className="mt-2 pl-3 border-l-2 border-blue-200">
+                            <p className="text-[10px] font-bold text-blue-600 mb-1 uppercase tracking-wide">
+                              Achievements
+                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">
+                              {exp.achievements}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {/* Education */}
+            {c.educations?.length > 0 && (
+              <Section title={`Education (${c.educations.length})`}>
+                <div className="divide-y divide-slate-100">
+                  {c.educations.map(edu => (
+                    <div key={edu.id} className="px-4 py-4 flex gap-4">
+                      <div className="shrink-0 mt-0.5">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                          <GraduationCap className="w-4 h-4 text-blue-500" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900">{edu.institution}</p>
+                        {(edu.degree || edu.fieldOfStudy) && (
+                          <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                            {edu.degree}
+                            {edu.degree && edu.fieldOfStudy ? ' / ' : ''}
+                            {edu.fieldOfStudy}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          {(edu.startYear || edu.endYear) && (
+                            <span className="flex items-center gap-1 text-xs text-slate-400">
+                              <Calendar className="w-3 h-3" />
+                              {edu.startYear ?? '?'} –{' '}
+                              {edu.isCurrent ? 'Present' : (edu.endYear ?? '?')}
+                            </span>
+                          )}
+                          {edu.grade && (
+                            <span className="text-xs text-slate-400">· Grade: {edu.grade}</span>
+                          )}
+                          {edu.institutionTier && (
+                            <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                              {edu.institutionTier}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {/* Certifications */}
+            {c.certifications?.length > 0 && (
+              <Section title={`Certifications (${c.certifications.length})`}>
+                <div className="divide-y divide-slate-100">
+                  {c.certifications.map(cert => (
+                    <div key={cert.id} className="px-4 py-3 flex items-center gap-3">
+                      <Tag className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-800">{cert.name}</p>
+                        {cert.issuer && <p className="text-[10px] text-slate-400">{cert.issuer}</p>}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {cert.issueDate && (
+                          <span className="text-[10px] text-slate-400">
+                            {fmtDate(cert.issueDate)}
+                          </span>
+                        )}
+                        {cert.isExpired && (
+                          <span className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full">
+                            Expired
+                          </span>
+                        )}
+                        {cert.verifyUrl && (
+                          <a
+                            href={cert.verifyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
+                          >
+                            <ExternalLink className="w-3 h-3" /> Verify
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {/* Languages */}
+            {c.languages?.length > 0 && (
+              <Section title={`Languages (${c.languages.length})`}>
+                <div className="px-4 py-3 flex flex-wrap gap-2">
+                  {c.languages.map(lang => (
+                    <div
+                      key={lang.id}
+                      className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5"
+                    >
+                      <span className="text-xs font-bold text-slate-800">{lang.language}</span>
+                      {lang.proficiency && (
+                        <span className="text-[10px] text-slate-400 capitalize">
+                          {lang.proficiency.toLowerCase()}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {/* Notes */}
+            {c.notes?.length > 0 && (
+              <Section title={`Notes (${c.notes.length})`}>
+                <div className="divide-y divide-slate-100">
+                  {c.notes.map(note => (
+                    <div key={note.id} className="px-4 py-3">
+                      <p className="text-xs text-slate-700 leading-relaxed">{note.note}</p>
+                      <p className="text-[10px] text-slate-400 mt-1.5">
+                        {fmtDateFull(note.createdAt)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {/* Attached CVs */}
+            {c.resumes?.length > 0 && (
+              <Section title={`Resumes (${c.resumes.length})`}>
+                <div className="divide-y divide-slate-100">
+                  {c.resumes.map(r => (
+                    <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                      <FileText
+                        className={cn(
+                          'w-4 h-4 shrink-0',
+                          r.isActive ? 'text-blue-500' : 'text-slate-400'
+                        )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 truncate">
+                          {r.fileName}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                          <span>v{r.version}</span>
+                          {r.fileSizeKb && <span>{Math.round(r.fileSizeKb)} KB</span>}
+                          <span>{r.parseStatus}</span>
+                          <span>{fmtDateFull(r.createdAt)}</span>
+                          {r.isActive && (
+                            <span className="font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ResumeOpenButton resumeId={r.id} fileName={r.fileName} axios={axios} />
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+          </div>
+
+          {/* ── RIGHT col-span-1 ─────────────────────────────────────────── */}
+          <div className="col-span-1 overflow-y-auto bg-slate-50/40">
+            {/* Stat strip — matches existing page */}
+            <div className="grid grid-cols-3 divide-x divide-slate-200 border-b border-slate-200 bg-white">
+              {[
+                {
+                  label: 'Experience',
+                  value:
+                    expLabel ?? (c.cachedTotalExpYears != null ? `${c.cachedTotalExpYears}y` : '—'),
+                },
+                { label: 'Skills', value: String(c.skills?.length ?? 0) },
+                { label: 'Applied', value: String(c.requirements?.length ?? 0) },
+              ].map(s => (
+                <div key={s.label} className="flex flex-col items-center py-4 gap-0.5">
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-slate-400">
+                    {s.label}
+                  </p>
+                  <p className="text-xl font-black text-slate-900">{s.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Contact */}
+              <Section title="Contact">
+                <div className="divide-y divide-slate-100">
+                  {c.email && (
+                    <div className="flex items-start gap-3 px-4 py-3">
+                      <Mail className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Email
+                        </p>
+                        <p className="text-xs font-semibold text-slate-800 break-all mt-0.5">
+                          {c.email}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {c.phone && (
+                    <div className="flex items-start gap-3 px-4 py-3">
+                      <Phone className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Phone
+                        </p>
+                        <p className="text-xs font-semibold text-slate-800 mt-0.5">{c.phone}</p>
+                      </div>
+                    </div>
+                  )}
+                  {location && (
+                    <div className="flex items-start gap-3 px-4 py-3">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Location
+                        </p>
+                        <p className="text-xs font-semibold text-slate-800 mt-0.5">{location}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Section>
+
+              {/* Links */}
+              {(c.linkedinUrl || c.githubUrl || c.portfolioUrl || c.otherUrl) && (
+                <Section title="Links">
+                  <div className="divide-y divide-slate-100">
+                    {[
+                      {
+                        icon: <Linkedin className="w-3.5 h-3.5 text-sky-600" />,
+                        label: 'LinkedIn',
+                        url: c.linkedinUrl,
+                      },
+                      {
+                        icon: <Github className="w-3.5 h-3.5 text-slate-700" />,
+                        label: 'GitHub',
+                        url: c.githubUrl,
+                      },
+                      {
+                        icon: <Globe className="w-3.5 h-3.5 text-indigo-500" />,
+                        label: 'Portfolio',
+                        url: c.portfolioUrl,
+                      },
+                      {
+                        icon: <Link2 className="w-3.5 h-3.5 text-slate-400" />,
+                        label: 'Other',
+                        url: c.otherUrl,
+                      },
+                    ]
+                      .filter(r => r.url)
+                      .map(row => (
+                        <div key={row.label} className="flex items-start gap-3 px-4 py-3">
+                          <div className="mt-0.5 shrink-0">{row.icon}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                              {row.label}
+                            </p>
+                            <a
+                              href={row.url!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-semibold text-blue-600 hover:underline truncate block mt-0.5"
+                            >
+                              {row.url}
+                            </a>
                           </div>
                         </div>
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 border border-blue-200 bg-white px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors shrink-0"
+                      ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* Compensation */}
+              {(c.currentSalary != null ||
+                c.expectedSalary != null ||
+                c.salaryFixed != null ||
+                c.noticePeriodDays != null ||
+                c.isImmediateJoiner) && (
+                <Section title="Compensation & Availability">
+                  <div className="divide-y divide-slate-100">
+                    {c.currentSalary != null && c.currentSalary > 0 && (
+                      <div className="flex items-start gap-3 px-4 py-3">
+                        <DollarSign className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                            Current CTC
+                          </p>
+                          <p className="text-xs font-semibold text-slate-800 mt-0.5">
+                            {fmtSalary(c.currentSalary)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {c.salaryFixed != null && c.salaryFixed > 0 && (
+                      <div className="flex items-start gap-3 px-4 py-3">
+                        <DollarSign className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                            Fixed
+                          </p>
+                          <p className="text-xs font-semibold text-slate-800 mt-0.5">
+                            {fmtSalary(c.salaryFixed)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {c.expectedSalary != null && c.expectedSalary > 0 && (
+                      <div className="flex items-start gap-3 px-4 py-3">
+                        <DollarSign className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                            Expected CTC
+                          </p>
+                          <p className="text-xs font-bold text-blue-700 mt-0.5">
+                            {fmtSalary(c.expectedSalary)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {(c.noticePeriodDays != null || c.isImmediateJoiner) && (
+                      <div className="flex items-start gap-3 px-4 py-3">
+                        {c.isImmediateJoiner ? (
+                          <Zap className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                        ) : (
+                          <Clock className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                        )}
+                        <div>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+                            Notice Period (days)
+                          </p>
+                          <p
+                            className={cn(
+                              'text-xs font-semibold mt-0.5',
+                              c.isImmediateJoiner ? 'text-emerald-700' : 'text-slate-800'
+                            )}
+                          >
+                            {c.isImmediateJoiner
+                              ? 'Immediate joiner'
+                              : c.noticePeriodDays != null
+                                ? `${c.noticePeriodDays} days`
+                                : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Section>
+              )}
+
+              {/* Pipeline History */}
+              {c.requirements?.length > 0 && (
+                <Section title={`Pipeline History (${c.requirements.length})`}>
+                  <div className="divide-y divide-slate-100">
+                    {c.requirements.map(r => (
+                      <div
+                        key={r.id}
+                        className="flex items-center justify-between gap-2 px-4 py-2.5"
+                      >
+                        <span className="text-[10px] font-mono text-slate-400 truncate">
+                          {r.requirementId.slice(0, 8)}…
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0',
+                            r.stage === 'SOURCED'
+                              ? 'bg-blue-50 text-blue-600'
+                              : r.stage === 'OFFERED'
+                                ? 'bg-violet-50 text-violet-600'
+                                : r.stage === 'JOINED'
+                                  ? 'bg-emerald-50 text-emerald-600'
+                                  : r.stage === 'REJECTED'
+                                    ? 'bg-rose-50 text-rose-600'
+                                    : 'bg-slate-100 text-slate-600'
+                          )}
                         >
-                          <ExternalLink className="w-4 h-4" />
-                          Open
-                        </a>
+                          {r.stage}
+                        </span>
                       </div>
                     ))}
                   </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </div>
-        </div>
+                </Section>
+              )}
 
-        {/* ═══ RIGHT SIDEBAR ════════════════════════════════════════════════ */}
-        <div className="w-72 shrink-0 space-y-4">
-          {/* Salary card */}
-          {(c.currentSalary || c.expectedSalary) && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">
-                Salary
-              </p>
-              <div className="space-y-2">
-                {c.currentSalary && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Current CTC</span>
-                    <span className="font-bold text-slate-900">{fmtSalary(c.currentSalary)}</span>
-                  </div>
-                )}
-                {c.salaryFixed && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Fixed</span>
-                    <span className="font-semibold text-slate-700">{fmtSalary(c.salaryFixed)}</span>
-                  </div>
-                )}
-                {c.salaryVariable && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Variable</span>
-                    <span className="font-semibold text-slate-700">
-                      {fmtSalary(c.salaryVariable)}
-                    </span>
-                  </div>
-                )}
-                {c.expectedSalary && (
-                  <div className="flex justify-between text-sm pt-2 border-t border-slate-100">
-                    <span className="text-slate-500">Expected</span>
-                    <span className="font-bold text-blue-700">{fmtSalary(c.expectedSalary)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Preferences card */}
-          {(c.preferredJobType ||
-            c.preferredEmpStatus ||
-            c.functionalArea ||
-            c.industryType ||
-            c.locations?.length > 0) && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">
-                Preferences
-              </p>
-              <div className="space-y-2 text-sm">
-                {c.preferredJobType && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Job type</span>
-                    <span className="font-semibold text-slate-800">{c.preferredJobType}</span>
-                  </div>
-                )}
-                {c.preferredEmpStatus && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Employment</span>
-                    <span className="font-semibold text-slate-800">{c.preferredEmpStatus}</span>
-                  </div>
-                )}
-                {c.functionalArea && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Function</span>
-                    <span className="font-semibold text-slate-800">{c.functionalArea}</span>
-                  </div>
-                )}
-                {c.industryType && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Industry</span>
-                    <span className="font-semibold text-slate-800 text-right max-w-36 truncate">
-                      {c.industryType}
-                    </span>
-                  </div>
-                )}
-                {c.locations
-                  ?.filter(l => l.type === 'PREFERRED')
-                  .map(l => (
-                    <div key={l.id} className="flex justify-between">
-                      <span className="text-slate-500">Pref. location</span>
-                      <span className="font-semibold text-slate-800">
-                        {[l.city, l.state].filter(Boolean).join(', ')}
+              {/* Meta */}
+              <Section title="Meta">
+                <div className="divide-y divide-slate-100">
+                  {[
+                    { label: 'Source', value: SOURCE_LABELS[c.source] ?? c.source },
+                    { label: 'Added', value: fmtDatetime(c.createdAt) ?? '—' },
+                    { label: 'Updated', value: fmtDatetime(c.updatedAt) ?? '—' },
+                    { label: 'Last activity', value: fmtDateFull(c.lastActivityAt) ?? '—' },
+                    { label: 'Consent', value: c.consentGiven ? 'Given' : 'Not given' },
+                  ].map(row => (
+                    <div
+                      key={row.label}
+                      className="flex items-center justify-between gap-2 px-4 py-2.5"
+                    >
+                      <span className="text-xs text-slate-400">{row.label}</span>
+                      <span
+                        className={cn(
+                          'text-xs font-semibold',
+                          row.label === 'Consent' && c.consentGiven
+                            ? 'text-emerald-600'
+                            : 'text-slate-700'
+                        )}
+                      >
+                        {row.value}
                       </span>
                     </div>
                   ))}
-              </div>
-            </div>
-          )}
-
-          {/* Pipeline history */}
-          {c.requirements?.length > 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">
-                Pipeline History
-              </p>
-              <div className="space-y-2">
-                {c.requirements.map(r => (
-                  <div key={r.id} className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600 truncate max-w-36 font-mono text-xs">
-                      {r.requirementId.slice(0, 8)}…
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {r.stage}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Meta card */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Meta</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Source</span>
-                <span className="font-semibold text-slate-800">
-                  {SOURCE_LABELS[c.source] ?? c.source}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Added</span>
-                <span className="font-semibold text-slate-800">{fmtDateFull(c.createdAt)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Last active</span>
-                <span className="font-semibold text-slate-800">{timeAgo(c.lastActivityAt)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Consent</span>
-                <span
-                  className={cn(
-                    'font-semibold',
-                    c.consentGiven ? 'text-emerald-600' : 'text-slate-400'
-                  )}
-                >
-                  {c.consentGiven ? 'Given' : 'Not given'}
-                </span>
-              </div>
+                </div>
+              </Section>
             </div>
           </div>
         </div>

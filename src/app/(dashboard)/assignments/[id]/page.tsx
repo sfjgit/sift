@@ -135,6 +135,7 @@ interface PipelineCandidate {
   actualJoiningDate: string | null;
   monthOfJoining: string | null;
   remainingDaysToJoin: number | null;
+  noticePeriod: string | null;
   stageUpdatedAt: string;
   createdAt: string;
   aging: { minutes: number; label: string };
@@ -250,20 +251,13 @@ interface AssignmentDetail {
     jobType: JobType;
     remoteType: RemoteType;
     jobOpenFor: JobOpenFor;
-
-    // location — split fields (location + skills flat strings REMOVED)
     city: string | null;
     state: string | null;
     country: string | null;
-
-    // skills — split
     primarySkills: string[];
     keySkills: string[];
-
     experienceMin: number | null;
     experienceMax: number | null;
-
-    // compensation
     salaryMin: number | null;
     salaryMax: number | null;
     salaryType: SalaryType | null;
@@ -271,47 +265,31 @@ interface AssignmentDetail {
     bonusAmount: number | null;
     hideSalaryFromCandidate: boolean;
     showMedianSalary: boolean;
-
-    // employment details
     education: string | null;
     functionalArea: string | null;
     shift: string | null;
-
-    // sourcing strategy
     targetCompanies: string[];
     noPoachCompanies: string[];
-
     totalOpenings: number;
-    // filledOpenings / activeApplications / interviewsScheduled / offersRolledOut
-    // REMOVED — all computed from pipeline rows on demand
-
-    // dates
     startDate: string | null;
-    targetDate: string | null; // was endDate — renamed
+    targetDate: string | null;
     respondBy: string | null;
     turnaroundDays: number | null;
     closedAt: string | null;
     closureReason: ClosureReason | null;
-
     isRespondByBreached: boolean;
     isTurnaroundBreached: boolean;
-
-    // JD file
     jdFileKey: string | null;
     jdFileName: string | null;
     jdFileType: string | null;
     jdUploadedAt: string | null;
-
-    // JD parse metadata
     jdParsedAt: string | null;
     jdParseStatus: JDParseStatus | null;
     jdParsedFields: string[];
     parsedJDId: string | null;
-
     createdAt: string;
     updatedAt: string;
     approvedAt: string | null;
-
     client: { id: string; name: string } | null;
     serviceLine: { id: string; name: string } | null;
     businessUnit: { id: string; name: string } | null;
@@ -336,7 +314,6 @@ interface PipelineResponse {
   permissions: { canEdit: boolean; canDelete: boolean };
 }
 
-// Only two row-level actions now — everything else lives inside the details modal.
 type ActionType = 'move' | 'details' | null;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,14 +445,12 @@ const formatCtc = (val: number | null | undefined) =>
 
 const formatDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yy') : '—');
 
-// "OFFER_IN_PROGRESS" → "Offer In Progress" — used for the dynamic canonical-stage chips
 const humanizeCanonical = (key: string) =>
   key
     .split('_')
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
 
-// Canonical stages that reveal the interview-scheduling form (mirrors backend config)
 const INTERVIEW_SCHEDULING_CANONICAL = ['INTERVIEW_SCHEDULED', 'INTERVIEW_RESCHEDULED'];
 const needsInterviewSchedule = (canonical: string | null | undefined) =>
   !!canonical && INTERVIEW_SCHEDULING_CANONICAL.includes(canonical);
@@ -518,7 +493,6 @@ function triggerExtension(
   assignmentId: string
 ) {
   console.log(rId, rCode, rTitle, app, assignmentId);
-
   window.postMessage(
     {
       type: 'TALENTOX_SOURCE_NAUKRI',
@@ -533,7 +507,7 @@ function triggerExtension(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STAT CHIP — small reusable header metric
+// STAT CHIP
 // ─────────────────────────────────────────────────────────────────────────────
 
 function StatChip({
@@ -556,11 +530,7 @@ function StatChip({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// JD TAB — SKILL PILL + DETAIL ROW
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UPLOAD RESUME MODAL  (unchanged)
+// UPLOAD RESUME MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UploadResumeModal({
@@ -749,7 +719,6 @@ function BulkUploadModal({
   assignmentId: string;
 }) {
   const axios = useAxios();
-
   const qc = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -805,7 +774,6 @@ function BulkUploadModal({
     setIsUploading(true);
     try {
       const form = new FormData();
-      // multer field name must match uploadBulk's configured field name
       files.forEach(f => form.append('file', f, f.name));
       form.append('reqCode', req.reqCode);
       form.append('requirementId', req.id);
@@ -819,7 +787,6 @@ function BulkUploadModal({
       });
 
       setResult(res.data);
-      // Refresh the pipeline table — some candidates may now appear
       qc.invalidateQueries({ queryKey: ['assignment-pipeline'] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Bulk upload failed');
@@ -829,7 +796,7 @@ function BulkUploadModal({
   }
 
   function handleClose() {
-    if (isUploading) return; // block closing while processing
+    if (isUploading) return;
     setFiles([]);
     setResult(null);
     onClose();
@@ -840,7 +807,6 @@ function BulkUploadModal({
   return (
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
-        {/* ── Header ── */}
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-slate-100">
           <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-slate-900">
             <span className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
@@ -861,7 +827,6 @@ function BulkUploadModal({
           )}
         </DialogHeader>
 
-        {/* ════ PHASE: uploading ════════════════════════════════════════════ */}
         {isUploading && (
           <div className="flex flex-col items-center justify-center py-16 px-8 gap-6 text-center">
             <div className="w-16 h-16 rounded-2xl bg-violet-100 flex items-center justify-center">
@@ -895,23 +860,13 @@ function BulkUploadModal({
           </div>
         )}
 
-        {/* ════ PHASE: results ════════════════════════════════════════════════ */}
         {result && !isUploading && (
           <div className="flex flex-col">
-            {/* Summary bar */}
             <div className="grid grid-cols-4 divide-x divide-slate-200 border-b border-slate-200">
               {[
                 { label: 'Total', value: result.summary.total, color: 'text-slate-800' },
-                {
-                  label: 'Succeeded',
-                  value: result.summary.succeeded,
-                  color: 'text-emerald-600',
-                },
-                {
-                  label: 'Duplicates',
-                  value: result.summary.duplicates,
-                  color: 'text-amber-600',
-                },
+                { label: 'Succeeded', value: result.summary.succeeded, color: 'text-emerald-600' },
+                { label: 'Duplicates', value: result.summary.duplicates, color: 'text-amber-600' },
                 { label: 'Failed', value: result.summary.failed, color: 'text-rose-600' },
               ].map(s => (
                 <div key={s.label} className="flex flex-col items-center gap-1 py-4 bg-slate-50">
@@ -922,8 +877,6 @@ function BulkUploadModal({
                 </div>
               ))}
             </div>
-
-            {/* Per-file results table */}
             <div className="max-h-80 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-white border-b border-slate-100">
@@ -969,7 +922,6 @@ function BulkUploadModal({
                             className="text-xs text-rose-600 truncate block max-w-40"
                             title={r.error}
                           >
-                            {/* {r.error ?? 'Parse failed'} */}
                             {r.status}
                           </span>
                         )}
@@ -979,8 +931,6 @@ function BulkUploadModal({
                 </tbody>
               </table>
             </div>
-
-            {/* Footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
               <p className="text-xs text-slate-400">
                 Completed in {(result.summary.durationMs / 1000).toFixed(1)}s
@@ -1004,11 +954,9 @@ function BulkUploadModal({
           </div>
         )}
 
-        {/* ════ PHASE: file selection ══════════════════════════════════════════ */}
         {!result && !isUploading && (
           <>
             <div className="px-6 py-4 space-y-4">
-              {/* Drop zone */}
               <div
                 onDragOver={e => {
                   e.preventDefault();
@@ -1038,7 +986,6 @@ function BulkUploadModal({
                   onChange={e => {
                     if (e.target.files) {
                       addFiles(e.target.files);
-                      // reset so the same file can be re-added after removal
                       e.target.value = '';
                     }
                   }}
@@ -1055,7 +1002,6 @@ function BulkUploadModal({
                 </p>
               </div>
 
-              {/* File list */}
               {files.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1075,14 +1021,11 @@ function BulkUploadModal({
                         key={i}
                         className="flex items-center gap-2.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg group"
                       >
-                        {/* Extension badge */}
                         <span
                           className={`w-8 h-8 rounded-lg flex items-center justify-center text-[9px] font-black shrink-0 ${extBadge(f.name)}`}
                         >
                           {f.name.split('.').pop()?.toUpperCase().slice(0, 4)}
                         </span>
-
-                        {/* Name + size */}
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-slate-800 truncate">{f.name}</p>
                           <p className="text-[10px] text-slate-400 mt-0.5">
@@ -1091,8 +1034,6 @@ function BulkUploadModal({
                               : `${Math.round(f.size / 1024)} KB`}
                           </p>
                         </div>
-
-                        {/* Remove */}
                         <button
                           onClick={() => removeFile(i)}
                           className="text-slate-300 hover:text-rose-500 transition-colors p-1 rounded opacity-0 group-hover:opacity-100"
@@ -1130,7 +1071,7 @@ function BulkUploadModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADD CANDIDATE MODAL  (unchanged)
+// ADD CANDIDATE MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AddCandidateModal({
@@ -1197,36 +1138,23 @@ function AddCandidateModal({
                 desc: 'Upload multiple resumes at once',
                 onClickOverride: () => setBulkUploadOpen(true),
               },
-
               {
                 iconBg: 'bg-blue-100',
                 icon: <Database className="w-4 h-4 text-blue-600" />,
                 title: 'InternalPool',
                 desc: 'Search 10L+ candidates in your DB',
                 onClickOverride: () => {
-                  // Pass requirement context so InternalPool auto-fills and enables "Source" buttons
                   const params = new URLSearchParams({
                     assignmentId,
                     requirementId: req.id,
                     reqCode: req.reqCode,
                     requirementTitle: req.title ?? req.reqCode,
-                    // Auto-fill skills from requirement so recruiter starts with relevant results
                     ...(req.primarySkills?.length ? { skills: req.primarySkills.join(',') } : {}),
                   });
                   router.push(`/internal-pool?${params.toString()}`);
                   onClose();
                 },
               },
-              // {
-              //   iconBg: 'bg-blue-100',
-              //   icon: <Database className="w-4 h-4 text-blue-600" />,
-              //   title: 'From Database',
-              //   desc: 'Search existing candidate pool',
-              //   onClickOverride: () => {
-              //     router.push(`/assignments/${assignmentId}/database`);
-              //     onClose();
-              //   },
-              // },
             ].map(row => (
               <button
                 key={row.title}
@@ -1312,7 +1240,7 @@ function AddCandidateModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOVE STAGE DIALOG  (unchanged — already does exactly one job well)
+// MOVE STAGE DIALOG
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MoveStageDialog({
@@ -1332,17 +1260,11 @@ function MoveStageDialog({
   const [stageId, setStageId] = useState('');
   const [note, setNote] = useState('');
 
-  // ── interview form state ──
   const [ivDate, setIvDate] = useState('');
   const [ivTime, setIvTime] = useState('');
   const [ivMode, setIvMode] = useState<'ONLINE' | 'OFFLINE' | 'TELEPHONIC'>('ONLINE');
   const [ivDuration, setIvDuration] = useState('');
   const currentOrder = pipeline.currentStage.order;
-
-  // const selectableStages = useMemo(
-  //   () => [...stages].filter(s => !s.isTerminal).sort((a, b) => a.order - b.order),
-  //   [stages]
-  // );
 
   const selectableStages = useMemo(() => [...stages].sort((a, b) => a.order - b.order), [stages]);
 
@@ -1368,7 +1290,6 @@ function MoveStageDialog({
       const body: any = { stageId, note: note.trim() || undefined };
       if (showInterview) {
         body.interview = {
-          // local date + time → ISO (UTC) for the backend DateTime column
           scheduledAt: new Date(`${ivDate}T${ivTime}`).toISOString(),
           mode: ivMode,
           durationMins: ivDuration ? parseInt(ivDuration, 10) : undefined,
@@ -1539,7 +1460,6 @@ function MoveStageDialog({
           </div>
         </div>
 
-        {/* ── Interview scheduling form (only when target requires it) ── */}
         {showInterview && (
           <div className="px-6 py-4 border-t border-slate-100 bg-indigo-50/40 space-y-3">
             <div className="flex items-center gap-2">
@@ -1597,6 +1517,7 @@ function MoveStageDialog({
             </div>
           </div>
         )}
+
         <div className="px-6 py-4 border-t border-slate-100 space-y-3">
           {!showInterview && (
             <div>
@@ -1644,54 +1565,8 @@ function MoveStageDialog({
   );
 }
 
-//       <div className="px-6 py-4 border-t border-slate-100 space-y-3">
-//         <div>
-//           <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
-//             Note{' '}
-//             <span className="font-normal lowercase tracking-normal text-slate-400">
-//               (optional)
-//             </span>
-//           </Label>
-//           <Textarea
-//             value={note}
-//             onChange={e => setNote(e.target.value)}
-//             placeholder="Add context for this move…"
-//             rows={2}
-//             className="resize-none text-sm"
-//           />
-//         </div>
-//         <div className="flex items-center justify-end gap-2">
-//           <Button
-//             variant="outline"
-//             onClick={() => {
-//               onClose();
-//               reset();
-//             }}
-//           >
-//             Cancel
-//           </Button>
-//           <Button
-//             disabled={!stageId || mut.isPending}
-//             onClick={() => mut.mutate()}
-//             className="gap-2 min-w-32.5"
-//           >
-//             {mut.isPending ? (
-//               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-//             ) : (
-//               <ArrowUpDown className="w-3.5 h-3.5" />
-//             )}
-//             {mut.isPending ? 'Moving…' : 'Move Stage'}
-//           </Button>
-//         </div>
-//       </div>
-//     </DialogContent>
-//   </Dialog>
-// );
-// }
-
 // ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATE DETAILS MODAL — replaces SubmitDialog / OfferDialog / SimpleActionDialog
-// One place: Submission, Offer & CTC, Joining, Status (hold / withdraw / reject)
+// CANDIDATE DETAILS MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
 type DetailTab = 'submission' | 'offer' | 'joining' | 'status';
@@ -1722,6 +1597,9 @@ function CandidateDetailsModal({
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Candidate Details — {snap.fullName}</DialogTitle>
+        </DialogHeader>
         {/* HEADER — identity, always visible regardless of tab */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
@@ -1767,7 +1645,6 @@ function CandidateDetailsModal({
         </div>
 
         <div className="flex">
-          {/* TAB NAV */}
           <div className="w-40 shrink-0 border-r border-slate-100 py-2">
             {TABS.map(t => (
               <button
@@ -1785,7 +1662,6 @@ function CandidateDetailsModal({
             ))}
           </div>
 
-          {/* TAB CONTENT */}
           <div className="flex-1 p-6 max-h-[55vh] overflow-y-auto">
             {tab === 'submission' && (
               <SubmissionTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
@@ -1857,6 +1733,8 @@ function SubmissionTab({ pipeline, axios, onDone, onClose }: any) {
 }
 
 // ── Offer & CTC tab ─────────────────────────────────────────────────────────
+// NOTE: expectedJoiningDate has been MOVED to JoiningTab.
+// This tab now only handles CTC ladder + formal offer fields.
 function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   const [currentCtc, setCurrentCtc] = useState(pipeline.currentCtc?.toString() ?? '');
   const [expectedCtc, setExpectedCtc] = useState(pipeline.expectedCtc?.toString() ?? '');
@@ -1864,30 +1742,21 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   const [ctcNotes, setCtcNotes] = useState(pipeline.ctcNotes ?? '');
   const [offeredCtc, setOfferedCtc] = useState(pipeline.offeredCtc?.toString() ?? '');
   const [salaryType, setSalaryType] = useState(pipeline.salaryType ?? 'MONTHLY');
-  const [expectedJoiningDate, setExpectedJoiningDate] = useState(
-    pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
-  );
 
-  // Guard: parseFloat('') === NaN which backend discards — use null instead
   const toNum = (v: string) => (v.trim() === '' ? null : parseFloat(v));
 
   const mut = useMutation({
     mutationFn: async () => {
-      // Single call — merge CTC ladder + formal offer into /offer endpoint
-      // because /details endpoint does not exist yet
       await axios.patch(`/pipeline/${pipeline.id}/offer`, {
-        // CTC ladder
         currentCtc: toNum(currentCtc),
         expectedCtc: toNum(expectedCtc),
         negotiatedCtc: toNum(negotiatedCtc),
         ctcNotes: ctcNotes.trim() || null,
-        // Formal offer (optional)
         ...(offeredCtc.trim() && {
           offeredCtc: toNum(offeredCtc),
           salaryCurrency: 'INR',
           salaryType,
         }),
-        ...(expectedJoiningDate && { expectedJoiningDate }),
       });
     },
     onSuccess: () => {
@@ -1982,19 +1851,8 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
             </Select>
           </div>
         </div>
-        <div className="mt-3">
-          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
-            Expected Joining
-          </Label>
-          <Input
-            type="date"
-            value={expectedJoiningDate}
-            onChange={e => setExpectedJoiningDate(e.target.value)}
-            className="h-9 text-sm w-48"
-          />
-        </div>
         {pipeline.offerStatus && (
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-slate-500 mt-3">
             Current offer status:{' '}
             <span className="font-semibold text-slate-700">{pipeline.offerStatus}</span>
           </p>
@@ -2016,7 +1874,8 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
 }
 
 // ── Joining tab ──────────────────────────────────────────────────────────────
-// ── Joining tab ──────────────────────────────────────────────────────────────
+// UPDATED: added expectedJoiningDate input + live preview of monthOfJoining
+// and remainingDaysToJoin so the user sees those values before saving.
 function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const NOTICE_PRESETS = [
     'Immediate Joiner',
@@ -2031,6 +1890,9 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const initialNp: string = pipeline.noticePeriod ?? '';
   const isPreset = initialNp !== '' && NOTICE_PRESETS.includes(initialNp);
 
+  const [expectedJoiningDate, setExpectedJoiningDate] = useState(
+    pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+  );
   const [lastWorkingDate, setLastWorkingDate] = useState(
     pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : ''
   );
@@ -2038,21 +1900,46 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
     pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : ''
   );
 
-  // notice period — preset pill OR manual free text
   const [noticePeriod, setNoticePeriod] = useState(isPreset ? initialNp : '');
   const [isManual, setIsManual] = useState(initialNp !== '' && !isPreset);
   const [manualValue, setManualValue] = useState(!isPreset ? initialNp : '');
 
   const isImmediate = noticePeriod === 'Immediate Joiner';
 
+  // ── Live-derived display values ──
+  // If actualJoiningDate is filled → candidate already joined, show that month
+  // Otherwise derive from expectedJoiningDate so user sees the result instantly
+  const previewMonthOfJoining = useMemo(() => {
+    if (actualJoiningDate) {
+      return new Date(actualJoiningDate).toLocaleString('en-IN', {
+        month: 'long',
+        year: 'numeric',
+      });
+    }
+    if (expectedJoiningDate) {
+      return new Date(expectedJoiningDate).toLocaleString('en-IN', {
+        month: 'long',
+        year: 'numeric',
+      });
+    }
+    return null;
+  }, [actualJoiningDate, expectedJoiningDate]);
+
+  const previewRemainingDays = useMemo(() => {
+    if (actualJoiningDate) return 0; // already joined
+    if (expectedJoiningDate) {
+      return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
+    }
+    return null;
+  }, [actualJoiningDate, expectedJoiningDate]);
+
   const mut = useMutation({
     mutationFn: async () => {
-      // resolve final notice period value — manual overrides preset when active
       const resolvedNotice = isManual ? manualValue.trim() : noticePeriod.trim();
 
       return axios.patch(`/pipeline/${pipeline.id}/details`, {
-        // Immediate joiners have no LWD — force it null regardless of input
         lastWorkingDate: isImmediate ? null : lastWorkingDate || null,
+        expectedJoiningDate: expectedJoiningDate || null,
         actualJoiningDate: actualJoiningDate || null,
         noticePeriod: resolvedNotice || null,
       });
@@ -2117,6 +2004,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
         )}
       </div>
 
+      {/* ── Date inputs ── */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
@@ -2133,9 +2021,23 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
             <p className="text-[10px] text-slate-400 mt-1">Not required for immediate joiners</p>
           )}
         </div>
+
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
-            Actual Joining Date
+            Expected Joining Date
+          </Label>
+          <Input
+            type="date"
+            value={expectedJoiningDate}
+            onChange={e => setExpectedJoiningDate(e.target.value)}
+            className="h-9 text-sm"
+          />
+        </div>
+
+        <div className="col-span-2">
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Actual Joining Date{' '}
+            <span className="font-normal text-slate-400">(fill once candidate joins)</span>
           </Label>
           <Input
             type="date"
@@ -2145,34 +2047,49 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+
+      {/* ── Live preview of derived fields ── */}
+      <div className="grid grid-cols-3 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
             Expected Joining
           </p>
           <p className="text-sm font-semibold text-slate-700 mt-0.5">
-            {formatDate(pipeline.expectedJoiningDate)}
+            {expectedJoiningDate ? format(new Date(expectedJoiningDate), 'dd MMM yyyy') : '—'}
           </p>
         </div>
+
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
             Days to Join
           </p>
           <p
-            className={`text-sm font-semibold mt-0.5 ${pipeline.remainingDaysToJoin != null && pipeline.remainingDaysToJoin < 0 ? 'text-rose-600' : 'text-slate-700'}`}
+            className={`text-sm font-semibold mt-0.5 ${
+              previewRemainingDays != null && previewRemainingDays < 0
+                ? 'text-rose-600'
+                : 'text-slate-700'
+            }`}
           >
-            {pipeline.remainingDaysToJoin != null ? pipeline.remainingDaysToJoin : '—'}
+            {previewRemainingDays != null
+              ? actualJoiningDate
+                ? 'Joined ✓'
+                : previewRemainingDays < 0
+                  ? `${Math.abs(previewRemainingDays)}d overdue`
+                  : `${previewRemainingDays}d`
+              : '—'}
           </p>
         </div>
-        <div className="col-span-2">
+
+        <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
             Month of Joining
           </p>
           <p className="text-sm font-semibold text-slate-700 mt-0.5">
-            {pipeline.monthOfJoining ?? '—'}
+            {previewMonthOfJoining ?? '—'}
           </p>
         </div>
       </div>
+
       <div className="flex justify-end">
         <Button disabled={mut.isPending} onClick={() => mut.mutate()} className="gap-2">
           {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -2183,7 +2100,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   );
 }
 
-// ── Status tab — hold / withdraw / reject, consolidated ────────────────────
+// ── Status tab ────────────────────────────────────────────────────────────────
 function StatusTab({ pipeline, axios, onDone, onClose, isTerminated }: any) {
   const [active, setActive] = useState<'hold' | 'withdraw' | 'reject' | null>(null);
   const [reason, setReason] = useState('');
@@ -2307,7 +2224,7 @@ function StatusTab({ pipeline, axios, onDone, onClose, isTerminated }: any) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATE TABLE — replaces the card list
+// CANDIDATE TABLE
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CandidateTable({
@@ -2328,9 +2245,6 @@ function CandidateTable({
       <table className="w-full text-sm border-collapse">
         <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
           <tr>
-            {/* <th className="w-9 px-3 py-2.5">
-              <input type="checkbox" className="rounded border-slate-400 w-3.5 h-3.5" />
-            </th> */}
             <th className="w-20 px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-700 text-center">
               Actions
             </th>
@@ -2349,9 +2263,6 @@ function CandidateTable({
             <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-700 min-w-35">
               Joining
             </th>
-            {/* <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-32.5">
-              Status
-            </th> */}
             <th className="text-left px-3 py-2.5 font-bold text-[10px] uppercase tracking-wide text-slate-500 min-w-22.5">
               Aging
             </th>
@@ -2361,7 +2272,6 @@ function CandidateTable({
           {candidates.map(p => {
             const snap = p.snapshot;
             const c = SC(p.currentStage.code);
-            const isTerminated = p.isRejected || p.isWithdrawn;
             const agingColor =
               p.aging.minutes > 43200
                 ? 'text-rose-600 bg-rose-50 border-rose-200'
@@ -2370,16 +2280,7 @@ function CandidateTable({
                   : 'text-slate-600 bg-slate-50 border-slate-200';
 
             return (
-              <tr
-                key={p.id}
-                // onClick={() => router.push(`/candidates/${p.snapshot.candidateServiceId}`)}
-                className={`hover:bg-blue-50/30 transition-colors }`}
-              >
-                {/* <td className="px-3 py-3 align-top">
-                  <input type="checkbox" className="rounded border-slate-400 w-3.5 h-3.5" />
-                </td> */}
-
-                {/* Actions — only Move Stage + Edit Details */}
+              <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
                 <td className="px-3 py-3 align-top">
                   <div className="flex items-center justify-center gap-1">
                     <button
@@ -2400,7 +2301,6 @@ function CandidateTable({
                         >
                           <ArrowUpDown className="w-3.5 h-3.5" />
                         </button>
-
                         <button
                           title="Update Candidate Details"
                           onClick={() => onAction('details', p)}
@@ -2413,7 +2313,6 @@ function CandidateTable({
                   </div>
                 </td>
 
-                {/* Candidate */}
                 <td className="px-3 py-3 align-top">
                   <div className="flex items-start gap-2.5">
                     <Avatar className="h-9 w-9 shrink-0">
@@ -2457,7 +2356,6 @@ function CandidateTable({
                   </div>
                 </td>
 
-                {/* Stage */}
                 <td className="px-3 py-3 align-top">
                   <span
                     className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border ${c.bg} ${c.text} ${c.border}`}
@@ -2470,7 +2368,6 @@ function CandidateTable({
                   )}
                 </td>
 
-                {/* Recruiter */}
                 <td className="px-3 py-3 align-top text-xs font-semibold text-slate-700">
                   {p.recruiter.firstName} {p.recruiter.lastName}
                   <p className="text-[10px] font-normal text-slate-400 mt-0.5">
@@ -2478,7 +2375,6 @@ function CandidateTable({
                   </p>
                 </td>
 
-                {/* CTC ladder */}
                 <td className="px-3 py-3 align-top">
                   <div className="space-y-0.5 text-[11px]">
                     <p className="text-slate-500">
@@ -2507,7 +2403,6 @@ function CandidateTable({
                   </div>
                 </td>
 
-                {/* Joining */}
                 <td className="px-3 py-3 align-top text-[11px] text-slate-500 space-y-0.5">
                   <p>
                     Exp:{' '}
@@ -2529,48 +2424,13 @@ function CandidateTable({
                     >
                       {p.remainingDaysToJoin < 0
                         ? `${Math.abs(p.remainingDaysToJoin)}d overdue`
-                        : `in ${p.remainingDaysToJoin}d`}
+                        : p.remainingDaysToJoin === 0
+                          ? 'Joined'
+                          : `in ${p.remainingDaysToJoin}d`}
                     </p>
                   )}
                 </td>
 
-                {/* Status pills */}
-                {/* <td className="px-3 py-3 align-top">
-                  <div className="flex flex-col gap-1 items-start">
-                    {p.submittedAt && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
-                        Submitted
-                      </span>
-                    )}
-                    {p.offerStatus && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
-                        {p.offerStatus}
-                      </span>
-                    )}
-                    {p.isOnHold && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                        On Hold
-                      </span>
-                    )}
-                    {p.isRejected && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
-                        Rejected
-                      </span>
-                    )}
-                    {p.isWithdrawn && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
-                        Withdrawn
-                      </span>
-                    )}
-                    {!p.submittedAt &&
-                      !p.offerStatus &&
-                      !p.isOnHold &&
-                      !p.isRejected &&
-                      !p.isWithdrawn && <span className="text-[10px] text-slate-300">—</span>}
-                  </div>
-                </td> */}
-
-                {/* Aging */}
                 <td className="px-3 py-3 align-top">
                   <span
                     className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border ${agingColor}`}
@@ -2589,7 +2449,7 @@ function CandidateTable({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PAGE SKELETON  (unchanged)
+// PAGE SKELETON
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PageSkeleton() {
@@ -2634,7 +2494,6 @@ export default function AssignmentDetailPage() {
   const searchParams = useSearchParams();
   const axios = useAxios();
   const qc = useQueryClient();
-  // const [tab, setTab] = useState('candidate');
 
   const VALID_TABS = ['candidates', 'jd'] as const;
   const tabFromUrl = searchParams.get('tab');
@@ -2700,15 +2559,6 @@ export default function AssignmentDetailPage() {
     placeholderData: prev => prev,
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // IMPORTANT: this useMemo MUST run on every single render, including the
-  // loading-skeleton render and the "assignment not found" render below.
-  // That's why it lives here — above both early `return`s — instead of after
-  // them. Hooks can never be skipped conditionally (Rules of Hooks), so all
-  // its inputs are read defensively via optional chaining instead of from
-  // the `a` / `stats` / `pipelineStages` constants (which aren't declared
-  // yet at this point in the component).
-  // ─────────────────────────────────────────────────────────────────────────
   const canonicalChips = useMemo(() => {
     const stats = pipelineData?.candidateStats ?? assignmentData?.data?.candidateStats;
     const stages = pipelineData?.pipelineStages ?? [];
@@ -2854,13 +2704,7 @@ export default function AssignmentDetailPage() {
                     <UserPlus className="w-4 h-4" />
                     Add Candidate
                   </Button>
-
-                  {/* Requirement Button */}
-                  <Button
-                    size="sm"
-                    className="gap-2 h-8 text-sm font-semibold px-4"
-                    // onClick={() => setAddModal(true)}
-                  >
+                  <Button size="sm" className="gap-2 h-8 text-sm font-semibold px-4">
                     <Link href={`/requirements/${req.id}`}>Requirement</Link>
                   </Button>
                 </div>
@@ -2868,12 +2712,9 @@ export default function AssignmentDetailPage() {
             </div>
           </div>
 
-          {/* RIGHT — dynamic stats chips */}
           <div className="flex-1 flex items-center px-8 gap-6 flex-wrap">
             <StatChip label="Total" value={stats?.total ?? 0} colorClass="text-slate-800" />
             <StatChip label="Active" value={stats?.active ?? 0} colorClass="text-emerald-600" />
-
-            {/* fully data-driven — one chip per canonical stage that exists in this pipeline */}
             {canonicalChips.map(chip => (
               <StatChip
                 key={chip.key}
@@ -2882,9 +2723,7 @@ export default function AssignmentDetailPage() {
                 colorClass={chip.color.header}
               />
             ))}
-
             <StatChip label="Dropped" value={stats?.dropped ?? 0} colorClass="text-rose-500" />
-
             {stats?.agingBuckets.critical > 0 && (
               <StatChip
                 label="Stale"
@@ -2892,7 +2731,6 @@ export default function AssignmentDetailPage() {
                 colorClass="text-amber-600"
               />
             )}
-
             <div className="flex items-center gap-3 ml-auto pl-6 border-l border-slate-200 shrink-0">
               <span className="text-sm font-semibold text-slate-600 whitespace-nowrap">
                 Active only
@@ -2902,13 +2740,13 @@ export default function AssignmentDetailPage() {
           </div>
         </div>
       </div>
+
       <Tabs
         value={tab}
         onValueChange={setTab}
         defaultValue="jd"
         className="flex flex-col flex-1 overflow-hidden"
       >
-        {/* 🔹 Tabs Header */}
         <div className="m-2 border-b border-slate-200 bg-white px-4">
           <TabsList className="h-12 bg-transparent p-0 gap-1 rounded-none">
             <TabsTrigger
@@ -2932,9 +2770,7 @@ export default function AssignmentDetailPage() {
         {/* ✅ JD TAB */}
         <TabsContent value="jd" className="flex-1 overflow-hidden">
           <div className="grid h-full overflow-hidden" style={{ gridTemplateColumns: '1fr 300px' }}>
-            {/* ═══ LEFT — header + description prose (scrollable) ═══ */}
             <div className="overflow-y-auto p-5 space-y-4 border-r border-slate-200">
-              {/* Header card */}
               <div className="bg-white border border-slate-200 rounded-xl p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -2988,7 +2824,6 @@ export default function AssignmentDetailPage() {
                         ))}
                     </div>
                   </div>
-                  {/* // AFTER */}
                   {req.salaryMin && req.salaryMax && (
                     <div className="text-right shrink-0">
                       <p className="text-[10px] uppercase tracking-widest text-slate-400 mb-1">
@@ -3006,7 +2841,6 @@ export default function AssignmentDetailPage() {
                 </div>
               </div>
 
-              {/* Description prose */}
               {req.description && (
                 <div className="bg-white border border-slate-200 rounded-xl p-5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
@@ -3020,9 +2854,7 @@ export default function AssignmentDetailPage() {
               )}
             </div>
 
-            {/* ═══ RIGHT SIDEBAR — sticky, no scroll ═══ */}
             <div className="overflow-y-auto p-4 space-y-3 bg-slate-50/40">
-              {/* Skills */}
               {(req.primarySkills?.length > 0 || req.keySkills?.length > 0) && (
                 <div className="bg-white border border-slate-200 rounded-xl p-4">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
@@ -3065,7 +2897,6 @@ export default function AssignmentDetailPage() {
                 </div>
               )}
 
-              {/* Job details */}
               <div className="bg-white border border-slate-200 rounded-xl p-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
                   Job details
@@ -3099,7 +2930,6 @@ export default function AssignmentDetailPage() {
                   ))}
               </div>
 
-              {/* Assignment info */}
               <div className="bg-white border border-slate-200 rounded-xl p-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
                   Assignment
@@ -3140,7 +2970,6 @@ export default function AssignmentDetailPage() {
 
         {/* ✅ CANDIDATES TAB */}
         <TabsContent value="candidates" className="flex flex-col flex-1 overflow-hidden">
-          {/* ═══ FILTER BAR ═══ */}
           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0">
             <span className="text-sm font-semibold text-slate-600">
               {meta?.total ?? 0} candidates
@@ -3170,9 +2999,7 @@ export default function AssignmentDetailPage() {
             </div>
           </div>
 
-          {/* ═══ SIDEBAR + TABLE ═══ */}
           <div className="flex flex-1 overflow-hidden">
-            {/* sidebar */}
             <div className="w-44 shrink-0 border-r border-slate-200 overflow-y-auto bg-white">
               <button
                 onClick={() => setActiveStageId(null)}
@@ -3308,27 +3135,20 @@ export default function AssignmentDetailPage() {
 }
 
 function parseMd(md: string): string {
-  return (
-    md
-      // strip the redundant "## Job Title: ..." block at the top
-      .replace(/^## Job Title:.*\n?/m, '')
-      // h3 before h2 so h3 doesn't get double-processed
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      // bullet lines → li, then wrap consecutive li blocks in ul
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/(<li>[^]*?<\/li>)(\n<li>[^]*?<\/li>)*/g, match => `<ul>${match}</ul>`)
-      // blank lines between paragraphs
-      .replace(/\n{2,}/g, '\n')
-      // plain text lines that aren't already HTML tags → wrap in p
-      .split('\n')
-      .map(line => {
-        const t = line.trim();
-        if (!t) return '';
-        if (t.startsWith('<')) return t;
-        return `<p>${t}</p>`;
-      })
-      .filter(Boolean)
-      .join('')
-  );
+  return md
+    .replace(/^## Job Title:.*\n?/m, '')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>[^]*?<\/li>)(\n<li>[^]*?<\/li>)*/g, match => `<ul>${match}</ul>`)
+    .replace(/\n{2,}/g, '\n')
+    .split('\n')
+    .map(line => {
+      const t = line.trim();
+      if (!t) return '';
+      if (t.startsWith('<')) return t;
+      return `<p>${t}</p>`;
+    })
+    .filter(Boolean)
+    .join('');
 }
