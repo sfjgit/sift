@@ -1976,6 +1976,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const previewRemainingDays = useMemo(() => {
     if (actualJoiningDate) return 0; // already joined
     if (expectedJoiningDate) {
+      // eslint-disable-next-line react-hooks/purity
       return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
     }
     return null;

@@ -120,6 +120,7 @@ export interface DataTableProps<T> {
   isExpanded?: (row: T) => boolean;
   renderExpanded?: (row: T, index: number) => ReactNode;
   emptyMessage?: string;
+  footerRow?: Record<string, number>;
 }
 
 export function DataTable<T>({
@@ -135,6 +136,7 @@ export function DataTable<T>({
   isExpanded,
   renderExpanded,
   emptyMessage = 'Nothing to show for these filters.',
+  footerRow,
 }: DataTableProps<T>) {
   const visible = useMemo(() => visibleColumns(columns, hiddenColumns), [columns, hiddenColumns]);
 
@@ -188,6 +190,19 @@ export function DataTable<T>({
       col.frozen
         ? `sticky z-10 ${frozenBgClass?.(row, index) ?? 'bg-white group-hover:bg-slate-50'}`
         : '',
+      col.id === lastFrozenId ? `border-r border-slate-200 ${edgeShadow}` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+  // IDs that should show nothing in the footer (utility columns with no numeric meaning)
+  const FOOTER_SKIP_IDS = new Set(['__select__', '__expand__', '__sr__']);
+
+  const footClass = (col: ColumnDef<T>) =>
+    [
+      'border-t-2 border-slate-300 bg-slate-100 px-3 py-2.5',
+      ALIGN[col.align ?? 'left'],
+      col.frozen ? `sticky z-10 bg-slate-100` : '',
       col.id === lastFrozenId ? `border-r border-slate-200 ${edgeShadow}` : '',
     ]
       .filter(Boolean)
@@ -276,6 +291,53 @@ export function DataTable<T>({
               );
             })}
           </tbody>
+          {/* ── Footer: column-wise totals ────────────────────────────────── */}
+          {footerRow && rows.length > 0 && (
+            <tfoot>
+              <tr>
+                {visible.map(col => {
+                  // Utility columns (checkbox, expand, sr#) → empty cell
+                  if (FOOTER_SKIP_IDS.has(col.id)) {
+                    return <td key={col.id} className={footClass(col)} style={styleFor(col)} />;
+                  }
+
+                  // Frozen recruiter name column → "Total" label
+                  if (col.id === 'recruiter') {
+                    return (
+                      <td key={col.id} className={footClass(col)} style={styleFor(col)}>
+                        <span className="text-[12px] font-black uppercase tracking-widest text-slate-600">
+                          Total
+                        </span>
+                      </td>
+                    );
+                  }
+
+                  // avgDays → skip (not summable)
+                  if (col.id === 'avgDays') {
+                    return (
+                      <td key={col.id} className={footClass(col)} style={styleFor(col)}>
+                        <span className="text-[11px] text-slate-300">—</span>
+                      </td>
+                    );
+                  }
+
+                  const val = footerRow[col.id];
+
+                  return (
+                    <td key={col.id} className={footClass(col)} style={styleFor(col)}>
+                      {val != null && val > 0 ? (
+                        <span className="text-[13px] font-black text-slate-800 tabular-nums">
+                          {val}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-300">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
