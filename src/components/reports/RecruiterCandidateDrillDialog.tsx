@@ -1,11 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // File: RecruiterCandidateDrillDialog.tsx
 // Path: src/components/reports/RecruiterCandidateDrillDialog.tsx
-//
-// Opens when a user clicks a stage count cell or the total count in RecruiterTable.
-// Calls GET /reports/overview/drill?recruiterId=X&stageId=Y  (existing endpoint).
-// Shows a full scrollable candidate table with search, sort, and SheetJS export.
-// Mirrors RequirementCandidateDrillDialog's UX exactly — same columns, same expand.
 
 'use client';
 
@@ -35,17 +30,15 @@ import * as XLSX from 'xlsx';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface RecruiterDrillTarget {
-  recruiterId: string; // '__all__' when opening from stats bar (no recruiter filter)
+  recruiterId: string;
   recruiterName: string;
   recruiterEmail?: string;
-  stageId?: string; // if clicking a specific stage cell
+  stageId?: string;
   stageLabel?: string;
-  overrideQs?: string; // stats bar: fully-built query string, skip baseQs merge
-  serviceLineId?: string; // stats bar SL drill: scoped to this SL
+  overrideQs?: string;
+  serviceLineId?: string;
 }
 
-// We reuse the same DrillRow shape from the overview/drill endpoint.
-// The endpoint returns candidates; we map what we need.
 interface DrillRow {
   pipelineId: string;
   candidateName: string;
@@ -222,7 +215,18 @@ function ThBtn({
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CANDIDATE ROW
-// skills, client, experience, service line → expanded only
+// ─────────────────────────────────────────────────────────────────────────────
+// Column order (must match <thead> exactly):
+// 1. Candidate
+// 2. Requirement
+// 3. Stage
+// 4. Last Working Date
+// 5. Date of Joining
+// 6. Month of Joining
+// 7. Offered CTC
+// 8. Current CTC
+// 9. Expected CTC
+// 10. Added · Aging
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CandidateRow({ row }: { row: DrillRow }) {
@@ -238,7 +242,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           ${row.isNearTerminal && !row.isTerminal ? 'bg-amber-50/20' : ''}`}
         onClick={() => setExpanded(p => !p)}
       >
-        {/* Candidate */}
+        {/* 1. Candidate */}
         <td className="px-4 py-3">
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
@@ -269,77 +273,18 @@ function CandidateRow({ row }: { row: DrillRow }) {
           </div>
         </td>
 
-        {/* Requirement */}
+        {/* 2. Requirement */}
         <td className="px-3 py-3">
           <p className="text-[11px] font-bold text-slate-700">{row.reqCode}</p>
-          <p className="max-w-45 truncate text-[10px] text-slate-400">{row.reqTitle}</p>
+          <p className="max-w-[170px] truncate text-[10px] text-slate-400">{row.reqTitle}</p>
         </td>
 
-        {/* Stage */}
+        {/* 3. Stage */}
         <td className="px-3 py-3">
           <StatusBadge row={row} />
         </td>
 
-        {/* CTC */}
-        {/* <td className="px-3 py-3">
-          <div className="flex flex-col gap-0.5 text-[11px]">
-            {row.currentCtc != null && (
-              <span className="text-slate-500">Curr: {fmtCtc(row.currentCtc)}</span>
-            )}
-            {row.expectedCtc != null && (
-              <span className="text-slate-500">Exp: {fmtCtc(row.expectedCtc)}</span>
-            )}
-            {row.offeredCtc != null && (
-              <span className="font-bold text-emerald-700">Offered: {fmtCtc(row.offeredCtc)}</span>
-            )}
-            {row.currentCtc == null && row.expectedCtc == null && row.offeredCtc == null && (
-              <span className="text-slate-300">—</span>
-            )}
-          </div>
-        </td> */}
-
-        {/* Joining */}
-        {/* <td className="px-3 py-3">
-          {row.monthOfJoining ? (
-            <div>
-              <p className="text-[12px] font-bold text-indigo-700">{row.monthOfJoining}</p>
-              {row.daysToJoin != null && row.daysToJoin >= 0 && (
-                <p className="text-[10px] text-slate-400">{row.daysToJoin}d to join</p>
-              )}
-            </div>
-          ) : (
-            <span className="text-[11px] text-slate-300">—</span>
-          )}
-        </td> */}
-
-        {/* Offered CTC */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          {row.offeredCtc != null ? (
-            <p className="text-[12px] font-bold text-emerald-700">{fmtCtc(row.offeredCtc)}</p>
-          ) : (
-            <span className="text-[11px] text-slate-300">—</span>
-          )}
-        </td>
-
-        {/* Current CTC */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          {row.currentCtc != null ? (
-            <p className="text-[12px] font-semibold text-slate-700">{fmtCtc(row.currentCtc)}</p>
-          ) : (
-            <span className="text-[11px] text-slate-300">—</span>
-          )}
-        </td>
-
-        {/* Expected CTC */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          {row.expectedCtc != null ? (
-            <p className="text-[12px] font-semibold text-indigo-600">{fmtCtc(row.expectedCtc)}</p>
-          ) : (
-            <span className="text-[11px] text-slate-300">—</span>
-          )}
-        </td>
-
-        {/* Last Working Date */}
+        {/* 4. Last Working Date */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.lastWorkingDate ? (
             <div>
@@ -355,7 +300,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* Date of Joining (actualJoiningDate) */}
+        {/* 5. Date of Joining */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.actualJoiningDate ? (
             <div>
@@ -379,7 +324,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* Month of Joining */}
+        {/* 6. Month of Joining */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.monthOfJoining ? (
             <p className="text-[12px] font-semibold text-slate-700">{row.monthOfJoining}</p>
@@ -388,7 +333,34 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* Added + aging */}
+        {/* 7. Offered CTC */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.offeredCtc != null ? (
+            <p className="text-[12px] font-bold text-emerald-700">{fmtCtc(row.offeredCtc)}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* 8. Current CTC */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.currentCtc != null ? (
+            <p className="text-[12px] font-semibold text-slate-700">{fmtCtc(row.currentCtc)}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* 9. Expected CTC */}
+        <td className="px-3 py-3 whitespace-nowrap">
+          {row.expectedCtc != null ? (
+            <p className="text-[12px] font-semibold text-indigo-600">{fmtCtc(row.expectedCtc)}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* 10. Added + Aging */}
         <td className="px-3 py-3 text-right whitespace-nowrap">
           <p className="text-[11px] font-semibold text-slate-700">{fmtDate(row.addedOn)}</p>
           <p className="text-[10px] text-slate-400">
@@ -397,90 +369,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
         </td>
       </tr>
 
-      {/* Expanded */}
-      {/* {expanded && (
-        <tr className="bg-indigo-50/40">
-          <td colSpan={7} className="px-6 py-4">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-[12px] sm:grid-cols-3 lg:grid-cols-4">
-              {row.candidatePhone && (
-                <div>
-                  <span className="text-slate-400">Phone </span>
-                  <span className="font-semibold">{row.candidatePhone}</span>
-                </div>
-              )}
-              {row.expYears != null && (
-                <div>
-                  <span className="text-slate-400">Exp </span>
-                  <span className="font-semibold">{row.expYears} yrs</span>
-                </div>
-              )}
-              {row.topSkills && (
-                <div className="col-span-2">
-                  <span className="text-slate-400">Skills </span>
-                  <span className="font-semibold">{row.topSkills}</span>
-                </div>
-              )}
-              {row.noticePeriod && (
-                <div>
-                  <span className="text-slate-400">Notice </span>
-                  <span className="font-semibold">{row.noticePeriod}</span>
-                </div>
-              )}
-              {row.lastWorkingDate && (
-                <div>
-                  <span className="text-slate-400">LWD </span>
-                  <span className="font-semibold">{fmtDate(row.lastWorkingDate)}</span>
-                </div>
-              )}
-              {row.expectedJoiningDate && (
-                <div>
-                  <span className="text-slate-400">Exp Joining </span>
-                  <span className="font-semibold">{fmtDate(row.expectedJoiningDate)}</span>
-                </div>
-              )}
-              {row.actualJoiningDate && (
-                <div>
-                  <span className="text-slate-400">Actual Joining </span>
-                  <span className="font-semibold text-emerald-700">
-                    {fmtDate(row.actualJoiningDate)}
-                  </span>
-                </div>
-              )}
-              {row.submittedAt && (
-                <div>
-                  <span className="text-slate-400">Submitted </span>
-                  <span className="font-semibold">{fmtDate(row.submittedAt)}</span>
-                </div>
-              )}
-              {row.offerStatus && (
-                <div>
-                  <span className="text-slate-400">Offer </span>
-                  <span className="font-semibold">{row.offerStatus}</span>
-                </div>
-              )}
-              {row.negotiatedCtc != null && (
-                <div>
-                  <span className="text-slate-400">Negotiated CTC </span>
-                  <span className="font-semibold">{fmtCtc(row.negotiatedCtc)}</span>
-                </div>
-              )}
-              {row.clientName && (
-                <div>
-                  <span className="text-slate-400">Client </span>
-                  <span className="font-semibold">{row.clientName}</span>
-                </div>
-              )}
-              {row.serviceLineName && (
-                <div>
-                  <span className="text-slate-400">Service Line </span>
-                  <span className="font-semibold">{row.serviceLineName}</span>
-                </div>
-              )}
-            </div>
-          </td>
-        </tr>
-      )} */}
-      {/* Expanded — skills, client, exp, service line only */}
+      {/* Expanded detail */}
       {expanded && (
         <tr className="bg-indigo-50/40">
           <td colSpan={10} className="px-6 py-3">
@@ -671,7 +560,7 @@ function exportToExcel(rows: DrillRow[], recruiterName: string, stageLabel?: str
 
 interface Props {
   target: RecruiterDrillTarget | null;
-  baseQs: string; // pass the current filter params so drill respects all filters
+  baseQs: string;
   onClose: () => void;
 }
 
@@ -680,6 +569,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('stageOrder');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [mojMonth, setMojMonth] = useState<string>('');
 
   const toggleSort = (k: SortKey) => {
     if (k === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -689,10 +579,6 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
     }
   };
 
-  // MOJ filter state
-  const [mojMonth, setMojMonth] = useState<string>('');
-
-  // MOJ options — distinct months available for current scope
   const mojOptionsQuery = useQuery({
     queryKey: ['recruiter-drill-moj', baseQs],
     queryFn: async () => (await axios.get(`/reports/recruiters/drill/moj-options?${baseQs}`)).data,
@@ -701,11 +587,9 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
   });
   const mojOptions: { label: string; value: string }[] = mojOptionsQuery.data?.data ?? [];
 
-  // Build query string for the new /reports/recruiters/drill endpoint
   const queryString = useMemo(() => {
     if (!target) return '';
     const overrideQs = (target as any).overrideQs;
-    // Stats bar sends a pre-built overrideQs — merge MOJ on top
     const p = new URLSearchParams(overrideQs !== undefined ? overrideQs : baseQs);
     if (target.recruiterId && target.recruiterId !== '__all__') {
       p.set('recruiterId', target.recruiterId);
@@ -732,7 +616,6 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
     staleTime: 60_000,
   });
 
-  // New endpoint returns data directly as DrillRow[] — minimal mapping needed
   const rows: DrillRow[] = useMemo(() => {
     const raw = data?.data ?? [];
     return raw.map((r: any) => ({
@@ -769,7 +652,6 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
       expectedJoiningDate: r.expectedJoiningDate ?? null,
       actualJoiningDate: r.actualJoiningDate ?? null,
       monthOfJoining: r.monthOfJoining ?? null,
-      dateOfJoining: r.dateOfJoining ?? null,
       daysToJoin: r.daysToJoin ?? r.remainingDaysToJoin ?? null,
       reqCode: r.reqCode ?? r.requirement?.reqCode ?? '—',
       reqTitle: r.reqTitle ?? r.requirement?.title ?? '—',
@@ -779,7 +661,6 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
     }));
   }, [data]);
 
-  // Stats — prefer server-computed (accurate even when rows are capped)
   const serverStats = data?.meta?.stats;
   const capped: boolean = data?.meta?.capped ?? false;
   const stats = useMemo(
@@ -833,12 +714,10 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Dialog */}
       <div className="relative z-10 flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        {/* ── Header ──────────────────────────────────────────────────── */}
+        {/* Header */}
         <div className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -878,7 +757,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
           </div>
         </div>
 
-        {/* ── Stats strip ─────────────────────────────────────────────── */}
+        {/* Stats strip */}
         {!isLoading && rows.length > 0 && (
           <div className="shrink-0 border-b border-slate-100 bg-slate-50 px-6 py-2.5">
             <div className="flex flex-wrap items-center gap-3 text-[12px]">
@@ -929,9 +808,8 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
           </div>
         )}
 
-        {/* ── MOJ filter + Search ─────────────────────────────────────── */}
+        {/* MOJ filter + Search */}
         <div className="shrink-0 border-b border-slate-100 px-6 py-3 space-y-2">
-          {/* Month of Joining filter */}
           {mojOptions.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -987,7 +865,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
           )}
         </div>
 
-        {/* ── Body ────────────────────────────────────────────────────── */}
+        {/* Body */}
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <div className="flex h-full items-center justify-center gap-3 text-slate-400">
@@ -1005,6 +883,19 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
             </div>
           ) : (
             <table className="w-full border-collapse text-[12px]">
+              {/*
+                ── THEAD — 10 columns, order must match CandidateRow <td> order exactly ──
+                1. Candidate
+                2. Requirement
+                3. Stage
+                4. Last Working Date
+                5. Date of Joining
+                6. Month of Joining
+                7. Offered CTC
+                8. Current CTC
+                9. Expected CTC
+                10. Added · Aging
+              */}
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b-2 border-slate-200">
                   <ThBtn
@@ -1013,7 +904,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="candidateName"
                     label="Candidate"
-                    className="px-4 min-w-50"
+                    className="px-4 min-w-[200px]"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -1021,7 +912,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="reqCode"
                     label="Requirement"
-                    className="min-w-35"
+                    className="min-w-[140px]"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -1029,25 +920,23 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="stageLabel"
                     label="Stage"
-                    className="min-w-30"
+                    className="min-w-[120px]"
                   />
-
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
                     k="lastWorkingDate"
                     label="Last Working Date"
-                    className="min-w-30"
+                    className="min-w-[140px]"
                   />
-
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
                     k="actualJoiningDate"
                     label="Date of Joining"
-                    className="min-w-27.5"
+                    className="min-w-[130px]"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -1055,16 +944,15 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="monthOfJoining"
                     label="Month of Joining"
-                    className="min-w-27.5"
+                    className="min-w-[130px]"
                   />
-
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
                     k="offeredCtc"
                     label="Offered CTC"
-                    className="min-w-30"
+                    className="min-w-[110px]"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -1072,7 +960,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="currentCtc"
                     label="Current CTC"
-                    className="min-w-30"
+                    className="min-w-[110px]"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -1080,16 +968,15 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="expectedCtc"
                     label="Expected CTC"
-                    className="min-w-27.5"
+                    className="min-w-[110px]"
                   />
-
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
                     k="addedOn"
                     label="Added · Aging"
-                    className="min-w-32.5 text-right" // was min-w-[120px]
+                    className="min-w-[120px] text-right"
                   />
                 </tr>
               </thead>
@@ -1102,7 +989,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
           )}
         </div>
 
-        {/* ── Footer ──────────────────────────────────────────────────── */}
+        {/* Footer */}
         {sorted.length > 0 && (
           <div className="shrink-0 border-t border-slate-100 bg-slate-50 px-6 py-2.5">
             <p className="text-[11px] text-slate-400">

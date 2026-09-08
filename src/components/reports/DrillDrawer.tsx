@@ -171,8 +171,7 @@ type SortKey = keyof DrillRow;
 type SortDir = 'asc' | 'desc';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TH BUTTON — declared at module level, NOT inside any component
-// Takes sort state as props to avoid closure-over-render issues
+// TH BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ThBtn({
@@ -213,7 +212,7 @@ function ThBtn({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATE ROW — declared at module level
+// CANDIDATE ROW
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CandidateRow({ row }: { row: DrillRow }) {
@@ -227,7 +226,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
         }`}
         onClick={() => setExpanded(p => !p)}
       >
-        {/* Candidate */}
+        {/* 1. Candidate */}
         <td className="px-4 py-3">
           <div className="flex items-start gap-2">
             <div className="min-w-0">
@@ -255,7 +254,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           </div>
         </td>
 
-        {/* Requirement */}
+        {/* 2. Requirement */}
         <td className="px-3 py-3">
           <p className="text-[12px] font-semibold text-slate-800 leading-snug">{row.reqTitle}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -266,12 +265,12 @@ function CandidateRow({ row }: { row: DrillRow }) {
           </div>
         </td>
 
-        {/* Stage + status */}
+        {/* 3. Stage / Status */}
         <td className="px-3 py-3">
           <StatusBadge row={row} />
         </td>
 
-        {/* ── NEW: CTC ── */}
+        {/* 4. CTC */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.offeredCtc != null ? (
             <div>
@@ -302,7 +301,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* ── NEW: Last Working Date ── */}
+        {/* 5. Last Working Date */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.lastWorkingDate ? (
             <div>
@@ -318,7 +317,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* ── NEW: Joining Date ── */}
+        {/* 6. Date of Joining */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.actualJoiningDate ? (
             <div>
@@ -342,7 +341,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* ── NEW: Month of Joining ── */}
+        {/* 7. Month of Joining */}
         <td className="px-3 py-3 whitespace-nowrap">
           {row.monthOfJoining ? (
             <p className="text-[12px] font-semibold text-slate-700">{row.monthOfJoining}</p>
@@ -351,12 +350,12 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* Recruiter */}
+        {/* 8. Recruiter */}
         <td className="px-3 py-3">
           <p className="text-[12px] font-semibold text-slate-700">{row.recruiterName}</p>
         </td>
 
-        {/* Added + aging */}
+        {/* 9. Added + Aging */}
         <td className="px-3 py-3 text-right">
           <p className="text-[11px] font-semibold text-slate-700">{fmtDate(row.addedOn)}</p>
           <p className="text-[10px] text-slate-400">
@@ -365,7 +364,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
         </td>
       </tr>
 
-      {/* Expanded detail row — colSpan bumped to 9 */}
+      {/* Expanded detail row */}
       {expanded && (
         <tr className="bg-indigo-50/40">
           <td colSpan={9} className="px-6 py-3">
@@ -433,7 +432,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHEETJS CLIENT-SIDE EXPORT — no backend call
+// SHEETJS CLIENT-SIDE EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
 
 function exportToExcel(rows: DrillRow[], label: string) {
@@ -476,6 +475,7 @@ function exportToExcel(rows: DrillRow[], label: string) {
     'Actual Joining': r.actualJoiningDate
       ? format(new Date(r.actualJoiningDate), 'dd-MMM-yyyy')
       : '',
+    'Month of Joining': r.monthOfJoining ?? '',
     Recruiter: r.recruiterName,
     'Recruiter Email': r.recruiterEmail,
     'Req Code': r.reqCode,
@@ -509,6 +509,7 @@ function exportToExcel(rows: DrillRow[], label: string) {
     { wch: 14 },
     { wch: 14 },
     { wch: 14 },
+    { wch: 16 },
     { wch: 16 },
     { wch: 16 },
     { wch: 16 },
@@ -804,6 +805,7 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
             </div>
           ) : (
             <table className="w-full border-collapse text-[12px]">
+              {/* ── SINGLE thead — 9 columns matching the 9 <td>s in CandidateRow ── */}
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b-2 border-slate-200">
                   <ThBtn
@@ -828,6 +830,38 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
                     onToggle={toggleSort}
                     k="stageLabel"
                     label="Stage / Status"
+                    className="w-32"
+                  />
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="offeredCtc"
+                    label="CTC"
+                    className="w-36"
+                  />
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="lastWorkingDate"
+                    label="Last Working Date"
+                    className="w-36"
+                  />
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="expectedJoiningDate"
+                    label="Date of Joining"
+                    className="w-36"
+                  />
+                  <ThBtn
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onToggle={toggleSort}
+                    k="monthOfJoining"
+                    label="Month of Joining"
                     className="w-32"
                   />
                   <ThBtn
