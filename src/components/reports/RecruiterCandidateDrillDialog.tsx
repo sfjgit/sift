@@ -100,6 +100,23 @@ function fmtCtc(n: number | null | undefined): string {
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
+// If monthOfJoining is stored, use it directly.
+// Otherwise fall back to extracting month+year from actualJoiningDate or expectedJoiningDate.
+function fmtMonthOfJoining(
+  monthOfJoining: string | null | undefined,
+  expectedJoiningDate: string | null | undefined,
+  actualJoiningDate: string | null | undefined
+): string | null {
+  if (monthOfJoining) return monthOfJoining;
+  const d = actualJoiningDate ?? expectedJoiningDate;
+  if (!d) return null;
+  try {
+    return format(new Date(d), 'MMMM yyyy'); // e.g. "September 2026"
+  } catch {
+    return null;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS BADGE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -324,13 +341,20 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* 6. Month of Joining */}
+        {/* 6. Month of Joining — uses stored value or falls back to month+year from joining dates */}
         <td className="px-3 py-3 whitespace-nowrap">
-          {row.monthOfJoining ? (
-            <p className="text-[12px] font-semibold text-slate-700">{row.monthOfJoining}</p>
-          ) : (
-            <span className="text-[11px] text-slate-300">—</span>
-          )}
+          {(() => {
+            const moj = fmtMonthOfJoining(
+              row.monthOfJoining,
+              row.expectedJoiningDate,
+              row.actualJoiningDate
+            );
+            return moj ? (
+              <p className="text-[12px] font-semibold text-slate-700">{moj}</p>
+            ) : (
+              <span className="text-[11px] text-slate-300">—</span>
+            );
+          })()}
         </td>
 
         {/* 7. Offered CTC */}
