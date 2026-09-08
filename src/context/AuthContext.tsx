@@ -31,6 +31,7 @@ export interface Role {
   name: string;
   description?: string | null;
   isSystem: boolean;
+  canonical: string | null;
   permissions: Permission[];
 }
 
