@@ -43,6 +43,7 @@ import {
   CalendarCheck,
   AlertTriangle,
   Files,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -68,6 +69,8 @@ import {
 import { useAxios } from '@/hooks/useAxios';
 import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/context/AuthContext';
+import { TransferCandidateDialog } from '@/components/assignments/TransferCandidateDialog';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -124,6 +127,7 @@ interface PipelineCandidate {
   offeredCtc: number | null;
   salaryCurrency: string | null;
   salaryType: string | null;
+  isTransferred: boolean;
   // ── CTC ladder ──
   currentCtc: number | null;
   expectedCtc: number | null;
@@ -296,6 +300,49 @@ interface AssignmentDetail {
   };
   candidateStats: CandidateStats;
   permissions: { canEdit: boolean; canDelete: boolean };
+
+  childAssignments: {
+    id: string;
+    depth: number;
+    status: string;
+    allocatedOpenings: number | null;
+    deadline: string | null;
+    breachedAt: string | null;
+    assignedAt: string;
+    assignedTo: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      employeeId: string | null;
+      role: { id: string; name: string };
+    };
+    assignedBy: {
+      id: string;
+      firstName: string;
+      lastName: string;
+    };
+    childAssignments: {
+      id: string;
+      depth: number;
+      status: string;
+      allocatedOpenings: number | null;
+      deadline: string | null;
+      breachedAt: string | null;
+      assignedAt: string;
+      assignedTo: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        employeeId: string | null;
+        role: { id: string; name: string };
+      };
+      assignedBy: {
+        id: string;
+        firstName: string;
+        lastName: string;
+      };
+    }[];
+  }[];
 }
 
 interface PipelineResponse {
@@ -314,7 +361,8 @@ interface PipelineResponse {
   permissions: { canEdit: boolean; canDelete: boolean };
 }
 
-type ActionType = 'move' | 'details' | null;
+// Only two row-level actions now — everything else lives inside the details modal.
+type ActionType = 'move' | 'details' | 'transfer' | null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE COLOURS
@@ -2239,6 +2287,14 @@ function CandidateTable({
   onAction: (a: ActionType, p: PipelineCandidate) => void;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
+  // RECRUITER canonical → transfer button is completely hidden.
+  // All other canonicals (DELIVERY_MANAGER, DELIVERY_LEAD, SR_CSM, CSM,
+  // ADMIN, SUPER_ADMIN, etc.) can see it.
+  // isSuperAdmin short-circuits regardless of canonical.
+  const canTransfer =
+    user?.isSuperAdmin === true ||
+    (user?.role?.canonical != null && user.role.canonical !== 'RECRUITER');
 
   return (
     <div className="overflow-x-auto">
@@ -2271,6 +2327,7 @@ function CandidateTable({
         <tbody className="divide-y divide-slate-100">
           {candidates.map(p => {
             const snap = p.snapshot;
+            const isTransferred = (p as any).isTransferred === true;
             const c = SC(p.currentStage.code);
             const agingColor =
               p.aging.minutes > 43200
@@ -2283,31 +2340,50 @@ function CandidateTable({
               <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
                 <td className="px-3 py-3 align-top">
                   <div className="flex items-center justify-center gap-1">
-                    <button
-                      title="Open in requirement"
-                      onClick={() =>
-                        router.push(`/requirements/${requirementId}?pipelineId=${p.id}`)
-                      }
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                    {canEdit && (
+                    {isTransferred ? (
+                      // Transferred away — only show the external link, everything else locked
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-200 text-slate-500 border border-slate-300">
+                        <ArrowRightLeft className="w-3 h-3" />
+                        Transferred
+                      </span>
+                    ) : (
                       <>
                         <button
-                          title="Move Stage"
-                          onClick={() => onAction('move', p)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                          title="Open in requirement"
+                          onClick={() =>
+                            router.push(`/requirements/${requirementId}?pipelineId=${p.id}`)
+                          }
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
                         >
-                          <ArrowUpDown className="w-3.5 h-3.5" />
+                          <ExternalLink className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          title="Update Candidate Details"
-                          onClick={() => onAction('details', p)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-100 transition-colors"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        {canEdit && (
+                          <>
+                            <button
+                              title="Move Stage"
+                              onClick={() => onAction('move', p)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                            >
+                              <ArrowUpDown className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              title="Update Candidate Details"
+                              onClick={() => onAction('details', p)}
+                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                        {canTransfer && (
+                          <button
+                            title="Transfer to another recruiter"
+                            onClick={() => onAction('transfer', p)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
@@ -2321,8 +2397,8 @@ function CandidateTable({
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <Link href={`/candidates/${snap.candidateServiceId}`}>
-                        <p className="text-sm font-bold text-slate-900 leading-tight truncate">
+                      <Link href={isTransferred ? '#' : `/candidates/${snap.candidateServiceId}`}>
+                        <p className="text-sm font-bold text-slate-900 leading-tight truncate ${isTransferred ? 'text-slate-400' : 'text-slate-900'}">
                           {snap.fullName}
                         </p>
                         <p className="text-xs text-slate-500 truncate mt-0.5">
@@ -2331,26 +2407,37 @@ function CandidateTable({
                           {snap.currentCompany}
                         </p>
                       </Link>
-                      <div className="flex items-center gap-2.5 mt-1 text-[11px] text-slate-600">
-                        {snap.email && (
-                          <span className="flex items-center gap-1 truncate">
-                            <Mail className="w-3 h-3 shrink-0" />
-                            {snap.email}
-                          </span>
-                        )}
-                        {snap.phone && (
-                          <span className="flex items-center gap-1 shrink-0">
-                            <Phone className="w-3 h-3" />
-                            {snap.phone}
-                          </span>
-                        )}
-                      </div>
-                      {snap.totalExpYears != null && (
-                        <span className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
-                          <Briefcase className="w-3 h-3" />
-                          {Math.floor(snap.totalExpYears)}y{' '}
-                          {Math.round((snap.totalExpYears % 1) * 12)}m exp
-                        </span>
+                      {isTransferred && (
+                        <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                          <ArrowRightLeft className="w-3 h-3" />
+                          Transferred to {p.recruiter.firstName} {p.recruiter.lastName}
+                        </p>
+                      )}
+                      {/* rest of contact/exp info — only show if not transferred */}
+                      {!isTransferred && (
+                        <>
+                          <div className="flex items-center gap-2.5 mt-1 text-[11px] text-slate-600">
+                            {snap.email && (
+                              <span className="flex items-center gap-1 truncate">
+                                <Mail className="w-3 h-3 shrink-0" />
+                                {snap.email}
+                              </span>
+                            )}
+                            {snap.phone && (
+                              <span className="flex items-center gap-1 shrink-0">
+                                <Phone className="w-3 h-3" />
+                                {snap.phone}
+                              </span>
+                            )}
+                          </div>
+                          {snap.totalExpYears != null && (
+                            <span className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
+                              <Briefcase className="w-3 h-3" />
+                              {Math.floor(snap.totalExpYears)}y{' '}
+                              {Math.round((snap.totalExpYears % 1) * 12)}m exp
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -3125,6 +3212,17 @@ export default function AssignmentDetailPage() {
       {actionDialog?.type === 'details' && (
         <CandidateDetailsModal
           pipeline={actionDialog.pipeline}
+          open
+          onClose={() => setActionDialog(null)}
+          onDone={invalidateAfterAction}
+        />
+      )}
+      {actionDialog?.type === 'transfer' && (
+        <TransferCandidateDialog
+          pipeline={actionDialog.pipeline}
+          assignmentId={a.id}
+          requirementId={req.id}
+          reqCode={req.reqCode}
           open
           onClose={() => setActionDialog(null)}
           onDone={invalidateAfterAction}
