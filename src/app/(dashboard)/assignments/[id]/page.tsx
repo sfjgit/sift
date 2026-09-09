@@ -2369,17 +2369,19 @@ function CandidateTable({
                         </button>
                       </>
                     )}
-                    {/* Transfer button — hidden if already transferred OR if recruiter role */}
-                    {canTransfer && !isTransferred && (
+                    {/* Transfer button — always visible for eligible roles; dialog handles re-transfer warning */}
+                    {canTransfer && (
                       <button
-                        title="Transfer to another recruiter"
+                        title={
+                          isTransferred ? 'Re-transfer candidate' : 'Transfer to another recruiter'
+                        }
                         onClick={() => onAction('transfer', p)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
                       >
                         <ArrowRightLeft className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {/* Show transferred badge alongside actions, not instead of them */}
+                    {/* Transferred badge shown alongside the button, not instead of it */}
                     {isTransferred && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-200 text-slate-500 border border-slate-300">
                         <ArrowRightLeft className="w-3 h-3" />
