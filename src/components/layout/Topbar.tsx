@@ -62,7 +62,7 @@ function Breadcrumb() {
     <div className="flex items-center gap-1 text-sm">
       <Link
         href="/dashboard"
-        className="text-muted-foreground font-medium hover:text-foreground transition-colors"
+        className="text-muted-foreground font-medium hover:text-foreground transition-colors "
       >
         TalentOS
       </Link>
@@ -78,11 +78,12 @@ function Breadcrumb() {
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
             {isLast ? (
               // Last segment: not a link, just bold label
-              <span className="font-medium text-foreground">{label}</span>
+              //<span className="font-medium text-foreground">{label}</span>
+              ''
             ) : (
               <Link
                 href={href}
-                className="font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className="font-medium text-muted-foreground hover:text-foreground transition-colors "
               >
                 {label}
               </Link>

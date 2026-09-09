@@ -1312,6 +1312,7 @@ function MoveStageDialog({
   const [ivTime, setIvTime] = useState('');
   const [ivMode, setIvMode] = useState<'ONLINE' | 'OFFLINE' | 'TELEPHONIC'>('ONLINE');
   const [ivDuration, setIvDuration] = useState('');
+  const [noticePeriod, setNoticePeriod] = useState(''); // ← Chunk 1
   const currentOrder = pipeline.currentStage.order;
 
   const selectableStages = useMemo(() => [...stages].sort((a, b) => a.order - b.order), [stages]);
@@ -1323,6 +1324,7 @@ function MoveStageDialog({
 
   const cc = SC(pipeline.currentStage.code);
   const tc = selected ? SC(selected.code) : null;
+  const isSubmittedToClient = selected?.canonicalStage === 'SUBMMITED'; // ← Chunk 2
 
   const reset = () => {
     setStageId('');
@@ -1331,11 +1333,18 @@ function MoveStageDialog({
     setIvTime('');
     setIvMode('ONLINE');
     setIvDuration('');
+    setNoticePeriod(''); // ← Chunk 3
   };
 
   const mut = useMutation({
     mutationFn: async () => {
+      if (isSubmittedToClient && !noticePeriod.trim()) {
+        throw new Error('Notice period is required when moving to Submitted to Client');
+      }
       const body: any = { stageId, note: note.trim() || undefined };
+      if (isSubmittedToClient) {
+        body.noticePeriod = noticePeriod.trim(); // ← Chunk 4
+      }
       if (showInterview) {
         body.interview = {
           scheduledAt: new Date(`${ivDate}T${ivTime}`).toISOString(),
@@ -1355,7 +1364,8 @@ function MoveStageDialog({
       onClose();
       reset();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to move stage'),
+    onError: (e: any) =>
+      toast.error(e?.message ?? e?.response?.data?.message ?? 'Failed to move stage'), // ← Chunk 4
   });
 
   return (
@@ -1508,6 +1518,24 @@ function MoveStageDialog({
           </div>
         </div>
 
+        {/* Notice Period required input when moving to Submitted to Client (Chunk 5) */}
+        {isSubmittedToClient && (
+          <div className="px-6 py-4 border-t border-slate-100 bg-emerald-50/40">
+            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
+              Notice Period <span className="text-rose-500">*</span>
+            </Label>
+            <Input
+              value={noticePeriod}
+              onChange={e => setNoticePeriod(e.target.value)}
+              placeholder="e.g. 30 days"
+              className={`h-9 text-sm ${!noticePeriod.trim() ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
+            />
+            {!noticePeriod.trim() && (
+              <p className="text-[10px] text-rose-500 mt-1">Required to move to this stage</p>
+            )}
+          </div>
+        )}
+
         {showInterview && (
           <div className="px-6 py-4 border-t border-slate-100 bg-indigo-50/40 space-y-3">
             <div className="flex items-center gap-2">
@@ -1594,8 +1622,14 @@ function MoveStageDialog({
             >
               Cancel
             </Button>
+            {/* Disabled condition updated with notice period validation (Chunk 6) */}
             <Button
-              disabled={!stageId || !interviewValid || mut.isPending}
+              disabled={
+                !stageId ||
+                !interviewValid ||
+                (isSubmittedToClient && !noticePeriod.trim()) ||
+                mut.isPending
+              }
               onClick={() => mut.mutate()}
               className="gap-2 min-w-32.5"
             >
@@ -1781,8 +1815,6 @@ function SubmissionTab({ pipeline, axios, onDone, onClose }: any) {
 }
 
 // ── Offer & CTC tab ─────────────────────────────────────────────────────────
-// NOTE: expectedJoiningDate has been MOVED to JoiningTab.
-// This tab now only handles CTC ladder + formal offer fields.
 function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   const [currentCtc, setCurrentCtc] = useState(pipeline.currentCtc?.toString() ?? '');
   const [expectedCtc, setExpectedCtc] = useState(pipeline.expectedCtc?.toString() ?? '');
@@ -1922,10 +1954,6 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
 }
 
 // ── Joining tab ──────────────────────────────────────────────────────────────
-// UPDATED: Expected Joining Date is now REQUIRED.
-//   1. mutationFn guards and throws if it's empty (so onError shows the toast)
-//   2. Label shows a red "*" and the input gets a red border + helper text when empty
-//   3. Save button stays disabled until a date is chosen
 function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const NOTICE_PRESETS = [
     'Immediate Joiner',
@@ -1956,9 +1984,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
   const isImmediate = noticePeriod === 'Immediate Joiner';
 
-  // ── Live-derived display values ──
-  // If actualJoiningDate is filled → candidate already joined, show that month
-  // Otherwise derive from expectedJoiningDate so user sees the result instantly
   const previewMonthOfJoining = useMemo(() => {
     if (actualJoiningDate) {
       return new Date(actualJoiningDate).toLocaleString('en-IN', {
@@ -1976,9 +2001,8 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   }, [actualJoiningDate, expectedJoiningDate]);
 
   const previewRemainingDays = useMemo(() => {
-    if (actualJoiningDate) return 0; // already joined
+    if (actualJoiningDate) return 0;
     if (expectedJoiningDate) {
-      // eslint-disable-next-line react-hooks/purity
       return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
     }
     return null;
@@ -1986,8 +2010,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
   const mut = useMutation({
     mutationFn: async () => {
-      // Expected Joining Date is mandatory — without it, reports can't show
-      // joining month / countdown, so block the save here.
       if (!expectedJoiningDate) {
         throw new Error('Expected Joining Date is required');
       }
@@ -2304,10 +2326,6 @@ function CandidateTable({
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  // RECRUITER canonical → transfer button is completely hidden.
-  // All other canonicals (DELIVERY_MANAGER, DELIVERY_LEAD, SR_CSM, CSM,
-  // ADMIN, SUPER_ADMIN, etc.) can see it.
-  // isSuperAdmin short-circuits regardless of canonical.
   const canTransfer =
     user?.isSuperAdmin === true ||
     (user?.role?.canonical != null && user.role.canonical !== 'RECRUITER');
@@ -2384,19 +2402,15 @@ function CandidateTable({
                         </button>
                       </>
                     )}
-                    {/* Transfer button — always visible for eligible roles; dialog handles re-transfer warning */}
-                    {canTransfer && (
+                    {canTransfer && !isTransferred && (
                       <button
-                        title={
-                          isTransferred ? 'Re-transfer candidate' : 'Transfer to another recruiter'
-                        }
+                        title="Transfer to another recruiter"
                         onClick={() => onAction('transfer', p)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
                       >
                         <ArrowRightLeft className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {/* Transferred badge shown alongside the button, not instead of it */}
                     {isTransferred && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-200 text-slate-500 border border-slate-300">
                         <ArrowRightLeft className="w-3 h-3" />
@@ -2449,7 +2463,6 @@ function CandidateTable({
                           )}
                         </p>
                       )}
-                      {/* rest of contact/exp info — only show if not transferred */}
                       {!isTransferred && (
                         <>
                           <div className="flex items-center gap-2.5 mt-1 text-[11px] text-slate-600">
@@ -2634,7 +2647,6 @@ export default function AssignmentDetailPage() {
       params.set('tab', 'candidates');
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
