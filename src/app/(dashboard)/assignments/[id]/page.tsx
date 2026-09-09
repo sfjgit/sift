@@ -1922,8 +1922,10 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
 }
 
 // ── Joining tab ──────────────────────────────────────────────────────────────
-// UPDATED: added expectedJoiningDate input + live preview of monthOfJoining
-// and remainingDaysToJoin so the user sees those values before saving.
+// UPDATED: Expected Joining Date is now REQUIRED.
+//   1. mutationFn guards and throws if it's empty (so onError shows the toast)
+//   2. Label shows a red "*" and the input gets a red border + helper text when empty
+//   3. Save button stays disabled until a date is chosen
 function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const NOTICE_PRESETS = [
     'Immediate Joiner',
@@ -1976,6 +1978,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const previewRemainingDays = useMemo(() => {
     if (actualJoiningDate) return 0; // already joined
     if (expectedJoiningDate) {
+      // eslint-disable-next-line react-hooks/purity
       return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
     }
     return null;
@@ -1983,6 +1986,12 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
   const mut = useMutation({
     mutationFn: async () => {
+      // Expected Joining Date is mandatory — without it, reports can't show
+      // joining month / countdown, so block the save here.
+      if (!expectedJoiningDate) {
+        throw new Error('Expected Joining Date is required');
+      }
+
       const resolvedNotice = isManual ? manualValue.trim() : noticePeriod.trim();
 
       return axios.patch(`/pipeline/${pipeline.id}/details`, {
@@ -1997,7 +2006,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
       onDone();
       onClose();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to save'),
+    onError: (e: any) => toast.error(e?.message ?? e?.response?.data?.message ?? 'Failed to save'),
   });
 
   return (
@@ -2072,14 +2081,17 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
-            Expected Joining Date
+            Expected Joining Date <span className="text-rose-500">*</span>
           </Label>
           <Input
             type="date"
             value={expectedJoiningDate}
             onChange={e => setExpectedJoiningDate(e.target.value)}
-            className="h-9 text-sm"
+            className={`h-9 text-sm ${!expectedJoiningDate ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
           />
+          {!expectedJoiningDate && (
+            <p className="text-[10px] text-rose-500 mt-1">Required for reports</p>
+          )}
         </div>
 
         <div className="col-span-2">
@@ -2139,7 +2151,11 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
       </div>
 
       <div className="flex justify-end">
-        <Button disabled={mut.isPending} onClick={() => mut.mutate()} className="gap-2">
+        <Button
+          disabled={mut.isPending || !expectedJoiningDate}
+          onClick={() => mut.mutate()}
+          className="gap-2"
+        >
           {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           Save Joining Details
         </Button>

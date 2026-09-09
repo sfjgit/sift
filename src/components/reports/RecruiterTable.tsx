@@ -274,7 +274,7 @@ export function RecruiterTable({
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
               <span
-                className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
+                className="block max-w-25 truncate text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: stageSelected ? '#4F46E5' : '#D97706' }}
               >
                 {s.label}
@@ -312,7 +312,7 @@ export function RecruiterTable({
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
               <span
-                className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
+                className="block max-w-25 truncate text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: stageSelected ? '#4F46E5' : '#059669' }}
               >
                 {s.label}
@@ -408,6 +408,18 @@ export function RecruiterTable({
           </span>
         ),
       },
+
+      {
+        id: 'total',
+        label: 'Total',
+        align: 'center',
+        group: 'Outcome',
+        headerTitle: 'Total count of all candidates for this recruiter across all stages',
+        exportValue: (r: any) => r.sourced ?? 0,
+        cell: (r: any) => (
+          <span className="text-[13px] font-black text-slate-700">{r.sourced ?? 0}</span>
+        ),
+      },
     ],
     [
       allIds,
@@ -431,6 +443,24 @@ export function RecruiterTable({
     .filter(id => id.startsWith('stage:'))
     .map(id => id.replace('stage:', ''));
 
+  // ── Footer totals: column-wise sums across all recruiters ──────────────────
+  const footerRow = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const r of data) {
+      for (const s of stages) {
+        const key = `stage:${s.id}`;
+        totals[key] = (totals[key] ?? 0) + (r.stageCounts?.[s.id] ?? 0);
+      }
+      totals['jobs'] = (totals['jobs'] ?? 0) + (r.requirementBreakdown?.length ?? 0);
+      totals['sourced'] = (totals['sourced'] ?? 0) + (r.sourced ?? 0);
+      totals['placed'] = (totals['placed'] ?? 0) + (r.placed ?? r.joined ?? 0);
+      totals['nearTerminal'] = (totals['nearTerminal'] ?? 0) + (r.nearTerminal ?? 0);
+      totals['inPipeline'] = (totals['inPipeline'] ?? 0) + (r.inPipeline ?? r.active ?? 0);
+      totals['offPipeline'] = (totals['offPipeline'] ?? 0) + (r.offPipeline ?? r.dropped ?? 0);
+      totals['total'] = (totals['total'] ?? 0) + (r.sourced ?? 0);
+    }
+    return totals;
+  }, [data, stages]);
   return (
     <>
       <StickyTableCard>
@@ -504,6 +534,7 @@ export function RecruiterTable({
           frozenBgClass={r =>
             expanded.has(r.id) ? 'bg-indigo-50' : 'bg-white group-hover:bg-slate-50'
           }
+          footerRow={footerRow}
           renderExpanded={r =>
             r.requirementBreakdown?.length > 0 ? (
               <div className="space-y-1.5">
@@ -528,7 +559,7 @@ export function RecruiterTable({
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-400">
                         {rqi.reqCode}
                       </span>
-                      <span className="min-w-[120px] flex-1 truncate text-[12px] font-semibold text-slate-800">
+                      <span className="min-w-30 flex-1 truncate text-[12px] font-semibold text-slate-800">
                         {rqi.title}
                       </span>
                       <span
