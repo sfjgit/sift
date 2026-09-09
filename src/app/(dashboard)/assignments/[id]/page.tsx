@@ -2339,53 +2339,52 @@ function CandidateTable({
 
             return (
               <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
+                {/* Actions */}
                 <td className="px-3 py-3 align-top">
                   <div className="flex items-center justify-center gap-1">
-                    {isTransferred ? (
-                      // Transferred away — only show the external link, everything else locked
+                    <button
+                      title="Open in requirement"
+                      onClick={() =>
+                        router.push(`/requirements/${requirementId}?pipelineId=${p.id}`)
+                      }
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                    {canEdit && (
+                      <>
+                        <button
+                          title="Move Stage"
+                          onClick={() => onAction('move', p)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                        >
+                          <ArrowUpDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Update Candidate Details"
+                          onClick={() => onAction('details', p)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-100 transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                    {/* Transfer button — hidden if already transferred OR if recruiter role */}
+                    {canTransfer && !isTransferred && (
+                      <button
+                        title="Transfer to another recruiter"
+                        onClick={() => onAction('transfer', p)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {/* Show transferred badge alongside actions, not instead of them */}
+                    {isTransferred && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-slate-200 text-slate-500 border border-slate-300">
                         <ArrowRightLeft className="w-3 h-3" />
                         Transferred
                       </span>
-                    ) : (
-                      <>
-                        <button
-                          title="Open in requirement"
-                          onClick={() =>
-                            router.push(`/requirements/${requirementId}?pipelineId=${p.id}`)
-                          }
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
-                        {canEdit && (
-                          <>
-                            <button
-                              title="Move Stage"
-                              onClick={() => onAction('move', p)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
-                            >
-                              <ArrowUpDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              title="Update Candidate Details"
-                              onClick={() => onAction('details', p)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-700 hover:bg-emerald-100 transition-colors"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                        {canTransfer && (
-                          <button
-                            title="Transfer to another recruiter"
-                            onClick={() => onAction('transfer', p)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-700 hover:bg-indigo-100 transition-colors"
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </>
                     )}
                   </div>
                 </td>
@@ -2409,9 +2408,28 @@ function CandidateTable({
                         </p>
                       </Link>
                       {isTransferred && (
-                        <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                          <ArrowRightLeft className="w-3 h-3" />
-                          Transferred to {p.recruiter.firstName} {p.recruiter.lastName}
+                        <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 flex-wrap">
+                          <ArrowRightLeft className="w-3 h-3 shrink-0" />
+                          {(p as any).lastTransfer ? (
+                            <>
+                              <span className="text-slate-500 font-medium">
+                                {(p as any).lastTransfer.fromRecruiter ?? '—'}
+                              </span>
+                              <span>→</span>
+                              <span className="text-slate-500 font-medium">
+                                {(p as any).lastTransfer.toRecruiter ?? '—'}
+                              </span>
+                              {(p as any).lastTransfer.by?.name && (
+                                <span className="text-slate-400">
+                                  · by {(p as any).lastTransfer.by.name}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span>
+                              Transferred to {p.recruiter.firstName} {p.recruiter.lastName}
+                            </span>
+                          )}
                         </p>
                       )}
                       {/* rest of contact/exp info — only show if not transferred */}
