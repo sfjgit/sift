@@ -9,6 +9,7 @@ export type PipelineStage = {
   code: string;
   label: string;
   order: number;
+  canonicalStage?: string | null; // ← NEW — needed to detect "Submitted to Client" (SUBMMITED)
 };
 
 export type PipelineRow = {
@@ -148,13 +149,20 @@ export function useMoveStage() {
       stageId,
       skipReason,
       note,
+      noticePeriod, // ← NEW
     }: {
       pipelineId: string;
       stageId: string;
       skipReason?: string;
       note?: string;
+      noticePeriod?: string; // ← NEW
     }) => {
-      const res = await axios.patch(`/pipeline/${pipelineId}/stage`, { stageId, skipReason, note });
+      const res = await axios.patch(`/pipeline/${pipelineId}/stage`, {
+        stageId,
+        skipReason,
+        note,
+        noticePeriod, // ← NEW
+      });
       return res.data;
     },
     onSuccess: () => {
