@@ -452,11 +452,25 @@ export function MoveStageDialog({
   onClose: () => void;
 }) {
   const moveStage = useMoveStage();
-  const schema = z.object({
-    stageId: z.string().min(1, 'Stage required'),
-    skipReason: z.string().optional(),
-    note: z.string().optional(),
-  });
+  const schema = z
+    .object({
+      stageId: z.string().min(1, 'Stage required'),
+      skipReason: z.string().optional(),
+      note: z.string().optional(),
+      noticePeriod: z.string().optional(),
+    })
+    .superRefine((data, ctx) => {
+      const targetStage = stages.find(s => s.id === data.stageId);
+      const isSubmittedToClient = targetStage?.canonicalStage === 'SUBMMITED';
+
+      if (isSubmittedToClient && !data.noticePeriod?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['noticePeriod'],
+          message: 'Notice period is required when submitting to client',
+        });
+      }
+    });
   const {
     register,
     handleSubmit,
@@ -469,6 +483,10 @@ export function MoveStageDialog({
   });
   const selectedStageId = watch('stageId');
   const validStages = stages.filter(s => s.order > pipeline.currentStage.order);
+
+  // ← NEW: figure out if the currently-selected target stage is "Submitted to Client"
+  const selectedStage = stages.find(s => s.id === selectedStageId);
+  const requiresNoticePeriod = selectedStage?.canonicalStage === 'SUBMMITED';
 
   const onSubmit = async (data: any) => {
     try {
@@ -512,6 +530,20 @@ export function MoveStageDialog({
             <p className="text-xs text-destructive">{String(errors.stageId.message)}</p>
           )}
         </div>
+
+        {/* ← NEW: only rendered when the selected target is "Submitted to Client" */}
+        {requiresNoticePeriod && (
+          <div className="space-y-1.5">
+            <Label>
+              Notice Period <span className="text-destructive">*</span>
+            </Label>
+            <Input placeholder="e.g. 30 days" {...register('noticePeriod')} />
+            {errors.noticePeriod && (
+              <p className="text-xs text-destructive">{String(errors.noticePeriod.message)}</p>
+            )}
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <Label>
             Skip Reason{' '}
