@@ -6,7 +6,15 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowRightLeft, Loader2, Search, X, Users, ChevronRight } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  Loader2,
+  Search,
+  X,
+  Users,
+  ChevronRight,
+  AlertTriangle,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +49,7 @@ interface SubordinateUser {
 
 export interface PipelineCandidateMin {
   id: string;
+  isTransferred?: boolean;
   snapshot: {
     fullName: string;
     email: string;
@@ -99,11 +108,17 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
   const axios = useAxios();
   const qc = useQueryClient();
 
+  const isAlreadyTransferred = pipeline.isTransferred === true;
+
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  // re-transfer reason — mandatory only when isAlreadyTransferred
+  const [retransferReason, setRetransferReason] = useState('');
+  // user has acknowledged the warning and wants to proceed
+  const [warningAcknowledged, setWarningAcknowledged] = useState(false);
 
-  // ── Single API call — subordinates only, no assignees endpoint ────────────
+  // ── Single API call — subordinates only ──────────────────────────────────
   const { data: subData, isLoading } = useQuery({
     queryKey: ['my-subordinates'],
     queryFn: async () => {
@@ -114,7 +129,7 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
     staleTime: 60_000,
   });
 
-  // ── Filter: must be in subordinates AND in validAssigneeIds, exclude current recruiter ──
+  // ── Filter: exclude current recruiter ────────────────────────────────────
   const allUsers = useMemo(() => {
     const subs = subData?.data ?? [];
     return subs.filter(u => u.id !== pipeline.recruiter.id);
@@ -142,6 +157,10 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
       return axios.patch(`/pipeline/${pipeline.id}/transfer`, {
         targetUserId: selectedId,
         note: note.trim() || undefined,
+        // only include retransferReason when re-transferring
+        ...(isAlreadyTransferred && retransferReason.trim()
+          ? { retransferReason: retransferReason.trim() }
+          : {}),
       });
     },
     onSuccess: res => {
@@ -173,8 +192,16 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
     setSearch('');
     setSelectedId(null);
     setNote('');
+    setRetransferReason('');
+    setWarningAcknowledged(false);
     onClose();
   };
+
+  // ── Disable logic ─────────────────────────────────────────────────────────
+  // For re-transfer: must acknowledge warning AND provide a reason
+  const canSubmit = isAlreadyTransferred
+    ? !!selectedId && warningAcknowledged && retransferReason.trim().length > 0
+    : !!selectedId;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -238,6 +265,20 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
             </div>
           </div>
         </DialogHeader>
+
+        {/* ── Already-transferred warning banner ────────────────────────── */}
+        {isAlreadyTransferred && (
+          <div className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl shrink-0">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-amber-800">Already transferred</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                This candidate has already been transferred once. Provide a reason below to
+                re-transfer.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Search ────────────────────────────────────────────────────── */}
         <div className="px-6 pt-4 pb-2 shrink-0">
@@ -307,7 +348,6 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
                         }`}
                       >
                         {fullName}
-
                         {u.reqCode && (
                           <span className="ml-1.5 text-[10px] font-mono text-slate-400">
                             #{u.reqCode}
@@ -348,7 +388,35 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
           )}
         </div>
 
-        {/* ── Note ──────────────────────────────────────────────────────── */}
+        {/* ── Re-transfer reason (only when already transferred) ────────── */}
+        {isAlreadyTransferred && (
+          <div className="px-6 pt-3 pb-1 shrink-0 space-y-2">
+            <Label className="text-xs font-semibold text-amber-700 mb-1.5 block">
+              Reason for re-transfer <span className="font-bold text-rose-500">*</span>
+            </Label>
+            <Textarea
+              value={retransferReason}
+              onChange={e => setRetransferReason(e.target.value)}
+              placeholder="Why is this candidate being transferred again?…"
+              rows={2}
+              className="resize-none text-sm border-amber-200 focus-visible:ring-amber-400"
+            />
+            {/* Acknowledgement checkbox */}
+            <label className="flex items-start gap-2.5 cursor-pointer mt-2">
+              <input
+                type="checkbox"
+                checked={warningAcknowledged}
+                onChange={e => setWarningAcknowledged(e.target.checked)}
+                className="mt-0.5 accent-amber-600 w-4 h-4 shrink-0 cursor-pointer"
+              />
+              <span className="text-xs text-amber-800 leading-snug">
+                I understand this candidate was already transferred and I want to re-transfer.
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* ── Handover note (always visible) ────────────────────────────── */}
         <div className="px-6 pt-3 pb-1 shrink-0">
           <Label className="text-xs font-semibold text-slate-500 mb-1.5 block">
             Handover note <span className="font-normal text-slate-400">(optional)</span>
@@ -373,9 +441,13 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
                 Cancel
               </Button>
               <Button
-                disabled={!selectedId || mut.isPending}
+                disabled={!canSubmit || mut.isPending}
                 onClick={() => mut.mutate()}
-                className="gap-2 bg-indigo-600 hover:bg-indigo-700 min-w-32"
+                className={`gap-2 min-w-32 ${
+                  isAlreadyTransferred
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
               >
                 {mut.isPending ? (
                   <>
@@ -385,7 +457,7 @@ export function TransferCandidateDialog({ pipeline, reqCode, open, onClose, onDo
                 ) : (
                   <>
                     <ArrowRightLeft className="w-3.5 h-3.5" />
-                    Transfer
+                    {isAlreadyTransferred ? 'Re-transfer' : 'Transfer'}
                   </>
                 )}
               </Button>
