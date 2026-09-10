@@ -57,6 +57,10 @@ const MONTHS = [
   'December',
 ];
 
+// Options for the joining-month multi-select — id is the 1-12 month number
+// the backend expects, label is what's shown in the dropdown.
+const MONTH_OPTIONS = MONTHS.map((m, i) => ({ id: String(i + 1), label: m }));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TABLE COLUMN REGISTRY
 //
@@ -831,6 +835,108 @@ function StageMultiSelect({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// JOINING MONTH MULTI-SELECT — same pattern as StageMultiSelect, lets the
+// user tick more than one month instead of being limited to a single pick
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MonthMultiSelect({
+  monthNums,
+  onChange,
+  open,
+  setOpen,
+}: {
+  monthNums: string[];
+  onChange: (ids: string[]) => void;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open, setOpen]);
+
+  const toggle = (id: string) =>
+    onChange(monthNums.includes(id) ? monthNums.filter(x => x !== id) : [...monthNums, id]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onMouseDown={e => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        className={`flex h-9 w-37.5 items-center justify-between gap-1 rounded-lg border px-2 text-xs font-medium ${
+          monthNums.length
+            ? 'border-indigo-400 bg-indigo-50 font-bold text-indigo-700'
+            : 'border-slate-200 text-slate-500'
+        }`}
+      >
+        {monthNums.length
+          ? `${monthNums.length} month${monthNums.length > 1 ? 's' : ''}`
+          : 'Any joining month'}
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute left-0 top-9 z-50 min-w-52 rounded-xl border border-slate-200 bg-white shadow-xl"
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Joining month
+            </span>
+            {monthNums.length > 0 && (
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  onChange([]);
+                }}
+                className="text-[10px] font-bold text-red-500 hover:text-red-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {MONTH_OPTIONS.map(m => {
+              const on = monthNums.includes(m.id);
+              return (
+                <button
+                  key={m.id}
+                  onMouseDown={e => {
+                    e.stopPropagation();
+                    toggle(m.id);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${
+                    on ? 'font-semibold text-indigo-700' : 'text-slate-600'
+                  }`}
+                >
+                  {on ? (
+                    <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                  )}
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // LOCAL FILTER STATE — candidate-specific, on top of the page-level baseQs
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -843,7 +949,7 @@ interface CandFilters {
   disposition: string;
   reqStatus: string;
   snapshotType: string;
-  mojMonthNum: string;
+  mojMonthNums: string[];
   mojYear: string;
   joinFrom: string;
   joinTo: string;
@@ -863,7 +969,7 @@ const EMPTY_FILTERS: CandFilters = {
   disposition: '',
   reqStatus: '',
   snapshotType: '',
-  mojMonthNum: '',
+  mojMonthNums: [],
   mojYear: '',
   joinFrom: '',
   joinTo: '',
@@ -972,6 +1078,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
   const [drillTarget, setDrillTarget] = useState<CandidateDrillTarget | null>(null);
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(DEFAULT_ON));
   const [stageSelectOpen, setStageSelectOpen] = useState(false);
+  const [mojMonthSelectOpen, setMojMonthSelectOpen] = useState(false);
 
   const set = <K extends keyof CandFilters>(k: K, v: CandFilters[K]) => {
     setF(prev => ({ ...prev, [k]: v }));
@@ -996,7 +1103,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     if (f.disposition) p.set('disposition', f.disposition);
     if (f.reqStatus) p.set('reqStatus', f.reqStatus);
     if (f.snapshotType) p.set('snapshotType', f.snapshotType);
-    if (f.mojMonthNum) p.set('mojMonthNum', f.mojMonthNum);
+    f.mojMonthNums.forEach(m => p.append('mojMonthNum', m));
     if (f.mojYear) p.set('mojYear', f.mojYear);
     if (f.joinFrom) p.set('joinFrom', f.joinFrom);
     if (f.joinTo) p.set('joinTo', f.joinTo);
@@ -1020,7 +1127,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     if (f.disposition) p.set('disposition', f.disposition);
     if (f.reqStatus) p.set('reqStatus', f.reqStatus);
     if (f.snapshotType) p.set('snapshotType', f.snapshotType);
-    if (f.mojMonthNum) p.set('mojMonthNum', f.mojMonthNum);
+    f.mojMonthNums.forEach(m => p.append('mojMonthNum', m));
     if (f.mojYear) p.set('mojYear', f.mojYear);
     if (f.joinFrom) p.set('joinFrom', f.joinFrom);
     if (f.joinTo) p.set('joinTo', f.joinTo);
@@ -1077,7 +1184,7 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
     if (f.disposition) n++;
     if (f.reqStatus) n++;
     if (f.snapshotType) n++;
-    if (f.mojMonthNum) n++;
+    if (f.mojMonthNums.length) n++;
     if (f.mojYear) n++;
     if (f.joinFrom || f.joinTo) n++;
     if (f.dateField) n++;
@@ -1424,23 +1531,15 @@ export function CandidatesSection({ baseQs }: { baseQs: string }) {
 
           {/* Static Jan–Dec. The old version fetched distinct monthOfJoining
               values from the DB — a column null on almost every row — so it
-              only ever offered two months. Months are months. */}
-          <Select
-            value={f.mojMonthNum || 'ALL'}
-            onValueChange={v => set('mojMonthNum', v === 'ALL' ? '' : v)}
-          >
-            <SelectTrigger className="h-9 w-37.5 border-slate-200 text-xs font-medium">
-              <SelectValue placeholder="Any joining month" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Any joining month</SelectItem>
-              {MONTHS.map((m, i) => (
-                <SelectItem key={m} value={String(i + 1)}>
-                  {m}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              only ever offered two months. Months are months.
+              Multi-select — same pattern as the Stage filter — so the user
+              can pick more than one joining month at once. */}
+          <MonthMultiSelect
+            monthNums={f.mojMonthNums}
+            onChange={ids => set('mojMonthNums', ids)}
+            open={mojMonthSelectOpen}
+            setOpen={setMojMonthSelectOpen}
+          />
 
           <Select
             value={f.mojYear || 'ALL'}
