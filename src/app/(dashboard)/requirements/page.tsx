@@ -2457,7 +2457,7 @@ function RequirementsPageInner() {
     if (filters.createdById) p.set('createdById', filters.createdById);
     if (filters.dateFrom) p.set('dateFrom', filters.dateFrom);
     if (filters.dateTo) p.set('dateTo', filters.dateTo);
-    if (filters.noData) p.set('noData', filters.noData);
+    // if (filters.noData) p.set('noData', filters.noData);
     return p.toString();
   }, [
     filters.search,
@@ -2470,7 +2470,7 @@ function RequirementsPageInner() {
     filters.createdById,
     filters.dateFrom,
     filters.dateTo,
-    filters.noData,
+    // filters.noData,
   ]);
 
   // Sale value stats — full dataset, no page/limit
@@ -2516,8 +2516,10 @@ function RequirementsPageInner() {
     const p = new URLSearchParams(saleStatsQs);
     p.set('page', String(page));
     p.set('limit', String(limit));
+    if (filters.noData) p.set('noData', filters.noData); // table list still needs it
+
     return p.toString();
-  }, [saleStatsQs, page, limit]);
+  }, [saleStatsQs, page, limit, filters.noData]);
 
   const { data: reqData, isLoading: reqLoading } = useQuery({
     queryKey: ['requirements', qs],
