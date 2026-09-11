@@ -962,7 +962,10 @@ export default function AssignmentsPage() {
   const axios = useAxios();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [search, setSearch] = useState('');
-  const [reqStatusFilter, setReqStatusFilter] = useState('');
+  // CHANGED: default is now 'ALL' (was '') so that on first load, before the
+  // user picks a tab, every assignment shows instead of only the "Active" set.
+  // '' is still the value the "Active" tab itself uses — see REQ_FILTER_TABS.
+  const [reqStatusFilter, setReqStatusFilter] = useState('ALL');
   const [depth, setDepth] = useState('');
   const [buId, setBuId] = useState('');
   const [sortBy, setSortBy] = useState('assignedAt');
@@ -981,7 +984,10 @@ export default function AssignmentsPage() {
 
   const qs = useMemo(() => {
     const p = new URLSearchParams();
-    p.set('status', 'ACTIVE');
+    // CHANGED: only restrict to live (non-REMOVED) assignments once the user
+    // has picked a tab. On initial load (reqStatusFilter === 'ALL'), omit this
+    // param entirely so REMOVED assignments are included too, per requirement.
+    if (reqStatusFilter !== 'ALL') p.set('status', 'ACTIVE');
     if (depth) p.set('depth', depth);
     if (buId) p.set('buId', buId);
     p.set('sortBy', sortBy);
@@ -990,7 +996,7 @@ export default function AssignmentsPage() {
     p.set('limit', String(limit));
     if (search.trim()) p.set('search', search.trim()); // ← ADD THIS
     return p.toString();
-  }, [depth, buId, sortBy, sortDir, page, search]);
+  }, [reqStatusFilter, depth, buId, sortBy, sortDir, page, search]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['assignments', qs],
@@ -1009,7 +1015,11 @@ export default function AssignmentsPage() {
 
   const filtered = useMemo(() => {
     let list = assignments;
-    if (reqStatusFilter === '')
+    // CHANGED: 'ALL' is the initial state (nothing selected yet) — show every
+    // assignment as-is, with no requirement-status filtering applied.
+    if (reqStatusFilter === 'ALL') {
+      // no-op — show everything on first load
+    } else if (reqStatusFilter === '')
       list = list.filter(a => LIVE_REQ_STATUSES.includes(a.requirement.status));
     else list = list.filter(a => a.requirement.status === reqStatusFilter);
     // if (search) {
