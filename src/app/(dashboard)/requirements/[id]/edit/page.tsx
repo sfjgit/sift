@@ -601,7 +601,8 @@ function BandSaleValueFields({
           <Input
             type="number"
             min={0}
-            step={1000}
+            // step={1000}
+            step="any"
             placeholder="e.g. 450000"
             value={saleValue ?? ''}
             onChange={e =>
