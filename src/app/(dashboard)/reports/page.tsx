@@ -26,9 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -37,7 +35,6 @@ import { useAuth } from '@/context/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
 import { CandidatesSection } from '@/components/reports/CandidatesSection';
 import type {
-  RecruiterGroup,
   RecruiterResponse,
   RequirementGroup,
   RequirementReportResponse,
@@ -51,7 +48,7 @@ import { SalesSection } from '@/components/reports/SalesSection';
 import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
 import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
-import { RecruiterTable } from '@/components/reports/RecruiterTable';
+// import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable } from '@/components/reports/RequirementTable';
 import { RecruiterSection } from '@/components/reports/RecruiterSection';
 import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
@@ -186,7 +183,7 @@ function RequirementStatsBar({
   return (
     <div className="flex flex-wrap items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       {/* Total sale value */}
-      <div className="flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
+      <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
           Total Sale Value
         </p>
@@ -200,7 +197,7 @@ function RequirementStatsBar({
       </div>
 
       {/* Achieved */}
-      <div className="flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3">
+      <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">Achieved</p>
         <p className="text-[22px] font-black text-purple-800">{fmtCurrency(totalAchievedValue)}</p>
         <p className="text-[11px] font-semibold text-purple-600">{achievedPct}% of target</p>
@@ -1116,6 +1113,9 @@ function RequirementSection({
   onDownloadRow,
   onDownloadAll,
   onDownloadSelected,
+  sortBy,
+  sortDir,
+  onSortChange,
 }: {
   resp?: RequirementReportResponse;
   loading: boolean;
@@ -1133,6 +1133,32 @@ function RequirementSection({
     hiddenStageIds?: string[],
     hiddenCandidateCols?: string[]
   ) => void;
+  sortBy:
+    | 'aging'
+    | 'openings'
+    | 'salaryMin'
+    | 'salaryMax'
+    | 'computedSaleValue'
+    | 'achievedValue'
+    | 'bandValue'
+    | 'totalCandidates'
+    | 'createdAt'
+    | null;
+  sortDir: 'asc' | 'desc' | null;
+  onSortChange: (
+    key:
+      | 'aging'
+      | 'openings'
+      | 'salaryMin'
+      | 'salaryMax'
+      | 'computedSaleValue'
+      | 'achievedValue'
+      | 'bandValue'
+      | 'totalCandidates'
+      | 'createdAt'
+      | null,
+    dir: 'asc' | 'desc' | null
+  ) => void;
 }) {
   const [activeKey, setActiveKey] = useState<string>('');
   if (loading) return <Skel rows={6} />;
@@ -1149,6 +1175,9 @@ function RequirementSection({
         serviceLineId={active.serviceLine?.id}
         data={active.data}
         stages={active.stages}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={onSortChange}
         onDownloadAll={onDownloadAll}
         onDownloadSelected={onDownloadSelected}
         onDownloadRow={onDownloadRow}
@@ -1503,6 +1532,19 @@ export default function ReportsPage() {
   const [salesDrillPayload, setSalesDrillPayload] = useState<SalesDrillPayload | null>(null);
   const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(null);
 
+  const [reqSortBy, setReqSortBy] = useState<
+    | 'aging'
+    | 'openings'
+    | 'salaryMin'
+    | 'salaryMax'
+    | 'computedSaleValue'
+    | 'achievedValue'
+    | 'bandValue'
+    | 'totalCandidates'
+    | 'createdAt'
+    | null
+  >(null);
+  const [reqSortDir, setReqSortDir] = useState<'asc' | 'desc' | null>(null);
   const handleStageToggle = useCallback((stageId: string) => {
     setSelectedStageIds(prev =>
       prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]
@@ -1535,6 +1577,14 @@ export default function ReportsPage() {
     if (recReqFilter) p.set('requirementId', recReqFilter);
     return p.toString();
   }, [baseQs, recReqFilter]);
+  const reqParams = useMemo(() => {
+    const p = new URLSearchParams(baseQs);
+    if (reqSortBy) {
+      p.set('sortBy', reqSortBy);
+      p.set('sortDir', reqSortDir ?? 'asc');
+    }
+    return p.toString();
+  }, [baseQs, reqSortBy, reqSortDir]);
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const overviewQuery = useQuery({
@@ -1553,9 +1603,9 @@ export default function ReportsPage() {
   });
 
   const requirementQuery = useQuery({
-    queryKey: ['report-requirements', baseQs],
+    queryKey: ['report-requirements', reqParams],
     queryFn: async () =>
-      (await axios.get(`/reports/requirements?${baseQs}`)).data as RequirementReportResponse,
+      (await axios.get(`/reports/requirements?${reqParams}`)).data as RequirementReportResponse,
     enabled: hasAccess && activeTab === 'requirements',
     staleTime: 60_000,
   });
@@ -1778,17 +1828,18 @@ export default function ReportsPage() {
             <LayoutDashboard className="h-3.5 w-3.5" /> Overview
           </TabsTrigger>
           <TabsTrigger
-            value="recruiters"
-            className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
-          >
-            <Users className="h-3.5 w-3.5" /> Recruiters
-          </TabsTrigger>
-          <TabsTrigger
             value="requirements"
             className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
           >
             <FileText className="h-3.5 w-3.5" /> Requirements
           </TabsTrigger>
+          <TabsTrigger
+            value="recruiters"
+            className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+          >
+            <Users className="h-3.5 w-3.5" /> Recruiters
+          </TabsTrigger>
+
           <TabsTrigger
             value="candidates"
             className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
@@ -1811,6 +1862,21 @@ export default function ReportsPage() {
             baseQs={baseQs}
           />
         </TabsContent>
+        <TabsContent value="requirements" className="mt-5">
+          <RequirementSection
+            resp={requirementQuery.data}
+            loading={requirementQuery.isLoading}
+            onDownloadRow={handleRequirementRow}
+            onDownloadAll={handleRequirementAll}
+            onDownloadSelected={handleRequirementSelected}
+            sortBy={reqSortBy}
+            sortDir={reqSortDir}
+            onSortChange={(key, dir) => {
+              setReqSortBy(key);
+              setReqSortDir(dir);
+            }}
+          />
+        </TabsContent>
         <TabsContent value="recruiters" className="mt-5">
           <RecruiterStatsBar baseQs={recParams} />
           <RecruiterSection
@@ -1831,15 +1897,7 @@ export default function ReportsPage() {
             onDownloadSelected={handleRecruiterSelected}
           /> */}
         </TabsContent>
-        <TabsContent value="requirements" className="mt-5">
-          <RequirementSection
-            resp={requirementQuery.data}
-            loading={requirementQuery.isLoading}
-            onDownloadRow={handleRequirementRow}
-            onDownloadAll={handleRequirementAll}
-            onDownloadSelected={handleRequirementSelected}
-          />
-        </TabsContent>
+
         <TabsContent value="candidates" className="mt-5">
           <CandidatesSection baseQs={baseQs} />
 
