@@ -4,7 +4,7 @@
 // Path: src/components/reports/RequirementTable.tsx
 
 import { useCallback, useMemo, useState } from 'react';
-import { FileDown, TrendingUp } from 'lucide-react';
+import { FileDown } from 'lucide-react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
 import {
@@ -12,7 +12,6 @@ import {
   FUNNEL_COLORS,
   GroupHeader,
   STATUS_STYLE,
-  StageCell,
   StickyTableCard,
   fmtDate,
   makeExpandColumn,
@@ -249,12 +248,22 @@ export function RequirementTable({
             <div className="truncate text-[13px] font-bold leading-tight text-slate-900">
               {r.title}
             </div>
-            <div className="mt-0.5 flex items-center gap-2">
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 gap-y-0.5">
               <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-400">
                 {r.reqCode}
               </span>
               {r.client && (
                 <span className="truncate text-[11px] text-slate-400">{r.client.name}</span>
+              )}
+              {r.clientSpoc && (
+                <span className="truncate text-[11px] text-slate-400">
+                  ({r.clientSpoc.firstName} {r.clientSpoc.lastName})
+                </span>
+              )}
+              {r.createdAt && (
+                <span className="truncate text-[11px] text-slate-400">
+                  {new Date(r.createdAt).toLocaleDateString()}
+                </span>
               )}
             </div>
           </div>
@@ -262,6 +271,31 @@ export function RequirementTable({
       },
 
       // ── Core requirement info ──────────────────────────────────────────────
+      {
+        id: 'Aging',
+        label: 'Aging',
+        align: 'center',
+        group: 'Requirement',
+        exportValue: r => `${r.aging}`.trim(),
+        cell: r => (
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+            {`${r.aging}`.trim() || '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'createdBy',
+        label: 'Created by',
+        align: 'center',
+        group: 'Requirement',
+        exportValue: r => `${r.createdBy.firstName} ${r.createdBy.lastName}`.trim(),
+        cell: r => (
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+            {`${r.createdBy.firstName} ${r.createdBy.lastName}`.trim() || '—'}
+          </span>
+        ),
+      },
+
       {
         id: 'status',
         label: 'Status',
@@ -284,18 +318,7 @@ export function RequirementTable({
         exportValue: r => r.priority,
         cell: r => <span className="text-[12px] font-semibold text-slate-600">{r.priority}</span>,
       },
-      {
-        id: 'createdBy',
-        label: 'Created by',
-        align: 'center',
-        group: 'Requirement',
-        exportValue: r => `${r.createdBy.firstName} ${r.createdBy.lastName}`.trim(),
-        cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
-            {`${r.createdBy.firstName} ${r.createdBy.lastName}`.trim() || '—'}
-          </span>
-        ),
-      },
+
       {
         id: 'openings',
         label: 'Openings',
