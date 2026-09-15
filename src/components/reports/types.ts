@@ -48,6 +48,7 @@ export interface RequirementRow {
   isTurnaroundBreached: boolean;
   createdAt: string;
   deletedAt: string | null;
+  aging: string;
 
   // Sale value fields
   salaryMin: number | null;
