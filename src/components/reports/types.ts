@@ -48,7 +48,7 @@ export interface RequirementRow {
   isTurnaroundBreached: boolean;
   createdAt: string;
   deletedAt: string | null;
-  aging: string;
+  aging: number | null;
 
   // Sale value fields
   salaryMin: number | null;
@@ -92,6 +92,7 @@ export interface RequirementGroup {
   serviceLine: ServiceLineRef | null;
   stages: StageMeta[];
   data: RequirementRow[];
+
   total: number;
 }
 

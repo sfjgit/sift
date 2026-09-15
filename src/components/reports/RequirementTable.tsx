@@ -4,7 +4,7 @@
 // Path: src/components/reports/RequirementTable.tsx
 
 import { useCallback, useMemo, useState } from 'react';
-import { FileDown } from 'lucide-react';
+import { ChevronDown, ChevronsUpDown, ChevronUp, FileDown } from 'lucide-react';
 import { DataTable, type ColumnDef } from './DataTable';
 import { ColumnViewMenu } from './ColumnViewMenu';
 import {
@@ -31,16 +31,43 @@ import type { RequirementDrillTarget } from './RequirementCandidateDrillDialog';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getId = (r: RequirementRow) => r.id;
-
+// IDs of columns that get a sort arrow — used to inject headers outside useMemo
+const SORT_COLUMN_KEYS: Record<string, SortKey> = {
+  Aging: 'aging',
+  openings: 'openings',
+  salaryMin: 'salaryMin',
+  salaryMax: 'salaryMax',
+  computedSaleValue: 'computedSaleValue',
+  achievedValue: 'achievedValue',
+  bandCode: 'bandValue',
+  totalCandidates: 'totalCandidates',
+  createdAt: 'createdAt',
+};
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
+
+type SortDir = 'asc' | 'desc' | null;
+type SortKey =
+  | 'aging'
+  | 'openings'
+  | 'salaryMin'
+  | 'salaryMax'
+  | 'computedSaleValue'
+  | 'achievedValue'
+  | 'bandValue'
+  | 'totalCandidates'
+  | 'createdAt';
 
 interface RequirementTableProps {
   title: string | null;
   serviceLineId?: string;
   data: RequirementRow[];
   stages: StageMeta[];
+  // ── Sort state lifted up so parent re-fetches when sort changes ───────────
+  sortBy: SortKey | null;
+  sortDir: SortDir;
+  onSortChange: (key: SortKey | null, dir: SortDir) => void;
   onDownloadAll: (
     slId?: string,
     stageIds?: string[],
@@ -55,6 +82,55 @@ interface RequirementTableProps {
     hiddenCandidateCols?: string[]
   ) => void;
   onDownloadRow: (id: string, reqCode: string) => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SORT ICON
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active || dir === null)
+    return (
+      <ChevronsUpDown className="h-3 w-3 text-slate-300 group-hover:text-slate-400 transition-colors" />
+    );
+  if (dir === 'asc') return <ChevronUp className="h-3 w-3 text-indigo-500" />;
+  return <ChevronDown className="h-3 w-3 text-indigo-500" />;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SORTABLE HEADER
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SortableHeader({
+  label,
+  colSortKey,
+  activeSortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  colSortKey: SortKey;
+  activeSortKey: SortKey | null;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const isActive = activeSortKey === colSortKey && sortDir !== null;
+  return (
+    <button
+      onClick={() => onSort(colSortKey)}
+      className="group flex items-center justify-center gap-1 w-full rounded px-1 py-0.5 hover:bg-slate-100 transition-colors select-none"
+      title={`Sort by ${label}`}
+    >
+      <span
+        className={`text-[11px] font-bold uppercase tracking-widest transition-colors ${
+          isActive ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+        }`}
+      >
+        {label}
+      </span>
+      <SortIcon active={activeSortKey === colSortKey} dir={isActive ? sortDir : null} />
+    </button>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,6 +269,9 @@ export function RequirementTable({
   serviceLineId,
   data,
   stages,
+  sortBy,
+  sortDir,
+  onSortChange,
   onDownloadAll,
   onDownloadSelected,
   onDownloadRow,
@@ -202,6 +281,24 @@ export function RequirementTable({
   const { selected, toggle, toggleAll } = useSelection();
   const { expanded, toggleExp } = useExpanded();
   const { selectedStageIds, toggleStage, clearStages } = useStageSelection();
+
+  // ── Sort — cycle asc → desc → null, notify parent on every change ─────────
+  const handleSort = useCallback(
+    (key: SortKey) => {
+      if (sortBy !== key) {
+        // New column → start asc
+        onSortChange(key, 'asc');
+      } else if (sortDir === 'asc') {
+        onSortChange(key, 'desc');
+      } else if (sortDir === 'desc') {
+        // Third click → clear sort
+        onSortChange(null, null);
+      } else {
+        onSortChange(key, 'asc');
+      }
+    },
+    [sortBy, sortDir, onSortChange]
+  );
 
   const ready = useReportViewsReady();
   const hiddenRaw = useReportViewStore(s => s.hiddenColumns[tableKey]);
@@ -226,7 +323,7 @@ export function RequirementTable({
 
   const allIds = useMemo(() => data.map(r => r.id), [data]);
 
-  const columns = useMemo<ColumnDef<RequirementRow>[]>(
+  const baseColumns = useMemo<ColumnDef<RequirementRow>[]>(
     () => [
       makeSelectColumn<RequirementRow>(getId, allIds, selected, toggle, toggleAll),
       makeExpandColumn<RequirementRow>(getId, expanded, toggleExp),
@@ -255,7 +352,7 @@ export function RequirementTable({
               {r.client && (
                 <span className="truncate text-[11px] text-slate-400">{r.client.name}</span>
               )}
-              {r.clientSpoc && (
+              {/* {r.clientSpoc && (
                 <span className="truncate text-[11px] text-slate-400">
                   ({r.clientSpoc.firstName} {r.clientSpoc.lastName})
                 </span>
@@ -264,25 +361,13 @@ export function RequirementTable({
                 <span className="truncate text-[11px] text-slate-400">
                   {new Date(r.createdAt).toLocaleDateString()}
                 </span>
-              )}
+              )} */}
             </div>
           </div>
         ),
       },
 
       // ── Core requirement info ──────────────────────────────────────────────
-      {
-        id: 'Aging',
-        label: 'Aging',
-        align: 'center',
-        group: 'Requirement',
-        exportValue: r => `${r.aging}`.trim(),
-        cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
-            {`${r.aging}`.trim() || '—'}
-          </span>
-        ),
-      },
       {
         id: 'createdBy',
         label: 'Created by',
@@ -292,6 +377,39 @@ export function RequirementTable({
         cell: r => (
           <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
             {`${r.createdBy.firstName} ${r.createdBy.lastName}`.trim() || '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'client',
+        label: 'Client',
+        group: 'Ownership',
+        exportValue: r => r.client?.name ?? '',
+        cell: r => (
+          <span className="text-[12px] font-medium text-slate-600">{r.client?.name ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'clientSpoc',
+        label: 'Client Spoc',
+        group: 'Ownership',
+        exportValue: r => `${r.clientSpoc?.firstName} ${r.clientSpoc?.lastName}`.trim(),
+        cell: r => (
+          <span className="text-[12px] font-medium text-slate-600">
+            {r.clientSpoc?.firstName ?? '—'} {r.clientSpoc?.lastName ?? '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'Aging',
+        label: 'Aging',
+        align: 'center',
+        group: 'Requirement',
+        exportValue: r => `${r.aging}`.trim(),
+
+        cell: r => (
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+            {`${r.aging}`.trim() || '—'}
           </span>
         ),
       },
@@ -439,7 +557,7 @@ export function RequirementTable({
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
               <span
-                className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
+                className="block max-w-25 truncate text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: stageSelected ? '#4F46E5' : undefined }}
               >
                 {s.label}
@@ -464,15 +582,15 @@ export function RequirementTable({
       }),
 
       // ── Ownership ─────────────────────────────────────────────────────────
-      {
-        id: 'client',
-        label: 'Client',
-        group: 'Ownership',
-        exportValue: r => r.client?.name ?? '',
-        cell: r => (
-          <span className="text-[12px] font-medium text-slate-600">{r.client?.name ?? '—'}</span>
-        ),
-      },
+      // {
+      //   id: 'client',
+      //   label: 'Client',
+      //   group: 'Ownership',
+      //   exportValue: r => r.client?.name ?? '',
+      //   cell: r => (
+      //     <span className="text-[12px] font-medium text-slate-600">{r.client?.name ?? '—'}</span>
+      //   ),
+      // },
       {
         id: 'businessUnit',
         label: 'Business unit',
@@ -544,6 +662,30 @@ export function RequirementTable({
       openDrill,
     ]
   );
+
+  // ── Inject sort headers — separate memo so baseColumns stays stable ────────
+  const columns = useMemo<ColumnDef<RequirementRow>[]>(
+    () =>
+      baseColumns.map(col => {
+        const colSortKey = SORT_COLUMN_KEYS[col.id];
+        if (!colSortKey) return col;
+        return {
+          ...col,
+          header: (
+            <SortableHeader
+              label={col.label}
+              colSortKey={colSortKey}
+              activeSortKey={sortBy}
+              sortDir={sortDir}
+              onSort={handleSort}
+            />
+          ),
+        };
+      }),
+    [baseColumns, sortBy, sortDir, handleSort]
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   const stageIdsArr = [...selectedStageIds];
   const hiddenStageIds = hidden
