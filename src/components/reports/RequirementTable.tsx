@@ -44,12 +44,24 @@ const SORT_COLUMN_KEYS: Record<string, SortKey> = {
   createdAt: 'createdAt',
   reqCode: 'reqCode',
 };
+
+// Module-level — stable
+const VERTICAL_SORT_COLS = new Set([
+  'openings',
+  'clientPct',
+  // 'computedSaleValue',
+  'achievedValue',
+  'totalCandidates',
+  'bandCode',
+  'Aging',
+]);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
 type SortDir = 'asc' | 'desc' | null;
-type SortKey =
+export type SortKey =
   | 'aging'
   | 'openings'
   | 'salaryMin'
@@ -86,6 +98,18 @@ interface RequirementTableProps {
   onDownloadRow: (id: string, reqCode: string) => void;
 }
 
+// Add near the top of the file, after SortableHeader
+function VerticalHeader({ label }: { label: string }) {
+  return (
+    <div
+      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+      className="text-[11px] font-bold uppercase tracking-widest text-slate-900 py-1 mx-auto"
+    >
+      {label}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SORT ICON
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +117,7 @@ interface RequirementTableProps {
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active || dir === null)
     return (
-      <ChevronsUpDown className="h-3 w-3 text-slate-300 group-hover:text-slate-400 transition-colors" />
+      <ChevronsUpDown className="h-3 w-3 text-slate-600 group-hover:text-slate-400 transition-colors" />
     );
   if (dir === 'asc') return <ChevronUp className="h-3 w-3 text-indigo-500" />;
   return <ChevronDown className="h-3 w-3 text-indigo-500" />;
@@ -109,23 +133,26 @@ function SortableHeader({
   activeSortKey,
   sortDir,
   onSort,
+  vertical = false,
 }: {
   label: string;
   colSortKey: SortKey;
   activeSortKey: SortKey | null;
   sortDir: SortDir;
   onSort: (key: SortKey) => void;
+  vertical?: boolean;
 }) {
   const isActive = activeSortKey === colSortKey && sortDir !== null;
   return (
     <button
       onClick={() => onSort(colSortKey)}
-      className="group flex items-center justify-center gap-1 w-full rounded px-1 py-0.5 hover:bg-slate-100 transition-colors select-none"
+      className={`group flex ${vertical ? 'flex-col' : 'flex-row'} items-center justify-center gap-1 w-full rounded px-1 py-0.5 hover:bg-slate-100 transition-colors select-none`}
       title={`Sort by ${label}`}
     >
       <span
+        style={vertical ? { writingMode: 'vertical-rl', transform: 'rotate(180deg)' } : undefined}
         className={`text-[11px] font-bold uppercase tracking-widest transition-colors ${
-          isActive ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'
+          isActive ? 'text-indigo-600' : 'text-slate-900 group-hover:text-slate-700'
         }`}
       >
         {label}
@@ -422,9 +449,10 @@ export function RequirementTable({
       },
       {
         id: 'Aging',
-        label: 'Aging',
+        label: 'Age',
         align: 'center',
         group: 'Requirement',
+
         exportValue: r => `${r.aging}`.trim(),
 
         cell: r => (
@@ -448,20 +476,21 @@ export function RequirementTable({
           </span>
         ),
       },
-      {
-        id: 'priority',
-        label: 'Priority',
-        align: 'center',
-        group: 'Requirement',
-        exportValue: r => r.priority,
-        cell: r => <span className="text-[12px] font-semibold text-slate-600">{r.priority}</span>,
-      },
+      // {
+      //   id: 'priority',
+      //   label: 'Priority',
+      //   align: 'center',
+      //   group: 'Requirement',
+      //   exportValue: r => r.priority,
+      //   cell: r => <span className="text-[12px] font-semibold text-slate-600">{r.priority}</span>,
+      // },
 
       {
         id: 'openings',
         label: 'Openings',
         align: 'center',
         group: 'Requirement',
+        header: <VerticalHeader label="Openings" />,
         exportValue: r => r.totalOpenings,
         cell: r => <span className="text-[13px] font-bold text-slate-700">{r.totalOpenings}</span>,
       },
@@ -486,7 +515,7 @@ export function RequirementTable({
         group: 'Salary',
         exportValue: r => r.salaryMax ?? '',
         cell: r => (
-          <span className="text-[12px] font-semibold text-slate-600">
+          <span className="text-[12px] font-semibold text-slate-600 ">
             {r.salaryMax != null ? fmtCurrency(r.salaryMax) : '—'}
           </span>
         ),
@@ -576,9 +605,19 @@ export function RequirementTable({
               className={`flex w-full flex-col items-center gap-0.5 rounded px-1 py-0.5 transition-all ${stageSelected ? 'ring-2 ring-indigo-500 ring-offset-1 bg-indigo-50' : 'hover:bg-slate-100'}`}
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-              <span
+              {/* <span
                 className="block max-w-25 truncate text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: stageSelected ? '#4F46E5' : undefined }}
+              >
+                {s.label}
+              </span> */}
+              <span
+                style={{
+                  writingMode: 'vertical-rl',
+                  transform: 'rotate(180deg)',
+                  color: stageSelected ? '#4F46E5' : undefined,
+                }}
+                className="text-[11px] font-bold uppercase tracking-widest"
               >
                 {s.label}
               </span>
@@ -613,7 +652,7 @@ export function RequirementTable({
       // },
       {
         id: 'businessUnit',
-        label: 'Business unit',
+        label: 'BU',
         group: 'Ownership',
         exportValue: r => r.businessUnit?.name ?? '',
         cell: r => (
@@ -686,6 +725,7 @@ export function RequirementTable({
               activeSortKey={sortBy}
               sortDir={sortDir}
               onSort={handleSort}
+              vertical={VERTICAL_SORT_COLS.has(col.id)}
             />
           ),
         };

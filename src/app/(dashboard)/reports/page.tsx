@@ -49,7 +49,7 @@ import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
 import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 // import { RecruiterTable } from '@/components/reports/RecruiterTable';
-import { RequirementTable } from '@/components/reports/RequirementTable';
+import { RequirementTable, SortKey } from '@/components/reports/RequirementTable';
 import { RecruiterSection } from '@/components/reports/RecruiterSection';
 import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
 
@@ -1133,32 +1133,35 @@ function RequirementSection({
     hiddenStageIds?: string[],
     hiddenCandidateCols?: string[]
   ) => void;
-  sortBy:
-    | 'aging'
-    | 'openings'
-    | 'salaryMin'
-    | 'salaryMax'
-    | 'computedSaleValue'
-    | 'achievedValue'
-    | 'bandValue'
-    | 'totalCandidates'
-    | 'createdAt'
-    | null;
+  // sortBy:
+  //   | 'aging'
+  //   | 'openings'
+  //   | 'salaryMin'
+  //   | 'salaryMax'
+  //   | 'computedSaleValue'
+  //   | 'achievedValue'
+  //   | 'bandValue'
+  //   | 'totalCandidates'
+  //   | 'createdAt'
+  //   | null;
+  // sortDir: 'asc' | 'desc' | null;
+  // onSortChange: (
+  //   key:
+  //     | 'aging'
+  //     | 'openings'
+  //     | 'salaryMin'
+  //     | 'salaryMax'
+  //     | 'computedSaleValue'
+  //     | 'achievedValue'
+  //     | 'bandValue'
+  //     | 'totalCandidates'
+  //     | 'createdAt'
+  //     | null,
+  //   dir: 'asc' | 'desc' | null
+  // ) => void;
+  sortBy: SortKey | null;
   sortDir: 'asc' | 'desc' | null;
-  onSortChange: (
-    key:
-      | 'aging'
-      | 'openings'
-      | 'salaryMin'
-      | 'salaryMax'
-      | 'computedSaleValue'
-      | 'achievedValue'
-      | 'bandValue'
-      | 'totalCandidates'
-      | 'createdAt'
-      | null,
-    dir: 'asc' | 'desc' | null
-  ) => void;
+  onSortChange: (key: SortKey | null, dir: 'asc' | 'desc' | null) => void;
 }) {
   const [activeKey, setActiveKey] = useState<string>('');
   if (loading) return <Skel rows={6} />;
@@ -1532,18 +1535,19 @@ export default function ReportsPage() {
   const [salesDrillPayload, setSalesDrillPayload] = useState<SalesDrillPayload | null>(null);
   const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(null);
 
-  const [reqSortBy, setReqSortBy] = useState<
-    | 'aging'
-    | 'openings'
-    | 'salaryMin'
-    | 'salaryMax'
-    | 'computedSaleValue'
-    | 'achievedValue'
-    | 'bandValue'
-    | 'totalCandidates'
-    | 'createdAt'
-    | null
-  >(null);
+  // const [reqSortBy, setReqSortBy] = useState<
+  //   | 'aging'
+  //   | 'openings'
+  //   | 'salaryMin'
+  //   | 'salaryMax'
+  //   | 'computedSaleValue'
+  //   | 'achievedValue'
+  //   | 'bandValue'
+  //   | 'totalCandidates'
+  //   | 'createdAt'
+  //   | null
+  // >(null);
+  const [reqSortBy, setReqSortBy] = useState<SortKey | null>(null);
   const [reqSortDir, setReqSortDir] = useState<'asc' | 'desc' | null>(null);
   const handleStageToggle = useCallback((stageId: string) => {
     setSelectedStageIds(prev =>
