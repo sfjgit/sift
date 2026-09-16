@@ -103,7 +103,7 @@ function VerticalHeader({ label }: { label: string }) {
   return (
     <div
       style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-      className="text-[11px] font-bold uppercase tracking-widest text-slate-900 py-1 mx-auto"
+      className="text-[11px] font-bold uppercase tracking-widest text-slate-900 py-1 mx-0"
     >
       {label}
     </div>

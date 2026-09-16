@@ -1534,7 +1534,8 @@ export default function ReportsPage() {
   const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
   const [salesDrillPayload, setSalesDrillPayload] = useState<SalesDrillPayload | null>(null);
   const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(null);
-
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   // const [reqSortBy, setReqSortBy] = useState<
   //   | 'aging'
   //   | 'openings'
@@ -1554,6 +1555,18 @@ export default function ReportsPage() {
       prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]
     );
   }, []);
+  const activeFilterCount = [
+    ...(filters.clientIds ?? []),
+    ...(filters.clientSpocIds ?? []),
+    ...(filters.serviceLineIds ?? []),
+    ...(filters.departmentIds ?? []),
+    ...(filters.statuses ?? []),
+    filters.businessUnitId,
+    filters.createdById,
+    teamSelection,
+  ].filter(Boolean).length;
+
+  const hasActiveFilters = activeFilterCount > 0;
 
   // baseParams — passes ALL filters including team to every query
   const baseParams = useMemo(() => {
@@ -1792,7 +1805,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Filters */}
-      <FiltersBar
+      {/* <FiltersBar
         filters={filters}
         onChange={f => {
           setFilters(f);
@@ -1805,11 +1818,73 @@ export default function ReportsPage() {
         activeTab={activeTab}
         teamSelection={teamSelection}
         onTeamSelection={setTeamSelection}
-      />
+      /> */}
+      {/* Filters toggle + collapsible bar */}
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => setFiltersOpen(o => !o)}
+          className={`flex items-center gap-2 self-start rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+            filtersOpen
+              ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Filter className="h-3.5 w-3.5" />
+          {filtersOpen ? 'Hide filters' : 'Show filters'}
+          {hasActiveFilters && (
+            <span className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-black text-white">
+              {activeFilterCount}
+            </span>
+          )}
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${filtersOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {filtersOpen && (
+          <FiltersBar
+            filters={filters}
+            onChange={f => {
+              setFilters(f);
+              setSelectedStageIds([]);
+            }}
+            win={win}
+            onWin={setWin}
+            standardOnly={standardOnly}
+            onStandardOnly={setStandardOnly}
+            activeTab={activeTab}
+            teamSelection={teamSelection}
+            onTeamSelection={setTeamSelection}
+          />
+        )}
+      </div>
 
       {/* Requirements stats bar — only on Requirements tab, only when loaded */}
-      {activeTab === 'requirements' && reqSaleValueSummary && (
+      {/* {activeTab === 'requirements' && reqSaleValueSummary && (
         <RequirementStatsBar summary={reqSaleValueSummary} totalReqs={reqTotalCount} />
+      )} */}
+      {/* Requirements stats bar — only on Requirements tab, only when loaded */}
+      {activeTab === 'requirements' && reqSaleValueSummary && (
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => setStatsOpen(o => !o)}
+            className={`flex items-center gap-2 self-start rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              statsOpen
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <BarChart2 className="h-3.5 w-3.5" />
+            {statsOpen ? 'Hide sale summary' : 'Show sale summary'}
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${statsOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {statsOpen && (
+            <RequirementStatsBar summary={reqSaleValueSummary} totalReqs={reqTotalCount} />
+          )}
+        </div>
       )}
 
       {/* Tabs */}
