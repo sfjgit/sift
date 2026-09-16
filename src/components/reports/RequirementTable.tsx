@@ -42,6 +42,7 @@ const SORT_COLUMN_KEYS: Record<string, SortKey> = {
   bandCode: 'bandValue',
   totalCandidates: 'totalCandidates',
   createdAt: 'createdAt',
+  reqCode: 'reqCode',
 };
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -57,7 +58,8 @@ type SortKey =
   | 'achievedValue'
   | 'bandValue'
   | 'totalCandidates'
-  | 'createdAt';
+  | 'createdAt'
+  | 'reqCode';
 
 interface RequirementTableProps {
   title: string | null;
@@ -137,11 +139,15 @@ function SortableHeader({
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// function fmtCurrency(n: number | null | undefined): string {
+//   if (n == null) return '—';
+//   if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
+//   if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+//   if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+//   return `₹${n.toLocaleString('en-IN')}`;
+// }
 function fmtCurrency(n: number | null | undefined): string {
   if (n == null) return '—';
-  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
-  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
@@ -349,18 +355,8 @@ export function RequirementTable({
               <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-400">
                 {r.reqCode}
               </span>
-              {r.client && (
+              {/* {r.client && (
                 <span className="truncate text-[11px] text-slate-400">{r.client.name}</span>
-              )}
-              {/* {r.clientSpoc && (
-                <span className="truncate text-[11px] text-slate-400">
-                  ({r.clientSpoc.firstName} {r.clientSpoc.lastName})
-                </span>
-              )}
-              {r.createdAt && (
-                <span className="truncate text-[11px] text-slate-400">
-                  {new Date(r.createdAt).toLocaleDateString()}
-                </span>
               )} */}
             </div>
           </div>
@@ -377,6 +373,30 @@ export function RequirementTable({
         cell: r => (
           <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
             {`${r.createdBy.firstName} ${r.createdBy.lastName}`.trim() || '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'createdAt',
+        label: 'Created',
+        align: 'center',
+        group: 'Dates',
+        exportValue: r => fmtDate(r.createdAt),
+        cell: r => (
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+            {fmtDate(r.createdAt)}
+          </span>
+        ),
+      },
+      {
+        id: 'reqCode',
+        label: 'Req Code',
+        align: 'center',
+        group: 'Requirement',
+        exportValue: r => `${r.reqCode}`.trim(),
+        cell: r => (
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+            {`${r.reqCode}`.trim() || '—'}
           </span>
         ),
       },
@@ -616,18 +636,6 @@ export function RequirementTable({
           >
             {fmtDate(r.respondBy)}
             {r.isRespondByBreached ? ' ⚠' : ''}
-          </span>
-        ),
-      },
-      {
-        id: 'createdAt',
-        label: 'Created',
-        align: 'center',
-        group: 'Dates',
-        exportValue: r => fmtDate(r.createdAt),
-        cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
-            {fmtDate(r.createdAt)}
           </span>
         ),
       },
