@@ -238,11 +238,13 @@ interface ColDef {
 }
 
 const ALL_COLS: ColDef[] = [
+  { key: 'createdBy', label: 'Created By', group: 'identity', width: 130 },
   { key: 'code', label: 'Code', group: 'identity', width: 100 },
   { key: 'title', label: 'Job Title', group: 'identity', width: 260 },
+  { key: 'createdAt', label: 'Created Date', group: 'identity', width: 120 },
+  { key: 'age', label: 'Age', group: 'meta', width: 70 },
   { key: 'status', label: 'Status', group: 'identity', width: 110 },
   { key: 'priority', label: 'Priority', group: 'identity', width: 90 },
-  { key: 'createdBy', label: 'Created By', group: 'identity', width: 130 },
   { key: 'client', label: 'Client', group: 'client', width: 150 },
   { key: 'spoc', label: 'SPOC', group: 'client', width: 140 },
   { key: 'agreement', label: 'Agreement', group: 'client', width: 110 },
@@ -253,7 +255,6 @@ const ALL_COLS: ColDef[] = [
   { key: 'computedSaleValue', label: 'Computed Value', group: 'sale', width: 220 },
   { key: 'openings', label: 'Open', group: 'meta', width: 70 },
   { key: 'totalFunnel', label: 'Total Funnel', group: 'meta', width: 90 },
-  { key: 'age', label: 'Age', group: 'meta', width: 70 },
   { key: 'assignedTo', label: 'Assigned To', group: 'meta', width: 140 },
   { key: 'terminalCount', label: 'Achieved (Head)', group: 'achieved', width: 120 },
   { key: 'achievedValue', label: 'Achieved Value', group: 'achieved', width: 160 },
@@ -343,11 +344,16 @@ const initials = (n: string) =>
     .slice(0, 2);
 const avatarColor = (s: string) => AVATAR_COLORS[s.charCodeAt(0) % AVATAR_COLORS.length];
 
+// function fmtCurrency(n: number | null | undefined): string {
+//   if (n == null) return '—';
+//   if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
+//   if (n >= 100000) return `₹${(n / 100000).toFixed(2)}L`;
+//   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+// }
+
 function fmtCurrency(n: number | null | undefined): string {
   if (n == null) return '—';
-  if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)}Cr`;
-  if (n >= 100000) return `₹${(n / 100000).toFixed(2)}L`;
-  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  return `₹${n.toLocaleString('en-IN')}`;
 }
 
 function formulaLine(req: Requirement): string | null {
@@ -2006,6 +2012,17 @@ function RequirementsTable({
 
                   let cell: React.ReactNode = null;
                   switch (col.key) {
+                    case 'createdAt':
+                      cell = (
+                        <span className="text-[12px] text-slate-500 whitespace-nowrap">
+                          {new Date(req.createdAt).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </span>
+                      );
+                      break;
                     case 'code':
                       cell = (
                         <button
@@ -2570,6 +2587,7 @@ function RequirementsPageInner() {
 
     // key → whether the current dataset has any data for it
     const presence: Partial<Record<ColKey, boolean>> = {
+      createdAt: true,
       band: hasBand,
       agreement: hasBand,
       salaryMin: hasSalMin,

@@ -11,6 +11,7 @@ export type ColKey =
   | 'status'
   | 'priority'
   | 'createdBy'
+  | 'createdAt'
   | 'client'
   | 'spoc'
   | 'agreement'
@@ -42,6 +43,7 @@ export const DEFAULT_COLS: ColKey[] = [
   'status',
   'priority',
   'createdBy',
+  'createdAt',
   'client',
   'spoc',
   'agreement',
@@ -117,9 +119,7 @@ export const useRequirementsStore = create<RequirementsStore>()(
       setVisibleTerminalCols: cols =>
         set(s => ({
           visibleTerminalCols: sanitizeTerminalCols(
-            typeof cols === 'function'
-              ? cols(sanitizeTerminalCols(s.visibleTerminalCols))
-              : cols
+            typeof cols === 'function' ? cols(sanitizeTerminalCols(s.visibleTerminalCols)) : cols
           ),
         })),
 
