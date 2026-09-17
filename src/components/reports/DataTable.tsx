@@ -175,7 +175,7 @@ export function DataTable<T>({
   const headClass = (col: ColumnDef<T>) =>
     [
       'bg-slate-50 border-b border-slate-200 px-3 py-3 whitespace-nowrap',
-      'text-[11px] font-bold uppercase tracking-widest text-slate-500',
+      'text-[11px] font-bold uppercase tracking-widest text-slate-900',
       ALIGN[col.align ?? 'left'],
       col.frozen ? 'sticky z-40' : 'z-30',
       col.id === lastFrozenId ? `border-r border-slate-200 ${edgeShadow}` : '',
