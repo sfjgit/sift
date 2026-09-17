@@ -14,7 +14,7 @@ import {
   STATUS_STYLE,
   StickyTableCard,
   fmtDate,
-  makeExpandColumn,
+  // makeExpandColumn,
   makeSelectColumn,
   makeSrColumn,
   useExpanded,
@@ -359,7 +359,7 @@ export function RequirementTable({
   const baseColumns = useMemo<ColumnDef<RequirementRow>[]>(
     () => [
       makeSelectColumn<RequirementRow>(getId, allIds, selected, toggle, toggleAll),
-      makeExpandColumn<RequirementRow>(getId, expanded, toggleExp),
+      // makeExpandColumn<RequirementRow>(getId, expanded, toggleExp),
       makeSrColumn<RequirementRow>(),
 
       // ── Frozen: Requirement title + code ──────────────────────────────────
@@ -379,7 +379,7 @@ export function RequirementTable({
               {r.title}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-2 gap-y-0.5">
-              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-400">
+              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-600">
                 {r.reqCode}
               </span>
               {/* {r.client && (
@@ -398,7 +398,7 @@ export function RequirementTable({
         group: 'Requirement',
         exportValue: r => `${r.createdBy.firstName} ${r.createdBy.lastName}`.trim(),
         cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-700">
             {`${r.createdBy.firstName} ${r.createdBy.lastName}`.trim() || '—'}
           </span>
         ),
@@ -410,7 +410,7 @@ export function RequirementTable({
         group: 'Dates',
         exportValue: r => fmtDate(r.createdAt),
         cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-700">
             {fmtDate(r.createdAt)}
           </span>
         ),
@@ -422,7 +422,7 @@ export function RequirementTable({
         group: 'Requirement',
         exportValue: r => `${r.reqCode}`.trim(),
         cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-700">
             {`${r.reqCode}`.trim() || '—'}
           </span>
         ),
@@ -433,7 +433,7 @@ export function RequirementTable({
         group: 'Ownership',
         exportValue: r => r.client?.name ?? '',
         cell: r => (
-          <span className="text-[12px] font-medium text-slate-600">{r.client?.name ?? '—'}</span>
+          <span className="text-[12px] font-medium text-slate-700">{r.client?.name ?? '—'}</span>
         ),
       },
       {
@@ -442,7 +442,7 @@ export function RequirementTable({
         group: 'Ownership',
         exportValue: r => `${r.clientSpoc?.firstName} ${r.clientSpoc?.lastName}`.trim(),
         cell: r => (
-          <span className="text-[12px] font-medium text-slate-600">
+          <span className="text-[12px] font-medium text-slate-700">
             {r.clientSpoc?.firstName ?? '—'} {r.clientSpoc?.lastName ?? '—'}
           </span>
         ),
@@ -456,7 +456,7 @@ export function RequirementTable({
         exportValue: r => `${r.aging}`.trim(),
 
         cell: r => (
-          <span className="whitespace-nowrap text-[11px] font-medium text-slate-400">
+          <span className="whitespace-nowrap text-[11px] font-medium text-slate-700">
             {`${r.aging}`.trim() || '—'}
           </span>
         ),
@@ -470,7 +470,7 @@ export function RequirementTable({
         exportValue: r => r.status.replace(/_/g, ' '),
         cell: r => (
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[r.status] ?? 'bg-slate-100 text-slate-500'}`}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[r.status] ?? 'bg-slate-100 text-slate-700'}`}
           >
             {r.status.replace(/_/g, ' ')}
           </span>
@@ -503,7 +503,7 @@ export function RequirementTable({
         group: 'Salary',
         exportValue: r => r.salaryMin ?? '',
         cell: r => (
-          <span className="text-[12px] font-semibold text-slate-600">
+          <span className="text-[12px] font-semibold text-slate-700">
             {r.salaryMin != null ? fmtCurrency(r.salaryMin) : '—'}
           </span>
         ),
@@ -515,7 +515,7 @@ export function RequirementTable({
         group: 'Salary',
         exportValue: r => r.salaryMax ?? '',
         cell: r => (
-          <span className="text-[12px] font-semibold text-slate-600 ">
+          <span className="text-[12px] font-semibold text-slate-700 ">
             {r.salaryMax != null ? fmtCurrency(r.salaryMax) : '—'}
           </span>
         ),
@@ -571,7 +571,7 @@ export function RequirementTable({
           r.clientPct != null ? (
             <span className="text-[12px] font-bold text-indigo-700">{r.clientPct}%</span>
           ) : (
-            <span className="text-slate-300 text-[12px]">—</span>
+            <span className="text-slate-700 text-[20px]">—</span>
           ),
       },
 
@@ -656,7 +656,7 @@ export function RequirementTable({
         group: 'Ownership',
         exportValue: r => r.businessUnit?.name ?? '',
         cell: r => (
-          <span className="text-[12px] font-medium text-slate-600">
+          <span className="text-[12px] font-medium text-slate-800">
             {r.businessUnit?.name ?? '—'}
           </span>
         ),
@@ -671,7 +671,7 @@ export function RequirementTable({
         exportValue: r => fmtDate(r.respondBy),
         cell: r => (
           <span
-            className={`whitespace-nowrap text-[11px] font-medium ${r.isRespondByBreached ? 'font-bold text-red-500' : 'text-slate-400'}`}
+            className={`whitespace-nowrap text-[11px] font-medium ${r.isRespondByBreached ? 'font-bold text-red-500' : 'text-slate-700'}`}
           >
             {fmtDate(r.respondBy)}
             {r.isRespondByBreached ? ' ⚠' : ''}
