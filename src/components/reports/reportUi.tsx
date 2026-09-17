@@ -578,7 +578,7 @@ export function StickyTableCard({
   return (
     <div
       className="sticky z-20 flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
-      style={{ top: topOffset, maxHeight: `calc(100vh - ${topOffset + bottomGap}px)` }}
+      style={{ top: topOffset, height: `calc(100vh - ${topOffset + bottomGap}px)` }}
     >
       {children}
     </div>
