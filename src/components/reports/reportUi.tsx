@@ -699,7 +699,7 @@ export function makeSelectColumn<T>(
         <button
           onClick={() => toggle(id)}
           aria-label={on ? 'Deselect row' : 'Select row'}
-          className="text-slate-300 transition-colors hover:text-indigo-500"
+          className="text-slate-500 transition-colors hover:text-indigo-700"
         >
           {on ? (
             <CheckSquare className="h-4 w-4 text-indigo-500" />
@@ -752,7 +752,7 @@ export function makeSrColumn<T>(): ColumnDef<T> {
     align: 'center',
     exportValue: (_row, index) => index + 1,
     cell: (_row, index) => (
-      <span className="text-[12px] font-bold text-slate-400">{index + 1}</span>
+      <span className="text-[12px] font-bold text-slate-700">{index + 1}</span>
     ),
   };
 }

@@ -20,6 +20,7 @@ import {
   UserCheck,
   X,
   ChevronDown,
+  Calendar,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -48,10 +49,40 @@ import { SalesSection } from '@/components/reports/SalesSection';
 import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
 import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
-// import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { RequirementTable, SortKey } from '@/components/reports/RequirementTable';
 import { RecruiterSection } from '@/components/reports/RecruiterSection';
 import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
+
+const MONTH_OPTIONS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+] as const;
+
+// ── REPLACE the Filters interface ────────────────────────────────────────────
+
+interface Filters {
+  clientIds?: string[];
+  clientSpocIds?: string[];
+  serviceLineIds?: string[];
+  businessUnitId?: string;
+  departmentIds?: string[];
+  createdById?: string;
+  statuses?: string[];
+  // mojMonth: "YYYY-MM" e.g. "2025-09"
+  // mojYear:  "YYYY"    e.g. "2025" — used when only year is picked
+  mojMonth?: string; // full "YYYY-MM" when both year + month selected
+  mojYear?: string; // only year selected, no specific month
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -67,23 +98,20 @@ interface WinState {
   toDate: string;
 }
 
-// interface Filters {
-//   clientId?: string;
-//   serviceLineId?: string;
-//   businessUnitId?: string;
-//   departmentId?: string;
-//   createdById?: string;
-//   status?: string;
-// }
-
 interface Filters {
   clientIds?: string[];
   clientSpocIds?: string[];
   serviceLineIds?: string[];
   businessUnitId?: string;
   departmentIds?: string[];
+  // ── createdById: used on Requirements tab (filter by req creator)
+  //               AND on Recruiters tab (filter reqs by CSM who created them,
+  //               then show which recruiters worked those reqs)
   createdById?: string;
   statuses?: string[];
+  // ── mojMonth: "2025-09" — Recruiters tab only
+  //    Scopes recruiter stats to only candidates whose monthOfJoining = Sep 2025
+  mojMonth?: string;
 }
 
 type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates' | 'sales';
@@ -165,8 +193,6 @@ function fmtCurrency(n: number): string {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REQUIREMENT STATS BAR
-// Shows total sale value, achieved, and basis breakdown — mirrors the overview
-// sale value KPIs but scoped to the Requirements tab filters.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RequirementStatsBar({
@@ -182,7 +208,6 @@ function RequirementStatsBar({
 
   return (
     <div className="flex flex-wrap items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      {/* Total sale value */}
       <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
           Total Sale Value
@@ -195,17 +220,12 @@ function RequirementStatsBar({
           )}
         </p>
       </div>
-
-      {/* Achieved */}
       <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">Achieved</p>
         <p className="text-[22px] font-black text-purple-800">{fmtCurrency(totalAchievedValue)}</p>
         <p className="text-[11px] font-semibold text-purple-600">{achievedPct}% of target</p>
       </div>
-
       <div className="hidden w-px self-stretch bg-slate-100 sm:block" />
-
-      {/* Basis breakdown */}
       <div className="flex flex-1 flex-wrap items-center gap-2 self-center">
         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
           Basis
@@ -240,8 +260,6 @@ function RequirementStatsBar({
           </span>
         )}
       </div>
-
-      {/* Total count */}
       <div className="flex flex-col items-end justify-center self-center pl-2">
         <p className="text-[28px] font-black leading-none text-slate-800">{totalReqs}</p>
         <p className="text-[11px] font-semibold text-slate-400">requirements</p>
@@ -251,7 +269,7 @@ function RequirementStatsBar({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FILTERS BAR — restructured to prevent dropdown overflow
+// MULTI-SELECT DROPDOWN
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ALL_REPORT_STATUSES = [
@@ -291,7 +309,6 @@ function MultiSelectDropdown({
   }, [open]);
 
   const allOptions = grouped ? grouped.flatMap(g => g.options) : (options ?? []);
-
   const toggle = (id: string) =>
     onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
 
@@ -398,6 +415,10 @@ function MultiSelectDropdown({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FILTERS BAR
+// ─────────────────────────────────────────────────────────────────────────────
+
 function FiltersBar({
   filters,
   onChange,
@@ -408,6 +429,9 @@ function FiltersBar({
   activeTab,
   teamSelection,
   onTeamSelection,
+  // MOJ options fetched externally — passed in so FiltersBar doesn't fetch
+  // mojOptions,
+  // mojOptionsLoading,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
@@ -418,6 +442,8 @@ function FiltersBar({
   activeTab: TabKey;
   teamSelection: TeamSelection | null;
   onTeamSelection: (sel: TeamSelection | null) => void;
+  // mojOptions: { label: string; value: string }[];
+  // mojOptionsLoading: boolean;
 }) {
   const axios = useAxios();
   const [roleFiltersOpen, setRoleFiltersOpen] = useState(false);
@@ -428,6 +454,7 @@ function FiltersBar({
     staleTime: 300_000,
   });
 
+  // createdBy users — needed on Requirements AND Recruiters tabs
   const { data: createdByRes } = useQuery({
     queryKey: ['rf-created-by'],
     queryFn: async () => {
@@ -440,7 +467,8 @@ function FiltersBar({
       }));
     },
     staleTime: 300_000,
-    enabled: activeTab === 'requirements',
+    // ── Fetch on Requirements OR Recruiters tab
+    enabled: activeTab === 'requirements' || activeTab === 'recruiters',
   });
 
   const serviceLines: any[] = overviewFilters?.serviceLines ?? [];
@@ -455,7 +483,6 @@ function FiltersBar({
     clientName: string;
   }[] = overviewFilters?.spocs ?? [];
 
-  // If a client is selected show only that client's spocs, otherwise show all
   const visibleSpocs = useMemo(
     () =>
       filters.clientIds?.length
@@ -464,7 +491,6 @@ function FiltersBar({
     [allSpocs, filters.clientIds]
   );
 
-  // Group spocs by client for the "all clients" case
   const spocsByClient = useMemo(() => {
     const map = new Map<string, { clientName: string; spocs: typeof allSpocs }>();
     for (const s of visibleSpocs) {
@@ -486,38 +512,36 @@ function FiltersBar({
   );
   const sortedRoleGroups = Object.entries(createdByGroups).sort(([a], [b]) => a.localeCompare(b));
 
-  const set = (k: keyof Filters, v: string) =>
-    onChange({ ...filters, [k]: v === 'ALL' ? undefined : v || undefined });
-
-  // const handleClientChange = (v: string) => {
-  //   const newClientId = v === 'ALL' ? undefined : v;
-  //   const spocStillValid =
-  //     !newClientId ||
-  //     allSpocs.some(s => s.id === filters.clientSpocIds && s.clientId === newClientId);
-  //   onChange({
-  //     ...filters,
-  //     clientIds: newClientId,
-  //     clientSpocId: spocStillValid ? filters.clientSpocIds : undefined,
-  //   });
-  // };
-
   const showStatus =
     activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
-  const showCreatedBy = activeTab === 'requirements';
+
+  // ── createdBy filter: Requirements tab = filter by req creator
+  //                      Recruiters tab   = filter reqs by CSM/creator,
+  //                                         show recruiters who worked those reqs
+  const showCreatedBy = activeTab === 'requirements' || activeTab === 'recruiters';
+
   const showDept = activeTab === 'overview' || activeTab === 'recruiters';
 
+  // ── MOJ filter: Recruiters tab only
+  const showMoj = activeTab === 'recruiters';
+
   const hasFilters = !!(
-    filters.clientIds ||
-    filters.clientSpocIds ||
-    filters.serviceLineIds ||
+    filters.clientIds?.length ||
+    filters.clientSpocIds?.length ||
+    filters.serviceLineIds?.length ||
     filters.businessUnitId ||
-    filters.departmentIds ||
+    filters.departmentIds?.length ||
+    filters.statuses?.length ||
     filters.createdById ||
-    filters.statuses ||
+    filters.mojMonth ||
     teamSelection
   );
 
   const activeRoleFilterCount = filters.createdById ? 1 : 0;
+
+  // Label for creator filter section — context-aware
+  const creatorSectionLabel =
+    activeTab === 'recruiters' ? 'Filter by requirement creator (CSM)' : 'Filter by creator role';
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -612,147 +636,6 @@ function FiltersBar({
       </div>
 
       {/* ── Row 2: entity filters ────────────────────────────────────────────── */}
-      {/* <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"> */}
-      {/* Client */}
-      {/* <Select value={filters.clientId ?? 'ALL'} onValueChange={handleClientChange}>
-          <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-            <SelectValue placeholder="All clients" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All clients</SelectItem>
-            {clients.map(c => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select> */}
-
-      {/* Client SPOC */}
-      {/* <Select
-          value={filters.clientSpocId ?? 'ALL'}
-          onValueChange={v => set('clientSpocId', v)}
-          disabled={allSpocs.length === 0}
-        >
-          <SelectTrigger
-            className={`h-8 w-full border-slate-200 text-xs font-medium ${
-              filters.clientSpocId ? 'border-indigo-400 text-indigo-700' : ''
-            }`}
-          >
-            <SelectValue placeholder="All SPOCs" />
-          </SelectTrigger>
-          <SelectContent className="max-h-72">
-            <SelectItem value="ALL">All SPOCs</SelectItem>
-            {filters.clientId
-              ? // Single client selected — flat list, no grouping needed
-                visibleSpocs.map(s => (
-                  <SelectItem key={s.id} value={s.id}>
-                    <span className="font-semibold">{s.name}</span>
-                    {s.designation && (
-                      <span className="ml-1 text-[10px] text-slate-400">· {s.designation}</span>
-                    )}
-                  </SelectItem>
-                ))
-              : // All clients — grouped by client name
-                spocsByClient.map(group => (
-                  <SelectGroup key={group.clientName}>
-                    <SelectLabel className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                      {group.clientName}
-                    </SelectLabel>
-                    {group.spocs.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        <span className="font-semibold">{s.name}</span>
-                        {s.designation && (
-                          <span className="ml-1 text-[10px] text-slate-400">· {s.designation}</span>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-          </SelectContent>
-        </Select> */}
-
-      {/* Service Line */}
-      {/* <Select value={filters.serviceLineId ?? 'ALL'} onValueChange={v => set('serviceLineId', v)}>
-          <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-            <SelectValue placeholder="All service lines" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All service lines</SelectItem>
-            {serviceLines.map(s => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select> */}
-
-      {/* Business Unit */}
-      {/* {businessUnits.length > 0 && (
-          <Select
-            value={filters.businessUnitId ?? 'ALL'}
-            onValueChange={v => set('businessUnitId', v)}
-          >
-            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-              <SelectValue placeholder="All BUs" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All business units</SelectItem>
-              {businessUnits.map(b => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )} */}
-
-      {/* Department */}
-      {/* {showDept && departments.length > 0 && (
-          <Select value={filters.departmentId ?? 'ALL'} onValueChange={v => set('departmentId', v)}>
-            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-              <SelectValue placeholder="All departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All departments</SelectItem>
-              {departments.map(d => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )} */}
-
-      {/* Status */}
-      {/* {showStatus && (
-          <Select
-            value={filters.status ?? 'ALL'}
-            onValueChange={v => onChange({ ...filters, status: v === 'ALL' ? undefined : v })}
-          >
-            <SelectTrigger className="h-8 w-full border-slate-200 text-xs font-medium">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All statuses</SelectItem>
-              {ALL_REPORT_STATUSES.map(s => (
-                <SelectItem key={s.key} value={s.key}>
-                  <div className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
-                    {s.label}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )} */}
-
-      {/* Team picker */}
-      {/* <div className="flex items-center gap-1.5">
-          <TeamTreePicker value={teamSelection} onChange={onTeamSelection} />
-        </div> */}
-      {/* </div> */}
-
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         <MultiSelectDropdown
           label="All clients"
@@ -826,7 +709,105 @@ function FiltersBar({
         </div>
       </div>
 
-      {/* ── Row 3: role-grouped created-by filters (Requirements tab only) ──── */}
+      {/* ── MOJ filter — Recruiters tab only ────────────────────────────────── */}
+      {showMoj && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+              Month of Joining
+            </span>
+            {(filters.mojMonth || filters.mojYear) && (
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-black text-white">
+                active
+              </span>
+            )}
+          </div>
+          {/* // Year input — 4-digit year */}
+          <div className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2">
+            <span className="text-[10px] font-bold text-slate-400">YEAR</span>
+            <input
+              type="number"
+              min={2020}
+              max={2035}
+              placeholder={String(new Date().getFullYear())}
+              value={filters.mojMonth ? filters.mojMonth.split('-')[0] : (filters.mojYear ?? '')}
+              onChange={e => {
+                const yr = e.target.value.trim();
+                if (!yr) {
+                  onChange({ ...filters, mojMonth: undefined, mojYear: undefined });
+                  return;
+                }
+                // If a month is already selected, keep it
+                const existingMonth = filters.mojMonth?.split('-')[1];
+                if (existingMonth) {
+                  onChange({ ...filters, mojMonth: `${yr}-${existingMonth}`, mojYear: undefined });
+                } else {
+                  onChange({ ...filters, mojYear: yr, mojMonth: undefined });
+                }
+              }}
+              className="w-16 bg-transparent text-xs text-slate-700 outline-none"
+            />
+          </div>
+          {/* // Month picker — hardcoded Jan-Dec */}
+          <Select
+            value={filters.mojMonth?.split('-')[1] ?? 'ALL'}
+            onValueChange={v => {
+              if (v === 'ALL') {
+                // Clear month, keep year if set
+                onChange({
+                  ...filters,
+                  mojMonth: undefined,
+                  mojYear: filters.mojMonth?.split('-')[0] ?? filters.mojYear,
+                });
+                return;
+              }
+              const yr =
+                filters.mojMonth?.split('-')[0] ??
+                filters.mojYear ??
+                String(new Date().getFullYear());
+              onChange({ ...filters, mojMonth: `${yr}-${v}`, mojYear: undefined });
+            }}
+          >
+            <SelectTrigger
+              className={`h-8 w-36 border-slate-200 text-xs font-medium ${
+                filters.mojMonth ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : ''
+              }`}
+            >
+              <SelectValue placeholder="All months" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All months</SelectItem>
+              {MONTH_OPTIONS.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* // Active filter label */}
+          {(filters.mojMonth || filters.mojYear) && (
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-semibold text-slate-500">
+                Showing recruiters for candidates joining in{' '}
+                <span className="font-black text-emerald-700">
+                  {filters.mojMonth
+                    ? `${MONTH_OPTIONS.find(o => o.value === filters.mojMonth!.split('-')[1])?.label} ${filters.mojMonth.split('-')[0]}`
+                    : filters.mojYear}
+                </span>
+              </p>
+              <button
+                onClick={() => onChange({ ...filters, mojMonth: undefined, mojYear: undefined })}
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-red-100 hover:text-red-500"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Creator filter — Requirements + Recruiters tabs ──────────────────── */}
       {showCreatedBy && sortedRoleGroups.length > 0 && (
         <div className="border-t border-slate-100 pt-3">
           <button
@@ -835,7 +816,7 @@ function FiltersBar({
           >
             <Filter className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-              Filter by creator role
+              {creatorSectionLabel}
             </span>
             {activeRoleFilterCount > 0 && (
               <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-black text-white">
@@ -889,7 +870,7 @@ function FiltersBar({
         </div>
       )}
 
-      {/* ── Row 4: standard stages toggle + clear ───────────────────────────── */}
+      {/* ── Standard stages toggle + clear ──────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
         <button
           onClick={() => onStandardOnly(!standardOnly)}
@@ -975,135 +956,6 @@ function LineTabs({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RECRUITER SECTION
-// ─────────────────────────────────────────────────────────────────────────────
-
-// function RecruiterSection({
-//   resp,
-//   loading,
-//   reqFilter,
-//   onReqFilter,
-//   onDownloadAll,
-//   onDownloadSelected,
-// }: {
-//   resp?: RecruiterResponse;
-//   loading: boolean;
-//   reqFilter: string;
-//   onReqFilter: (v: string) => void;
-//   onDownloadAll: (
-//     slId?: string,
-//     stageIds?: string[],
-//     hiddenStageIds?: string[],
-//     hiddenCandidateCols?: string[]
-//   ) => void;
-//   onDownloadSelected: (
-//     ids: string[],
-//     slId?: string,
-//     stageIds?: string[],
-//     hiddenStageIds?: string[],
-//     hiddenCandidateCols?: string[]
-//   ) => void;
-// }) {
-//   const [activeKey, setActiveKey] = useState<string>('');
-//   if (loading)
-//     return (
-//       <div className="space-y-4">
-//         <div className="grid grid-cols-5 gap-3">
-//           {Array.from({ length: 5 }).map((_, i) => (
-//             <Skeleton key={i} className="h-24 rounded-xl" />
-//           ))}
-//         </div>
-//         <Skel rows={6} />
-//       </div>
-//     );
-
-//   const groups: RecruiterGroup[] = resp?.groups ?? [];
-//   if (!groups.length) return <Empty msg="No recruiter data for this window." />;
-
-//   const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
-//   const rows = active.data;
-
-//   const reqOptions = (() => {
-//     const m = new Map<string, string>();
-//     for (const r of rows)
-//       for (const rq of r.requirementBreakdown)
-//         m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
-//     return [...m.entries()].map(([id, label]) => ({ id, label }));
-//   })();
-
-//   const totals = {
-//     sourced: rows.reduce((s, r) => s + r.sourced, 0),
-//     joined: rows.reduce((s, r) => s + r.joined, 0),
-//     active: rows.reduce((s, r) => s + r.active, 0),
-//     dropped: rows.reduce((s, r) => s + r.dropped, 0),
-//     recruiters: new Set(rows.map(r => r.id)).size,
-//   };
-
-//   return (
-//     <div className="space-y-5">
-//       <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
-//       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-//         <KPI label="Recruiters" value={totals.recruiters} color="#4F46E5" />
-//         <KPI label="Sourced" value={totals.sourced} color="#0891B2" />
-//         <KPI label="Active" value={totals.active} color="#059669" />
-//         <KPI
-//           label="Joined"
-//           value={totals.joined}
-//           color="#7C3AED"
-//           trend="up"
-//           sub={
-//             totals.sourced > 0
-//               ? `${((totals.joined / totals.sourced) * 100).toFixed(1)}%`
-//               : undefined
-//           }
-//         />
-//         <KPI
-//           label="Dropped"
-//           value={totals.dropped}
-//           color="#DC2626"
-//           trend={totals.dropped > 0 ? 'down' : undefined}
-//         />
-//       </div>
-//       <div className="flex flex-wrap items-center gap-2">
-//         <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
-//           Filter by requirement
-//         </span>
-//         <Select value={reqFilter || 'ALL'} onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}>
-//           <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
-//             <SelectValue placeholder="All requirements" />
-//           </SelectTrigger>
-//           <SelectContent>
-//             <SelectItem value="ALL">All requirements</SelectItem>
-//             {reqOptions.map(o => (
-//               <SelectItem key={o.id} value={o.id}>
-//                 {o.label}
-//               </SelectItem>
-//             ))}
-//           </SelectContent>
-//         </Select>
-//         {reqFilter && (
-//           <button
-//             onClick={() => onReqFilter('')}
-//             className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
-//           >
-//             <X className="h-3.5 w-3.5" /> Clear
-//           </button>
-//         )}
-//       </div>
-//       <RecruiterTable
-//         key={keyOf(active)}
-//         title={active.serviceLine?.name ?? null}
-//         serviceLineId={active.serviceLine?.id}
-//         data={active.data}
-//         stages={active.stages}
-//         onDownloadAll={onDownloadAll}
-//         onDownloadSelected={onDownloadSelected}
-//       />
-//     </div>
-//   );
-// }
-
-// ─────────────────────────────────────────────────────────────────────────────
 // REQUIREMENT SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1133,32 +985,6 @@ function RequirementSection({
     hiddenStageIds?: string[],
     hiddenCandidateCols?: string[]
   ) => void;
-  // sortBy:
-  //   | 'aging'
-  //   | 'openings'
-  //   | 'salaryMin'
-  //   | 'salaryMax'
-  //   | 'computedSaleValue'
-  //   | 'achievedValue'
-  //   | 'bandValue'
-  //   | 'totalCandidates'
-  //   | 'createdAt'
-  //   | null;
-  // sortDir: 'asc' | 'desc' | null;
-  // onSortChange: (
-  //   key:
-  //     | 'aging'
-  //     | 'openings'
-  //     | 'salaryMin'
-  //     | 'salaryMax'
-  //     | 'computedSaleValue'
-  //     | 'achievedValue'
-  //     | 'bandValue'
-  //     | 'totalCandidates'
-  //     | 'createdAt'
-  //     | null,
-  //   dir: 'asc' | 'desc' | null
-  // ) => void;
   sortBy: SortKey | null;
   sortDir: 'asc' | 'desc' | null;
   onSortChange: (key: SortKey | null, dir: 'asc' | 'desc' | null) => void;
@@ -1190,163 +1016,7 @@ function RequirementSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATES SECTION
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DISP_COLORS: Record<string, string> = {
-  ACTIVE: '#3B82F6',
-  PLACED: '#10B981',
-  DROPPED: '#EF4444',
-  DUPLICATE: '#94A3B8',
-  ON_HOLD: '#F59E0B',
-};
-
-function CandidatesSection1({
-  data,
-  loading,
-  onExportAll,
-  onExportStage,
-  selectedStageIds,
-  onStageToggle,
-}: {
-  data?: { data: CandidateReportData };
-  loading: boolean;
-  onExportAll: () => void;
-  onExportStage: (stageIds: string[]) => void;
-  selectedStageIds: string[];
-  onStageToggle: (stageId: string) => void;
-}) {
-  if (loading) return <Skel rows={8} />;
-  const d = data?.data;
-  if (!d || d.totalCandidates === 0) return <Empty msg="No candidates in this window." />;
-  const max = Math.max(1, ...d.funnelByStage.map(s => s.count));
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KPI label="Total Candidates" value={d.totalCandidates} color="#4F46E5" />
-        <KPI label="Avg Pipeline Days" value={d.avgPipelineDays} color="#0891B2" />
-        <KPI label="Active" value={d.dispositionSummary['ACTIVE'] ?? 0} color="#059669" />
-        <KPI label="Dropped" value={d.dispositionSummary['DROPPED'] ?? 0} color="#DC2626" />
-      </div>
-      <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
-        <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
-          Pipeline stages — click to select for export
-        </h3>
-        <div className="mb-4 flex items-center gap-2">
-          {selectedStageIds.length > 0 && (
-            <>
-              <span className="rounded-lg bg-indigo-100 px-3 py-1.5 text-[13px] font-black text-indigo-800">
-                {selectedStageIds.length} stage{selectedStageIds.length > 1 ? 's' : ''} selected
-              </span>
-              <button
-                onClick={() => onExportStage(selectedStageIds)}
-                className="flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-4 text-[13px] font-bold text-white hover:bg-indigo-700"
-              >
-                Export selected stages
-              </button>
-            </>
-          )}
-          <button
-            onClick={onExportAll}
-            className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border-2 border-slate-200 px-4 text-[13px] font-bold text-slate-700 hover:bg-slate-50"
-          >
-            Export all
-          </button>
-        </div>
-        <div className="space-y-2.5">
-          {d.funnelByStage.map((s, i) => {
-            const pct = Math.round((s.count / max) * 100);
-            const color = FUNNEL_COLORS[i % FUNNEL_COLORS.length];
-            const isSel = selectedStageIds.includes(s.stageId);
-            return (
-              <button
-                key={s.stageId}
-                onClick={() => onStageToggle(s.stageId)}
-                className={`flex w-full items-center gap-3 rounded-lg p-1.5 transition-all ${isSel ? 'bg-indigo-50 ring-2 ring-indigo-500 ring-offset-1' : 'hover:bg-slate-50'}`}
-              >
-                <span className="w-44 shrink-0 truncate text-right text-[13px] font-bold text-slate-800">
-                  {s.label}
-                </span>
-                <div className="relative h-9 flex-1 overflow-hidden rounded-md bg-slate-100">
-                  <div
-                    className="flex h-full items-center justify-between rounded-md px-3 transition-all duration-500"
-                    style={{
-                      width: `${Math.max(pct, 6)}%`,
-                      backgroundColor: color,
-                      opacity: isSel ? 1 : 0.85,
-                    }}
-                  >
-                    <span className="text-[13px] font-black text-white">{s.count}</span>
-                    <span className="text-[11px] font-bold text-white/90">{s.pct}%</span>
-                  </div>
-                </div>
-                {isSel && <CheckSquare className="h-5 w-5 shrink-0 text-indigo-600" />}
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-4 flex items-center gap-4 rounded-lg border-2 border-indigo-200 bg-indigo-50 px-4 py-3">
-          <span className="w-44 shrink-0 text-right text-[13px] font-black text-indigo-800">
-            {selectedStageIds.length > 0 ? 'Selected total' : 'Grand total'}
-          </span>
-          <span className="text-[18px] font-black text-indigo-900">
-            {selectedStageIds.length > 0
-              ? d.funnelByStage
-                  .filter(s => selectedStageIds.includes(s.stageId))
-                  .reduce((sum, s) => sum + s.count, 0)
-              : d.totalCandidates}{' '}
-            <span className="text-[14px] font-bold text-indigo-700">candidates</span>
-          </span>
-        </div>
-      </div>
-      <div className="rounded-xl border-2 border-slate-100 bg-white p-5 shadow-sm">
-        <h3 className="mb-4 text-[13px] font-black uppercase tracking-wider text-slate-700">
-          Disposition breakdown
-        </h3>
-        {(() => {
-          const entries = Object.entries(d.dispositionSummary)
-            .filter(([, v]) => v > 0)
-            .sort((a, b) => b[1] - a[1]);
-          const total = entries.reduce((s, [, v]) => s + v, 0);
-          if (!total) return <Empty msg="No disposition data." />;
-          return (
-            <div className="space-y-4">
-              <div className="flex h-6 w-full overflow-hidden rounded-full">
-                {entries.map(([k, v]) => (
-                  <div
-                    key={k}
-                    style={{
-                      width: `${(v / total) * 100}%`,
-                      backgroundColor: DISP_COLORS[k] ?? '#94A3B8',
-                    }}
-                  />
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
-                {entries.map(([k, v]) => (
-                  <div key={k} className="flex items-center gap-2">
-                    <span
-                      className="h-3 w-3 rounded-sm"
-                      style={{ backgroundColor: DISP_COLORS[k] ?? '#94A3B8' }}
-                    />
-                    <span className="text-[12px] font-bold text-slate-700">
-                      {k.replace(/_/g, ' ')}
-                    </span>
-                    <span className="text-[13px] font-black text-slate-900">{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SALES DRILL DRAWER (unchanged from existing)
+// SALES DRILL DRAWER
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_PILL: Record<string, string> = {
@@ -1423,89 +1093,36 @@ function SalesDrillDrawer({
             </div>
           ) : (
             <div className="space-y-3">
-              {rows.map((r: any) => {
-                const maxStage = Math.max(...(r.stageBreakdown ?? []).map((s: any) => s.count), 1);
-                return (
-                  <div
-                    key={r.id}
-                    className="rounded-xl border-2 border-slate-100 bg-white p-4 shadow-sm"
-                  >
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-                            {r.reqCode}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_PILL[r.status] ?? 'bg-slate-100 text-slate-600'}`}
-                          >
-                            {r.status.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 truncate text-[13px] font-black text-slate-900">
-                          {r.title}
-                        </p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                          {r.client && <span>{r.client.name}</span>}
-                          {r.serviceLine && <span>· {r.serviceLine.name}</span>}
-                          <span>
-                            · {r.totalOpenings} opening{r.totalOpenings !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-[16px] font-black text-emerald-700">
-                          {fmtCurrency(r.saleValue ?? 0)}
-                        </p>
-                        <p className="text-[11px] text-slate-400">sale value</p>
-                      </div>
-                    </div>
-                    <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
-                      <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">
-                        {r.pipeline.placed} placed
-                      </span>
-                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 font-bold text-indigo-600">
-                        {r.pipeline.active} active
-                      </span>
-                      {r.pipeline.nearTerminal > 0 && (
-                        <span className="rounded-lg bg-amber-50 px-2.5 py-1 font-bold text-amber-600">
-                          {r.pipeline.nearTerminal} near close
+              {rows.map((r: any) => (
+                <div
+                  key={r.id}
+                  className="rounded-xl border-2 border-slate-100 bg-white p-4 shadow-sm"
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+                          {r.reqCode}
                         </span>
-                      )}
-                      <span className="ml-auto rounded-lg bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
-                        {r.pipeline.total} total
-                      </span>
-                    </div>
-                    {r.stageBreakdown?.length > 0 && (
-                      <div className="space-y-1.5">
-                        {r.stageBreakdown.map((s: any, idx: number) => {
-                          const barPct = Math.max((s.count / maxStage) * 100, 4);
-                          const color = s.isTerminal
-                            ? '#059669'
-                            : ['#4F46E5', '#7C3AED', '#0891B2', '#D97706', '#6366F1'][idx % 5];
-                          return (
-                            <div key={s.stageId} className="flex items-center gap-2">
-                              <span className="w-32 shrink-0 truncate text-right text-[10px] font-semibold text-slate-500">
-                                {s.label}
-                              </span>
-                              <div className="relative h-5 flex-1 overflow-hidden rounded-md bg-slate-100">
-                                <div
-                                  className="flex h-full items-center rounded-md px-2"
-                                  style={{ width: `${barPct}%`, backgroundColor: color }}
-                                >
-                                  <span className="text-[10px] font-black text-white">
-                                    {s.count}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_PILL[r.status] ?? 'bg-slate-100 text-slate-600'}`}
+                        >
+                          {r.status.replace(/_/g, ' ')}
+                        </span>
                       </div>
-                    )}
+                      <p className="mt-0.5 truncate text-[13px] font-black text-slate-900">
+                        {r.title}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[16px] font-black text-emerald-700">
+                        {fmtCurrency(r.saleValue ?? 0)}
+                      </p>
+                      <p className="text-[11px] text-slate-400">sale value</p>
+                    </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1536,25 +1153,15 @@ export default function ReportsPage() {
   const [teamSelection, setTeamSelection] = useState<TeamSelection | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
-  // const [reqSortBy, setReqSortBy] = useState<
-  //   | 'aging'
-  //   | 'openings'
-  //   | 'salaryMin'
-  //   | 'salaryMax'
-  //   | 'computedSaleValue'
-  //   | 'achievedValue'
-  //   | 'bandValue'
-  //   | 'totalCandidates'
-  //   | 'createdAt'
-  //   | null
-  // >(null);
   const [reqSortBy, setReqSortBy] = useState<SortKey | null>(null);
   const [reqSortDir, setReqSortDir] = useState<'asc' | 'desc' | null>(null);
+
   const handleStageToggle = useCallback((stageId: string) => {
     setSelectedStageIds(prev =>
       prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]
     );
   }, []);
+
   const activeFilterCount = [
     ...(filters.clientIds ?? []),
     ...(filters.clientSpocIds ?? []),
@@ -1563,12 +1170,14 @@ export default function ReportsPage() {
     ...(filters.statuses ?? []),
     filters.businessUnitId,
     filters.createdById,
+    filters.mojMonth,
+    filters.mojYear,
     teamSelection,
   ].filter(Boolean).length;
 
   const hasActiveFilters = activeFilterCount > 0;
 
-  // baseParams — passes ALL filters including team to every query
+  // ── baseParams — all filters for non-recruiter tabs
   const baseParams = useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
@@ -1589,11 +1198,21 @@ export default function ReportsPage() {
 
   const baseQs = baseParams.toString();
 
+  // ── recParams — baseQs + mojMonth + reqFilter
+  // mojMonth scopes recruiter stats to candidates joining that month
   const recParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (recReqFilter) p.set('requirementId', recReqFilter);
+    // mojMonth flows to both RecruiterStatsBar and RecruiterSection via recParams
+    if (filters.mojMonth) p.set('mojMonth', filters.mojMonth);
+    if (filters.mojYear && !filters.mojMonth) p.set('mojYear', filters.mojYear);
     return p.toString();
-  }, [baseQs, recReqFilter]);
+  }, [baseQs, recReqFilter, filters.mojMonth]);
+
+  // ── MOJ options — fetch available months for current scope + filters
+  // Only runs on Recruiters tab, uses baseQs (without mojMonth itself) so
+  // the dropdown shows all available months regardless of current selection
+
   const reqParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (reqSortBy) {
@@ -1624,13 +1243,6 @@ export default function ReportsPage() {
     queryFn: async () =>
       (await axios.get(`/reports/requirements?${reqParams}`)).data as RequirementReportResponse,
     enabled: hasAccess && activeTab === 'requirements',
-    staleTime: 60_000,
-  });
-
-  const candidateQuery = useQuery({
-    queryKey: ['report-candidates', baseQs],
-    queryFn: async () => (await axios.get(`/reports/candidates?${baseQs}`)).data,
-    enabled: hasAccess && activeTab === 'candidates',
     staleTime: 60_000,
   });
 
@@ -1755,19 +1367,6 @@ export default function ReportsPage() {
     download(`/reports/candidates/export?${baseQs}`, `candidates-all-${dateStr}.xlsx`, 'cand-all');
   }, [baseQs, download, dateStr]);
 
-  const handleCandidateExportStages = useCallback(
-    (stageIds: string[]) => {
-      const p = new URLSearchParams(baseQs);
-      p.set('stageIds', stageIds.join(','));
-      download(
-        `/reports/candidates/export?${p}`,
-        `candidates-stages-${dateStr}.xlsx`,
-        'cand-stages'
-      );
-    },
-    [baseQs, download, dateStr]
-  );
-
   if (!hasAccess)
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
@@ -1776,7 +1375,6 @@ export default function ReportsPage() {
       </div>
     );
 
-  // Sale value summary from requirements query
   const reqSaleValueSummary: SaleValueSummary | null =
     requirementQuery.data?.saleValueSummary ?? null;
   const reqTotalCount: number = requirementQuery.data?.meta?.total ?? 0;
@@ -1804,21 +1402,6 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Filters */}
-      {/* <FiltersBar
-        filters={filters}
-        onChange={f => {
-          setFilters(f);
-          setSelectedStageIds([]);
-        }}
-        win={win}
-        onWin={setWin}
-        standardOnly={standardOnly}
-        onStandardOnly={setStandardOnly}
-        activeTab={activeTab}
-        teamSelection={teamSelection}
-        onTeamSelection={setTeamSelection}
-      /> */}
       {/* Filters toggle + collapsible bar */}
       <div className="flex flex-col gap-2">
         <button
@@ -1855,15 +1438,13 @@ export default function ReportsPage() {
             activeTab={activeTab}
             teamSelection={teamSelection}
             onTeamSelection={setTeamSelection}
+            // mojOptions={mojOptions}
+            // mojOptionsLoading={mojOptionsQuery.isLoading}
           />
         )}
       </div>
 
-      {/* Requirements stats bar — only on Requirements tab, only when loaded */}
-      {/* {activeTab === 'requirements' && reqSaleValueSummary && (
-        <RequirementStatsBar summary={reqSaleValueSummary} totalReqs={reqTotalCount} />
-      )} */}
-      {/* Requirements stats bar — only on Requirements tab, only when loaded */}
+      {/* Requirements stats bar */}
       {activeTab === 'requirements' && reqSaleValueSummary && (
         <div className="flex flex-col gap-2">
           <button
@@ -1892,6 +1473,10 @@ export default function ReportsPage() {
         value={activeTab}
         onValueChange={v => {
           const next = v as TabKey;
+          // Clear tab-specific filters when switching away
+          if (next !== 'recruiters') {
+            setFilters(f => ({ ...f, mojMonth: undefined, mojYear: undefined }));
+          }
           if (next === 'overview' || next === 'candidates' || next === 'sales') {
             setFilters(f => ({ ...f, statuses: undefined, createdById: undefined }));
           }
@@ -1918,7 +1503,6 @@ export default function ReportsPage() {
           >
             <Users className="h-3.5 w-3.5" /> Recruiters
           </TabsTrigger>
-
           <TabsTrigger
             value="candidates"
             className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
@@ -1957,6 +1541,7 @@ export default function ReportsPage() {
           />
         </TabsContent>
         <TabsContent value="recruiters" className="mt-5">
+          {/* Both components receive recParams which already includes mojMonth + createdById */}
           <RecruiterStatsBar baseQs={recParams} />
           <RecruiterSection
             resp={recruiterQuery.data}
@@ -1965,29 +1550,11 @@ export default function ReportsPage() {
             onReqFilter={setRecReqFilter}
             onDownloadAll={handleRecruiterAll}
             onDownloadSelected={handleRecruiterSelected}
-            baseQs={baseQs}
+            baseQs={recParams}
           />
-          {/* <RecruiterSection
-            resp={recruiterQuery.data}
-            loading={recruiterQuery.isLoading}
-            reqFilter={recReqFilter}
-            onReqFilter={setRecReqFilter}
-            onDownloadAll={handleRecruiterAll}
-            onDownloadSelected={handleRecruiterSelected}
-          /> */}
         </TabsContent>
-
         <TabsContent value="candidates" className="mt-5">
           <CandidatesSection baseQs={baseQs} />
-
-          {/* <CandidatesSection
-            data={candidateQuery.data}
-            loading={candidateQuery.isLoading}
-            onExportAll={handleCandidateExportAll}
-            onExportStage={handleCandidateExportStages}
-            selectedStageIds={selectedStageIds}
-            onStageToggle={handleStageToggle}
-          /> */}
         </TabsContent>
         <TabsContent value="sales" className="mt-5">
           <SalesSection

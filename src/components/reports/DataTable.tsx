@@ -174,7 +174,7 @@ export function DataTable<T>({
 
   const headClass = (col: ColumnDef<T>) =>
     [
-      'bg-slate-50 border-b border-slate-200 px-3 py-3 whitespace-nowrap',
+      'bg-slate-50 border-b border-r border-slate-400 px-3 py-3 whitespace-nowrap',
       'text-[11px] font-bold uppercase tracking-widest text-slate-900',
       ALIGN[col.align ?? 'left'],
       col.frozen ? 'sticky z-40' : 'z-30',
@@ -185,7 +185,7 @@ export function DataTable<T>({
 
   const bodyClass = (col: ColumnDef<T>, row: T, index: number) =>
     [
-      'border-b border-slate-100 px-3 py-3',
+      'border-b border-r border-slate-400 px-3 py-3',
       ALIGN[col.align ?? 'left'],
       col.frozen
         ? `sticky z-10 ${frozenBgClass?.(row, index) ?? 'bg-white group-hover:bg-slate-50'}`
