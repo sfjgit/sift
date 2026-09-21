@@ -917,12 +917,12 @@ function SaleValueCell({ req }: { req: Requirement }) {
 
 function AssigneesCell({
   req,
-  canAdd,
-  onAssign,
+  // canAdd,
+  // onAssign,
 }: {
   req: Requirement;
-  canAdd: boolean;
-  onAssign: (r: Requirement) => void;
+  // canAdd: boolean;
+  // onAssign: (r: Requirement) => void;
 }) {
   const [open, setOpen] = useState(false);
   const assignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
@@ -1001,7 +1001,7 @@ function AssigneesCell({
               })
           )}
         </div>
-        {canAdd && (
+        {/* {canAdd && (
           <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
             <button
               onClick={() => {
@@ -1013,7 +1013,7 @@ function AssigneesCell({
               <UserPlus size={12} /> Assign
             </button>
           </div>
-        )}
+        )} */}
       </PopoverContent>
     </Popover>
   );
@@ -1025,14 +1025,18 @@ function RowActions({
   req,
   canEdit,
   canDelete,
+  canAdd,
   onOpenNew,
   onAnyOpenChange,
+  onAssign,
 }: {
   req: Requirement;
   canEdit: boolean;
   canDelete: boolean;
+  canAdd: boolean;
   onOpenNew: () => void;
   onAnyOpenChange?: (open: boolean) => void;
+  onAssign: (r: Requirement) => void;
 }) {
   const axios = useAxios();
   const queryClient = useQueryClient();
@@ -1103,6 +1107,15 @@ function RowActions({
       >
         <ExternalLink size={12} />
       </button>
+      {canAdd && (
+        <button
+          onClick={() => onAssign(req)}
+          title="Assign recruiter"
+          className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+        >
+          <UserPlus size={12} />
+        </button>
+      )}
       {canEdit && (
         <Popover
           modal={false}
@@ -1863,11 +1876,15 @@ function ActionCell({
   canEdit,
   canDelete,
   onOpenNew,
+  canAdd,
+  onAssign,
 }: {
   req: Requirement;
   canEdit: boolean;
   canDelete: boolean;
   onOpenNew: () => void;
+  canAdd: boolean;
+  onAssign: (r: Requirement) => void;
 }) {
   const [cellOpen, setCellOpen] = useState(false);
   return (
@@ -1890,6 +1907,8 @@ function ActionCell({
             canDelete={canDelete}
             onOpenNew={onOpenNew}
             onAnyOpenChange={setCellOpen}
+            canAdd={canAdd}
+            onAssign={onAssign}
           />
         </div>
       </div>
@@ -2050,7 +2069,9 @@ function RequirementsTable({
                   req={req}
                   canEdit={canEdit}
                   canDelete={canDelete}
+                  canAdd={canAdd}
                   onOpenNew={() => openReq(req, true)}
+                  onAssign={onAssign}
                 />
 
                 {/* Static data cells */}
@@ -2299,7 +2320,7 @@ function RequirementsTable({
                       );
                       break;
                     case 'assignedTo':
-                      cell = <AssigneesCell req={req} canAdd={canAdd} onAssign={onAssign} />;
+                      cell = <AssigneesCell req={req} />;
                       break;
                     case 'terminalCount': {
                       const tc = req.terminalCount ?? 0;
