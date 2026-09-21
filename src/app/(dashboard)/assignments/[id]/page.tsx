@@ -1378,8 +1378,8 @@ function MoveStageDialog({
         }
       }}
     >
-      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden">
-        <div className="px-6 pt-5 pb-4 border-b border-slate-100">
+      <DialogContent className="max-w-2xl p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-slate-900">
               <span className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
@@ -1409,7 +1409,7 @@ function MoveStageDialog({
           </div>
         </div>
 
-        <div className="px-6 py-4 bg-slate-50/70 border-b border-slate-100">
+        <div className="px-6 py-4 bg-slate-50/70 border-b border-slate-100 shrink-0">
           <div className="flex items-end gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
@@ -1443,7 +1443,7 @@ function MoveStageDialog({
           </div>
         </div>
 
-        <div className="px-4 py-3 max-h-[44vh] overflow-y-auto">
+        <div className="px-4 py-3 overflow-y-auto flex-1 min-h-0">
           <div className="space-y-1">
             {selectableStages.map(s => {
               const c = SC(s.code);
@@ -1520,7 +1520,7 @@ function MoveStageDialog({
 
         {/* Notice Period required input when moving to Submitted to Client (Chunk 5) */}
         {isSubmittedToClient && (
-          <div className="px-6 py-4 border-t border-slate-100 bg-emerald-50/40">
+          <div className="px-6 py-4 border-t border-slate-100 bg-emerald-50/40 shrink-0">
             <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
               Notice Period <span className="text-rose-500">*</span>
             </Label>
@@ -1537,7 +1537,7 @@ function MoveStageDialog({
         )}
 
         {showInterview && (
-          <div className="px-6 py-4 border-t border-slate-100 bg-indigo-50/40 space-y-3">
+          <div className="px-6 py-4 border-t border-slate-100 bg-indigo-50/40 space-y-3 shrink-0">
             <div className="flex items-center gap-2">
               <CalendarClock className="w-4 h-4 text-indigo-600" />
               <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">
@@ -1594,7 +1594,7 @@ function MoveStageDialog({
           </div>
         )}
 
-        <div className="px-6 py-4 border-t border-slate-100 space-y-3">
+        <div className="px-6 py-4 border-t border-slate-100 space-y-3 shrink-0">
           {!showInterview && (
             <div>
               <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
