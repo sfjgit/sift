@@ -1026,11 +1026,13 @@ function RowActions({
   canEdit,
   canDelete,
   onOpenNew,
+  onAnyOpenChange,
 }: {
   req: Requirement;
   canEdit: boolean;
   canDelete: boolean;
   onOpenNew: () => void;
+  onAnyOpenChange?: (open: boolean) => void;
 }) {
   const axios = useAxios();
   const queryClient = useQueryClient();
@@ -1103,9 +1105,11 @@ function RowActions({
       </button>
       {canEdit && (
         <Popover
+          modal={false}
           open={statusOpen}
           onOpenChange={o => {
             setStatusOpen(o);
+            onAnyOpenChange?.(o || deleteOpen || duplicateOpen);
             if (!o) {
               setToStatus(null);
               setReason('');
@@ -1177,9 +1181,11 @@ function RowActions({
       )}
       {canDelete && (
         <Popover
+          modal={false}
           open={deleteOpen}
           onOpenChange={o => {
             setDeleteOpen(o);
+            onAnyOpenChange?.(o || statusOpen || duplicateOpen);
             if (!o) setDeleteErr(null);
           }}
         >
@@ -1852,9 +1858,46 @@ function ServiceLineTabs({
   );
 }
 
+function ActionCell({
+  req,
+  canEdit,
+  canDelete,
+  onOpenNew,
+}: {
+  req: Requirement;
+  canEdit: boolean;
+  canDelete: boolean;
+  onOpenNew: () => void;
+}) {
+  const [cellOpen, setCellOpen] = useState(false);
+  return (
+    <td
+      className="sticky left-0 z-10 bg-white border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0 group/action"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-center h-full min-h-11 px-0.5">
+        {!cellOpen && (
+          <span className="group-hover/action:hidden text-slate-300 text-[16px] leading-none select-none">
+            ⋯
+          </span>
+        )}
+        <div
+          className={`${cellOpen ? 'flex' : 'hidden group-hover/action:flex'} items-center gap-0.5`}
+        >
+          <RowActions
+            req={req}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onOpenNew={onOpenNew}
+            onAnyOpenChange={setCellOpen}
+          />
+        </div>
+      </div>
+    </td>
+  );
+}
 // ─── RequirementsTable ────────────────────────────────────────────────────────
 // Terminal stage columns are dynamic — one per TerminalStageDef from API
-
 function RequirementsTable({
   requirements,
   visibleCols,
@@ -1984,11 +2027,11 @@ function RequirementsTable({
             return (
               <tr
                 key={req.id}
-                className={`group cursor-pointer bg-white hover:bg-slate-50/80 transition-colors ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
+                className={`cursor-pointer bg-white hover:bg-slate-50/80 transition-colors ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
                 onClick={() => openReq(req, false)}
               >
                 {/* Sticky action cell */}
-                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0">
+                {/* <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0">
                   <div className=" flex items-center justify-center h-full min-h-11 px-0.5">
                     <span className="group-hover:hidden text-slate-300 text-[16px] leading-none select-none">
                       ⋯
@@ -2002,7 +2045,13 @@ function RequirementsTable({
                       />
                     </div>
                   </div>
-                </td>
+                </td> */}
+                <ActionCell
+                  req={req}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  onOpenNew={() => openReq(req, true)}
+                />
 
                 {/* Static data cells */}
                 {visibleColDefs.map((col, i) => {
