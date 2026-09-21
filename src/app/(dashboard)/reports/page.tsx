@@ -483,10 +483,7 @@ function FiltersBar({
   const businessUnits: any[] = overviewFilters?.businessUnits ?? [];
   const departments: any[] = overviewFilters?.departments ?? [];
   const clients: any[] = overviewFilters?.clients ?? [];
-  console.log(
-    'clients sample:',
-    clients.slice(0, 3).map(c => ({ id: c.id, name: c.name, status: c.status }))
-  );
+
   const allSpocs: {
     id: string;
     name: string;
