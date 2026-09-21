@@ -917,12 +917,12 @@ function SaleValueCell({ req }: { req: Requirement }) {
 
 function AssigneesCell({
   req,
-  canAdd,
-  onAssign,
+  // canAdd,
+  // onAssign,
 }: {
   req: Requirement;
-  canAdd: boolean;
-  onAssign: (r: Requirement) => void;
+  // canAdd: boolean;
+  // onAssign: (r: Requirement) => void;
 }) {
   const [open, setOpen] = useState(false);
   const assignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
@@ -1001,7 +1001,7 @@ function AssigneesCell({
               })
           )}
         </div>
-        {canAdd && (
+        {/* {canAdd && (
           <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
             <button
               onClick={() => {
@@ -1013,7 +1013,7 @@ function AssigneesCell({
               <UserPlus size={12} /> Assign
             </button>
           </div>
-        )}
+        )} */}
       </PopoverContent>
     </Popover>
   );
@@ -1025,12 +1025,18 @@ function RowActions({
   req,
   canEdit,
   canDelete,
+  canAdd,
   onOpenNew,
+  onAnyOpenChange,
+  onAssign,
 }: {
   req: Requirement;
   canEdit: boolean;
   canDelete: boolean;
+  canAdd: boolean;
   onOpenNew: () => void;
+  onAnyOpenChange?: (open: boolean) => void;
+  onAssign: (r: Requirement) => void;
 }) {
   const axios = useAxios();
   const queryClient = useQueryClient();
@@ -1101,11 +1107,22 @@ function RowActions({
       >
         <ExternalLink size={12} />
       </button>
+      {canAdd && (
+        <button
+          onClick={() => onAssign(req)}
+          title="Assign recruiter"
+          className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+        >
+          <UserPlus size={12} />
+        </button>
+      )}
       {canEdit && (
         <Popover
+          modal={false}
           open={statusOpen}
           onOpenChange={o => {
             setStatusOpen(o);
+            onAnyOpenChange?.(o || deleteOpen || duplicateOpen);
             if (!o) {
               setToStatus(null);
               setReason('');
@@ -1177,9 +1194,11 @@ function RowActions({
       )}
       {canDelete && (
         <Popover
+          modal={false}
           open={deleteOpen}
           onOpenChange={o => {
             setDeleteOpen(o);
+            onAnyOpenChange?.(o || statusOpen || duplicateOpen);
             if (!o) setDeleteErr(null);
           }}
         >
@@ -1852,9 +1871,52 @@ function ServiceLineTabs({
   );
 }
 
+function ActionCell({
+  req,
+  canEdit,
+  canDelete,
+  onOpenNew,
+  canAdd,
+  onAssign,
+}: {
+  req: Requirement;
+  canEdit: boolean;
+  canDelete: boolean;
+  onOpenNew: () => void;
+  canAdd: boolean;
+  onAssign: (r: Requirement) => void;
+}) {
+  const [cellOpen, setCellOpen] = useState(false);
+  return (
+    <td
+      className="sticky left-0 z-10 bg-white border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0 group/action"
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-center h-full min-h-11 px-0.5">
+        {!cellOpen && (
+          <span className="group-hover/action:hidden text-slate-300 text-[16px] leading-none select-none">
+            ⋯
+          </span>
+        )}
+        <div
+          className={`${cellOpen ? 'flex' : 'hidden group-hover/action:flex'} items-center gap-0.5`}
+        >
+          <RowActions
+            req={req}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onOpenNew={onOpenNew}
+            onAnyOpenChange={setCellOpen}
+            canAdd={canAdd}
+            onAssign={onAssign}
+          />
+        </div>
+      </div>
+    </td>
+  );
+}
 // ─── RequirementsTable ────────────────────────────────────────────────────────
 // Terminal stage columns are dynamic — one per TerminalStageDef from API
-
 function RequirementsTable({
   requirements,
   visibleCols,
@@ -1984,11 +2046,11 @@ function RequirementsTable({
             return (
               <tr
                 key={req.id}
-                className={`group cursor-pointer bg-white hover:bg-slate-50/80 transition-colors ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
+                className={`cursor-pointer bg-white hover:bg-slate-50/80 transition-colors ${isBreached ? 'border-l-[3px] border-l-red-500' : ''}`}
                 onClick={() => openReq(req, false)}
               >
                 {/* Sticky action cell */}
-                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0">
+                {/* <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50/80 border-r border-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)] w-10 p-0">
                   <div className=" flex items-center justify-center h-full min-h-11 px-0.5">
                     <span className="group-hover:hidden text-slate-300 text-[16px] leading-none select-none">
                       ⋯
@@ -2002,7 +2064,15 @@ function RequirementsTable({
                       />
                     </div>
                   </div>
-                </td>
+                </td> */}
+                <ActionCell
+                  req={req}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
+                  canAdd={canAdd}
+                  onOpenNew={() => openReq(req, true)}
+                  onAssign={onAssign}
+                />
 
                 {/* Static data cells */}
                 {visibleColDefs.map((col, i) => {
@@ -2250,7 +2320,7 @@ function RequirementsTable({
                       );
                       break;
                     case 'assignedTo':
-                      cell = <AssigneesCell req={req} canAdd={canAdd} onAssign={onAssign} />;
+                      cell = <AssigneesCell req={req} />;
                       break;
                     case 'terminalCount': {
                       const tc = req.terminalCount ?? 0;
