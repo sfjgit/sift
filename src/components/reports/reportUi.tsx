@@ -733,7 +733,7 @@ export function makeExpandColumn<T>(
           onClick={() => toggleExp(id)}
           aria-label={open ? 'Hide details' : 'Show details'}
           aria-expanded={open}
-          className="text-slate-300 transition-colors hover:text-indigo-500"
+          className="text-slate-700 transition-colors hover:text-indigo-500"
         >
           {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>

@@ -190,7 +190,7 @@ export function RecruiterTable({
         cell: (r: any) => (
           <div className="overflow-hidden">
             <div className="truncate text-[13px] font-bold text-slate-900">{r.name}</div>
-            <div className="truncate text-[11px] text-slate-400">{r.email}</div>
+            <div className="truncate text-[11px] text-slate-700">{r.email}</div>
           </div>
         ),
       },
@@ -203,7 +203,7 @@ export function RecruiterTable({
         group: 'Activity',
         exportValue: (r: any) => r.requirementBreakdown?.length ?? 0,
         cell: (r: any) => (
-          <span className="text-[12px] font-semibold text-slate-600">
+          <span className="text-[12px] font-semibold text-slate-700">
             {r.requirementBreakdown?.length ?? 0}
           </span>
         ),
@@ -237,7 +237,7 @@ export function RecruiterTable({
             >
               <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
               <span
-                className="block max-w-[100px] truncate text-[11px] font-bold uppercase tracking-widest"
+                className="block max-w-25 truncate text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: stageSelected ? '#4F46E5' : undefined }}
               >
                 {s.label}

@@ -484,43 +484,6 @@ export function RequirementTable({
       //   exportValue: r => r.priority,
       //   cell: r => <span className="text-[12px] font-semibold text-slate-600">{r.priority}</span>,
       // },
-
-      {
-        id: 'openings',
-        label: 'Openings',
-        align: 'center',
-        group: 'Requirement',
-        header: <VerticalHeader label="Openings" />,
-        exportValue: r => r.totalOpenings,
-        cell: r => <span className="text-[13px] font-bold text-slate-700">{r.totalOpenings}</span>,
-      },
-
-      // ── Salary ────────────────────────────────────────────────────────────
-      {
-        id: 'salaryMin',
-        label: 'Min Salary',
-        align: 'center',
-        group: 'Salary',
-        exportValue: r => r.salaryMin ?? '',
-        cell: r => (
-          <span className="text-[12px] font-semibold text-slate-700">
-            {r.salaryMin != null ? fmtCurrency(r.salaryMin) : '—'}
-          </span>
-        ),
-      },
-      {
-        id: 'salaryMax',
-        label: 'Max Salary',
-        align: 'center',
-        group: 'Salary',
-        exportValue: r => r.salaryMax ?? '',
-        cell: r => (
-          <span className="text-[12px] font-semibold text-slate-700 ">
-            {r.salaryMax != null ? fmtCurrency(r.salaryMax) : '—'}
-          </span>
-        ),
-      },
-
       // ── Sale value ────────────────────────────────────────────────────────
       {
         id: 'computedSaleValue',
@@ -561,6 +524,42 @@ export function RequirementTable({
             <span className="text-slate-300 text-[12px]">—</span>
           ),
       },
+      {
+        id: 'openings',
+        label: 'Openings',
+        align: 'center',
+        group: 'Requirement',
+        header: <VerticalHeader label="Openings" />,
+        exportValue: r => r.totalOpenings,
+        cell: r => <span className="text-[13px] font-bold text-slate-700">{r.totalOpenings}</span>,
+      },
+
+      // ── Salary ────────────────────────────────────────────────────────────
+      {
+        id: 'salaryMin',
+        label: 'Min Salary',
+        align: 'center',
+        group: 'Salary',
+        exportValue: r => r.salaryMin ?? '',
+        cell: r => (
+          <span className="text-[12px] font-semibold text-slate-700">
+            {r.salaryMin != null ? fmtCurrency(r.salaryMin) : '—'}
+          </span>
+        ),
+      },
+      {
+        id: 'salaryMax',
+        label: 'Max Salary',
+        align: 'center',
+        group: 'Salary',
+        exportValue: r => r.salaryMax ?? '',
+        cell: r => (
+          <span className="text-[12px] font-semibold text-slate-700 ">
+            {r.salaryMax != null ? fmtCurrency(r.salaryMax) : '—'}
+          </span>
+        ),
+      },
+
       {
         id: 'clientPct',
         label: 'Client %',
