@@ -282,7 +282,7 @@ const ALL_REPORT_STATUSES = [
 ] as const;
 
 function MultiSelectDropdown({
-  label,
+  label = 'Select',
   options,
   selected,
   onChange,
@@ -375,12 +375,20 @@ function MultiSelectDropdown({
                             e.stopPropagation();
                             toggle(o.id);
                           }}
-                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${on ? 'font-semibold text-indigo-700' : 'text-slate-600'}`}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-slate-50 ${
+                            on
+                              ? 'font-semibold text-indigo-700'
+                              : (o as any).inActive
+                                ? 'text-red-400'
+                                : 'text-slate-600'
+                          }`}
                         >
                           {on ? (
                             <CheckSquare className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
                           ) : (
-                            <Square className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                            <Square
+                              className={`h-3.5 w-3.5 shrink-0 ${(o as any).inActive ? 'text-red-300' : 'text-slate-300'}`}
+                            />
                           )}
                           {o.label}
                         </button>
@@ -475,12 +483,17 @@ function FiltersBar({
   const businessUnits: any[] = overviewFilters?.businessUnits ?? [];
   const departments: any[] = overviewFilters?.departments ?? [];
   const clients: any[] = overviewFilters?.clients ?? [];
+  console.log(
+    'clients sample:',
+    clients.slice(0, 3).map(c => ({ id: c.id, name: c.name, status: c.status }))
+  );
   const allSpocs: {
     id: string;
     name: string;
     designation: string | null;
     clientId: string;
     clientName: string;
+    isActive: boolean;
   }[] = overviewFilters?.spocs ?? [];
 
   const visibleSpocs = useMemo(
@@ -499,7 +512,36 @@ function FiltersBar({
     }
     return [...map.values()].sort((a, b) => a.clientName.localeCompare(b.clientName));
   }, [visibleSpocs]);
-
+  const spocGrouped = useMemo(() => {
+    const result: {
+      groupLabel: string;
+      options: { id: string; label: string; inActive?: boolean }[];
+    }[] = [];
+    for (const g of spocsByClient) {
+      const active = g.spocs.filter(s => s.isActive !== false);
+      const inActive = g.spocs.filter(s => s.isActive === false);
+      if (active.length) {
+        result.push({
+          groupLabel: `${g.clientName} — Active`,
+          options: active.map(s => ({
+            id: s.id,
+            label: s.name + (s.designation ? ` · ${s.designation}` : ''),
+          })),
+        });
+      }
+      if (inActive.length) {
+        result.push({
+          groupLabel: `${g.clientName} — InActive`,
+          options: inActive.map(s => ({
+            id: s.id,
+            label: s.name + (s.designation ? ` · ${s.designation}` : ''),
+            inActive: true,
+          })),
+        });
+      }
+    }
+    return result;
+  }, [spocsByClient]);
   const createdBys = (createdByRes ?? []) as any[];
   const createdByGroups = createdBys.reduce(
     (g: any, u: any) => {
@@ -638,8 +680,21 @@ function FiltersBar({
       {/* ── Row 2: entity filters ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         <MultiSelectDropdown
-          label="All clients"
-          options={clients.map(c => ({ id: c.id, label: c.name }))}
+          label="All Clients"
+          grouped={[
+            {
+              groupLabel: 'Active',
+              options: clients
+                .filter(c => c.status === 'ACTIVE')
+                .map(c => ({ id: c.id, label: c.name })),
+            },
+            {
+              groupLabel: 'InActive',
+              options: clients
+                .filter(c => c.status !== 'ACTIVE' && c.isActive !== true)
+                .map(c => ({ id: c.id, label: c.name, inactive: true })),
+            },
+          ].filter(g => g.options.length > 0)}
           selected={filters.clientIds ?? []}
           onChange={ids => onChange({ ...filters, clientIds: ids, clientSpocIds: [] })}
         />
@@ -647,13 +702,14 @@ function FiltersBar({
         <MultiSelectDropdown
           label="All SPOCs"
           disabled={allSpocs.length === 0}
-          grouped={spocsByClient.map(g => ({
-            groupLabel: g.clientName,
-            options: g.spocs.map(s => ({
-              id: s.id,
-              label: s.name + (s.designation ? ` · ${s.designation}` : ''),
-            })),
-          }))}
+          // grouped={spocsByClient.map(g => ({
+          //   groupLabel: g.clientName,
+          //   options: g.spocs.map(s => ({
+          //     id: s.id,
+          //     label: s.name + (s.designation ? ` · ${s.designation}` : ''),
+          //   })),
+          // }))}
+          grouped={spocGrouped}
           selected={filters.clientSpocIds ?? []}
           onChange={ids => onChange({ ...filters, clientSpocIds: ids })}
         />
