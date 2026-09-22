@@ -1,6 +1,7 @@
 // import AuthGate from '@/components/AuthGate';
+import ChatWidget from '@/components/dashboard/ChatWidget';
 import NaukriDailyCheckin from '@/components/layout/NaukriDailyCheckin';
-import ScrollingGreetingBar from '@/components/layout/ScrollingGreetingBar';
+// import ScrollingGreetingBar from '@/components/layout/ScrollingGreetingBar';
 import { Sidebar } from '@/components/layout/Sidebar';
 // import { Topbar } from '@/components/layout/Topbar';
 import { TopbarWrapper } from '@/components/layout/TopbarWrapper';
@@ -15,7 +16,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
           <TopbarWrapper />
-          <main className="flex-1 overflow-y-auto">{children}</main>
+          <main className="flex-1 overflow-y-auto">
+            {children}
+
+            <ChatWidget />
+          </main>
         </div>
       </div>
     </AuthGate>
