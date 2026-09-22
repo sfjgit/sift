@@ -104,12 +104,14 @@ interface Requirement {
   priority: string;
   jobOpenFor?: string;
   totalOpenings: number;
+
   city: string | null;
   state: string | null;
   country: string | null;
   remoteType?: string;
   jobType: string;
   createdAt: string;
+  targetDate?: string;
   serviceLineId?: string | null;
   isRespondByBreached?: boolean;
   isTurnaroundBreached?: boolean;
@@ -243,6 +245,7 @@ const ALL_COLS: ColDef[] = [
   { key: 'code', label: 'Code', group: 'identity', width: 100 },
   { key: 'title', label: 'Job Title', group: 'identity', width: 260 },
   { key: 'createdAt', label: 'Created Date', group: 'identity', width: 120 },
+  { key: 'targetDate', label: 'Target Date', group: 'identity', width: 120 },
   { key: 'age', label: 'Age', group: 'meta', width: 70 },
   { key: 'status', label: 'Status', group: 'identity', width: 110 },
   { key: 'priority', label: 'Priority', group: 'identity', width: 90 },
@@ -918,12 +921,12 @@ function SaleValueCell({ req }: { req: Requirement }) {
 
 function AssigneesCell({
   req,
-  // canAdd,
-  // onAssign,
+  canAdd,
+  onAssign,
 }: {
   req: Requirement;
-  // canAdd: boolean;
-  // onAssign: (r: Requirement) => void;
+  canAdd: boolean;
+  onAssign: (r: Requirement) => void;
 }) {
   const [open, setOpen] = useState(false);
   const assignments = (req.assignments ?? []).filter(a => a.status !== 'REMOVED');
@@ -1002,7 +1005,7 @@ function AssigneesCell({
               })
           )}
         </div>
-        {/* {canAdd && (
+        {canAdd && (
           <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
             <button
               onClick={() => {
@@ -1014,7 +1017,7 @@ function AssigneesCell({
               <UserPlus size={12} /> Assign
             </button>
           </div>
-        )} */}
+        )}
       </PopoverContent>
     </Popover>
   );
@@ -2094,6 +2097,21 @@ function RequirementsTable({
                         </span>
                       );
                       break;
+                    case 'targetDate':
+                      cell = (
+                        <span className="text-[12px] text-slate-500 whitespace-nowrap">
+                          {req.targetDate ? (
+                            new Date(req.targetDate).toLocaleDateString('en-IN', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </span>
+                      );
+                      break;
                     case 'code':
                       cell = (
                         <button
@@ -2321,7 +2339,7 @@ function RequirementsTable({
                       );
                       break;
                     case 'assignedTo':
-                      cell = <AssigneesCell req={req} />;
+                      cell = <AssigneesCell req={req} canAdd={canAdd} onAssign={onAssign} />;
                       break;
                     case 'terminalCount': {
                       const tc = req.terminalCount ?? 0;
