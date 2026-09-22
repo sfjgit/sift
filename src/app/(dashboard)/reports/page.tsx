@@ -52,6 +52,8 @@ import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RequirementTable, SortKey } from '@/components/reports/RequirementTable';
 import { RecruiterSection } from '@/components/reports/RecruiterSection';
 import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
+import { FunnelStatsDrawer } from '@/components/reports/FunnelStatsDrawer';
+import type { FunnelStatsDrawerTarget } from '@/components/reports/FunnelStatsDrawer';
 
 const MONTH_OPTIONS = [
   { value: '01', label: 'January' },
@@ -67,22 +69,6 @@ const MONTH_OPTIONS = [
   { value: '11', label: 'November' },
   { value: '12', label: 'December' },
 ] as const;
-
-// ── REPLACE the Filters interface ────────────────────────────────────────────
-
-interface Filters {
-  clientIds?: string[];
-  clientSpocIds?: string[];
-  serviceLineIds?: string[];
-  businessUnitId?: string;
-  departmentIds?: string[];
-  createdById?: string;
-  statuses?: string[];
-  // mojMonth: "YYYY-MM" e.g. "2025-09"
-  // mojYear:  "YYYY"    e.g. "2025" — used when only year is picked
-  mojMonth?: string; // full "YYYY-MM" when both year + month selected
-  mojYear?: string; // only year selected, no specific month
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -104,14 +90,11 @@ interface Filters {
   serviceLineIds?: string[];
   businessUnitId?: string;
   departmentIds?: string[];
-  // ── createdById: used on Requirements tab (filter by req creator)
-  //               AND on Recruiters tab (filter reqs by CSM who created them,
-  //               then show which recruiters worked those reqs)
   createdById?: string;
   statuses?: string[];
-  // ── mojMonth: "2025-09" — Recruiters tab only
-  //    Scopes recruiter stats to only candidates whose monthOfJoining = Sep 2025
   mojMonth?: string;
+  mojYear?: string;
+  dateFilterMode?: 'activity' | 'createdAt';
 }
 
 type TabKey = 'overview' | 'recruiters' | 'requirements' | 'candidates' | 'sales';
@@ -121,21 +104,6 @@ interface SalesDrillPayload {
   type?: string;
   stageId?: string;
   reqId?: string;
-}
-
-interface CandidateReportData {
-  totalCandidates: number;
-  funnelByStage: {
-    stageId: string;
-    code: string;
-    label: string;
-    order: number;
-    isStandard: boolean;
-    count: number;
-    pct: number;
-  }[];
-  dispositionSummary: Record<string, number>;
-  avgPipelineDays: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,17 +166,34 @@ function fmtCurrency(n: number): string {
 function RequirementStatsBar({
   summary,
   totalReqs,
+  onDrill,
 }: {
   summary: SaleValueSummary;
   totalReqs: number;
+  onDrill: (type: 'nearTerminal' | 'terminal') => void;
 }) {
-  const { totalSaleValue, totalAchievedValue, includedCount, omittedCount, byBasis } = summary;
+  const {
+    totalSaleValue,
+    totalAchievedValue,
+    totalNearTerminalValue,
+    includedCount,
+    omittedCount,
+    byBasis,
+  } = summary;
+
+  const nearTerminalCandidates = (summary as any).nearTerminalCandidates ?? null;
+  const terminalCandidates = (summary as any).terminalCandidates ?? null;
+
   const achievedPct =
     totalSaleValue > 0 ? Math.round((totalAchievedValue / totalSaleValue) * 100) : 0;
 
+  const pipelinePct =
+    totalSaleValue > 0 ? Math.round(((totalNearTerminalValue ?? 0) / totalSaleValue) * 100) : 0;
+
   return (
     <div className="flex flex-wrap items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
+      {/* 1. Total Sale Value */}
+      <div className="flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
           Total Sale Value
         </p>
@@ -220,12 +205,74 @@ function RequirementStatsBar({
           )}
         </p>
       </div>
-      <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3">
-        <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">Achieved</p>
-        <p className="text-[22px] font-black text-purple-800">{fmtCurrency(totalAchievedValue)}</p>
-        <p className="text-[11px] font-semibold text-purple-600">{achievedPct}% of target</p>
-      </div>
+
+      {/* 2. Pipeline Value — nearTerminal value */}
+      <button
+        onClick={() => onDrill('nearTerminal')}
+        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-amber-50 px-4 py-3 text-left transition-all hover:bg-amber-100 hover:shadow-md"
+      >
+        <p className="text-[10px] font-black uppercase tracking-wider text-amber-600">
+          Pipeline Value
+        </p>
+        <p className="text-[22px] font-black text-amber-800 group-hover:text-amber-900">
+          {fmtCurrency(totalNearTerminalValue ?? 0)}
+        </p>
+        <p className="text-[11px] font-semibold text-amber-600">
+          {pipelinePct}% of target · <span className="underline underline-offset-2">view →</span>
+        </p>
+      </button>
+
+      {/* 3. NDA Released / Offered — nearTerminal COUNT */}
+      <button
+        onClick={() => onDrill('nearTerminal')}
+        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-orange-50 px-4 py-3 text-left transition-all hover:bg-orange-100 hover:shadow-md"
+      >
+        <p className="text-[10px] font-black uppercase tracking-wider text-orange-600">
+          NDA Released / Offered
+        </p>
+        <p className="text-[22px] font-black text-orange-800 group-hover:text-orange-900">
+          {nearTerminalCandidates ?? '—'}
+        </p>
+        <p className="text-[11px] font-semibold text-orange-600">
+          candidates · <span className="underline underline-offset-2">view →</span>
+        </p>
+      </button>
+
+      {/* 4. Achieved Value — terminal value */}
+      <button
+        onClick={() => onDrill('terminal')}
+        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3 text-left transition-all hover:bg-purple-100 hover:shadow-md"
+      >
+        <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">
+          Achieved Value
+        </p>
+        <p className="text-[22px] font-black text-purple-800 group-hover:text-purple-900">
+          {fmtCurrency(totalAchievedValue)}
+        </p>
+        <p className="text-[11px] font-semibold text-purple-600">
+          {achievedPct}% of target · <span className="underline underline-offset-2">view →</span>
+        </p>
+      </button>
+
+      {/* 5. Deal Closed / Training Started — terminal COUNT */}
+      <button
+        onClick={() => onDrill('terminal')}
+        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-indigo-50 px-4 py-3 text-left transition-all hover:bg-indigo-100 hover:shadow-md"
+      >
+        <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600">
+          Deal Closed / Training Started
+        </p>
+        <p className="text-[22px] font-black text-indigo-800 group-hover:text-indigo-900">
+          {terminalCandidates ?? '—'}
+        </p>
+        <p className="text-[11px] font-semibold text-indigo-600">
+          candidates · <span className="underline underline-offset-2">view →</span>
+        </p>
+      </button>
+
       <div className="hidden w-px self-stretch bg-slate-100 sm:block" />
+
+      {/* Basis breakdown */}
       <div className="flex flex-1 flex-wrap items-center gap-2 self-center">
         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
           Basis
@@ -260,6 +307,8 @@ function RequirementStatsBar({
           </span>
         )}
       </div>
+
+      {/* Total reqs count */}
       <div className="flex flex-col items-end justify-center self-center pl-2">
         <p className="text-[28px] font-black leading-none text-slate-800">{totalReqs}</p>
         <p className="text-[11px] font-semibold text-slate-400">requirements</p>
@@ -437,9 +486,6 @@ function FiltersBar({
   activeTab,
   teamSelection,
   onTeamSelection,
-  // MOJ options fetched externally — passed in so FiltersBar doesn't fetch
-  // mojOptions,
-  // mojOptionsLoading,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
@@ -450,8 +496,6 @@ function FiltersBar({
   activeTab: TabKey;
   teamSelection: TeamSelection | null;
   onTeamSelection: (sel: TeamSelection | null) => void;
-  // mojOptions: { label: string; value: string }[];
-  // mojOptionsLoading: boolean;
 }) {
   const axios = useAxios();
   const [roleFiltersOpen, setRoleFiltersOpen] = useState(false);
@@ -462,7 +506,6 @@ function FiltersBar({
     staleTime: 300_000,
   });
 
-  // createdBy users — needed on Requirements AND Recruiters tabs
   const { data: createdByRes } = useQuery({
     queryKey: ['rf-created-by'],
     queryFn: async () => {
@@ -475,7 +518,6 @@ function FiltersBar({
       }));
     },
     staleTime: 300_000,
-    // ── Fetch on Requirements OR Recruiters tab
     enabled: activeTab === 'requirements' || activeTab === 'recruiters',
   });
 
@@ -509,6 +551,7 @@ function FiltersBar({
     }
     return [...map.values()].sort((a, b) => a.clientName.localeCompare(b.clientName));
   }, [visibleSpocs]);
+
   const spocGrouped = useMemo(() => {
     const result: {
       groupLabel: string;
@@ -539,6 +582,7 @@ function FiltersBar({
     }
     return result;
   }, [spocsByClient]);
+
   const createdBys = (createdByRes ?? []) as any[];
   const createdByGroups = createdBys.reduce(
     (g: any, u: any) => {
@@ -553,15 +597,8 @@ function FiltersBar({
 
   const showStatus =
     activeTab === 'requirements' || activeTab === 'recruiters' || activeTab === 'sales';
-
-  // ── createdBy filter: Requirements tab = filter by req creator
-  //                      Recruiters tab   = filter reqs by CSM/creator,
-  //                                         show recruiters who worked those reqs
   const showCreatedBy = activeTab === 'requirements' || activeTab === 'recruiters';
-
   const showDept = activeTab === 'overview' || activeTab === 'recruiters';
-
-  // ── MOJ filter: Recruiters tab only
   const showMoj = activeTab === 'recruiters';
 
   const hasFilters = !!(
@@ -577,14 +614,12 @@ function FiltersBar({
   );
 
   const activeRoleFilterCount = filters.createdById ? 1 : 0;
-
-  // Label for creator filter section — context-aware
   const creatorSectionLabel =
     activeTab === 'recruiters' ? 'Filter by requirement creator (CSM)' : 'Filter by creator role';
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      {/* ── Row 1: time window ──────────────────────────────────────────────── */}
+      {/* Time window */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
           {(['preset', 'hours', 'range'] as WindowMode[]).map((m, idx) => (
@@ -674,7 +709,7 @@ function FiltersBar({
         </span>
       </div>
 
-      {/* ── Row 2: entity filters ────────────────────────────────────────────── */}
+      {/* Entity filters */}
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         <MultiSelectDropdown
           label="All Clients"
@@ -699,13 +734,6 @@ function FiltersBar({
         <MultiSelectDropdown
           label="All SPOCs"
           disabled={allSpocs.length === 0}
-          // grouped={spocsByClient.map(g => ({
-          //   groupLabel: g.clientName,
-          //   options: g.spocs.map(s => ({
-          //     id: s.id,
-          //     label: s.name + (s.designation ? ` · ${s.designation}` : ''),
-          //   })),
-          // }))}
           grouped={spocGrouped}
           selected={filters.clientSpocIds ?? []}
           onChange={ids => onChange({ ...filters, clientSpocIds: ids })}
@@ -762,7 +790,7 @@ function FiltersBar({
         </div>
       </div>
 
-      {/* ── MOJ filter — Recruiters tab only ────────────────────────────────── */}
+      {/* MOJ filter */}
       {showMoj && (
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
           <div className="flex items-center gap-2">
@@ -776,7 +804,6 @@ function FiltersBar({
               </span>
             )}
           </div>
-          {/* // Year input — 4-digit year */}
           <div className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2">
             <span className="text-[10px] font-bold text-slate-400">YEAR</span>
             <input
@@ -791,7 +818,6 @@ function FiltersBar({
                   onChange({ ...filters, mojMonth: undefined, mojYear: undefined });
                   return;
                 }
-                // If a month is already selected, keep it
                 const existingMonth = filters.mojMonth?.split('-')[1];
                 if (existingMonth) {
                   onChange({ ...filters, mojMonth: `${yr}-${existingMonth}`, mojYear: undefined });
@@ -802,12 +828,10 @@ function FiltersBar({
               className="w-16 bg-transparent text-xs text-slate-700 outline-none"
             />
           </div>
-          {/* // Month picker — hardcoded Jan-Dec */}
           <Select
             value={filters.mojMonth?.split('-')[1] ?? 'ALL'}
             onValueChange={v => {
               if (v === 'ALL') {
-                // Clear month, keep year if set
                 onChange({
                   ...filters,
                   mojMonth: undefined,
@@ -838,7 +862,6 @@ function FiltersBar({
               ))}
             </SelectContent>
           </Select>
-          {/* // Active filter label */}
           {(filters.mojMonth || filters.mojYear) && (
             <div className="flex items-center gap-2">
               <p className="text-[11px] font-semibold text-slate-500">
@@ -860,7 +883,7 @@ function FiltersBar({
         </div>
       )}
 
-      {/* ── Creator filter — Requirements + Recruiters tabs ──────────────────── */}
+      {/* Creator filter */}
       {showCreatedBy && sortedRoleGroups.length > 0 && (
         <div className="border-t border-slate-100 pt-3">
           <button
@@ -923,8 +946,32 @@ function FiltersBar({
         </div>
       )}
 
-      {/* ── Standard stages toggle + clear ──────────────────────────────────── */}
+      {/* Standard stages toggle + clear */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+        {activeTab === 'requirements' && (
+          <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
+            <button
+              onClick={() => onChange({ ...filters, dateFilterMode: undefined })}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                !filters.dateFilterMode || filters.dateFilterMode === 'activity'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Pipeline activity
+            </button>
+            <button
+              onClick={() => onChange({ ...filters, dateFilterMode: 'createdAt' })}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                filters.dateFilterMode === 'createdAt'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Requirement created
+            </button>
+          </div>
+        )}
         <button
           onClick={() => onStandardOnly(!standardOnly)}
           className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors ${
@@ -1208,6 +1255,9 @@ export default function ReportsPage() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [reqSortBy, setReqSortBy] = useState<SortKey | null>(null);
   const [reqSortDir, setReqSortDir] = useState<'asc' | 'desc' | null>(null);
+  const [funnelDrawerTarget, setFunnelDrawerTarget] = useState<FunnelStatsDrawerTarget | null>(
+    null
+  );
 
   const handleStageToggle = useCallback((stageId: string) => {
     setSelectedStageIds(prev =>
@@ -1230,7 +1280,6 @@ export default function ReportsPage() {
 
   const hasActiveFilters = activeFilterCount > 0;
 
-  // ── baseParams — all filters for non-recruiter tabs
   const baseParams = useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(winToParams(win)).forEach(([k, v]) => p.set(k, v));
@@ -1251,20 +1300,13 @@ export default function ReportsPage() {
 
   const baseQs = baseParams.toString();
 
-  // ── recParams — baseQs + mojMonth + reqFilter
-  // mojMonth scopes recruiter stats to candidates joining that month
   const recParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (recReqFilter) p.set('requirementId', recReqFilter);
-    // mojMonth flows to both RecruiterStatsBar and RecruiterSection via recParams
     if (filters.mojMonth) p.set('mojMonth', filters.mojMonth);
     if (filters.mojYear && !filters.mojMonth) p.set('mojYear', filters.mojYear);
     return p.toString();
   }, [baseQs, recReqFilter, filters.mojMonth]);
-
-  // ── MOJ options — fetch available months for current scope + filters
-  // Only runs on Recruiters tab, uses baseQs (without mojMonth itself) so
-  // the dropdown shows all available months regardless of current selection
 
   const reqParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
@@ -1272,10 +1314,11 @@ export default function ReportsPage() {
       p.set('sortBy', reqSortBy);
       p.set('sortDir', reqSortDir ?? 'asc');
     }
+    if (filters.dateFilterMode) p.set('dateFilterMode', filters.dateFilterMode);
     return p.toString();
-  }, [baseQs, reqSortBy, reqSortDir]);
+  }, [baseQs, reqSortBy, reqSortDir, filters.dateFilterMode]);
 
-  // ── Queries ──────────────────────────────────────────────────────────────
+  // ── Queries ───────────────────────────────────────────────────────────────
   const overviewQuery = useQuery({
     queryKey: ['report-overview-v2', baseQs],
     queryFn: async () => (await axios.get(`/reports/overview?${baseQs}`)).data,
@@ -1299,6 +1342,15 @@ export default function ReportsPage() {
     staleTime: 60_000,
   });
 
+  // Funnel stats — fetches nearTerminalCandidates + terminalCandidates counts
+  // Uses baseQs (without sort params) so it matches the same scope as the main query
+  const funnelStatsQuery = useQuery({
+    queryKey: ['funnel-stats-summary', baseQs],
+    queryFn: async () => (await axios.get(`/reports/requirements/funnel-stats?${baseQs}`)).data,
+    enabled: hasAccess && activeTab === 'requirements',
+    staleTime: 60_000,
+  });
+
   const salesQuery = useQuery({
     queryKey: ['report-sales', baseQs],
     queryFn: async () => (await axios.get(`/reports/sales?${baseQs}`)).data,
@@ -1306,7 +1358,7 @@ export default function ReportsPage() {
     staleTime: 60_000,
   });
 
-  // ── Download helper ──────────────────────────────────────────────────────
+  // ── Download helper ───────────────────────────────────────────────────────
   const download = useCallback(
     async (url: string, filename: string, key: string) => {
       if (downloading) return;
@@ -1416,10 +1468,6 @@ export default function ReportsPage() {
     [download, dateStr]
   );
 
-  const handleCandidateExportAll = useCallback(() => {
-    download(`/reports/candidates/export?${baseQs}`, `candidates-all-${dateStr}.xlsx`, 'cand-all');
-  }, [baseQs, download, dateStr]);
-
   if (!hasAccess)
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
@@ -1428,8 +1476,16 @@ export default function ReportsPage() {
       </div>
     );
 
-  const reqSaleValueSummary: SaleValueSummary | null =
-    requirementQuery.data?.saleValueSummary ?? null;
+  // Merge funnel candidate counts into the summary object
+  const reqSaleValueSummary: SaleValueSummary | null = requirementQuery.data?.saleValueSummary
+    ? {
+        ...requirementQuery.data.saleValueSummary,
+        // @ts-expect-error errr
+        nearTerminalCandidates: funnelStatsQuery.data?.summary?.nearTerminalCandidates ?? null,
+        terminalCandidates: funnelStatsQuery.data?.summary?.terminalCandidates ?? null,
+      }
+    : null;
+
   const reqTotalCount: number = requirementQuery.data?.meta?.total ?? 0;
 
   return (
@@ -1455,7 +1511,7 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Filters toggle + collapsible bar */}
+      {/* Filters toggle */}
       <div className="flex flex-col gap-2">
         <button
           onClick={() => setFiltersOpen(o => !o)}
@@ -1491,8 +1547,6 @@ export default function ReportsPage() {
             activeTab={activeTab}
             teamSelection={teamSelection}
             onTeamSelection={setTeamSelection}
-            // mojOptions={mojOptions}
-            // mojOptionsLoading={mojOptionsQuery.isLoading}
           />
         )}
       </div>
@@ -1516,7 +1570,11 @@ export default function ReportsPage() {
           </button>
 
           {statsOpen && (
-            <RequirementStatsBar summary={reqSaleValueSummary} totalReqs={reqTotalCount} />
+            <RequirementStatsBar
+              summary={reqSaleValueSummary}
+              totalReqs={reqTotalCount}
+              onDrill={type => setFunnelDrawerTarget({ type })}
+            />
           )}
         </div>
       )}
@@ -1526,7 +1584,6 @@ export default function ReportsPage() {
         value={activeTab}
         onValueChange={v => {
           const next = v as TabKey;
-          // Clear tab-specific filters when switching away
           if (next !== 'recruiters') {
             setFilters(f => ({ ...f, mojMonth: undefined, mojYear: undefined }));
           }
@@ -1594,7 +1651,6 @@ export default function ReportsPage() {
           />
         </TabsContent>
         <TabsContent value="recruiters" className="mt-5">
-          {/* Both components receive recParams which already includes mojMonth + createdById */}
           <RecruiterStatsBar baseQs={recParams} />
           <RecruiterSection
             resp={recruiterQuery.data}
@@ -1618,10 +1674,16 @@ export default function ReportsPage() {
         </TabsContent>
       </Tabs>
 
+      {/* Drawers */}
       <DrillDrawer target={drillTarget} baseQs={baseQs} onClose={() => setDrillTarget(null)} />
       {salesDrillPayload && (
         <SalesDrillDrawer payload={salesDrillPayload} onClose={() => setSalesDrillPayload(null)} />
       )}
+      <FunnelStatsDrawer
+        target={funnelDrawerTarget}
+        baseQs={baseQs}
+        onClose={() => setFunnelDrawerTarget(null)}
+      />
     </div>
   );
 }

@@ -83,6 +83,7 @@ export interface RequirementRow {
 export interface SaleValueSummary {
   totalSaleValue: number;
   totalAchievedValue: number;
+  totalNearTerminalValue: number; // ← ADD THIS
   includedCount: number;
   omittedCount: number;
   byBasis: Record<string, { count: number; total: number }>;
