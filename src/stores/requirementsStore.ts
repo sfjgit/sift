@@ -11,6 +11,7 @@ export type ColKey =
   | 'status'
   | 'priority'
   | 'createdBy'
+  | 'targetDate'
   | 'createdAt'
   | 'client'
   | 'spoc'
@@ -44,6 +45,7 @@ export const DEFAULT_COLS: ColKey[] = [
   'priority',
   'createdBy',
   'createdAt',
+  'targetDate',
   'client',
   'spoc',
   'agreement',
