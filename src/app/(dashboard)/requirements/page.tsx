@@ -61,6 +61,7 @@ import {
   DEFAULT_COLS,
 } from '@/stores/requirementsStore';
 import { DuplicateRequirementDialog } from './_components/DuplicateReq';
+import { AssignDialog } from './[id]/_components/RequirementAssignmentsTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -2492,6 +2493,7 @@ function RequirementsPageInner() {
   const [filterHovered, setFilterHovered] = useState(false);
   const showFilters = filterPinned || filterHovered;
   const [statsOpen, setStatsOpen] = useState(false);
+  const [assignDialogReq, setAssignDialogReq] = useState<Requirement | null>(null);
 
   const handleToggleNoData = useCallback(() => {
     filters.setNoData(filters.noData === 'true' ? '' : 'true');
@@ -2508,12 +2510,9 @@ function RequirementsPageInner() {
     stageId: null,
   });
 
-  const handleAssign = useCallback(
-    (req: Requirement) => {
-      router.push(`/requirements/${req.slug ?? req.id}?tab=assignments`);
-    },
-    [router]
-  );
+  const handleAssign = useCallback((req: Requirement) => {
+    setAssignDialogReq(req);
+  }, []);
 
   // Filters API
   const { data: filtersData } = useQuery({
@@ -2638,6 +2637,7 @@ function RequirementsPageInner() {
   const canDelete = reqData?.permissions?.canDelete ?? false;
   const canEdit = reqData?.permissions?.canEdit ?? false;
   const isSuperAdmin = reqData?.scope?.isSuperAdmin ?? false;
+  const queryClient = useQueryClient();
 
   const achievedTotal =
     saleStatsData?.totalAchievedValue ??
@@ -2989,7 +2989,33 @@ function RequirementsPageInner() {
           </div>
         </div>
       </div>
-
+      {assignDialogReq && (
+        <AssignDialog
+          open={true}
+          parentAssignmentId={null}
+          requirementId={assignDialogReq.id}
+          existingAssignedIds={
+            new Set(
+              (assignDialogReq.assignments ?? [])
+                .filter(a => a.status !== 'REMOVED')
+                .map(a => a.assignedTo?.id)
+                .filter(Boolean) as string[]
+            )
+          }
+          req={{
+            id: assignDialogReq.id,
+            reqCode: assignDialogReq.reqCode,
+            title: assignDialogReq.title,
+            totalOpenings: assignDialogReq.totalOpenings,
+            deadline: null,
+          }}
+          onClose={() => setAssignDialogReq(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['requirements'] });
+            setAssignDialogReq(null);
+          }}
+        />
+      )}
       {/* Portals — outside the flex layout so they never affect height */}
       <CandidateDrawer
         open={drawer.open}

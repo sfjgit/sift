@@ -466,7 +466,7 @@ function PersonPicker({
 
 // ─── Assign Dialog ────────────────────────────────────────────────────────────
 
-function AssignDialog({
+export function AssignDialog({
   open,
   parentAssignmentId,
   parentName,
@@ -673,7 +673,7 @@ function AssignDialog({
                     'flex-1 rounded-xl border-2 border-dashed min-h-0 overflow-y-auto',
                     selectedIds.size === 0
                       ? 'border-slate-100 flex items-center justify-center'
-                      : 'border-primary/10 bg-primary/[0.02] p-2 space-y-1.5'
+                      : 'border-primary/10 bg-primary/2 p-2 space-y-1.5'
                   )}
                 >
                   {selectedIds.size === 0 ? (
@@ -731,7 +731,7 @@ function AssignDialog({
           <Button
             disabled={selectedIds.size === 0 || isSubmitting}
             onClick={handleSubmit}
-            className="min-w-[140px] h-9 gap-1.5 text-sm"
+            className="min-w-35 h-9 gap-1.5 text-sm"
           >
             {isSubmitting ? (
               <>
