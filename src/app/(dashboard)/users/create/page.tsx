@@ -17,32 +17,44 @@ export default function CreateUserPage() {
   const router = useRouter();
   const axios = useAxios();
 
-  const rolesQuery = useQuery<{ data: { id: string; name: string }[] }>({
+  const rolesQuery = useQuery<{
+    data: { id: string; name: string }[];
+  }>({
     queryKey: ['roles-simple'],
     queryFn: async () => (await axios.get('/roles')).data,
     staleTime: 5 * 60 * 1000,
   });
 
-  const deptsQuery = useQuery<{ data: { id: string; name: string }[] }>({
+  const deptsQuery = useQuery<{
+    data: { id: string; name: string }[];
+  }>({
     queryKey: ['departments-simple'],
     queryFn: async () => (await axios.get('/departments')).data,
     staleTime: 5 * 60 * 1000,
   });
 
-  const buQuery = useQuery<{ data: { id: string; name: string }[] }>({
+  const buQuery = useQuery<{
+    data: { id: string; name: string }[];
+  }>({
     queryKey: ['business-units-simple'],
     queryFn: async () => (await axios.get('/business-units')).data,
     staleTime: 5 * 60 * 1000,
   });
 
-  const slQuery = useQuery<{ data: { id: string; name: string }[] }>({
+  const slQuery = useQuery<{
+    data: { id: string; name: string }[];
+  }>({
     queryKey: ['Service-lines-simple'],
     queryFn: async () => (await axios.get('/service-lines')).data,
     staleTime: 5 * 60 * 1000,
   });
 
   const usersQuery = useQuery<{
-    data: { id: string; firstName: string; lastName: string }[];
+    data: {
+      id: string;
+      firstName: string;
+      lastName: string;
+    }[];
   }>({
     queryKey: ['users-simple-list'],
     queryFn: async () => (await axios.get('/users?limit=200&isActive=true&sortBy=firstName')).data,
@@ -65,15 +77,19 @@ export default function CreateUserPage() {
         departmentId: values.departmentId || null,
         reportingToId: values.reportingToId || null,
       };
+
       const res = await axios.post('/users', payload);
       return res.data;
     },
+
     onSuccess: data => {
       toast.success('User created successfully');
       router.push(`/users/${data.data.id}`);
     },
+
     onError: (err: any) => {
       const msg = err?.response?.data?.message ?? 'Failed to create user';
+
       toast.error(msg);
     },
   });
@@ -91,50 +107,54 @@ export default function CreateUserPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-8">
-        {/* ── Header ───────────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push('/users')}
-            className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1.5" />
-            Back to Users
-          </Button>
+    <div className="h-screen overflow-hidden bg-background">
+      <div className="h-full overflow-y-auto overscroll-contain">
+        <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col gap-8">
+          {/* ── Header ─────────────────────────────────────────────────────── */}
+          <div className="flex flex-col gap-6">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/users')}
+              className="w-fit -ml-2 text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4 mr-1.5" />
+              Back to Users
+            </Button>
 
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 shrink-0">
-              <UserPlus className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Create User</h1>
-              <p className="text-base text-muted-foreground mt-0.5">
-                Add a new user to the organisation
-              </p>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 shrink-0">
+                <UserPlus className="h-6 w-6 text-primary" />
+              </div>
+
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">Create User</h1>
+
+                <p className="text-base text-muted-foreground mt-0.5">
+                  Add a new user to the organisation
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* ── Form card ─────────────────────────────────────────────────────── */}
-        <div className="rounded-xl border bg-card shadow-sm p-8">
-          {isLoading ? (
-            <FormSkeleton />
-          ) : (
-            <UserForm
-              mode="create"
-              roles={rolesQuery.data?.data ?? []}
-              departments={deptsQuery.data?.data ?? []}
-              businessUnits={buQuery.data?.data ?? []}
-              serviceLines={slQuery.data?.data ?? []}
-              users={userOptions}
-              isSubmitting={createMutation.isPending}
-              onSubmit={values => createMutation.mutate(values as CreateFormValues)}
-              onCancel={() => router.push('/users')}
-            />
-          )}
+          {/* ── Form card ──────────────────────────────────────────────────── */}
+          <div className="rounded-xl border bg-card shadow-sm p-8">
+            {isLoading ? (
+              <FormSkeleton />
+            ) : (
+              <UserForm
+                mode="create"
+                roles={rolesQuery.data?.data ?? []}
+                departments={deptsQuery.data?.data ?? []}
+                businessUnits={buQuery.data?.data ?? []}
+                serviceLines={slQuery.data?.data ?? []}
+                users={userOptions}
+                isSubmitting={createMutation.isPending}
+                onSubmit={values => createMutation.mutate(values as CreateFormValues)}
+                onCancel={() => router.push('/users')}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -148,11 +168,13 @@ function FormSkeleton() {
         <div key={s} className="flex flex-col gap-5">
           <div className="flex items-center gap-3">
             <Skeleton className="h-8 w-8 rounded-md" />
+
             <div className="flex flex-col gap-2 flex-1">
               <Skeleton className="h-5 w-28" />
               <Skeleton className="h-px w-full" />
             </div>
           </div>
+
           <div className="grid grid-cols-3 gap-5">
             <Skeleton className="h-10 rounded-md" />
             <Skeleton className="h-10 rounded-md" />
