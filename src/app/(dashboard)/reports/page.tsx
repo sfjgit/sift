@@ -92,7 +92,7 @@ interface Filters {
   departmentIds?: string[];
   createdById?: string;
   statuses?: string[];
-  mojMonth?: string;
+  mojMonths?: string[];
   mojYear?: string;
   dateFilterMode?: 'activity' | 'createdAt';
 }
@@ -157,6 +157,172 @@ function fmtCurrency(n: number): string {
   if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
   if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOJ MONTH MULTI-SELECT PICKER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * mojMonths entries are "YYYY-MM" (when year is set) or bare "MM" (rare).
+ * The picker always works with "YYYY-MM" keys when a year is provided.
+ */
+function MojMonthPicker({
+  mojMonths,
+  mojYear,
+  onChange,
+}: {
+  mojMonths: string[];
+  mojYear: string;
+  onChange: (months: string[], year: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const currentYear = String(new Date().getFullYear());
+  const effectiveYear = mojYear || currentYear;
+
+  // Build the "YYYY-MM" key for a given month value
+  const keyFor = (m: string) => `${effectiveYear}-${m}`;
+
+  const toggleMonth = (monthVal: string) => {
+    const key = keyFor(monthVal);
+    const next = mojMonths.includes(key) ? mojMonths.filter(k => k !== key) : [...mojMonths, key];
+    onChange(next, effectiveYear);
+  };
+
+  const clearAll = () => onChange([], '');
+
+  // Build display label
+  const selectedMonthVals = mojMonths
+    .filter(k => k.startsWith(effectiveYear + '-'))
+    .map(k => k.split('-')[2]);
+
+  let buttonLabel = 'All months';
+  if (mojMonths.length === 1) {
+    const [yr, mm] = mojMonths[0].split('-');
+    const mLabel = MONTH_OPTIONS.find(o => o.value === mm)?.label ?? mm;
+    buttonLabel = `${mLabel} ${yr}`;
+  } else if (mojMonths.length > 1) {
+    buttonLabel = `${mojMonths.length} months`;
+  }
+
+  const hasSelection = mojMonths.length > 0 || !!mojYear;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onMouseDown={e => {
+          e.stopPropagation();
+          setOpen(o => !o);
+        }}
+        className={`flex h-8 items-center justify-between gap-1.5 rounded-md border px-2.5 text-xs transition-colors ${
+          hasSelection
+            ? 'border-emerald-400 bg-emerald-50 font-bold text-emerald-700'
+            : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+        }`}
+      >
+        <Calendar className="h-3 w-3 shrink-0" />
+        <span>{buttonLabel}</span>
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          className="absolute left-0 top-9 z-50 w-72 rounded-xl border border-slate-200 bg-white shadow-xl"
+        >
+          {/* Year input row */}
+          <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+              Year
+            </span>
+            <input
+              type="number"
+              min={2020}
+              max={2035}
+              value={effectiveYear}
+              onChange={e => {
+                const yr = e.target.value.trim();
+                if (!yr) {
+                  onChange([], '');
+                  return;
+                }
+                // Re-key existing selections to the new year
+                const reKeyed = mojMonths.map(k => {
+                  const mm = k.split('-')[2] ?? k;
+                  return `${yr}-${mm}`;
+                });
+                onChange(reKeyed, yr);
+              }}
+              className="w-20 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none focus:border-emerald-400"
+            />
+            {hasSelection && (
+              <button
+                onMouseDown={e => {
+                  e.stopPropagation();
+                  clearAll();
+                }}
+                className="ml-auto text-[10px] font-bold text-red-500 hover:text-red-700"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {/* Month checkboxes — 3-column grid */}
+          <div className="grid grid-cols-3 gap-1 p-3">
+            {MONTH_OPTIONS.map(opt => {
+              const checked = mojMonths.includes(keyFor(opt.value));
+              return (
+                <button
+                  key={opt.value}
+                  onMouseDown={e => {
+                    e.stopPropagation();
+                    toggleMonth(opt.value);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11px] font-semibold transition-colors ${
+                    checked
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {checked ? (
+                    <CheckSquare className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <Square className="h-3 w-3 shrink-0 text-slate-300" />
+                  )}
+                  {opt.label.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Selection summary */}
+          {mojMonths.length > 0 && (
+            <div className="border-t border-slate-100 px-3 py-2">
+              <p className="text-[10px] font-semibold text-slate-500">
+                <span className="font-black text-emerald-700">{mojMonths.length}</span> month
+                {mojMonths.length !== 1 ? 's' : ''} selected in{' '}
+                <span className="font-black text-slate-700">{effectiveYear}</span>
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -609,13 +775,30 @@ function FiltersBar({
     filters.departmentIds?.length ||
     filters.statuses?.length ||
     filters.createdById ||
-    filters.mojMonth ||
+    filters.mojMonths?.length ||
     teamSelection
   );
 
   const activeRoleFilterCount = filters.createdById ? 1 : 0;
   const creatorSectionLabel =
     activeTab === 'recruiters' ? 'Filter by requirement creator (CSM)' : 'Filter by creator role';
+  // Active MOJ label for the summary text below the picker
+  const mojSummaryLabel = useMemo(() => {
+    const months = filters.mojMonths ?? [];
+    const yr = filters.mojYear ?? months[0]?.split('-')[0];
+    if (!months.length && !filters.mojYear) return null;
+    if (!months.length && filters.mojYear) return filters.mojYear;
+    if (months.length === 1) {
+      const [y, mm] = months[0].split('-');
+      const mName = MONTH_OPTIONS.find(o => o.value === mm)?.label ?? mm;
+      return `${mName} ${y}`;
+    }
+    const names = months.map(k => {
+      const mm = k.split('-')[2] ?? k;
+      return MONTH_OPTIONS.find(o => o.value === mm)?.label?.slice(0, 3) ?? mm;
+    });
+    return `${names.join(', ')} ${yr}`;
+  }, [filters.mojMonths, filters.mojYear]);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -790,7 +973,7 @@ function FiltersBar({
         </div>
       </div>
 
-      {/* MOJ filter */}
+      {/* MOJ filter — multi-select month checkboxes */}
       {showMoj && (
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
           <div className="flex items-center gap-2">
@@ -798,82 +981,34 @@ function FiltersBar({
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
               Month of Joining
             </span>
-            {(filters.mojMonth || filters.mojYear) && (
+            {((filters.mojMonths?.length ?? 0) > 0 || filters.mojYear) && (
               <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-black text-white">
-                active
+                {filters.mojMonths?.length ? `${filters.mojMonths.length} selected` : 'year only'}
               </span>
             )}
           </div>
-          <div className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2">
-            <span className="text-[10px] font-bold text-slate-400">YEAR</span>
-            <input
-              type="number"
-              min={2020}
-              max={2035}
-              placeholder={String(new Date().getFullYear())}
-              value={filters.mojMonth ? filters.mojMonth.split('-')[0] : (filters.mojYear ?? '')}
-              onChange={e => {
-                const yr = e.target.value.trim();
-                if (!yr) {
-                  onChange({ ...filters, mojMonth: undefined, mojYear: undefined });
-                  return;
-                }
-                const existingMonth = filters.mojMonth?.split('-')[1];
-                if (existingMonth) {
-                  onChange({ ...filters, mojMonth: `${yr}-${existingMonth}`, mojYear: undefined });
-                } else {
-                  onChange({ ...filters, mojYear: yr, mojMonth: undefined });
-                }
-              }}
-              className="w-16 bg-transparent text-xs text-slate-700 outline-none"
-            />
-          </div>
-          <Select
-            value={filters.mojMonth?.split('-')[1] ?? 'ALL'}
-            onValueChange={v => {
-              if (v === 'ALL') {
-                onChange({
-                  ...filters,
-                  mojMonth: undefined,
-                  mojYear: filters.mojMonth?.split('-')[0] ?? filters.mojYear,
-                });
-                return;
-              }
-              const yr =
-                filters.mojMonth?.split('-')[0] ??
-                filters.mojYear ??
-                String(new Date().getFullYear());
-              onChange({ ...filters, mojMonth: `${yr}-${v}`, mojYear: undefined });
-            }}
-          >
-            <SelectTrigger
-              className={`h-8 w-36 border-slate-200 text-xs font-medium ${
-                filters.mojMonth ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : ''
-              }`}
-            >
-              <SelectValue placeholder="All months" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All months</SelectItem>
-              {MONTH_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {(filters.mojMonth || filters.mojYear) && (
+
+          <MojMonthPicker
+            mojMonths={filters.mojMonths ?? []}
+            mojYear={filters.mojYear ?? ''}
+            onChange={(months, year) =>
+              onChange({
+                ...filters,
+                mojMonths: months.length ? months : undefined,
+                mojYear: !months.length && year ? year : undefined,
+              })
+            }
+          />
+
+          {/* Active selection summary */}
+          {mojSummaryLabel && (
             <div className="flex items-center gap-2">
               <p className="text-[11px] font-semibold text-slate-500">
-                Showing recruiters for candidates joining in{' '}
-                <span className="font-black text-emerald-700">
-                  {filters.mojMonth
-                    ? `${MONTH_OPTIONS.find(o => o.value === filters.mojMonth!.split('-')[1])?.label} ${filters.mojMonth.split('-')[0]}`
-                    : filters.mojYear}
-                </span>
+                Showing candidates joining in{' '}
+                <span className="font-black text-emerald-700">{mojSummaryLabel}</span>
               </p>
               <button
-                onClick={() => onChange({ ...filters, mojMonth: undefined, mojYear: undefined })}
+                onClick={() => onChange({ ...filters, mojMonths: undefined, mojYear: undefined })}
                 className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-slate-500 hover:bg-red-100 hover:text-red-500"
               >
                 <X className="h-3 w-3" />
@@ -1273,7 +1408,7 @@ export default function ReportsPage() {
     ...(filters.statuses ?? []),
     filters.businessUnitId,
     filters.createdById,
-    filters.mojMonth,
+    ...(filters.mojMonths ?? []),
     filters.mojYear,
     teamSelection,
   ].filter(Boolean).length;
@@ -1299,14 +1434,19 @@ export default function ReportsPage() {
   }, [win, filters, standardOnly, teamSelection]);
 
   const baseQs = baseParams.toString();
-
+  // Build recParams — appends each mojMonth as a separate param so backend
+  // can accept ?mojMonth=2024-01&mojMonth=2024-03 (multi-value)
   const recParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
     if (recReqFilter) p.set('requirementId', recReqFilter);
-    if (filters.mojMonth) p.set('mojMonth', filters.mojMonth);
-    if (filters.mojYear && !filters.mojMonth) p.set('mojYear', filters.mojYear);
+    const months = filters.mojMonths ?? [];
+    if (months.length) {
+      months.forEach(m => p.append('mojMonth', m));
+    } else if (filters.mojYear) {
+      p.set('mojYear', filters.mojYear);
+    }
     return p.toString();
-  }, [baseQs, recReqFilter, filters.mojMonth]);
+  }, [baseQs, recReqFilter, filters.mojMonths, filters.mojYear]);
 
   const reqParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
@@ -1619,12 +1759,12 @@ export default function ReportsPage() {
           >
             <UserCheck className="h-3.5 w-3.5" /> Candidates
           </TabsTrigger>
-          <TabsTrigger
+          {/* <TabsTrigger
             value="sales"
             className="gap-1.5 rounded-lg text-xs font-semibold data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
           >
             <BarChart2 className="h-3.5 w-3.5" /> Sales
-          </TabsTrigger>
+          </TabsTrigger> */}
         </TabsList>
 
         <TabsContent value="overview" className="mt-5">
