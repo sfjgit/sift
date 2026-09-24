@@ -361,7 +361,6 @@ interface PipelineResponse {
   permissions: { canEdit: boolean; canDelete: boolean };
 }
 
-// Only two row-level actions now — everything else lives inside the details modal.
 type ActionType = 'move' | 'details' | 'transfer' | null;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1119,8 +1118,92 @@ function BulkUploadModal({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADD CANDIDATE MODAL
+// ADD CANDIDATE MODAL & PORTAL REASON DIALOG
 // ─────────────────────────────────────────────────────────────────────────────
+
+function PortalReasonDialog({
+  app,
+  onClose,
+  onUnlocked,
+  req,
+  assignmentId,
+}: {
+  app: (typeof PORTAL_APPS)[number] | null;
+  onClose: () => void;
+  onUnlocked: () => void;
+  req: any;
+  assignmentId: string;
+}) {
+  const axios = useAxios();
+  const [reason, setReason] = useState('');
+  const mut = useMutation({
+    mutationFn: async () => {
+      if (!app) throw new Error('No portal selected');
+      return axios.post('/portal-recruit/log', {
+        requirementId: req.id,
+        reqCode: req.reqCode,
+        assignmentId,
+        appName: app.appName,
+        reason: reason.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success(`Unlocked ${app!.displayName} — you can now open it`);
+      onUnlocked();
+      setReason('');
+      onClose();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to save reason'),
+  });
+  if (!app) return null;
+  return (
+    <Dialog open={!!app} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-bold">
+            <Globe className="w-4 h-4 text-amber-600" />
+            Unlock {app.displayName}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              Please search the Internal Pool first. If no suitable candidate was found, tell us why
+              you need {app.displayName}.
+            </span>
+          </div>
+          <div>
+            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
+              Reason <span className="text-rose-500">*</span>
+            </Label>
+            <Textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Searched 'React + Node, 3-5 yrs' in internal pool — no matching profiles"
+              rows={3}
+              className="resize-none text-sm"
+            />
+            {!reason.trim() && <p className="text-[10px] text-rose-500 mt-1">Required to unlock</p>}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={mut.isPending}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!reason.trim() || mut.isPending}
+            onClick={() => mut.mutate()}
+            className="gap-2"
+          >
+            {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {mut.isPending ? 'Saving…' : 'Unlock'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function AddCandidateModal({
   open,
@@ -1136,7 +1219,22 @@ function AddCandidateModal({
   const [portalExpanded, setPortalExpanded] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [reasonApp, setReasonApp] = useState<(typeof PORTAL_APPS)[number] | null>(null);
   const router = useRouter();
+  const axios = useAxios();
+  const qc = useQueryClient();
+  const { data: unlockedApps = [] } = useQuery({
+    queryKey: ['portal-recruit-status', req.id],
+    queryFn: async () => {
+      const res = await axios.get('/portal-recruit/status', {
+        params: { requirementId: req.id },
+      });
+      return res.data.unlockedApps as string[];
+    },
+    enabled: open && !!req.id,
+    staleTime: 60_000,
+  });
+  const isUnlocked = (appName: string) => unlockedApps.includes(appName);
   if (!open) return null;
   return (
     <>
@@ -1241,30 +1339,59 @@ function AddCandidateModal({
               </button>
               {portalExpanded && (
                 <div className="ml-14 pl-4 border-l-2 border-slate-100 py-1 space-y-0.5">
-                  {PORTAL_APPS.map(app => (
-                    <a
-                      key={app.appName}
-                      href={app.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        triggerExtension(req.id, req.reqCode, req.title, app.appName, assignmentId);
-                        onClose();
-                      }}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
+                  {PORTAL_APPS.map(app => {
+                    const unlocked = isUnlocked(app.appName);
+                    return unlocked ? (
+                      <a
+                        key={app.appName}
+                        href={app.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => {
+                          triggerExtension(
+                            req.id,
+                            req.reqCode,
+                            req.title,
+                            app.appName,
+                            assignmentId
+                          );
+                          onClose();
+                        }}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 no-underline group"
                       >
-                        <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-slate-800">{app.displayName}</p>
-                        <p className="text-xs text-slate-500">{app.desc}</p>
-                      </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
-                    </a>
-                  ))}
+                        <div
+                          className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0`}
+                        >
+                          <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-slate-800">{app.displayName}</p>
+                          <p className="text-xs text-slate-500">{app.desc}</p>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-600 shrink-0" />
+                      </a>
+                    ) : (
+                      <button
+                        key={app.appName}
+                        type="button"
+                        onClick={() => setReasonApp(app)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 group text-left"
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-lg ${app.bg} flex items-center justify-center shrink-0 opacity-60`}
+                        >
+                          <span className={`text-xs font-bold ${app.color}`}>{app.short}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-slate-500">{app.displayName}</p>
+                          <p className="text-xs text-slate-400">
+                            Search internal pool first to unlock
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 border border-slate-200 shrink-0"></span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1280,6 +1407,15 @@ function AddCandidateModal({
       <BulkUploadModal
         open={bulkUploadOpen}
         onClose={() => setBulkUploadOpen(false)}
+        req={req}
+        assignmentId={assignmentId}
+      />
+      <PortalReasonDialog
+        app={reasonApp}
+        onClose={() => setReasonApp(null)}
+        onUnlocked={() => {
+          qc.invalidateQueries({ queryKey: ['portal-recruit-status', req.id] });
+        }}
         req={req}
         assignmentId={assignmentId}
       />
@@ -1312,7 +1448,7 @@ function MoveStageDialog({
   const [ivTime, setIvTime] = useState('');
   const [ivMode, setIvMode] = useState<'ONLINE' | 'OFFLINE' | 'TELEPHONIC'>('ONLINE');
   const [ivDuration, setIvDuration] = useState('');
-  const [noticePeriod, setNoticePeriod] = useState(''); // ← Chunk 1
+  const [noticePeriod, setNoticePeriod] = useState('');
   const currentOrder = pipeline.currentStage.order;
 
   const selectableStages = useMemo(() => [...stages].sort((a, b) => a.order - b.order), [stages]);
@@ -1324,7 +1460,7 @@ function MoveStageDialog({
 
   const cc = SC(pipeline.currentStage.code);
   const tc = selected ? SC(selected.code) : null;
-  const isSubmittedToClient = selected?.canonicalStage === 'SUBMMITED'; // ← Chunk 2
+  const isSubmittedToClient = selected?.canonicalStage === 'SUBMMITED';
 
   const reset = () => {
     setStageId('');
@@ -1333,7 +1469,7 @@ function MoveStageDialog({
     setIvTime('');
     setIvMode('ONLINE');
     setIvDuration('');
-    setNoticePeriod(''); // ← Chunk 3
+    setNoticePeriod('');
   };
 
   const mut = useMutation({
@@ -1343,7 +1479,7 @@ function MoveStageDialog({
       }
       const body: any = { stageId, note: note.trim() || undefined };
       if (isSubmittedToClient) {
-        body.noticePeriod = noticePeriod.trim(); // ← Chunk 4
+        body.noticePeriod = noticePeriod.trim();
       }
       if (showInterview) {
         body.interview = {
@@ -1365,7 +1501,7 @@ function MoveStageDialog({
       reset();
     },
     onError: (e: any) =>
-      toast.error(e?.message ?? e?.response?.data?.message ?? 'Failed to move stage'), // ← Chunk 4
+      toast.error(e?.message ?? e?.response?.data?.message ?? 'Failed to move stage'),
   });
 
   return (
@@ -1518,7 +1654,6 @@ function MoveStageDialog({
           </div>
         </div>
 
-        {/* Notice Period required input when moving to Submitted to Client (Chunk 5) */}
         {isSubmittedToClient && (
           <div className="px-6 py-4 border-t border-slate-100 bg-emerald-50/40 shrink-0">
             <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
@@ -1622,7 +1757,6 @@ function MoveStageDialog({
             >
               Cancel
             </Button>
-            {/* Disabled condition updated with notice period validation (Chunk 6) */}
             <Button
               disabled={
                 !stageId ||
@@ -1682,7 +1816,6 @@ function CandidateDetailsModal({
         <DialogHeader className="sr-only">
           <DialogTitle>Candidate Details — {snap.fullName}</DialogTitle>
         </DialogHeader>
-        {/* HEADER — identity, always visible regardless of tab */}
         <div className="px-6 pt-5 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <Avatar className="h-11 w-11 shrink-0">
@@ -1770,7 +1903,6 @@ function CandidateDetailsModal({
   );
 }
 
-// ── Submission tab ──────────────────────────────────────────────────────────
 function SubmissionTab({ pipeline, axios, onDone, onClose }: any) {
   const [note, setNote] = useState(pipeline.submissionNote ?? '');
   const mut = useMutation({
@@ -1814,7 +1946,6 @@ function SubmissionTab({ pipeline, axios, onDone, onClose }: any) {
   );
 }
 
-// ── Offer & CTC tab ─────────────────────────────────────────────────────────
 function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   const [currentCtc, setCurrentCtc] = useState(pipeline.currentCtc?.toString() ?? '');
   const [expectedCtc, setExpectedCtc] = useState(pipeline.expectedCtc?.toString() ?? '');
@@ -1953,7 +2084,6 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   );
 }
 
-// ── Joining tab ──────────────────────────────────────────────────────────────
 function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   const NOTICE_PRESETS = [
     'Immediate Joiner',
@@ -2033,7 +2163,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
   return (
     <div className="space-y-4">
-      {/* ── Notice Period ── */}
       <div>
         <Label className="text-xs font-semibold text-slate-600 mb-2 block">Notice Period</Label>
         <div className="flex flex-wrap gap-1.5">
@@ -2083,7 +2212,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
         )}
       </div>
 
-      {/* ── Date inputs ── */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
@@ -2130,7 +2258,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
         </div>
       </div>
 
-      {/* ── Live preview of derived fields ── */}
       <div className="grid grid-cols-3 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -2186,7 +2313,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
   );
 }
 
-// ── Status tab ────────────────────────────────────────────────────────────────
 function StatusTab({ pipeline, axios, onDone, onClose, isTerminated }: any) {
   const [active, setActive] = useState<'hold' | 'withdraw' | 'reject' | null>(null);
   const [reason, setReason] = useState('');
@@ -2372,7 +2498,6 @@ function CandidateTable({
 
             return (
               <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
-                {/* Actions */}
                 <td className="px-3 py-3 align-top">
                   <div className="flex items-center justify-center gap-1">
                     <button
@@ -2429,7 +2554,7 @@ function CandidateTable({
                     </Avatar>
                     <div className="min-w-0">
                       <Link href={isTransferred ? '#' : `/candidates/${snap.candidateServiceId}`}>
-                        <p className="text-sm font-bold text-slate-900 leading-tight truncate ${isTransferred ? 'text-slate-400' : 'text-slate-900'}">
+                        <p className="text-sm font-bold text-slate-900 leading-tight truncate">
                           {snap.fullName}
                         </p>
                         <p className="text-xs text-slate-500 truncate mt-0.5">
@@ -2761,7 +2886,6 @@ export default function AssignmentDetailPage() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-white">
-      {/* ═══ HEADER ═══ */}
       <div className="border-b border-slate-200 bg-white shrink-0">
         {isBreached && <div className="h-0.5 w-full bg-red-500" />}
 
@@ -2902,7 +3026,6 @@ export default function AssignmentDetailPage() {
           </TabsList>
         </div>
 
-        {/* ✅ JD TAB */}
         <TabsContent value="jd" className="flex-1 overflow-hidden">
           <div className="grid h-full overflow-hidden" style={{ gridTemplateColumns: '1fr 300px' }}>
             <div className="overflow-y-auto p-5 space-y-4 border-r border-slate-200">
@@ -3103,7 +3226,6 @@ export default function AssignmentDetailPage() {
           </div>
         </TabsContent>
 
-        {/* ✅ CANDIDATES TAB */}
         <TabsContent value="candidates" className="flex flex-col flex-1 overflow-hidden">
           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-200 bg-slate-50 shrink-0">
             <span className="text-sm font-semibold text-slate-600">
@@ -3240,7 +3362,6 @@ export default function AssignmentDetailPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ═══ MODALS ═══ */}
       <AddCandidateModal
         open={addModal}
         onClose={() => setAddModal(false)}

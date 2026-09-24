@@ -286,7 +286,7 @@ export function RecruiterStatsBar({ baseQs }: { baseQs: string }) {
             onClick={() => openDrill('Near close candidates', { type: 'near_terminal' })}
           />
           <StatCard
-            label="Placed"
+            label="Placed/Deal Closed"
             value={totals.placed}
             sub={pct(totals.placed, totals.sourced)}
             color="text-emerald-800"
