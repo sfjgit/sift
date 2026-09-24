@@ -48,7 +48,7 @@ import { OverviewSection } from '@/components/reports/OverviewSection';
 import { SalesSection } from '@/components/reports/SalesSection';
 import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
 import type { TeamSelection } from '@/components/reports/TeamTreePicker';
-import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
+import { Empty, Skel } from '@/components/reports/reportUi';
 import { RequirementTable, SortKey } from '@/components/reports/RequirementTable';
 import { RecruiterSection } from '@/components/reports/RecruiterSection';
 import { RecruiterStatsBar } from '@/components/reports/RecruiterStatsBar';
@@ -359,7 +359,7 @@ function RequirementStatsBar({
   return (
     <div className="flex flex-wrap items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       {/* 1. Total Sale Value */}
-      <div className="flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
+      <div className="flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-emerald-50 px-4 py-3">
         <p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
           Total Sale Value
         </p>
@@ -375,7 +375,7 @@ function RequirementStatsBar({
       {/* 2. Pipeline Value — nearTerminal value */}
       <button
         onClick={() => onDrill('nearTerminal')}
-        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-amber-50 px-4 py-3 text-left transition-all hover:bg-amber-100 hover:shadow-md"
+        className="group flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-amber-50 px-4 py-3 text-left transition-all hover:bg-amber-100 hover:shadow-md"
       >
         <p className="text-[10px] font-black uppercase tracking-wider text-amber-600">
           Pipeline Value
@@ -391,7 +391,7 @@ function RequirementStatsBar({
       {/* 3. NDA Released / Offered — nearTerminal COUNT */}
       <button
         onClick={() => onDrill('nearTerminal')}
-        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-orange-50 px-4 py-3 text-left transition-all hover:bg-orange-100 hover:shadow-md"
+        className="group flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-orange-50 px-4 py-3 text-left transition-all hover:bg-orange-100 hover:shadow-md"
       >
         <p className="text-[10px] font-black uppercase tracking-wider text-orange-600">
           NDA Released / Offered
@@ -407,7 +407,7 @@ function RequirementStatsBar({
       {/* 4. Achieved Value — terminal value */}
       <button
         onClick={() => onDrill('terminal')}
-        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3 text-left transition-all hover:bg-purple-100 hover:shadow-md"
+        className="group flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-purple-50 px-4 py-3 text-left transition-all hover:bg-purple-100 hover:shadow-md"
       >
         <p className="text-[10px] font-black uppercase tracking-wider text-purple-600">
           Achieved Value
@@ -423,7 +423,7 @@ function RequirementStatsBar({
       {/* 5. Deal Closed / Training Started — terminal COUNT */}
       <button
         onClick={() => onDrill('terminal')}
-        className="group flex min-w-[150px] flex-1 flex-col justify-center rounded-lg bg-indigo-50 px-4 py-3 text-left transition-all hover:bg-indigo-100 hover:shadow-md"
+        className="group flex min-w-37.5 flex-1 flex-col justify-center rounded-lg bg-indigo-50 px-4 py-3 text-left transition-all hover:bg-indigo-100 hover:shadow-md"
       >
         <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600">
           Deal Closed / Training Started

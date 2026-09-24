@@ -27,6 +27,7 @@ import * as XLSX from 'xlsx';
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
+export type DrillBucket = 'nearTerminal' | 'terminal';
 
 export interface RequirementDrillTarget {
   requirementId: string;
@@ -34,6 +35,7 @@ export interface RequirementDrillTarget {
   reqTitle: string;
   stageId?: string;
   stageLabel?: string;
+  bucket?: DrillBucket;
   // The full stage label for dialog title
   dialogTitle?: string;
 }
@@ -748,12 +750,20 @@ export function RequirementCandidateDrillDialog({ target, onClose }: Props) {
     if (!target) return '';
     const p = new URLSearchParams();
     if (target.stageId) p.set('stageId', target.stageId);
+    if (target.bucket) p.set('bucket', target.bucket);
     if (target.stageLabel) p.set('stageLabel', target.stageLabel);
     return p.toString();
   }, [target]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['req-candidate-drill', target?.requirementId, target?.stageId],
+    // bucket MUST be in the key, otherwise nearTerminal/terminal share cache
+
+    queryKey: [
+      'req-candidate-drill',
+      target?.requirementId,
+      target?.stageId ?? null,
+      target?.bucket ?? null,
+    ],
     queryFn: async () =>
       (await axios.get(`/reports/requirements/${target!.requirementId}/candidates?${queryParams}`))
         .data as {
