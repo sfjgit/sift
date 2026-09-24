@@ -9,14 +9,14 @@ import { useQuery } from '@tanstack/react-query';
 import { X, TrendingUp, CheckCircle2, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { RequirementCandidateDrillDialog } from './RequirementCandidateDrillDialog';
-import type { RequirementDrillTarget } from './RequirementCandidateDrillDialog';
+import type { DrillBucket, RequirementDrillTarget } from './RequirementCandidateDrillDialog';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type FunnelDrawerType = 'nearTerminal' | 'terminal';
-
+// export type FunnelDrawerType = 'nearTerminal' | 'terminal';
+export type FunnelDrawerType = DrillBucket;
 export interface FunnelStatsDrawerTarget {
   type: FunnelDrawerType;
 }
@@ -196,6 +196,7 @@ export function FunnelStatsDrawer({ target, baseQs, onClose }: Props) {
       requirementId: row.id,
       reqCode: row.reqCode,
       reqTitle: row.title,
+      bucket: target.type,
       stageId: undefined,
       stageLabel: isNearTerminal ? 'NDA Released / Offered' : 'Deal Closed / Training Started',
       dialogTitle: isNearTerminal ? `Pipeline — ${row.reqCode}` : `Achieved — ${row.reqCode}`,
