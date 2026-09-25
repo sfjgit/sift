@@ -23,8 +23,8 @@ export default function ChatWidget() {
           body: JSON.stringify({
             clientId: process.env.NEXT_PUBLIC_CHAT_CLIENT_ID,
             clientSecret: process.env.NEXT_PUBLIC_CHAT_CLIENT_SECRET,
-            // clientUserId: user.id,
-            clientUserId: `${user.firstName.toLowerCase()}.${user.lastName.toLowerCase()}`,
+            clientUserId: user.id,
+            // clientUserId: `${user.firstName.toLowerCase()}.${user.lastName.toLowerCase()}`,
           }),
         });
 
