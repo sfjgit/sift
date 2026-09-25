@@ -3,10 +3,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
+//import { format } from 'date-fns';
+import { format, addDays, parseISO, differenceInCalendarDays } from 'date-fns';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -363,6 +364,18 @@ interface PipelineResponse {
 
 type ActionType = 'move' | 'details' | 'transfer' | null;
 
+// Which tab of the Candidate Details modal opens by default, and — when the
+// modal was opened as a redirect from Move Stage — which stage to move the
+// candidate to once the Joining tab is saved.
+type DetailTab = 'submission' | 'offer' | 'joining' | 'status';
+
+interface ActionDialogState {
+  type: ActionType;
+  pipeline: PipelineCandidate;
+  initialTab?: DetailTab;
+  pendingStageId?: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STAGE COLOURS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -501,6 +514,12 @@ const humanizeCanonical = (key: string) =>
 const INTERVIEW_SCHEDULING_CANONICAL = ['INTERVIEW_SCHEDULED', 'INTERVIEW_RESCHEDULED'];
 const needsInterviewSchedule = (canonical: string | null | undefined) =>
   !!canonical && INTERVIEW_SCHEDULING_CANONICAL.includes(canonical);
+
+// A candidate already has everything Submitted-to-Client needs when both the
+// notice period and the month of joining have been saved once via the
+// Joining Details tab. Once true, Move Stage no longer needs to redirect.
+const hasJoiningInfo = (pipeline: PipelineCandidate) =>
+  !!pipeline.noticePeriod && !!pipeline.monthOfJoining;
 
 const PORTAL_APPS = [
   {
@@ -1433,12 +1452,18 @@ function MoveStageDialog({
   open,
   onClose,
   onDone,
+  onRequestJoiningDetails,
 }: {
   pipeline: PipelineCandidate;
   stages: PipelineStage[];
   open: boolean;
   onClose: () => void;
   onDone: () => void;
+  // Called when the user needs to fill in Joining Details before this move
+  // can complete (Submitted to Client with no notice period / month of
+  // joining saved yet). Passes the target stage id so the Joining tab can
+  // move the candidate there automatically once it's saved.
+  onRequestJoiningDetails: (stageId: string) => void;
 }) {
   const axios = useAxios();
   const [stageId, setStageId] = useState('');
@@ -1448,7 +1473,6 @@ function MoveStageDialog({
   const [ivTime, setIvTime] = useState('');
   const [ivMode, setIvMode] = useState<'ONLINE' | 'OFFLINE' | 'TELEPHONIC'>('ONLINE');
   const [ivDuration, setIvDuration] = useState('');
-  const [noticePeriod, setNoticePeriod] = useState('');
   const currentOrder = pipeline.currentStage.order;
 
   const selectableStages = useMemo(() => [...stages].sort((a, b) => a.order - b.order), [stages]);
@@ -1461,6 +1485,10 @@ function MoveStageDialog({
   const cc = SC(pipeline.currentStage.code);
   const tc = selected ? SC(selected.code) : null;
   const isSubmittedToClient = selected?.canonicalStage === 'SUBMMITED';
+  // Notice period + month of joining are entered once, in Joining Details —
+  // never re-entered here. If they're already on file for this candidate,
+  // the move can go straight through.
+  const needsJoiningRedirect = isSubmittedToClient && !hasJoiningInfo(pipeline);
 
   const reset = () => {
     setStageId('');
@@ -1469,17 +1497,22 @@ function MoveStageDialog({
     setIvTime('');
     setIvMode('ONLINE');
     setIvDuration('');
-    setNoticePeriod('');
   };
 
   const mut = useMutation({
     mutationFn: async () => {
-      if (isSubmittedToClient && !noticePeriod.trim()) {
-        throw new Error('Notice period is required when moving to Submitted to Client');
+      if (needsJoiningRedirect) {
+        throw new Error(
+          'Notice period & month of joining are required — enter them in Joining Details'
+        );
       }
       const body: any = { stageId, note: note.trim() || undefined };
       if (isSubmittedToClient) {
-        body.noticePeriod = noticePeriod.trim();
+        // The backend checks noticePeriod on the request itself, not just
+        // what's stored on the candidate — so even a "direct" move (where
+        // it's already saved from a previous Joining Details visit) has to
+        // resend it here.
+        body.noticePeriod = pipeline.noticePeriod ?? undefined;
       }
       if (showInterview) {
         body.interview = {
@@ -1654,20 +1687,38 @@ function MoveStageDialog({
           </div>
         </div>
 
-        {isSubmittedToClient && (
-          <div className="px-6 py-4 border-t border-slate-100 bg-emerald-50/40 shrink-0">
-            <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1.5 block">
-              Notice Period <span className="text-rose-500">*</span>
-            </Label>
-            <Input
-              value={noticePeriod}
-              onChange={e => setNoticePeriod(e.target.value)}
-              placeholder="e.g. 30 days"
-              className={`h-9 text-sm ${!noticePeriod.trim() ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
-            />
-            {!noticePeriod.trim() && (
-              <p className="text-[10px] text-rose-500 mt-1">Required to move to this stage</p>
-            )}
+        {needsJoiningRedirect && (
+          <div className="px-6 py-4 border-t border-slate-100 bg-amber-50/60 shrink-0">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-xs font-bold text-amber-800">
+                  Notice period & month of joining are required
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  These are entered once, in the candidate's Joining Details. Save them there and
+                  this candidate will move to Submitted to Client automatically.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-2.5 gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={() => {
+                    // Don't call onClose() here — it sets the same
+                    // actionDialog state that onRequestJoiningDetails just
+                    // set, and both would batch into one update, with
+                    // onClose's `null` winning and silently no-opping the
+                    // redirect. Switching actionDialog to the details view
+                    // already un-mounts this dialog on its own.
+                    reset();
+                    onRequestJoiningDetails(stageId);
+                  }}
+                >
+                  <CalendarCheck className="w-3.5 h-3.5" />
+                  Open Joining Details
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1758,12 +1809,7 @@ function MoveStageDialog({
               Cancel
             </Button>
             <Button
-              disabled={
-                !stageId ||
-                !interviewValid ||
-                (isSubmittedToClient && !noticePeriod.trim()) ||
-                mut.isPending
-              }
+              disabled={!stageId || !interviewValid || needsJoiningRedirect || mut.isPending}
               onClick={() => mut.mutate()}
               className="gap-2 min-w-32.5"
             >
@@ -1785,21 +1831,27 @@ function MoveStageDialog({
 // CANDIDATE DETAILS MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 
-type DetailTab = 'submission' | 'offer' | 'joining' | 'status';
-
 function CandidateDetailsModal({
   pipeline,
   open,
   onClose,
   onDone,
+  initialTab = 'submission',
+  pendingStageId,
 }: {
   pipeline: PipelineCandidate;
   open: boolean;
   onClose: () => void;
   onDone: () => void;
+  // Which tab opens first — used to jump straight to Joining when this modal
+  // was opened as a redirect from Move Stage.
+  initialTab?: DetailTab;
+  // Target stage id to move the candidate to once Joining Details are saved.
+  // Only set when this modal was opened via that redirect.
+  pendingStageId?: string;
 }) {
   const axios = useAxios();
-  const [tab, setTab] = useState<DetailTab>('submission');
+  const [tab, setTab] = useState<DetailTab>(initialTab);
   const snap = pipeline.snapshot;
   const isTerminated = pipeline.isRejected || pipeline.isWithdrawn;
 
@@ -1885,7 +1937,13 @@ function CandidateDetailsModal({
               <OfferCtcTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
             )}
             {tab === 'joining' && (
-              <JoiningTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
+              <JoiningTab
+                pipeline={pipeline}
+                axios={axios}
+                onDone={onDone}
+                onClose={onClose}
+                pendingStageId={pendingStageId}
+              />
             )}
             {tab === 'status' && (
               <StatusTab
@@ -2084,77 +2142,159 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   );
 }
 
-function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
-  const NOTICE_PRESETS = [
-    'Immediate Joiner',
-    '15 days',
-    '30 days',
-    '45 days',
-    '60 days',
-    '90 days',
-    'Not Sure',
+function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
+  const MONTH_NAMES = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
-  const initialNp: string = pipeline.noticePeriod ?? '';
-  const isPreset = initialNp !== '' && NOTICE_PRESETS.includes(initialNp);
+  // Pulls a leading number out of whatever's stored — handles both the new
+  // plain-numeric format and legacy free-text values like "30 days".
+  const extractDays = (val: string | null | undefined): string => {
+    if (!val) return '';
+    const match = val.toString().match(/^\d+/);
+    return match ? match[0] : '';
+  };
 
-  const [expectedJoiningDate, setExpectedJoiningDate] = useState(
-    pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+  // Strips any trailing year off old saved values like "November 2026" so it
+  // matches one of the plain month-name dropdown options. Falls back to ''
+  // if nothing recognizable is found.
+  const extractMonthName = (val: string | null | undefined): string => {
+    if (!val) return '';
+    const found = MONTH_NAMES.find(m => val.toString().toLowerCase().startsWith(m.toLowerCase()));
+    return found ?? '';
+  };
+
+  const NOTICE_PRESETS = [0, 30, 60, 90];
+
+  const [noticePeriodDays, setNoticePeriodDays] = useState(extractDays(pipeline.noticePeriod));
+  const [isCustomNotice, setIsCustomNotice] = useState(
+    extractDays(pipeline.noticePeriod) !== '' &&
+      !NOTICE_PRESETS.includes(parseInt(extractDays(pipeline.noticePeriod), 10))
   );
   const [lastWorkingDate, setLastWorkingDate] = useState(
     pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : ''
   );
+  const [expectedJoiningDate, setExpectedJoiningDate] = useState(
+    pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+  );
   const [actualJoiningDate, setActualJoiningDate] = useState(
     pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : ''
   );
+  const [monthOfJoining, setMonthOfJoining] = useState(extractMonthName(pipeline.monthOfJoining));
 
-  const [noticePeriod, setNoticePeriod] = useState(isPreset ? initialNp : '');
-  const [isManual, setIsManual] = useState(initialNp !== '' && !isPreset);
-  const [manualValue, setManualValue] = useState(!isPreset ? initialNp : '');
+  // Tracks whether the NEXT noticePeriodDays change came from a prop-resync
+  // (real DB data) vs an actual user click/edit — only user edits should
+  // trigger the auto-calc effect below.
+  const isFirstRender = useRef(true);
 
-  const isImmediate = noticePeriod === 'Immediate Joiner';
+  // Re-sync all local state whenever the incoming pipeline data actually
+  // changes in the DB — e.g. notice period was updated from somewhere else
+  // in the app. Without this, the tab keeps showing whatever it first loaded.
+  useEffect(() => {
+    setNoticePeriodDays(extractDays(pipeline.noticePeriod));
+    setIsCustomNotice(
+      extractDays(pipeline.noticePeriod) !== '' &&
+        !NOTICE_PRESETS.includes(parseInt(extractDays(pipeline.noticePeriod), 10))
+    );
+    setLastWorkingDate(pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : '');
+    setExpectedJoiningDate(
+      pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+    );
+    setActualJoiningDate(pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : '');
+    setMonthOfJoining(extractMonthName(pipeline.monthOfJoining));
+    // Block the auto-calc effect from firing because of this sync — it should
+    // only fire when the user actually clicks a preset or types a value.
+    isFirstRender.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pipeline.id,
+    pipeline.noticePeriod,
+    pipeline.lastWorkingDate,
+    pipeline.expectedJoiningDate,
+    pipeline.actualJoiningDate,
+    pipeline.monthOfJoining,
+  ]);
 
-  const previewMonthOfJoining = useMemo(() => {
-    if (actualJoiningDate) {
-      return new Date(actualJoiningDate).toLocaleString('en-IN', {
-        month: 'long',
-        year: 'numeric',
-      });
+  // Auto-calc Last Working Date + Expected Joining Date whenever the user
+  // actually changes the notice period. Dates remain manually editable after
+  // — this just sets the default. NOTE: this is intentionally NOT tied to
+  // expectedJoiningDate — picking a joining date never recalculates anything.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
     }
-    if (expectedJoiningDate) {
-      return new Date(expectedJoiningDate).toLocaleString('en-IN', {
-        month: 'long',
-        year: 'numeric',
-      });
-    }
-    return null;
-  }, [actualJoiningDate, expectedJoiningDate]);
+    const n = parseInt(noticePeriodDays, 10);
+    if (!noticePeriodDays || Number.isNaN(n) || n < 0) return;
+    //const calculated = new Date();
+    //calculated.setDate(calculated.getDate() + n);
+    //const iso = calculated.toISOString().slice(0, 10);
+    const iso = format(addDays(new Date(), n), 'yyyy-MM-dd');
+    setLastWorkingDate(iso);
+    setExpectedJoiningDate(iso);
+  }, [noticePeriodDays]);
 
+  // "Days to Join" is always derived live from expectedJoiningDate vs today —
+  // no background job needed to keep this fresh. (A daily cron to re-derive
+  // this after a recruiter changes the notice period later is a possible
+  // follow-up but is intentionally NOT implemented here.)
   const previewRemainingDays = useMemo(() => {
     if (actualJoiningDate) return 0;
     if (expectedJoiningDate) {
-      return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
+      //return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
+      return differenceInCalendarDays(parseISO(expectedJoiningDate), new Date());
     }
     return null;
   }, [actualJoiningDate, expectedJoiningDate]);
 
+  const isNoticePeriodValid =
+    noticePeriodDays.toString().trim() !== '' && !Number.isNaN(parseInt(noticePeriodDays, 10));
+  const isMonthOfJoiningValid = monthOfJoining.trim() !== '';
+
   const mut = useMutation({
     mutationFn: async () => {
-      if (!expectedJoiningDate) {
-        throw new Error('Expected Joining Date is required');
+      if (!isNoticePeriodValid) {
+        throw new Error('Notice period is required');
       }
-
-      const resolvedNotice = isManual ? manualValue.trim() : noticePeriod.trim();
-
-      return axios.patch(`/pipeline/${pipeline.id}/details`, {
-        lastWorkingDate: isImmediate ? null : lastWorkingDate || null,
+      if (!isMonthOfJoiningValid) {
+        throw new Error('Month of joining is required');
+      }
+      await axios.patch(`/pipeline/${pipeline.id}/details`, {
+        noticePeriod: String(noticePeriodDays),
+        lastWorkingDate: lastWorkingDate || null,
         expectedJoiningDate: expectedJoiningDate || null,
         actualJoiningDate: actualJoiningDate || null,
-        noticePeriod: resolvedNotice || null,
+        monthOfJoining: monthOfJoining || null,
       });
+      // If this tab was opened from Move Stage (redirected here because
+      // Submitted to Client needs these fields first), complete the move
+      // right after saving — one click does both. The backend validates
+      // noticePeriod on the stage-move request itself, so it has to be
+      // resent here even though /details just saved it a moment ago.
+      if (pendingStageId) {
+        await axios.patch(`/pipeline/${pipeline.id}/stage`, {
+          stageId: pendingStageId,
+          noticePeriod: String(noticePeriodDays),
+        });
+      }
     },
     onSuccess: () => {
-      toast.success('Joining details saved');
+      toast.success(
+        pendingStageId
+          ? 'Joining details saved · moved to Submitted to Client'
+          : 'Joining details saved'
+      );
       onDone();
       onClose();
     },
@@ -2163,19 +2303,30 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
 
   return (
     <div className="space-y-4">
+      {pendingStageId && (
+        <div className="flex items-start gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+          <CalendarCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-indigo-800">
+            Saving these details will also move this candidate to{' '}
+            <span className="font-bold">Submitted to Client</span>.
+          </p>
+        </div>
+      )}
+
       <div>
-        <Label className="text-xs font-semibold text-slate-600 mb-2 block">Notice Period</Label>
+        <Label className="text-xs font-semibold text-slate-600 mb-2 block">
+          Notice Period (days) <span className="text-rose-500">*</span>
+        </Label>
         <div className="flex flex-wrap gap-1.5">
-          {NOTICE_PRESETS.map(opt => {
-            const selected = !isManual && noticePeriod === opt;
+          {NOTICE_PRESETS.map(preset => {
+            const selected = !isCustomNotice && noticePeriodDays === String(preset);
             return (
               <button
-                key={opt}
+                key={preset}
                 type="button"
                 onClick={() => {
-                  setIsManual(false);
-                  setManualValue('');
-                  setNoticePeriod(prev => (prev === opt ? '' : opt));
+                  setIsCustomNotice(false);
+                  setNoticePeriodDays(String(preset));
                 }}
                 className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
                   selected
@@ -2183,18 +2334,18 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
                     : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {opt}
+                {preset === 0 ? 'Immediate Joiner' : `${preset} days`}
               </button>
             );
           })}
           <button
             type="button"
             onClick={() => {
-              setIsManual(prev => !prev);
-              setNoticePeriod('');
+              setIsCustomNotice(true);
+              setNoticePeriodDays('');
             }}
             className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-              isManual
+              isCustomNotice
                 ? 'bg-primary/10 text-primary border-primary'
                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
             }`}
@@ -2202,14 +2353,23 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
             Custom
           </button>
         </div>
-        {isManual && (
+
+        {isCustomNotice && (
           <Input
-            value={manualValue}
-            onChange={e => setManualValue(e.target.value)}
-            placeholder="Enter notice period (e.g. 2 months, serving NP till 12 Aug)"
-            className="h-9 text-sm mt-2"
+            type="number"
+            min={0}
+            value={noticePeriodDays}
+            onChange={e => setNoticePeriodDays(e.target.value)}
+            placeholder="Enter number of days, e.g. 45"
+            className={`h-9 text-sm w-40 mt-2 ${!isNoticePeriodValid ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
           />
         )}
+
+        {!isNoticePeriodValid && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+        <p className="text-[10px] text-slate-400 mt-1">
+          Auto-fills Last Working Day and Expected Joining Date as today + this many days. You can
+          still edit the dates manually after.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -2220,31 +2380,45 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
           <Input
             type="date"
             value={lastWorkingDate}
-            disabled={isImmediate}
             onChange={e => setLastWorkingDate(e.target.value)}
-            className="h-9 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-9 text-sm"
           />
-          {isImmediate && (
-            <p className="text-[10px] text-slate-400 mt-1">Not required for immediate joiners</p>
-          )}
         </div>
 
         <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
-            Expected Joining Date <span className="text-rose-500">*</span>
+            Expected Joining Date
           </Label>
           <Input
             type="date"
             value={expectedJoiningDate}
             onChange={e => setExpectedJoiningDate(e.target.value)}
-            className={`h-9 text-sm ${!expectedJoiningDate ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
+            className="h-9 text-sm"
           />
-          {!expectedJoiningDate && (
-            <p className="text-[10px] text-rose-500 mt-1">Required for reports</p>
-          )}
         </div>
 
-        <div className="col-span-2">
+        <div>
+          <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+            Month of Joining <span className="text-rose-500">*</span>
+          </Label>
+          <Select value={monthOfJoining} onValueChange={setMonthOfJoining}>
+            <SelectTrigger
+              className={`h-9 text-sm ${!isMonthOfJoiningValid ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
+            >
+              <SelectValue placeholder="Select month" />
+            </SelectTrigger>
+            <SelectContent>
+              {MONTH_NAMES.map(m => (
+                <SelectItem key={m} value={m} className="text-sm">
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!isMonthOfJoiningValid && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+        </div>
+
+        <div>
           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
             Actual Joining Date{' '}
             <span className="font-normal text-slate-400">(fill once candidate joins)</span>
@@ -2258,16 +2432,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            Expected Joining
-          </p>
-          <p className="text-sm font-semibold text-slate-700 mt-0.5">
-            {expectedJoiningDate ? format(new Date(expectedJoiningDate), 'dd MMM yyyy') : '—'}
-          </p>
-        </div>
-
+      <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
             Days to Join
@@ -2288,25 +2453,22 @@ function JoiningTab({ pipeline, axios, onDone, onClose }: any) {
               : '—'}
           </p>
         </div>
-
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
             Month of Joining
           </p>
-          <p className="text-sm font-semibold text-slate-700 mt-0.5">
-            {previewMonthOfJoining ?? '—'}
-          </p>
+          <p className="text-sm font-semibold text-slate-700 mt-0.5">{monthOfJoining || '—'}</p>
         </div>
       </div>
 
       <div className="flex justify-end">
         <Button
-          disabled={mut.isPending || !expectedJoiningDate}
+          disabled={mut.isPending || !isNoticePeriodValid || !isMonthOfJoiningValid}
           onClick={() => mut.mutate()}
           className="gap-2"
         >
           {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-          Save Joining Details
+          {pendingStageId ? 'Save & Move to Submitted to Client' : 'Save Joining Details'}
         </Button>
       </div>
     </div>
@@ -2778,10 +2940,7 @@ export default function AssignmentDetailPage() {
   const [activeOnly, setActiveOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [addModal, setAddModal] = useState(false);
-  const [actionDialog, setActionDialog] = useState<{
-    type: ActionType;
-    pipeline: PipelineCandidate;
-  } | null>(null);
+  const [actionDialog, setActionDialog] = useState<ActionDialogState | null>(null);
 
   const { data: assignmentData, isLoading: assignmentLoading } = useQuery({
     queryKey: ['assignment-detail', id],
@@ -3376,6 +3535,14 @@ export default function AssignmentDetailPage() {
           open
           onClose={() => setActionDialog(null)}
           onDone={invalidateAfterAction}
+          onRequestJoiningDetails={stageId =>
+            setActionDialog({
+              type: 'details',
+              pipeline: actionDialog.pipeline,
+              initialTab: 'joining',
+              pendingStageId: stageId,
+            })
+          }
         />
       )}
       {actionDialog?.type === 'details' && (
@@ -3384,6 +3551,8 @@ export default function AssignmentDetailPage() {
           open
           onClose={() => setActionDialog(null)}
           onDone={invalidateAfterAction}
+          initialTab={actionDialog.initialTab}
+          pendingStageId={actionDialog.pendingStageId}
         />
       )}
       {actionDialog?.type === 'transfer' && (

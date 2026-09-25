@@ -6,7 +6,15 @@
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, TrendingUp, CheckCircle2, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
+import {
+  X,
+  TrendingUp,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  AlertTriangle,
+  Download,
+} from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { RequirementCandidateDrillDialog } from './RequirementCandidateDrillDialog';
 import type { DrillBucket, RequirementDrillTarget } from './RequirementCandidateDrillDialog';
@@ -71,6 +79,28 @@ const STATUS_STYLE: Record<string, string> = {
   CLOSED: 'bg-red-50 text-red-600',
   CANCELLED: 'bg-gray-100 text-gray-500',
 };
+
+// ── CSV export helpers ───────────────────────────────────────────────────────
+
+function csvCell(v: unknown): string {
+  if (v == null) return '';
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCsv(filename: string, headers: string[], rows: unknown[][]) {
+  const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+  // \uFEFF BOM so Excel reads UTF-8 properly
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REQUIREMENT ROW
@@ -203,6 +233,43 @@ export function FunnelStatsDrawer({ target, baseQs, onClose }: Props) {
     });
   };
 
+  const handleExport = () => {
+    const headers = [
+      'Req Code',
+      'Title',
+      'Status',
+      'Client',
+      'Service Line',
+      'Business Unit',
+      'Created By',
+      'Openings',
+      'Total Sale Value (INR)',
+      'Candidates',
+      isNearTerminal ? 'Pipeline Value (INR)' : 'Achieved Value (INR)',
+    ];
+
+    const body = rows.map(r => [
+      r.reqCode,
+      r.title,
+      r.status.replace(/_/g, ' '),
+      r.client?.name ?? '',
+      r.serviceLine?.name ?? '',
+      r.businessUnit?.name ?? '',
+      `${r.createdBy?.firstName ?? ''} ${r.createdBy?.lastName ?? ''}`.trim(),
+      r.totalOpenings,
+      r.computedSaleValue ?? '',
+      (isNearTerminal ? r.nearTerminalCount : r.terminalCount) ?? 0,
+      (isNearTerminal ? r.nearTerminalValue : r.achievedValue) ?? '',
+    ]);
+
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(
+      `${isNearTerminal ? 'nda-released-offered' : 'deal-closed-training-started'}_${date}.csv`,
+      headers,
+      body
+    );
+  };
+
   return (
     <>
       {/* ── Drawer overlay ──────────────────────────────────────────────────── */}
@@ -228,12 +295,23 @@ export function FunnelStatsDrawer({ target, baseQs, onClose }: Props) {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExport}
+                  disabled={isLoading || rows.length === 0}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[12px] font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
           </div>
 
