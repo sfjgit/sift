@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -36,6 +36,7 @@ import {
   Ticket,
   BriefcaseBusiness,
   ChartBarStacked,
+  LogOut,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -213,7 +214,8 @@ export function Sidebar() {
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pathname = usePathname();
-  const { user, can } = useAuth();
+  const router = useRouter();
+  const { user, can, logout } = useAuth();
 
   // ── Restore persisted preferences ────────────────────────────────────────
   useEffect(() => {
@@ -632,7 +634,8 @@ export function Sidebar() {
         </nav>
 
         {/* User footer */}
-        <div className="border-t border-border p-1.5 shrink-0">
+        {/* User footer */}
+        <div className="border-t border-border p-1.5 shrink-0 flex flex-col gap-0.5">
           <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/60 transition-colors cursor-pointer overflow-hidden whitespace-nowrap">
             <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
               <span className="text-[11px] font-semibold text-primary">{initials}</span>
@@ -646,6 +649,17 @@ export function Sidebar() {
               </span>
             </div>
           </div>
+
+          <button
+            onClick={async () => {
+              await logout();
+              router.replace('/sign-in');
+            }}
+            className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-destructive/10 transition-colors overflow-hidden whitespace-nowrap text-destructive w-full"
+          >
+            <LogOut className="h-3.5 w-3.5 shrink-0" />
+            <span className="text-[12px] font-medium">Sign out</span>
+          </button>
         </div>
       </aside>
 
