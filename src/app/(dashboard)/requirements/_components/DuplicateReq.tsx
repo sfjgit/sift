@@ -19,6 +19,13 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,9 +60,23 @@ interface DuplicatePreview {
   parsedJDId: string | null;
   client: { name: string } | null;
   serviceLine: { name: string } | null;
+  clientId: string | null;
+  clientSpocId: string | null;
+  serviceLineId: string | null;
   clientSpoc: { firstName: string; lastName: string } | null;
 }
 
+type Form = Omit<DuplicatePreview, 'suggestedTitle'>;
+interface Option {
+  id: string;
+  name: string;
+}
+
+interface Spoc {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -65,35 +86,50 @@ interface Props {
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
-function fmtExp(min: number | null, max: number | null): string {
-  if (min == null && max == null) return '—';
-  if (min != null && max != null) return `${min}–${max} yrs`;
-  return min != null ? `${min}+ yrs` : `Up to ${max} yrs`;
-}
+// function fmtExp(min: number | null, max: number | null): string {
+//   if (min == null && max == null) return '—';
+//   if (min != null && max != null) return `${min}–${max} yrs`;
+//   return min != null ? `${min}+ yrs` : `Up to ${max} yrs`;
+// }
 
-function fmtSalary(
-  min: number | null,
-  max: number | null,
-  type: string | null,
-  currency: string | null
-): string {
-  const sym = currency === 'USD' ? '$' : '₹';
-  const fmt = (n: number) =>
-    n >= 10_000_000
-      ? `${sym}${(n / 10_000_000).toFixed(1)}Cr`
-      : n >= 100_000
-        ? `${sym}${(n / 100_000).toFixed(1)}L`
-        : `${sym}${n.toLocaleString('en-IN')}`;
-  if (min == null && max == null) return '—';
-  const range =
-    min != null && max != null
-      ? `${fmt(min)} – ${fmt(max)}`
-      : min != null
-        ? `${fmt(min)}+`
-        : `Up to ${fmt(max!)}`;
-  return type ? `${range} / ${type.toLowerCase()}` : range;
-}
+// function fmtSalary(
+//   min: number | null,
+//   max: number | null,
+//   type: string | null,
+//   currency: string | null
+// ): string {
+//   const sym = currency === 'USD' ? '$' : '₹';
+//   const fmt = (n: number) =>
+//     n >= 10_000_000
+//       ? `${sym}${(n / 10_000_000).toFixed(1)}Cr`
+//       : n >= 100_000
+//         ? `${sym}${(n / 100_000).toFixed(1)}L`
+//         : `${sym}${n.toLocaleString('en-IN')}`;
+//   if (min == null && max == null) return '—';
+//   const range =
+//     min != null && max != null
+//       ? `${fmt(min)} – ${fmt(max)}`
+//       : min != null
+//         ? `${fmt(min)}+`
+//         : `Up to ${fmt(max!)}`;
+//   return type ? `${range} / ${type.toLowerCase()}` : range;
+// }
 
+// function SkillPills({ skills }: { skills: string[] }) {
+//   if (!skills.length) return <span className="text-slate-300">—</span>;
+//   return (
+//     <div className="flex flex-wrap gap-1">
+//       {skills.map(s => (
+//         <span
+//           key={s}
+//           className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium"
+//         >
+//           {s}
+//         </span>
+//       ))}
+//     </div>
+//   );
+// }
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionHeading({ icon, label }: { icon: React.ReactNode; label: string }) {
@@ -105,29 +141,53 @@ function SectionHeading({ icon, label }: { icon: React.ReactNode; label: string 
   );
 }
 
-function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
+// function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
+//   return (
+//     <div className="flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0">
+//       <span className="text-[11px] text-slate-400 font-medium w-32 shrink-0 pt-0.5">{label}</span>
+//       <span className="text-[12px] text-slate-700 leading-snug flex-1">
+//         {value != null && value !== '' ? value : <span className="text-slate-300">—</span>}
+//       </span>
+//     </div>
+//   );
+// }
+function EditableRow({
+  label,
+  display,
+  editing,
+  onChange,
+  onReset,
+  children,
+}: {
+  label: string;
+  display: React.ReactNode;
+  editing: boolean;
+  onChange: () => void;
+  onReset: () => void;
+  children: React.ReactNode;
+}) {
+  const empty = display == null || display === '';
   return (
-    <div className="flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0">
-      <span className="text-[11px] text-slate-400 font-medium w-32 shrink-0 pt-0.5">{label}</span>
-      <span className="text-[12px] text-slate-700 leading-snug flex-1">
-        {value != null && value !== '' ? value : <span className="text-slate-300">—</span>}
-      </span>
-    </div>
-  );
-}
-
-function SkillPills({ skills }: { skills: string[] }) {
-  if (!skills.length) return <span className="text-slate-300">—</span>;
-  return (
-    <div className="flex flex-wrap gap-1">
-      {skills.map(s => (
-        <span
-          key={s}
-          className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium"
-        >
-          {s}
-        </span>
-      ))}
+    <div className="flex items-center gap-2 py-1.5 border-b border-slate-100 last:border-0">
+      <span className="text-[11px] text-slate-400 font-medium w-32 shrink-0">{label}</span>
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          children
+        ) : (
+          <span className="text-[12px] text-slate-700 leading-snug">
+            {empty ? <span className="text-slate-300">—</span> : display}
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={editing ? onReset : onChange}
+        className={`text-[11px] font-medium shrink-0 ${
+          editing ? 'text-slate-400 hover:text-slate-600' : 'text-blue-600 hover:text-blue-700'
+        }`}
+      >
+        {editing ? 'Reset' : 'Change'}
+      </button>
     </div>
   );
 }
@@ -154,7 +214,29 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
   // null = untouched → shows suggestedTitle from preview; string = user typed
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
   const [duplicated, setDuplicated] = useState<{ reqCode: string; id: string } | null>(null);
+  const [overrides, setOverrides] = useState<Partial<DuplicatePreview>>({});
+  const [editing, setEditing] = useState<Partial<Record<keyof DuplicatePreview, boolean>>>({});
 
+  const startEdit = (k: keyof DuplicatePreview) => setEditing(e => ({ ...e, [k]: true }));
+
+  // Reset = drop override + back to original display
+  const resetField = (...keys: (keyof DuplicatePreview)[]) => {
+    setOverrides(o => {
+      const next = { ...o };
+      keys.forEach(k => delete next[k]);
+      return next;
+    });
+    setEditing(e => {
+      const next = { ...e };
+      keys.forEach(k => delete next[k]);
+      return next;
+    });
+  };
+  const val = <K extends keyof DuplicatePreview>(k: K): DuplicatePreview[K] | undefined =>
+    k in overrides ? (overrides[k] as DuplicatePreview[K]) : preview?.[k];
+
+  const setVal = <K extends keyof DuplicatePreview>(k: K, v: DuplicatePreview[K]) =>
+    setOverrides(o => ({ ...o, [k]: v }));
   const {
     data: preview,
     isLoading: previewLoading,
@@ -168,12 +250,38 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
     enabled: open && !!requirementId,
     staleTime: 30_000,
   });
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients-dropdown'],
+    queryFn: async () => (await axios.get('/clients')).data.data as { id: string; name: string }[],
+    enabled: open,
+  });
+
+  const { data: serviceLines = [] } = useQuery({
+    queryKey: ['service-lines-dropdown'],
+    queryFn: async () =>
+      (await axios.get('/service-lines')).data.data as { id: string; name: string }[],
+    enabled: open,
+  });
+
+  const selectedClientId = val('clientId');
+  const { data: spocs = [] } = useQuery({
+    queryKey: ['client-spocs', selectedClientId],
+    queryFn: async () =>
+      (await axios.get(`/clients/${selectedClientId}/spocs`)).data.data as {
+        id: string;
+        firstName: string;
+        lastName: string;
+      }[],
+    enabled: open && !!selectedClientId,
+  });
 
   // Derived: user override wins, else suggested from preview
   const title = titleOverride ?? preview?.suggestedTitle ?? '';
 
   const handleClose = () => {
     setTitleOverride(null);
+    setOverrides({});
+    setEditing({});
     setDuplicated(null);
     onClose();
   };
@@ -184,14 +292,23 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
     error: duplicateError,
   } = useMutation({
     mutationFn: async () => {
-      // Only title goes in the body — everything else copied server-side from original
-      const res = await axios.post(`/requirements/${requirementId}/duplicate`, {
-        title: title.trim(),
-      });
+      const body: Record<string, unknown> = { ...overrides, title: title.trim() };
+      // clean comma-separated lists
+      for (const k of [
+        'primarySkills',
+        'keySkills',
+        'targetCompanies',
+        'noPoachCompanies',
+      ] as const) {
+        if (overrides[k]) body[k] = overrides[k]!.map(s => s.trim()).filter(Boolean);
+      }
+      const res = await axios.post(`/requirements/${requirementId}/duplicate`, body);
       return res.data.data as { id: string; reqCode: string };
     },
     onSuccess: data => {
       setTitleOverride(null);
+      setOverrides({});
+      setEditing({});
       setDuplicated(data);
       queryClient.invalidateQueries({ queryKey: ['requirements'] });
     },
@@ -205,7 +322,54 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
     null;
 
   const canSubmit = title.trim().length >= 3 && !duplicating;
+  const inputCls = 'h-7 text-[12px] bg-white border-slate-200 focus:border-blue-400';
 
+  const textInput = (k: keyof DuplicatePreview) => (
+    <Input
+      value={(val(k) as string | null) ?? ''}
+      onChange={e => setVal(k, e.target.value as never)}
+      className={inputCls}
+    />
+  );
+
+  const numInput = (k: keyof DuplicatePreview) => (
+    <Input
+      type="number"
+      value={(val(k) as number | null) ?? ''}
+      onChange={e => setVal(k, (e.target.value === '' ? null : Number(e.target.value)) as never)}
+      className={inputCls}
+    />
+  );
+
+  const listInput = (k: keyof DuplicatePreview) => (
+    <Input
+      value={((val(k) as string[] | undefined) ?? []).join(',')}
+      onChange={e => setVal(k, e.target.value.split(',') as never)}
+      placeholder="Comma separated"
+      className={inputCls}
+    />
+  );
+
+  const dropdown = (
+    value: string | null | undefined,
+    options: { id: string; name: string }[],
+    onChange: (v: string) => void,
+    placeholder: string,
+    disabled = false
+  ) => (
+    <Select value={value ?? undefined} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger className={inputCls}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(o => (
+          <SelectItem key={o.id} value={o.id} className="text-[12px]">
+            {o.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
   // ── Success state ─────────────────────────────────────────────────────────
   if (duplicated) {
     return (
@@ -252,7 +416,23 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
       </Dialog>
     );
   }
-
+  const row = (
+    label: string,
+    k: keyof DuplicatePreview,
+    editor: React.ReactNode,
+    display?: React.ReactNode,
+    resetKeys: (keyof DuplicatePreview)[] = [k]
+  ) => (
+    <EditableRow
+      label={label}
+      display={display !== undefined ? display : (preview?.[k] as React.ReactNode)}
+      editing={!!editing[k]}
+      onChange={() => startEdit(k)}
+      onReset={() => resetField(...resetKeys)}
+    >
+      {editor}
+    </EditableRow>
+  );
   // ── Main dialog ───────────────────────────────────────────────────────────
   return (
     <Dialog
@@ -300,12 +480,8 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
             )}
           </div>
 
-          {/* ── Preview — read-only ── */}
+          {/* ── Editable fields ── */}
           <div className="px-5 py-4">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              Fields being copied
-            </p>
-
             {previewLoading ? (
               <PreviewSkeleton />
             ) : previewError ? (
@@ -317,68 +493,97 @@ export function DuplicateRequirementDialog({ open, onClose, requirementId, reqCo
               <>
                 {/* Core */}
                 <SectionHeading icon={<Briefcase size={11} />} label="Core" />
-                <FieldRow label="Client" value={preview.client?.name} />
-                <FieldRow label="Service Line" value={preview.serviceLine?.name} />
-                <FieldRow
-                  label="Client SPOC"
-                  value={
-                    preview.clientSpoc
-                      ? `${preview.clientSpoc.firstName} ${preview.clientSpoc.lastName}`
-                      : null
-                  }
-                />
-                <FieldRow label="Job Type" value={preview.jobType} />
-                <FieldRow label="Remote Type" value={preview.remoteType} />
-                <FieldRow label="Priority" value={preview.priority} />
-                <FieldRow label="Open For" value={preview.jobOpenFor} />
-                <FieldRow label="Total Openings" value={preview.totalOpenings} />
-                {preview.functionalArea && (
-                  <FieldRow label="Functional Area" value={preview.functionalArea} />
+                {row(
+                  'Client',
+                  'clientId',
+                  dropdown(
+                    val('clientId'),
+                    clients,
+                    v => {
+                      setVal('clientId', v);
+                      setVal('clientSpocId', null);
+                      startEdit('clientSpocId'); // new client → must pick SPOC
+                    },
+                    'Select client'
+                  ),
+                  preview.client?.name,
+                  ['clientId', 'clientSpocId'] // reset client also resets SPOC
                 )}
-                {preview.education && <FieldRow label="Education" value={preview.education} />}
-                {preview.shift && <FieldRow label="Shift" value={preview.shift} />}
+                {row(
+                  'Client SPOC',
+                  'clientSpocId',
+                  dropdown(
+                    val('clientSpocId'),
+                    spocs.map(s => ({
+                      id: s.id,
+                      name: `${s.firstName} ${s.lastName ?? ''}`.trim(),
+                    })),
+                    v => setVal('clientSpocId', v),
+                    'Select SPOC',
+                    !selectedClientId
+                  ),
+                  preview.clientSpoc
+                    ? `${preview.clientSpoc.firstName} ${preview.clientSpoc.lastName}`
+                    : null
+                )}
+                {row(
+                  'Service Line',
+                  'serviceLineId',
+                  dropdown(
+                    val('serviceLineId'),
+                    serviceLines,
+                    v => setVal('serviceLineId', v),
+                    'Select service line'
+                  ),
+                  preview.serviceLine?.name
+                )}
+                {row('Job Type', 'jobType', textInput('jobType'))}
+                {row('Remote Type', 'remoteType', textInput('remoteType'))}
+                {row('Priority', 'priority', textInput('priority'))}
+                {row('Open For', 'jobOpenFor', textInput('jobOpenFor'))}
+                {row('Total Openings', 'totalOpenings', numInput('totalOpenings'))}
+                {row('Functional Area', 'functionalArea', textInput('functionalArea'))}
+                {row('Education', 'education', textInput('education'))}
+                {row('Shift', 'shift', textInput('shift'))}
+                {row('Description', 'description', textInput('description'))}
 
                 {/* Location & Experience */}
                 <SectionHeading icon={<MapPin size={11} />} label="Location & Experience" />
-                <FieldRow
-                  label="Location"
-                  value={
-                    [preview.city, preview.state, preview.country].filter(Boolean).join(', ') ||
-                    null
-                  }
-                />
-                <FieldRow
-                  label="Experience"
-                  value={fmtExp(preview.experienceMin, preview.experienceMax)}
-                />
-                <FieldRow
-                  label="Salary"
-                  value={fmtSalary(
-                    preview.salaryMin,
-                    preview.salaryMax,
-                    preview.salaryType,
-                    preview.salaryCurrency
-                  )}
-                />
+                {row('City', 'city', textInput('city'))}
+                {row('State', 'state', textInput('state'))}
+                {row('Country', 'country', textInput('country'))}
+                {row('Min Experience', 'experienceMin', numInput('experienceMin'))}
+                {row('Max Experience', 'experienceMax', numInput('experienceMax'))}
+                {row('Min Salary', 'salaryMin', numInput('salaryMin'))}
+                {row('Max Salary', 'salaryMax', numInput('salaryMax'))}
+                {row('Salary Type', 'salaryType', textInput('salaryType'))}
+                {row('Currency', 'salaryCurrency', textInput('salaryCurrency'))}
 
                 {/* Skills */}
                 <SectionHeading icon={<Users size={11} />} label="Skills" />
-                <FieldRow
-                  label="Primary Skills"
-                  value={<SkillPills skills={preview.primarySkills} />}
-                />
-                <FieldRow label="Key Skills" value={<SkillPills skills={preview.keySkills} />} />
-                {preview.targetCompanies.length > 0 && (
-                  <FieldRow
-                    label="Target Companies"
-                    value={<SkillPills skills={preview.targetCompanies} />}
-                  />
+                {row(
+                  'Primary Skills',
+                  'primarySkills',
+                  listInput('primarySkills'),
+                  preview.primarySkills.join(', ')
                 )}
-                {preview.noPoachCompanies.length > 0 && (
-                  <FieldRow
-                    label="No-Poach"
-                    value={<SkillPills skills={preview.noPoachCompanies} />}
-                  />
+                {row(
+                  'Key Skills',
+                  'keySkills',
+                  listInput('keySkills'),
+                  preview.keySkills.join(', ')
+                )}
+                {row(
+                  'Target Companies',
+                  'targetCompanies',
+                  listInput('targetCompanies'),
+                  preview.targetCompanies.join(', ')
+                )}
+                {row(
+                  'No-Poach',
+                  'noPoachCompanies',
+                  listInput('noPoachCompanies'),
+                  preview.noPoachCompanies.join(', ')
                 )}
 
                 {/* JD File */}
