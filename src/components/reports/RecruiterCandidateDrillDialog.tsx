@@ -293,7 +293,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
         {/* 2. Requirement */}
         <td className="px-3 py-3">
           <p className="text-[11px] font-bold text-slate-700">{row.reqCode}</p>
-          <p className="max-w-[170px] truncate text-[10px] text-slate-400">{row.reqTitle}</p>
+          <p className="max-w-42.5 truncate text-[10px] text-slate-400">{row.reqTitle}</p>
         </td>
 
         {/* 3. Stage */}
@@ -834,7 +834,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
 
         {/* MOJ filter + Search */}
         <div className="shrink-0 border-b border-slate-100 px-6 py-3 space-y-2">
-          {mojOptions.length > 0 && (
+          {/* {mojOptions.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                 Month of joining
@@ -863,7 +863,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                 )}
               </div>
             </div>
-          )}
+          )} */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -928,7 +928,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="candidateName"
                     label="Candidate"
-                    className="px-4 min-w-[200px]"
+                    className="px-4 min-w-50"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -936,7 +936,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="reqCode"
                     label="Requirement"
-                    className="min-w-[140px]"
+                    className="min-w-35"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -944,7 +944,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="stageLabel"
                     label="Stage"
-                    className="min-w-[120px]"
+                    className="min-w-30"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -952,7 +952,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="lastWorkingDate"
                     label="Last Working Date"
-                    className="min-w-[140px]"
+                    className="min-w-35"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -960,7 +960,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="actualJoiningDate"
                     label="Date of Joining"
-                    className="min-w-[130px]"
+                    className="min-w-32.5"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -968,7 +968,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="monthOfJoining"
                     label="Month of Joining"
-                    className="min-w-[130px]"
+                    className="min-w-32.5"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -976,7 +976,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="offeredCtc"
                     label="Offered CTC"
-                    className="min-w-[110px]"
+                    className="min-w-27.5"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -984,7 +984,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="currentCtc"
                     label="Current CTC"
-                    className="min-w-[110px]"
+                    className="min-w-27.5"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -992,7 +992,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="expectedCtc"
                     label="Expected CTC"
-                    className="min-w-[110px]"
+                    className="min-w-27.5"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -1000,7 +1000,7 @@ export function RecruiterCandidateDrillDialog({ target, baseQs, onClose }: Props
                     onToggle={toggleSort}
                     k="addedOn"
                     label="Added · Aging"
-                    className="min-w-[120px] text-right"
+                    className="min-w-30 text-right"
                   />
                 </tr>
               </thead>
