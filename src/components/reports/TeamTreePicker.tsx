@@ -1,14 +1,15 @@
-/* eslint-disable react/no-unescaped-entities */
-'use client';
-
 // File: TeamTreePicker.tsx
 // Path: src/components/reports/TeamTreePicker.tsx
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+/* eslint-disable react/no-unescaped-entities */
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, ChevronDown, Users, X, Check } from 'lucide-react';
 import { useAxios } from '@/hooks/useAxios';
 import { useAuth } from '@/context/AuthContext';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,14 +70,14 @@ function subtreeCount(node: TreeNode): number {
   return collectSubtreeIds(node).length;
 }
 
-// Role color dot
+// Role dot — theme chart tokens, same role mapping as before
 function roleDot(node: TreeNode): string {
   const r = node.role?.canonicalName ?? node.role?.name ?? '';
-  if (r.includes('SUPER')) return 'bg-red-500';
-  if (r.includes('DELIVERY') || r.includes('MANAGER')) return 'bg-purple-500';
-  if (r.includes('LEAD')) return 'bg-indigo-500';
-  if (r.includes('CSM')) return 'bg-teal-500';
-  return 'bg-slate-400';
+  if (r.includes('SUPER')) return 'bg-destructive';
+  if (r.includes('DELIVERY') || r.includes('MANAGER')) return 'bg-chart-4';
+  if (r.includes('LEAD')) return 'bg-chart-1';
+  if (r.includes('CSM')) return 'bg-chart-2';
+  return 'bg-muted-foreground/50';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,8 +107,8 @@ function TreeNodeRow({
     <div>
       <div
         className={cn(
-          'group flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors',
-          isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'
+          'group flex items-center gap-1.5 rounded-md px-2 py-1.5 transition-colors',
+          isSelected ? 'bg-primary/10' : 'hover:bg-muted'
         )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
       >
@@ -115,38 +116,38 @@ function TreeNodeRow({
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className="shrink-0 text-slate-400 hover:text-slate-700"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
         >
           {hasChildren ? (
             open ? (
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown className="size-3.5" />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="size-3.5" />
             )
           ) : (
-            <span className="h-3.5 w-3.5 block" />
+            <span className="block size-3.5" />
           )}
         </button>
 
         {/* Role dot */}
-        <span className={cn('h-2 w-2 shrink-0 rounded-full', roleDot(node))} />
+        <span className={cn('size-2 shrink-0 rounded-full', roleDot(node))} />
 
         {/* Name + role */}
         <div className="min-w-0 flex-1">
           <p
             className={cn(
-              'truncate text-[13px] font-semibold',
-              isSelected ? 'text-indigo-800' : 'text-slate-800'
+              'truncate text-xs font-semibold',
+              isSelected ? 'text-primary' : 'text-foreground'
             )}
           >
             {fullName(node)}
           </p>
-          <p className="truncate text-[10px] text-slate-400">{roleName(node)}</p>
+          <p className="truncate text-[10px] text-muted-foreground">{roleName(node)}</p>
         </div>
 
         {/* Count badge */}
         {hasChildren && (
-          <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+          <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-semibold leading-4 tabular-nums text-muted-foreground">
             {count}
           </span>
         )}
@@ -160,34 +161,28 @@ function TreeNodeRow({
         >
           {/* Team button — select whole subtree */}
           {hasChildren && (
-            <button
+            <Button
               type="button"
+              size="xs"
+              variant={isSelected ? 'default' : 'secondary'}
               title={`${fullName(node)}'s entire team (${count} people)`}
               onClick={() => onSelect(node, false)}
-              className={cn(
-                'rounded-md px-2 py-1 text-[10px] font-bold transition-colors',
-                isSelected
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-              )}
+              className="text-[10px]"
             >
               Team
-            </button>
+            </Button>
           )}
           {/* Individual button */}
-          <button
+          <Button
             type="button"
+            size="xs"
+            variant="outline"
             title={`Only ${fullName(node)}`}
             onClick={() => onSelect(node, true)}
-            className={cn(
-              'rounded-md px-2 py-1 text-[10px] font-bold transition-colors',
-              isSelected
-                ? 'bg-slate-200 text-slate-700'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            )}
+            className="text-[10px]"
           >
             Only
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -261,40 +256,41 @@ export function TeamTreePicker({ value, onChange }: TeamTreePickerProps) {
   return (
     <div ref={ref} className="relative">
       {/* Trigger */}
-      <button
+      <Button
         type="button"
+        variant="outline"
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'flex h-8 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors',
-          value
-            ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+          'text-xs font-normal',
+          value &&
+            'border-primary/40 bg-primary/10 font-semibold text-primary hover:bg-primary/15 hover:text-primary aria-expanded:bg-primary/15 aria-expanded:text-primary'
         )}
       >
-        <Users className="h-3.5 w-3.5 shrink-0" />
-        <span className="max-w-[160px] truncate">{label}</span>
+        <Users />
+        <span className="max-w-40 truncate">{label}</span>
         {value && (
           <span
-            className="ml-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-200 text-indigo-700"
+            role="button"
+            aria-label="Clear team"
+            className="ml-0.5 flex size-4 items-center justify-center rounded-full bg-primary/15 text-primary hover:bg-primary/25"
             onClick={e => {
               e.stopPropagation();
               onChange(null);
             }}
           >
-            <X className="h-2.5 w-2.5" />
+            <X className="size-2.5" />
           </span>
         )}
-      </button>
+      </Button>
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
           {/* Header */}
-          <div className="border-b border-slate-100 px-3 py-2.5">
-            <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-              Select team or individual
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">
+          <div className="border-b border-border px-3 py-2.5">
+            <p className="text-xs font-semibold text-foreground">Select team or individual</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
               "Team" = that person + everyone under them
             </p>
           </div>
@@ -307,22 +303,22 @@ export function TeamTreePicker({ value, onChange }: TeamTreePickerProps) {
               setOpen(false);
             }}
             className={cn(
-              'flex w-full items-center gap-2 px-3 py-2 text-[13px] font-semibold transition-colors hover:bg-slate-50',
-              !value ? 'text-indigo-700 bg-indigo-50' : 'text-slate-600'
+              'flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold transition-colors hover:bg-muted',
+              !value ? 'bg-primary/10 text-primary' : 'text-foreground'
             )}
           >
-            {!value && <Check className="h-3.5 w-3.5 text-indigo-600" />}
-            <span className={cn('ml-', !value ? '0' : '5')}>All teams</span>
+            <Check className={cn('size-3.5 text-primary', value && 'invisible')} />
+            All teams
           </button>
 
           {/* Tree */}
-          <div className="max-h-[420px] overflow-y-auto py-1">
+          <div className="max-h-[420px] overflow-y-auto p-1">
             {isLoading ? (
-              <div className="space-y-1.5 p-3">
+              <div className="space-y-1.5 p-2">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-8 animate-pulse rounded-lg bg-slate-100"
+                    className="h-8 animate-pulse rounded-md bg-muted"
                     style={{ marginLeft: `${(i % 3) * 16}px` }}
                   />
                 ))}
@@ -336,14 +332,14 @@ export function TeamTreePicker({ value, onChange }: TeamTreePickerProps) {
                 defaultOpen={true}
               />
             ) : (
-              <p className="px-4 py-3 text-[12px] text-slate-400">No team data available.</p>
+              <p className="px-3 py-3 text-xs text-muted-foreground">No team data available.</p>
             )}
           </div>
 
           {/* Footer hint */}
           {value && (
-            <div className="border-t border-slate-100 bg-indigo-50 px-3 py-2">
-              <p className="text-[11px] font-semibold text-indigo-700">
+            <div className="border-t border-border bg-primary/5 px-3 py-2">
+              <p className="text-xs font-semibold text-primary">
                 {value.isIndividual
                   ? `Showing only ${value.name}`
                   : `Showing ${value.memberIds.length} people in ${value.name}'s team`}

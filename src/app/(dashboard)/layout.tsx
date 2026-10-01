@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 // import { Topbar } from '@/components/layout/Topbar';
 import { TopbarWrapper } from '@/components/layout/TopbarWrapper';
 import AuthGate from '@/components/ui/AuthGate';
+import { TourEngine } from '@/features/tour/TourEngine';
 import type { ReactNode } from 'react';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -20,6 +21,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {children}
 
             <ChatWidget />
+            <TourEngine />
           </main>
         </div>
       </div>

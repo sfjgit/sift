@@ -64,6 +64,9 @@ export interface RequirementRow {
   terminalCount: number;
   achievedValue: number | null;
   achievedPct: number;
+  // Near terminal (already returned by GET /reports/requirements)
+  nearTerminalCount?: number;
+  nearTerminalValue?: number | null;
 
   // Stage counts keyed by stage id
   stageCounts: Record<string, number>;
@@ -83,11 +86,14 @@ export interface RequirementRow {
 export interface SaleValueSummary {
   totalSaleValue: number;
   totalAchievedValue: number;
-  totalNearTerminalValue: number; // ← ADD THIS
+  totalNearTerminalValue: number;
   includedCount: number;
   omittedCount: number;
   byBasis: Record<string, { count: number; total: number }>;
 }
+
+/** Which slice of the sale summary is filtering the table. null = everything. */
+export type SaleBucket = 'nearTerminal' | 'terminal' | null;
 
 export interface RequirementGroup {
   serviceLine: ServiceLineRef | null;
@@ -106,6 +112,29 @@ export interface RequirementReportResponse {
     standardOnly: boolean;
     total: number;
     multiLine: boolean;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECRUITER SALE SUMMARY — GET /reports/recruiters/sale-summary
+// Recruiter share: each near-close / placed candidate = saleValue ÷ openings
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RecruiterSaleShare {
+  nearTerminal: number;
+  terminal: number;
+  nearTerminalValue: number;
+  achievedValue: number;
+}
+
+export interface RecruiterSaleSummaryResponse {
+  success: boolean;
+  data: {
+    summary: SaleValueSummary;
+    nearTerminalCandidates: number;
+    terminalCandidates: number;
+    requirementCount: number;
+    byRecruiter: Record<string, RecruiterSaleShare>;
   };
 }
 

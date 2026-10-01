@@ -1,21 +1,18 @@
 // File: RecruiterSection.tsx
-// Path: src/app/(dashboard)/reports/page.tsx  (REPLACE the RecruiterSection
-//       component and add RecruiterActivityTable + ActivityDrillDrawer below)
+// Path: src/components/reports/RecruiterSection.tsx
 //
-// Changes:
-//   1. Stats bar uses placed/nearTerminal/inPipeline/offPipeline instead of
-//      joined/active/dropped — matches the new buildRecruiterRows output.
-//   2. New "Pipeline | Activity" toggle — Activity mode fetches
-//      GET /reports/recruiters/activity and shows the log-based table.
-//   3. ActivityDrillDrawer — clicking a stage count on the activity table
-//      opens a drawer with the raw log rows (GET /reports/recruiters/activity/drill).
+//   1. Stats use placed/nearTerminal/inPipeline/offPipeline — matches buildRecruiterRows output.
+//   2. "Pipeline | Activity" toggle — Activity mode fetches GET /reports/recruiters/activity.
+//   3. ActivityDrillDrawer — stage count click opens raw log rows (GET /reports/recruiters/activity/drill).
+//   4. `bucket` — set by the sale summary strip on the page; narrows the pipeline table to
+//      recruiters with near-close (nearTerminal) or placed (terminal) candidates.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, ChevronRight, ArrowRight } from 'lucide-react';
+import { X, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
@@ -28,7 +25,7 @@ import { useAxios } from '@/hooks/useAxios';
 import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
 import { RecruiterTable } from '@/components/reports/RecruiterTable';
 import { ActivityExportMenu } from '@/components/reports/ActivityExportMenu';
-import type { RecruiterGroup, RecruiterResponse, StageMeta } from '@/components/reports/types';
+import type { RecruiterGroup, RecruiterResponse, SaleBucket } from '@/components/reports/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -50,6 +47,13 @@ function stageColor(s: any, i: number): string {
   if (!s.pipeline) return '#DC2626'; // off pipeline
   if (s.isSourced) return '#64748B'; // sourced
   return FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+}
+
+// Does this recruiter row belong in the selected sale bucket?
+function inBucket(row: any, bucket: SaleBucket): boolean {
+  if (bucket === 'terminal') return (row.placed ?? 0) > 0;
+  if (bucket === 'nearTerminal') return (row.nearTerminal ?? 0) > 0;
+  return true;
 }
 
 const keyOf = (g: { serviceLine: any }) => g.serviceLine?.id ?? '__none__';
@@ -538,7 +542,7 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RECRUITER SECTION — DROP-IN REPLACEMENT
+// RECRUITER SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function RecruiterSection({
@@ -549,6 +553,7 @@ export function RecruiterSection({
   onDownloadAll,
   onDownloadSelected,
   baseQs,
+  bucket = null,
 }: {
   resp?: RecruiterResponse;
   loading: boolean;
@@ -567,7 +572,9 @@ export function RecruiterSection({
     hiddenStageIds?: string[],
     hiddenCandidateCols?: string[]
   ) => void;
-  baseQs: string; // ← NEW: needed for activity queries
+  baseQs: string; // needed for activity queries
+  /** Sale summary filter from the page — narrows the pipeline table. */
+  bucket?: SaleBucket;
 }) {
   const axios = useAxios();
   const [activeKey, setActiveKey] = useState<string>('');
@@ -583,8 +590,18 @@ export function RecruiterSection({
 
   // ── ALL hooks must be declared before any early return ────────────────────
 
-  // Pipeline mode derived state — safe to compute even when loading (resp may be undefined)
-  const groups: RecruiterGroup[] = resp?.groups ?? [];
+  // Pipeline groups, narrowed by the sale bucket (empty groups dropped)
+  const groups: RecruiterGroup[] = useMemo(() => {
+    const raw = resp?.groups ?? [];
+    if (!bucket) return raw;
+    return raw
+      .map(g => {
+        const data = g.data.filter(r => inBucket(r, bucket));
+        return { ...g, data, total: data.length };
+      })
+      .filter(g => g.data.length > 0);
+  }, [resp, bucket]);
+
   const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
   const rows = active?.data ?? [];
 
@@ -595,18 +612,6 @@ export function RecruiterSection({
         m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
     return [...m.entries()].map(([id, label]) => ({ id, label }));
   }, [rows]);
-
-  const totals = useMemo(
-    () => ({
-      sourced: rows.reduce((s: number, r: any) => s + r.sourced, 0),
-      placed: rows.reduce((s: number, r: any) => s + (r.placed ?? 0), 0),
-      nearTerminal: rows.reduce((s: number, r: any) => s + (r.nearTerminal ?? 0), 0),
-      inPipeline: rows.reduce((s: number, r: any) => s + (r.inPipeline ?? 0), 0),
-      offPipeline: rows.reduce((s: number, r: any) => s + (r.offPipeline ?? 0), 0),
-      recruiters: new Set(rows.map((r: any) => r.id)).size,
-    }),
-    [rows]
-  );
 
   // Activity mode derived state
   const activityGroups: any[] = activityQuery.data?.groups ?? [];
@@ -666,7 +671,13 @@ export function RecruiterSection({
 
       {/* ── PIPELINE MODE ──────────────────────────────────────────────────── */}
       {viewMode === 'pipeline' && groups.length === 0 && (
-        <Empty msg="No recruiter pipeline data in your scope for this window. Try Stage activity, widen the date range, or clear filters." />
+        <Empty
+          msg={
+            bucket
+              ? 'No recruiters have candidates in this slice. Click the highlighted stat again to clear it.'
+              : 'No recruiter pipeline data in your scope for this window. Try Stage activity, widen the date range, or clear filters.'
+          }
+        />
       )}
 
       {viewMode === 'pipeline' && groups.length > 0 && (
