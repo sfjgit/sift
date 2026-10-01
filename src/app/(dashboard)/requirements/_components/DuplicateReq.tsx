@@ -66,17 +66,6 @@ interface DuplicatePreview {
   clientSpoc: { firstName: string; lastName: string } | null;
 }
 
-type Form = Omit<DuplicatePreview, 'suggestedTitle'>;
-interface Option {
-  id: string;
-  name: string;
-}
-
-interface Spoc {
-  id: string;
-  firstName: string;
-  lastName: string;
-}
 interface Props {
   open: boolean;
   onClose: () => void;
