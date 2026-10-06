@@ -521,6 +521,14 @@ const needsInterviewSchedule = (canonical: string | null | undefined) =>
 const hasJoiningInfo = (pipeline: PipelineCandidate) =>
   !!pipeline.noticePeriod && !!pipeline.monthOfJoining;
 
+// Service lines where notice period / month of joining is NOT mandatory
+const NOTICE_PERIOD_EXEMPT_SERVICE_LINE_IDS = [
+  'e28deb3f-480f-4887-8c46-f385f433ee9a', // Knowledge as a Service
+];
+
+const isNoticePeriodRequired = (serviceLineId?: string | null) =>
+  !serviceLineId || !NOTICE_PERIOD_EXEMPT_SERVICE_LINE_IDS.includes(serviceLineId);
+
 const PORTAL_APPS = [
   {
     appName: 'NAUKRI',
@@ -1453,6 +1461,7 @@ function MoveStageDialog({
   onClose,
   onDone,
   onRequestJoiningDetails,
+  requireJoiningInfo,
 }: {
   pipeline: PipelineCandidate;
   stages: PipelineStage[];
@@ -1464,6 +1473,7 @@ function MoveStageDialog({
   // joining saved yet). Passes the target stage id so the Joining tab can
   // move the candidate there automatically once it's saved.
   onRequestJoiningDetails: (stageId: string) => void;
+  requireJoiningInfo: boolean;
 }) {
   const axios = useAxios();
   const [stageId, setStageId] = useState('');
@@ -1488,7 +1498,9 @@ function MoveStageDialog({
   // Notice period + month of joining are entered once, in Joining Details —
   // never re-entered here. If they're already on file for this candidate,
   // the move can go straight through.
-  const needsJoiningRedirect = isSubmittedToClient && !hasJoiningInfo(pipeline);
+  //const needsJoiningRedirect = isSubmittedToClient && !hasJoiningInfo(pipeline);
+  const needsJoiningRedirect =
+    requireJoiningInfo && isSubmittedToClient && !hasJoiningInfo(pipeline);
 
   const reset = () => {
     setStageId('');
@@ -3535,6 +3547,7 @@ export default function AssignmentDetailPage() {
           open
           onClose={() => setActionDialog(null)}
           onDone={invalidateAfterAction}
+          requireJoiningInfo={isNoticePeriodRequired(req.serviceLine?.id)}
           onRequestJoiningDetails={stageId =>
             setActionDialog({
               type: 'details',
