@@ -3,7 +3,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useMemo } from 'react';
+//import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -23,6 +24,7 @@ import {
   ChevronUp,
   ChevronDown,
   ExternalLink,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -953,7 +955,170 @@ function TableSkeleton() {
     </div>
   );
 }
+// ─── Filter combobox (searchable dropdown, options come from backend) ─────────
 
+type FilterOptionType = 'requirement' | 'assignedTo' | 'assignedBy';
+
+interface FilterOption {
+  id: string;
+  label: string;
+  primary: string;
+  secondary?: string;
+}
+
+function useDebounced<T>(value: T, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+function toFilterOption(type: FilterOptionType, o: any): FilterOption {
+  if (type === 'requirement') {
+    return {
+      id: o.id,
+      label: [o.reqCode, o.title].filter(Boolean).join(' · '),
+      primary: o.reqCode,
+      secondary: [o.title, o.client].filter(Boolean).join(' · '),
+    };
+  }
+  return {
+    id: o.id,
+    label: o.name,
+    primary: o.name,
+    secondary: [o.employeeId, o.role].filter(Boolean).join(' · '),
+  };
+}
+
+function FilterCombobox({
+  type,
+  label,
+  value,
+  selectedLabel,
+  onChange,
+}: {
+  type: FilterOptionType;
+  label: string;
+  value: string;
+  selectedLabel: string;
+  onChange: (id: string, label: string) => void;
+}) {
+  const axios = useAxios();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const debounced = useDebounced(search.trim());
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['assignment-filter-options', type, debounced],
+    enabled: open,
+    staleTime: 30_000,
+    placeholderData: prev => prev,
+    queryFn: async () => {
+      const params = new URLSearchParams({ type, limit: '20' });
+      if (debounced) params.set('search', debounced);
+      const res = await axios.get(`/assignments/filter-options?${params.toString()}`);
+      return (res.data?.data ?? []) as any[];
+    },
+  });
+
+  const options = (data ?? []).map(o => toFilterOption(type, o));
+
+  function pick(opt: FilterOption) {
+    onChange(opt.id, opt.label);
+    setOpen(false);
+    setSearch('');
+  }
+
+  return (
+    <div ref={wrapRef} className="relative w-56">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          'flex items-center justify-between gap-2 h-10 w-full text-sm border-2 rounded-xl bg-white px-3 transition-colors',
+          value
+            ? 'border-blue-300 text-slate-800 font-medium pr-8'
+            : 'border-slate-200 text-slate-500'
+        )}
+      >
+        <span className="truncate">{value ? selectedLabel : label}</span>
+        {!value && <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
+      </button>
+
+      {value && (
+        <button
+          type="button"
+          title="Clear"
+          onClick={() => onChange('', '')}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+
+      {open && (
+        <div className="absolute z-30 mt-1 w-72 rounded-xl border-2 border-slate-200 bg-white shadow-lg overflow-hidden">
+          <div className="relative border-b border-slate-100">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={`Search ${label.toLowerCase()}…`}
+              className="w-full h-10 pl-9 pr-3 text-sm outline-none bg-white"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {isFetching && options.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-slate-400">Loading…</p>
+            ) : options.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-slate-400">No results</p>
+            ) : (
+              options.map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => pick(opt)}
+                  className={cn(
+                    'flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors',
+                    opt.id === value && 'bg-blue-50'
+                  )}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{opt.primary}</p>
+                    {opt.secondary && (
+                      <p className="text-xs text-slate-500 truncate">{opt.secondary}</p>
+                    )}
+                  </div>
+                  {opt.id === value && <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type ViewMode = 'table' | 'card';
@@ -968,6 +1133,14 @@ export default function AssignmentsPage() {
   const [reqStatusFilter, setReqStatusFilter] = useState('ALL');
   const [depth, setDepth] = useState('');
   const [buId, setBuId] = useState('');
+  const [requirementId, setRequirementId] = useState('');
+  const [requirementLabel, setRequirementLabel] = useState('');
+  const [assignedToId, setAssignedToId] = useState('');
+  const [assignedToLabel, setAssignedToLabel] = useState('');
+  const [assignedById, setAssignedById] = useState('');
+  const [assignedByLabel, setAssignedByLabel] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('assignedAt');
   const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(1);
@@ -990,13 +1163,33 @@ export default function AssignmentsPage() {
     if (reqStatusFilter !== 'ALL') p.set('status', 'ACTIVE');
     if (depth) p.set('depth', depth);
     if (buId) p.set('buId', buId);
+    if (buId) p.set('buId', buId);
+    if (requirementId) p.set('requirementId', requirementId);
+    if (assignedToId) p.set('assignedToId', assignedToId);
+    if (assignedById) p.set('assignedById', assignedById);
+    if (dateFrom) p.set('dateFrom', dateFrom);
+    if (dateTo) p.set('dateTo', dateTo);
     p.set('sortBy', sortBy);
     p.set('sortDir', sortDir);
     p.set('page', String(page));
     p.set('limit', String(limit));
-    if (search.trim()) p.set('search', search.trim()); // ← ADD THIS
+    if (search.trim()) p.set('search', search.trim());
     return p.toString();
-  }, [reqStatusFilter, depth, buId, sortBy, sortDir, page, search]);
+    //}, [reqStatusFilter, depth, buId, sortBy, sortDir, page, search]);
+  }, [
+    reqStatusFilter,
+    depth,
+    buId,
+    requirementId,
+    assignedToId,
+    assignedById,
+    dateFrom,
+    dateTo,
+    sortBy,
+    sortDir,
+    page,
+    search,
+  ]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['assignments', qs],
@@ -1039,7 +1232,16 @@ export default function AssignmentsPage() {
   const breachedCount = assignments.filter(
     a => !!a.breachedAt || a.requirement.isRespondByBreached
   ).length;
-  const hasFilters = !!depth || !!buId;
+  //const hasFilters = !!depth || !!buId;
+  //const hasFilters = !!depth || !!buId || !!requirementId || !!assignedToId || !!assignedById;
+  const hasFilters =
+    !!depth ||
+    !!buId ||
+    !!requirementId ||
+    !!assignedToId ||
+    !!assignedById ||
+    !!dateFrom ||
+    !!dateTo;
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-[#EEF2F7]">
@@ -1175,6 +1377,81 @@ export default function AssignmentsPage() {
                 </button>
               ))}
             </div>
+            {/* Requirement / Assigned To / Assigned By (options come from backend) */}
+            <FilterCombobox
+              type="requirement"
+              label="Requirement"
+              value={requirementId}
+              selectedLabel={requirementLabel}
+              onChange={(id, lbl) => {
+                setRequirementId(id);
+                setRequirementLabel(lbl);
+                setPage(1);
+              }}
+            />
+            <FilterCombobox
+              type="assignedTo"
+              label="Assigned To"
+              value={assignedToId}
+              selectedLabel={assignedToLabel}
+              onChange={(id, lbl) => {
+                setAssignedToId(id);
+                setAssignedToLabel(lbl);
+                setPage(1);
+              }}
+            />
+            <FilterCombobox
+              type="assignedBy"
+              label="Assigned By"
+              value={assignedById}
+              selectedLabel={assignedByLabel}
+              onChange={(id, lbl) => {
+                setAssignedById(id);
+                setAssignedByLabel(lbl);
+                setPage(1);
+              }}
+            />
+            {/* Created date (assignedAt): pick From only = that exact day, From + To = range */}
+            <div className="flex items-center gap-2 h-10 border-2 border-slate-200 rounded-xl bg-white px-3">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">From</span>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={e => {
+                  const v = e.target.value;
+                  setDateFrom(v);
+                  if (v && !dateTo) setDateTo(v); // exact day by default
+                  setPage(1);
+                }}
+                className="text-sm text-slate-700 outline-none bg-transparent"
+              />
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">To</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={e => {
+                  setDateTo(e.target.value);
+                  setPage(1);
+                }}
+                className="text-sm text-slate-700 outline-none bg-transparent"
+              />
+              {(dateFrom || dateTo) && (
+                <button
+                  type="button"
+                  title="Clear dates"
+                  onClick={() => {
+                    setDateFrom('');
+                    setDateTo('');
+                    setPage(1);
+                  }}
+                  className="text-slate-400 hover:text-slate-700"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
 
             {/* Depth */}
             {/* <Select
@@ -1244,7 +1521,15 @@ export default function AssignmentsPage() {
                 onClick={() => {
                   setDepth('');
                   setBuId('');
+                  setRequirementId('');
+                  setRequirementLabel('');
+                  setAssignedToId('');
+                  setAssignedToLabel('');
+                  setAssignedById('');
+                  setAssignedByLabel('');
                   setPage(1);
+                  setDateFrom('');
+                  setDateTo('');
                 }}
                 className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 border-2 border-slate-200 rounded-xl px-3 h-10 bg-white hover:bg-slate-50 transition-colors"
               >
