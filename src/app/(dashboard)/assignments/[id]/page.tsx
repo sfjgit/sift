@@ -1876,7 +1876,7 @@ function CandidateDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="sr-only">
           <DialogTitle>Candidate Details — {snap.fullName}</DialogTitle>
         </DialogHeader>
@@ -1941,7 +1941,7 @@ function CandidateDetailsModal({
             ))}
           </div>
 
-          <div className="flex-1 p-6 max-h-[55vh] overflow-y-auto">
+          <div className="flex-1 min-w-0 p-6 max-h-[55vh] overflow-y-auto overflow-x-hidden">
             {tab === 'submission' && (
               <SubmissionTab pipeline={pipeline} axios={axios} onDone={onDone} onClose={onClose} />
             )}
