@@ -157,7 +157,16 @@ const NAV: NavItem[] = [
         icon: ClipboardList,
         superAdminOnly: true,
       },
+      //{ label: 'Login activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
+      //],
+      //},
       { label: 'Login activity', href: '/auth-logs', icon: ClipboardList, module: 'auth-logs' },
+      {
+        label: 'Internal search reasons',
+        href: '/internal-search-reasons',
+        icon: ClipboardList,
+        module: 'assignments',
+      },
     ],
   },
 
