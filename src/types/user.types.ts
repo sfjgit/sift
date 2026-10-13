@@ -93,3 +93,31 @@ export interface UserFormDataResponse {
     businessUnits: BusinessUnitBasic[];
   };
 }
+
+// File: user.types.ts
+// Path: src/types/user.types.ts
+
+export interface FilterOption {
+  id: string;
+  name: string;
+}
+
+export interface FilterPerson {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeId: string | null;
+}
+
+export interface UserFilterOptions {
+  departments: FilterOption[];
+  roles: FilterOption[];
+  reportingTo: FilterPerson[];
+  teamLeads: FilterPerson[];
+  teamRoles: { value: TeamRole; label: string }[];
+}
+
+export interface UserFilterOptionsResponse {
+  success: boolean;
+  data: UserFilterOptions;
+}

@@ -209,7 +209,9 @@ export function UserTable({
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="w-[260px] pl-4">User</TableHead>
+                <TableHead className="w-65 pl-4">User</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Employee ID</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Reporting To</TableHead>
@@ -243,18 +245,26 @@ export function UserTable({
                         <p className="truncate text-sm font-medium leading-none">
                           {user.displayName ?? `${user.firstName} ${user.lastName}`}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {/* <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {user.email}
-                        </p>
-                        {user.employeeId && (
+                        </p> */}
+                        {/* {user.employeeId && (
                           <p className="mt-0.5 text-xs text-muted-foreground/60">
                             #{user.employeeId}
                           </p>
-                        )}
+                        )} */}
                       </div>
                     </div>
                   </TableCell>
 
+                  {/* Email */}
+                  <TableCell>
+                    <span className="text-xs font-medium">{user.email.toLowerCase()}</span>
+                  </TableCell>
+                  {/* employeeId */}
+                  <TableCell>
+                    {user.employeeId && <p className="text-xs font-light ">#{user.employeeId}</p>}
+                  </TableCell>
                   {/* Role */}
                   <TableCell>
                     <span className="text-xs font-medium">{user.role.name.replace(/_/g, ' ')}</span>
@@ -265,10 +275,10 @@ export function UserTable({
                     {user.department ? (
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Building2 className="h-3 w-3 shrink-0" />
-                        <span className="truncate max-w-[120px]">{user.department.name}</span>
+                        <span className="truncate max-w-30">{user.department.name}</span>
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
+                      <span className="text-xs text-muted-foreground/60">—</span>
                     )}
                   </TableCell>
 
@@ -295,7 +305,7 @@ export function UserTable({
                         Lead ({user._count.teamMembers})
                       </Badge>
                     ) : (
-                      <span className="text-xs text-muted-foreground/40">—</span>
+                      <span className="text-xs text-muted-foreground/90">—</span>
                     )}
                   </TableCell>
 
@@ -507,7 +517,7 @@ export function UserTable({
 
       {/* ── Reset Password Dialog ── */}
       <Dialog open={reset.open} onOpenChange={closeReset}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-100">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <KeyRound className="h-4 w-4 text-amber-500" />
@@ -610,7 +620,7 @@ export function UserTable({
               size="sm"
               onClick={handleResetSubmit}
               disabled={!canSubmit}
-              className="gap-1.5 text-xs min-w-[110px]"
+              className="gap-1.5 text-xs min-w-27.5"
             >
               {reset.loading ? (
                 <>
@@ -628,7 +638,7 @@ export function UserTable({
 
       {/* ── Reveal Password Dialog ── */}
       <Dialog open={reveal.open} onOpenChange={() => setReveal(REVEAL_INIT)}>
-        <DialogContent className="sm:max-w-[380px]">
+        <DialogContent className="sm:max-w-95">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <KeyRound className="h-4 w-4 text-violet-500" />

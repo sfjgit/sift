@@ -16,6 +16,7 @@ import type {
   UsersListResponse,
   UserFormDataResponse,
   UserListItem,
+  UserFilterOptionsResponse,
 } from '@/types/user.types';
 
 const DEFAULT_PARAMS: UsersListParams = {
@@ -79,17 +80,30 @@ export default function UsersPage() {
 
   // ── Teams simple list (team lead picker) ──────────────────────────────────
   // Teams in this schema = users who have teamMembers (are team leads)
-  const teamLeadsQuery = useQuery<{
-    success: boolean;
-    data: { id: string; firstName: string; lastName: string }[];
-  }>({
-    queryKey: ['team-leads-simple'],
+  // const teamLeadsQuery = useQuery<{
+  //   success: boolean;
+  //   data: { id: string; firstName: string; lastName: string }[];
+  // }>({
+  //   queryKey: ['team-leads-simple'],
+  //   queryFn: async () => {
+  //     // fetch users who are team leads — reuse /users with teamRole=LEAD
+  //     const res = await axios.get('/users?teamRole=LEAD&limit=100&fields=id,firstName,lastName');
+  //     return res.data;
+  //   },
+  //   staleTime: 5 * 60 * 1000,
+  // });
+  // ── Filter options (RBAC-scoped; team leads follow selected reporting-to) ─
+  const filterOptionsQuery = useQuery<UserFilterOptionsResponse>({
+    queryKey: ['users-filter-options', params.reportingToId ?? null],
     queryFn: async () => {
-      // fetch users who are team leads — reuse /users with teamRole=LEAD
-      const res = await axios.get('/users?teamRole=LEAD&limit=100&fields=id,firstName,lastName');
+      const qs = params.reportingToId
+        ? `?${new URLSearchParams({ reportingToId: params.reportingToId })}`
+        : '';
+      const res = await axios.get<UserFilterOptionsResponse>(`/users/filter-options${qs}`);
       return res.data;
     },
     staleTime: 5 * 60 * 1000,
+    placeholderData: prev => prev,
   });
 
   // ── Toggle active/inactive ────────────────────────────────────────────────
@@ -104,10 +118,11 @@ export default function UsersPage() {
 
   const usersData = usersQuery.data;
   const formData = formDataQuery.data?.data;
-  const teamLeads = (teamLeadsQuery.data?.data ?? []).map(u => ({
-    id: u.id,
-    name: `${u.firstName} ${u.lastName}`,
-  }));
+  // const teamLeads = (teamLeadsQuery.data?.data ?? []).map(u => ({
+  //   id: u.id,
+  //   name: `${u.firstName} ${u.lastName}`,
+  // }));
+  const filterOptions = filterOptionsQuery.data?.data;
 
   const effectivePermissions = usersData?.permissions ?? {
     canView: permission.canView,
@@ -147,9 +162,9 @@ export default function UsersPage() {
       {/* ── Filters ──────────────────────────────────────────────────────── */}
       <UserFilters
         params={params}
-        roles={formData?.roles ?? []}
         businessUnits={formData?.businessUnits ?? []}
-        teams={teamLeads}
+        filterOptions={filterOptions}
+        isLoadingOptions={filterOptionsQuery.isFetching}
         onChange={handleParamChange}
         onReset={handleReset}
       />
