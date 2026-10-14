@@ -4,18 +4,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
@@ -24,15 +16,23 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { personName } from '@/components/applicants/utils';
 import { useAssignableRecruiters, useAssignApplicants } from '@/hooks/useApplicants';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   snapshotIds: string[];
-  label: string; // "John Doe" or "5 applicants"
+  label: string; // "John Doe" or "5 applicant(s)"
   onAssigned?: () => void;
 }
 
@@ -47,8 +47,7 @@ export function AssignApplicantDialog({
   label,
   onAssigned,
 }: Props) {
-  const [recruiterId, setRecruiterId] = useState<string>('');
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [recruiterId, setRecruiterId] = useState('');
 
   const { data: recruiters = [], isLoading } = useAssignableRecruiters(open);
   const assign = useAssignApplicants();
@@ -72,12 +71,9 @@ export function AssignApplicantDialog({
           toast.success(res.message);
           const skipped = res.data?.skipped ?? [];
           if (skipped.length) {
-            const reasons = skipped
-              .map(s => (s.status === 'skipped' ? s.reason : ''))
-              .filter(Boolean);
             const summary = Object.entries(
-              reasons.reduce<Record<string, number>>((acc, r) => {
-                acc[r] = (acc[r] ?? 0) + 1;
+              skipped.reduce<Record<string, number>>((acc, s) => {
+                if (s.status === 'skipped') acc[s.reason] = (acc[s.reason] ?? 0) + 1;
                 return acc;
               }, {})
             )
@@ -95,80 +91,87 @@ export function AssignApplicantDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Assign to recruiter</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="gap-0 p-0 sm:max-w-lg">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="text-base">Assign to recruiter</DialogTitle>
+          <DialogDescription className="text-[13px]">
             {label} will move to the Sourced stage under the selected recruiter.
           </DialogDescription>
         </DialogHeader>
 
-        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={pickerOpen}
-              className="w-full justify-between font-normal"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <span className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading recruiters…
-                </span>
-              ) : selected ? (
-                `${selected.firstName} ${selected.lastName}`
-              ) : (
-                <span className="text-muted-foreground">Select recruiter</span>
-              )}
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Search by name or email…" />
-              <CommandList>
-                <CommandEmpty>No recruiters found.</CommandEmpty>
+        {/* list visible immediately — search on top, scrollable below */}
+        <Command className="rounded-none">
+          <CommandInput placeholder="Search by name, email or employee ID…" />
+          <CommandList className="max-h-80">
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading recruiters…
+              </div>
+            ) : (
+              <>
+                <CommandEmpty className="py-10 text-center text-[13px] text-muted-foreground">
+                  No recruiters found.
+                </CommandEmpty>
                 <CommandGroup>
-                  {recruiters.map(r => (
-                    <CommandItem
-                      key={r.id}
-                      value={`${r.firstName} ${r.lastName} ${r.email} ${r.employeeId ?? ''}`}
-                      onSelect={() => {
-                        setRecruiterId(r.id);
-                        setPickerOpen(false);
-                      }}
-                    >
-                      <Check
+                  {recruiters.map(r => {
+                    const isSelected = recruiterId === r.id;
+                    return (
+                      <CommandItem
+                        key={r.id}
+                        value={`${r.firstName} ${r.lastName} ${r.email} ${r.employeeId ?? ''}`}
+                        onSelect={() => setRecruiterId(r.id)}
                         className={cn(
-                          'mr-2 h-4 w-4',
-                          recruiterId === r.id ? 'opacity-100' : 'opacity-0'
+                          'cursor-pointer gap-3 px-3 py-2.5',
+                          isSelected && 'bg-accent'
                         )}
-                      />
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">
-                          {r.firstName} {r.lastName}
-                        </span>
-                        <span className="truncate text-xs text-muted-foreground">{r.email}</span>
-                      </div>
-                      {r.role?.name && (
-                        <Badge variant="secondary" className="ml-2 shrink-0">
-                          {r.role.name}
-                        </Badge>
-                      )}
-                    </CommandItem>
-                  ))}
+                      >
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-[13px] font-medium">
+                            {personName(r)}
+                            {r._source === 'self' && (
+                              <span className="ml-1 font-normal text-muted-foreground">(You)</span>
+                            )}
+                          </span>
+                          <span className="truncate text-[12px] text-muted-foreground">
+                            {r.email}
+                            {r.employeeId && ` · ${r.employeeId}`}
+                          </span>
+                        </div>
+                        {r.role?.name && (
+                          <Badge variant="secondary" className="shrink-0 font-normal">
+                            {r.role.name}
+                          </Badge>
+                        )}
+                        <Check
+                          className={cn(
+                            'h-4 w-4 shrink-0 text-primary',
+                            isSelected ? 'opacity-100' : 'opacity-0'
+                          )}
+                        />
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+              </>
+            )}
+          </CommandList>
+        </Command>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => handleClose(false)}>
+        <DialogFooter className="items-center border-t px-5 py-3">
+          <span className="mr-auto truncate text-[13px] text-muted-foreground">
+            {selected ? (
+              <>
+                Selected:{' '}
+                <span className="font-medium text-foreground">{personName(selected)}</span>
+              </>
+            ) : (
+              `${recruiters.length} recruiter(s)`
+            )}
+          </span>
+          <Button variant="outline" size="sm" onClick={() => handleClose(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!recruiterId || assign.isPending}>
+          <Button size="sm" onClick={handleSubmit} disabled={!recruiterId || assign.isPending}>
             {assign.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Assign
           </Button>

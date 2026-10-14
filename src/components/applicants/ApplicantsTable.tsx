@@ -3,17 +3,11 @@
 
 'use client';
 
-import { FileText, MoreHorizontal, UserPlus } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useRouter } from 'next/navigation';
+import { UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -23,16 +17,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
-import { StatusPill } from '@/components/applicants/StatusPill';
-import { UserStack } from '@/components/applicants/UserStack';
-import { avatarTone, formatDate, getInitials } from '@/components/applicants/utils';
+import { formatDate, formatExperience, personName } from '@/components/applicants/utils';
 import type { Applicant } from '@/types/applicant';
 
 const MAX_SKILLS = 3;
-const SKELETON_ROWS = 5;
+const SKELETON_ROWS = 6;
 const COL_COUNT = 9;
-const HEAD = 'whitespace-nowrap text-xs font-medium uppercase tracking-wide text-muted-foreground';
+const HEAD = 'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
+
+// existing candidate detail page — keyed by Candidate Service id
+const candidateDetailPath = (candidateServiceId: string) => `/candidates/${candidateServiceId}`;
 
 interface Props {
   rows: Applicant[];
@@ -51,6 +45,8 @@ export function ApplicantsTable({
   onToggleAll,
   onAssign,
 }: Props) {
+  const router = useRouter();
+
   const selectableIds = rows.filter(r => !r.pipeline).map(r => r.id);
   const allChecked = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
   const someChecked = selectableIds.some(id => selected.has(id));
@@ -67,14 +63,14 @@ export function ApplicantsTable({
               aria-label="Select all unassigned"
             />
           </TableHead>
-          <TableHead className={HEAD}>Applicant</TableHead>
-          <TableHead className={HEAD}>Profile</TableHead>
-          <TableHead className={HEAD}>Skills</TableHead>
-          <TableHead className={HEAD}>Applied on</TableHead>
-          <TableHead className={HEAD}>Stage</TableHead>
-          <TableHead className={HEAD}>Assigned to</TableHead>
-          <TableHead className={HEAD}>Assigned by</TableHead>
-          <TableHead className={cn(HEAD, 'w-12 text-right')}>Action</TableHead>
+          <TableHead className={`${HEAD} text-`}>Name</TableHead>
+          <TableHead className={`${HEAD} text-`}>Experience</TableHead>
+          <TableHead className={`${HEAD} text-center`}>Skills</TableHead>
+          <TableHead className={`${HEAD} text-`}>Current company</TableHead>
+          <TableHead className={`${HEAD} text-`}>Applied for</TableHead>
+          <TableHead className={`${HEAD} text-center`}>Applied on</TableHead>
+          <TableHead className={`${HEAD} text-center`}>Status</TableHead>
+          <TableHead className={`${HEAD} text-center`}>Actions</TableHead>
         </TableRow>
       </TableHeader>
 
@@ -83,8 +79,8 @@ export function ApplicantsTable({
           Array.from({ length: SKELETON_ROWS }).map((_, i) => (
             <TableRow key={`sk-${i}`}>
               {Array.from({ length: COL_COUNT }).map((__, j) => (
-                <TableCell key={j} className="py-4">
-                  <Skeleton className="h-5 w-full" />
+                <TableCell key={j}>
+                  <Skeleton className="h-4 w-full" />
                 </TableCell>
               ))}
             </TableRow>
@@ -92,7 +88,10 @@ export function ApplicantsTable({
 
         {!isLoading && rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={COL_COUNT} className="h-32 text-center text-muted-foreground">
+            <TableCell
+              colSpan={COL_COUNT}
+              className="h-28 text-center text-[13px] text-muted-foreground"
+            >
               No applicants match these filters.
             </TableCell>
           </TableRow>
@@ -102,8 +101,13 @@ export function ApplicantsTable({
           rows.map(a => {
             const assigned = !!a.pipeline;
             return (
-              <TableRow key={a.id} data-state={selected.has(a.id) ? 'selected' : undefined}>
-                <TableCell className="py-3">
+              <TableRow
+                key={a.id}
+                className="cursor-pointer"
+                data-state={selected.has(a.id) ? 'selected' : undefined}
+                onClick={() => router.push(candidateDetailPath(a.candidateServiceId))}
+              >
+                <TableCell onClick={e => e.stopPropagation()}>
                   <Checkbox
                     checked={selected.has(a.id)}
                     disabled={assigned}
@@ -112,105 +116,108 @@ export function ApplicantsTable({
                   />
                 </TableCell>
 
-                <TableCell className="py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback
-                        className={cn('text-xs font-semibold', avatarTone(a.fullName))}
-                      >
-                        {getInitials(a.fullName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="whitespace-nowrap font-medium">{a.fullName}</span>
-                      <span className="truncate text-xs text-muted-foreground">{a.email}</span>
-                      {a.phone && <span className="text-xs text-muted-foreground">{a.phone}</span>}
+                {/* Name */}
+                <TableCell>
+                  <p className="text-[13px] font-medium">{a.fullName}</p>
+                  <p className="text-[12px] text-muted-foreground">{a.email}</p>
+                  {a.phone && <p className="text-[12px] text-muted-foreground">{a.phone}</p>}
+                </TableCell>
+
+                {/* Experience */}
+                <TableCell className="whitespace-nowrap text-[13px]">
+                  {formatExperience(a.totalExpYears)}
+                </TableCell>
+
+                {/* Skills */}
+                <TableCell>
+                  {a.topSkills.length ? (
+                    <div className="flex max-w-55 flex-wrap gap-1">
+                      {a.topSkills.slice(0, MAX_SKILLS).map(s => (
+                        <Badge key={s} variant="secondary" className="font-normal">
+                          {s}
+                        </Badge>
+                      ))}
+                      {a.topSkills.length > MAX_SKILLS && (
+                        <Badge
+                          variant="outline"
+                          className="font-normal"
+                          title={a.topSkills.slice(MAX_SKILLS).join(', ')}
+                        >
+                          +{a.topSkills.length - MAX_SKILLS}
+                        </Badge>
+                      )}
                     </div>
-                  </div>
-                </TableCell>
-
-                <TableCell className="py-3">
-                  <div className="flex flex-col text-sm">
-                    <span>{a.currentTitle ?? '—'}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {a.currentCompany ?? '—'}
-                      {a.totalExpYears != null && ` · ${a.totalExpYears} yrs`}
-                    </span>
-                  </div>
-                </TableCell>
-
-                <TableCell className="py-3">
-                  <div className="flex max-w-[220px] flex-wrap gap-1">
-                    {a.topSkills.slice(0, MAX_SKILLS).map(s => (
-                      <Badge key={s} variant="secondary" className="font-normal">
-                        {s}
-                      </Badge>
-                    ))}
-                    {a.topSkills.length > MAX_SKILLS && (
-                      <Badge variant="outline" className="font-normal">
-                        +{a.topSkills.length - MAX_SKILLS}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-
-                <TableCell className="whitespace-nowrap py-3 text-sm">
-                  {formatDate(a.snapshotAt, true)}
-                  {a.sourced && <div className="text-xs text-muted-foreground">{a.sourced}</div>}
-                </TableCell>
-
-                <TableCell className="py-3">
-                  {assigned ? (
-                    <StatusPill
-                      status="ASSIGNED"
-                      tone="blue"
-                      label={a.pipeline!.currentStage.label}
-                    />
                   ) : (
-                    <StatusPill status="UNASSIGNED" />
+                    <span className="text-[13px] text-muted-foreground">—</span>
                   )}
                 </TableCell>
 
-                <TableCell className="py-3">
-                  <UserStack users={[a.pipeline?.recruiter]} />
+                {/* Current company */}
+                <TableCell>
+                  <p className="text-[13px]">{a.currentCompany ?? '—'}</p>
+                  {a.currentTitle && (
+                    <p className="text-[12px] text-muted-foreground">{a.currentTitle}</p>
+                  )}
                 </TableCell>
 
-                <TableCell className="py-3">
-                  <div className="flex flex-col gap-0.5">
-                    <UserStack users={[a.pipeline?.assignedBy]} />
-                    {a.pipeline?.assignedAt && (
-                      <span className="whitespace-nowrap text-xs text-muted-foreground">
-                        {formatDate(a.pipeline.assignedAt, true)}
-                      </span>
-                    )}
-                  </div>
+                {/* Applied for */}
+                <TableCell>
+                  <p className="text-[13px] font-medium">{a.requirement.reqCode}</p>
+                  <p className="max-w-60 truncate text-[12px] text-muted-foreground">
+                    {a.requirement.title}
+                  </p>
+                  <p className="max-w-60 truncate text-[11px] text-muted-foreground">
+                    {a.requirement.client?.name ?? '—'} · by {personName(a.requirement.createdBy)}
+                  </p>
                 </TableCell>
 
-                <TableCell className="py-3 text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                {/* Applied on */}
+                <TableCell className="whitespace-nowrap text-[13px]">
+                  {formatDate(a.snapshotAt, true)}
+                </TableCell>
+
+                {/* Status */}
+                <TableCell>
+                  {assigned ? (
+                    <>
+                      <Badge variant="secondary">{a.pipeline!.currentStage.label}</Badge>
+                      <p className="mt-1 text-[12px] text-muted-foreground">
+                        {personName(a.pipeline!.recruiter)}
+                      </p>
+                    </>
+                  ) : (
+                    <Badge variant="outline">Unassigned</Badge>
+                  )}
+                </TableCell>
+
+                {/* Actions */}
+                <TableCell onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-1.5">
+                    {!assigned && (
                       <Button
                         variant="outline"
+                        size="sm"
+                        className="h-8 text-[12px]"
+                        onClick={() => onAssign(a)}
+                      >
+                        <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
+                      </Button>
+                    )}
+                    {/* {a.resumeUrl && (
+                      <Button
+                        variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        aria-label="Actions"
+                        title="View resume"
+                        aria-label="View resume"
+                        asChild
                       >
-                        <MoreHorizontal className="h-4 w-4" />
+                        <a href={a.resumeUrl} target="_blank" rel="noopener noreferrer">
+                          <FileText className="h-4 w-4" />
+                        </a>
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem disabled={assigned} onSelect={() => onAssign(a)}>
-                        <UserPlus className="mr-2 h-4 w-4" /> Assign to recruiter
-                      </DropdownMenuItem>
-                      {a.resumeUrl && (
-                        <DropdownMenuItem asChild>
-                          <a href={a.resumeUrl} target="_blank" rel="noopener noreferrer">
-                            <FileText className="mr-2 h-4 w-4" /> View resume
-                          </a>
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    )} */}
+                  </div>
                 </TableCell>
               </TableRow>
             );

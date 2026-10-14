@@ -6,9 +6,18 @@ export interface UserLite {
   firstName: string;
   lastName: string;
 }
+export interface RequirementAssignmentLite {
+  id: string;
+  depth: number;
+  assignedAt: string;
+  assignedTo: UserLite;
+  assignedBy: UserLite;
+}
 
+/** One row per application — same person applying to 2 requirements = 2 rows */
 export interface Applicant {
   id: string;
+  candidateServiceId: string;
   candidateCode: string | null;
   fullName: string;
   email: string;
@@ -25,32 +34,16 @@ export interface Applicant {
     reqCode: string;
     title: string;
     status: string;
-    client: { id: string; name: string } | null;
+    client: { name: string } | null;
+    createdBy: UserLite | null;
+    assignments: RequirementAssignmentLite[];
   };
   pipeline: {
     id: string;
     createdAt: string;
     recruiter: UserLite;
-    currentStage: {
-      id: string;
-      code: string;
-      label: string;
-      canonicalStage: string | null;
-    };
-    stageUpdatedBy: UserLite;
-    assignedBy: UserLite | null;
-    assignedAt: string;
+    currentStage: { id: string; label: string; canonicalStage: string | null };
   } | null;
-}
-
-export interface PageMeta {
-  total: number;
-  page: number;
-  limit: number;
-}
-
-export interface ApplicantListMeta extends PageMeta {
-  counts: Record<string, number>;
 }
 
 export interface ApplicantFilters {
@@ -63,39 +56,37 @@ export interface ApplicantFilters {
   limit: number;
 }
 
-export interface ApplicantRequirementRow {
+export interface ApplicantRequirementOption {
   id: string;
   reqCode: string;
   title: string;
   status: string;
   createdAt: string;
   client: { name: string } | null;
-  applicantCount: number;
-  counts: Record<string, number>; // keys from backend (UNASSIGNED / ASSIGNED)
   createdBy: UserLite | null;
-  assignments: {
-    id: string;
-    depth: number;
-    assignedTo: UserLite;
-    assignedBy: UserLite;
-  }[];
+  assignments: RequirementAssignmentLite[];
+
+  counts: Record<string, number>; // per bucket (UNASSIGNED / ASSIGNED)
+  count: number; // total applicants, 0 when none
 }
 
-export interface ApplicantRequirementFilters {
-  search?: string;
-  status?: string;
+export interface ApplicantSummary {
+  totalApplicants: number;
+  counts: Record<string, number>;
+  totalRequirements: number;
+  requirementsWithApplicants: number;
+  trend: { date: string; count: number }[];
+  topRequirements: ApplicantRequirementOption[];
+}
+
+export interface ApplicantListMeta {
+  total: number;
   page: number;
   limit: number;
-}
-
-export interface ApplicantRequirementMeta extends PageMeta {
-  assignmentStatuses: string[];
-  summary: {
-    totalApplicants: number;
-    counts: Record<string, number>;
-    totalRequirements: number;
-    requirementsWithApplicants: number;
-  };
+  assignmentStatuses: string[]; // tab keys from backend
+  counts: Record<string, number>; // per tab, current filters
+  requirementOptions: ApplicantRequirementOption[];
+  summary: ApplicantSummary;
 }
 
 export interface AssignableUser extends UserLite {

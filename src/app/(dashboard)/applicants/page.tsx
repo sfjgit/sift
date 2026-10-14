@@ -3,26 +3,10 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  Briefcase,
-  Eye,
-  MoreHorizontal,
-  Search,
-  UserCheck,
-  Users,
-  UserX,
-  type LucideIcon,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, Search, UserPlus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -31,41 +15,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
-import { RequirementApplicantsDialog } from '@/components/applicants/RequirementApplicantsDialog';
-import { StatCard } from '@/components/applicants/StatCard';
-import { getStatusTone, StatusPill } from '@/components/applicants/StatusPill';
-import { TablePagination } from '@/components/applicants/TablePagination';
-import { UserStack } from '@/components/applicants/UserStack';
-import { formatDate, toStatusLabel } from '@/components/applicants/utils';
-import { useApplicantRequirements } from '@/hooks/useApplicants';
+import { ApplicantsOverview } from '@/components/applicants/ApplicantsOverview';
+import { ApplicantsTable } from '@/components/applicants/ApplicantsTable';
+import { AssignApplicantDialog } from '@/components/applicants/AssignApplicantDialog';
+import { toIsoEnd, toIsoStart, toStatusLabel } from '@/components/applicants/utils';
+import { useApplicants } from '@/hooks/useApplicants';
+import type { Applicant } from '@/types/applicant';
+import { RequirementsTable } from '@/components/applicants/RequirementsTable';
 
 const ALL = 'ALL';
+const REQUIREMENTS_TAB = 'REQUIREMENTS'; // frontend-only view — every requirement in scope
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const SEARCH_DEBOUNCE_MS = 400;
-const SKELETON_ROWS = 6;
-const STAT_SKELETONS = 4;
-const COL_COUNT = 8; // Requirement, Applicants, Created by, Assigned to, Assigned by, Status, Created on, Action
-const HEAD = 'whitespace-nowrap text-xs font-medium uppercase tracking-wide text-muted-foreground';
-
-// icon per assignment bucket — unknown keys fall back to Users
-const BUCKET_ICONS: Record<string, LucideIcon> = {
-  UNASSIGNED: UserX,
-  ASSIGNED: UserCheck,
-};
-
-const TAB_TRIGGER =
-  'gap-2 rounded-none border-b-2 border-transparent px-1 pb-3 pt-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none';
 
 function useDebounced<T>(value: T, delay: number) {
   const [v, setV] = useState(value);
@@ -77,125 +39,226 @@ function useDebounced<T>(value: T, delay: number) {
 }
 
 export default function ApplicantsPage() {
-  const [searchInput, setSearchInput] = useState('');
   const [status, setStatus] = useState(ALL);
+  const [requirementId, setRequirementId] = useState(ALL);
+  const [searchInput, setSearchInput] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [page, setPage] = useState(1);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [assignTarget, setAssignTarget] = useState<{ ids: string[]; label: string } | null>(null);
 
   const search = useDebounced(searchInput, SEARCH_DEBOUNCE_MS);
+  const isRequirementsView = status === REQUIREMENTS_TAB;
 
-  useEffect(() => setPage(1), [search, status, pageSize]);
+  // reset paging + selection whenever filters change
+  useEffect(() => {
+    setPage(1);
+    setSelected(new Set());
+  }, [status, requirementId, search, from, to, pageSize]);
 
-  const { data, isLoading, isError, error } = useApplicantRequirements({
+  const { data, isLoading, isError, error } = useApplicants({
+    status: status !== ALL && !isRequirementsView ? status : undefined,
+    requirementId: requirementId !== ALL ? requirementId : undefined,
     search: search.trim() || undefined,
-    status: status !== ALL ? status : undefined,
+    from: toIsoStart(from),
+    to: toIsoEnd(to),
     page,
     limit: pageSize,
   });
 
   const rows = data?.data ?? [];
   const meta = data?.meta;
-  const summary = meta?.summary;
   const statusKeys = meta?.assignmentStatuses ?? [];
-  const totalPages = meta ? Math.max(1, Math.ceil(meta.total / meta.limit)) : 1;
+  const counts = meta?.counts ?? {};
+  const allCount = Object.values(counts).reduce((s, n) => s + n, 0);
+  const requirementOptions = meta?.requirementOptions ?? [];
 
-  // derived from the live list so counts refresh after an assign
-  const active = rows.find(r => r.id === activeId) ?? null;
+  // requirements tab — filtered + paged on the client (list is already scoped by backend)
+  const term = search.trim().toLowerCase();
+  const filteredRequirements = useMemo(
+    () =>
+      requirementOptions.filter(
+        r =>
+          (requirementId === ALL || r.id === requirementId) &&
+          (!term ||
+            [r.reqCode, r.title, r.client?.name ?? ''].some(v => v.toLowerCase().includes(term)))
+      ),
+    [requirementOptions, requirementId, term]
+  );
+  const requirementPageRows = filteredRequirements.slice((page - 1) * pageSize, page * pageSize);
+
+  const total = isRequirementsView ? filteredRequirements.length : (meta?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const hasFilters = requirementId !== ALL || !!searchInput || !!from || !!to;
+
+  const clearFilters = () => {
+    setRequirementId(ALL);
+    setSearchInput('');
+    setFrom('');
+    setTo('');
+  };
+
+  // requirements tab → that requirement's applicants
+  const openRequirement = (id: string) => {
+    setRequirementId(id);
+    setStatus(ALL);
+  };
+
+  const toggle = (id: string) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAll = (ids: string[], checked: boolean) =>
+    setSelected(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => (checked ? next.add(id) : next.delete(id)));
+      return next;
+    });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const errorMessage = (error as any)?.response?.data?.message ?? 'Failed to load applicants';
 
-  const pct = (n: number) =>
-    summary?.totalApplicants
-      ? `${Math.round((n / summary.totalApplicants) * 100)}% of applicants`
-      : undefined;
-
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* ── Header ───────────────────────────────────────────────────────── */}
+    <div className="flex flex-col gap-4 p-6">
+      {/* header */}
       <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Applicants</h1>
-          {summary && (
-            <Badge variant="secondary" className="rounded-full">
-              {summary.totalApplicants}
-            </Badge>
-          )}
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Self-applied candidates from the careers site, grouped by requirement.
+        <h1 className="text-xl font-semibold">Applicants</h1>
+        <p className="text-[13px] text-muted-foreground">
+          Candidates who applied through the careers site.
         </p>
       </div>
 
-      {/* ── Stats ────────────────────────────────────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {summary
-          ? [
-              <StatCard
-                key="total"
-                label="Total applicants"
-                value={summary.totalApplicants}
-                icon={Users}
-                tone="blue"
-                hint={`Across ${summary.requirementsWithApplicants} requirement(s)`}
-              />,
-              ...statusKeys.map(k => (
-                <StatCard
-                  key={k}
-                  label={toStatusLabel(k)}
-                  value={summary.counts[k] ?? 0}
-                  icon={BUCKET_ICONS[k] ?? Users}
-                  tone={getStatusTone(k)}
-                  hint={pct(summary.counts[k] ?? 0)}
-                />
-              )),
-              <StatCard
-                key="requirements"
-                label="Requirements"
-                value={summary.totalRequirements}
-                icon={Briefcase}
-                tone="violet"
-                hint={`${summary.requirementsWithApplicants} with applicants`}
-              />,
-            ]
-          : Array.from({ length: STAT_SKELETONS }).map((_, i) => (
-              <Skeleton key={i} className="h-23 w-full rounded-xl" />
-            ))}
-      </div>
+      {/* overview — stats + charts */}
+      <ApplicantsOverview summary={meta?.summary} statusKeys={statusKeys} />
 
-      {/* ── Table card ───────────────────────────────────────────────────── */}
-      <Card className="overflow-hidden shadow-sm">
-        <div className="border-b px-4">
+      {/* list */}
+      <Card className="gap-0 py-0">
+        {/* tabs + bulk action */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
           <Tabs value={status} onValueChange={setStatus}>
-            <TabsList className="h-auto gap-5 bg-transparent p-0">
-              <TabsTrigger value={ALL} className={TAB_TRIGGER}>
-                All requirements
-                {summary && (
-                  <Badge variant="secondary" className="h-5 rounded-full px-1.5">
-                    {summary.totalRequirements}
-                  </Badge>
-                )}
+            <TabsList>
+              <TabsTrigger value={ALL} className="text-[13px]">
+                All ({allCount})
               </TabsTrigger>
               {statusKeys.map(k => (
-                <TabsTrigger key={k} value={k} className={TAB_TRIGGER}>
-                  {toStatusLabel(k)}
-                  {summary && (
-                    <Badge variant="secondary" className="h-5 rounded-full px-1.5">
-                      {summary.counts[k] ?? 0}
-                    </Badge>
-                  )}
+                <TabsTrigger key={k} value={k} className="text-[13px]">
+                  {toStatusLabel(k)} ({counts[k] ?? 0})
                 </TabsTrigger>
               ))}
+              <TabsTrigger value={REQUIREMENTS_TAB} className="text-[13px]">
+                All requirements ({requirementOptions.length})
+              </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          {!isRequirementsView && selected.size > 0 && (
+            <Button
+              size="sm"
+              onClick={() =>
+                setAssignTarget({ ids: [...selected], label: `${selected.size} applicant(s)` })
+              }
+            >
+              <UserPlus className="mr-2 h-4 w-4" /> Assign {selected.size} selected
+            </Button>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            Showing
+        {/* filters */}
+        <div className="flex flex-wrap items-center gap-2 border-b p-4">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={
+                isRequirementsView
+                  ? 'Search req code, title, client…'
+                  : 'Search name, email, company, skill, req code…'
+              }
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              className="h-9 w-80 pl-8 text-[13px]"
+            />
+          </div>
+
+          <Select value={requirementId} onValueChange={setRequirementId}>
+            <SelectTrigger className="h-9 w-72 text-[13px]">
+              <SelectValue placeholder="All requirements" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All requirements</SelectItem>
+              {requirementOptions.map(o => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.reqCode} · {o.title} ({o.count})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {!isRequirementsView && (
+            <>
+              <Input
+                type="date"
+                value={from}
+                max={to || undefined}
+                onChange={e => setFrom(e.target.value)}
+                className="h-9 w-36 text-[13px]"
+                aria-label="Applied from"
+              />
+              <span className="text-[13px] text-muted-foreground">to</span>
+              <Input
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={e => setTo(e.target.value)}
+                className="h-9 w-36 text-[13px]"
+                aria-label="Applied to"
+              />
+            </>
+          )}
+
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X className="mr-1 h-4 w-4" /> Clear
+            </Button>
+          )}
+        </div>
+
+        {/* table — inner scroll, sticky header */}
+        {isError ? (
+          <p className="py-16 text-center text-[13px] text-muted-foreground">{errorMessage}</p>
+        ) : (
+          <div className="[&>div]:max-h-130">
+            {isRequirementsView ? (
+              <RequirementsTable
+                rows={requirementPageRows}
+                statusKeys={statusKeys}
+                isLoading={isLoading}
+                onOpen={openRequirement}
+              />
+            ) : (
+              <ApplicantsTable
+                rows={rows}
+                isLoading={isLoading}
+                selected={selected}
+                onToggle={toggle}
+                onToggleAll={toggleAll}
+                onAssign={(a: Applicant) => setAssignTarget({ ids: [a.id], label: a.fullName })}
+              />
+            )}
+          </div>
+        )}
+
+        {/* pagination */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-[13px] text-muted-foreground">
+          <div className="flex items-center gap-2">
+            Rows
             <Select value={String(pageSize)} onValueChange={v => setPageSize(Number(v))}>
-              <SelectTrigger className="h-9 w-18">
+              <SelectTrigger className="h-8 w-18 text-[13px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -206,172 +269,47 @@ export default function ApplicantsPage() {
                 ))}
               </SelectContent>
             </Select>
+            {total > 0 && (
+              <span>
+                {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+              </span>
+            )}
           </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search requirement code or title…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="h-9 w-72 pl-8"
-            />
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-        </div>
-
-        {/* scroll container: the shadcn Table wrapper (first child) scrolls, header stays sticky */}
-        <div className="mx-4 overflow-hidden rounded-lg border [&>div]:max-h-130">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-muted">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className={HEAD}>Requirement</TableHead>
-                <TableHead className={HEAD}>Applicants</TableHead>
-                <TableHead className={HEAD}>Created by</TableHead>
-                <TableHead className={HEAD}>Assigned to</TableHead>
-                <TableHead className={HEAD}>Assigned by</TableHead>
-                <TableHead className={HEAD}>Status</TableHead>
-                <TableHead className={HEAD}>Created on</TableHead>
-                <TableHead className={cn(HEAD, 'text-right')}>Action</TableHead>
-              </TableRow>
-            </TableHeader>
-
-            <TableBody>
-              {isError && (
-                <TableRow>
-                  <TableCell colSpan={COL_COUNT} className="h-32 text-center text-muted-foreground">
-                    {errorMessage}
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!isError &&
-                isLoading &&
-                Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-                  <TableRow key={`sk-${i}`}>
-                    {Array.from({ length: COL_COUNT }).map((__, j) => (
-                      <TableCell key={j} className="py-4">
-                        <Skeleton className="h-5 w-full" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-
-              {!isError && !isLoading && rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={COL_COUNT} className="h-32 text-center text-muted-foreground">
-                    No requirements found.
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!isError &&
-                !isLoading &&
-                rows.map(r => (
-                  <TableRow key={r.id} className="cursor-pointer" onClick={() => setActiveId(r.id)}>
-                    <TableCell className="py-3">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{r.reqCode}</span>
-                        <span className="max-w-65 truncate text-xs text-muted-foreground">
-                          {r.title}
-                        </span>
-                        {r.client?.name && (
-                          <span className="max-w-65 truncate text-xs text-muted-foreground">
-                            {r.client.name}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-
-                    <TableCell className="py-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span
-                          className={cn(
-                            'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-sm font-semibold',
-                            r.applicantCount > 0
-                              ? 'bg-primary/10 text-primary'
-                              : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {r.applicantCount}
-                        </span>
-                        {statusKeys.map(k =>
-                          r.counts[k] > 0 ? (
-                            <StatusPill
-                              key={k}
-                              status={k}
-                              label={`${r.counts[k]} ${toStatusLabel(k)}`}
-                            />
-                          ) : null
-                        )}
-                      </div>
-                    </TableCell>
-
-                    <TableCell className="py-3">
-                      <UserStack users={[r.createdBy]} />
-                    </TableCell>
-
-                    <TableCell className="py-3">
-                      <UserStack users={r.assignments.map(a => a.assignedTo)} />
-                    </TableCell>
-
-                    <TableCell className="py-3">
-                      <UserStack users={r.assignments.map(a => a.assignedBy)} />
-                    </TableCell>
-
-                    <TableCell className="py-3">
-                      <StatusPill status={r.status} />
-                    </TableCell>
-
-                    <TableCell className="whitespace-nowrap py-3 text-sm text-muted-foreground">
-                      {formatDate(r.createdAt)}
-                    </TableCell>
-
-                    <TableCell className="py-3 text-right">
-                      <div
-                        className="flex items-center justify-end gap-2"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <Button variant="outline" size="sm" onClick={() => setActiveId(r.id)}>
-                          View
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8"
-                              aria-label="More actions"
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => setActiveId(r.id)}>
-                              <Eye className="mr-2 h-4 w-4" /> View applicants
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-4 text-sm text-muted-foreground">
-          <span>
-            {meta && meta.total > 0
-              ? `Showing ${(meta.page - 1) * meta.limit + 1}–${Math.min(meta.page * meta.limit, meta.total)} of ${meta.total} requirements`
-              : '\u00A0'}
-          </span>
-          <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       </Card>
 
-      <RequirementApplicantsDialog
-        requirement={active}
-        onOpenChange={o => !o && setActiveId(null)}
-        defaultStatus={status !== ALL ? status : undefined}
+      <AssignApplicantDialog
+        open={!!assignTarget}
+        onOpenChange={o => !o && setAssignTarget(null)}
+        snapshotIds={assignTarget?.ids ?? []}
+        label={assignTarget?.label ?? ''}
+        onAssigned={() => setSelected(new Set())}
       />
     </div>
   );

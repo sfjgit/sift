@@ -7,9 +7,6 @@ import type {
   Applicant,
   ApplicantFilters,
   ApplicantListMeta,
-  ApplicantRequirementFilters,
-  ApplicantRequirementMeta,
-  ApplicantRequirementRow,
   AssignableUser,
   AssignResultItem,
 } from '@/types/applicant';
@@ -29,34 +26,12 @@ export function useAssignableRecruiters(enabled = true) {
   });
 }
 
-// ── applicants data ───────────────────────────────────────────────────────────
+// ── applicants dashboard (single API) ─────────────────────────────────────────
 
-export function useApplicantRequirements(filters: ApplicantRequirementFilters) {
+export function useApplicants(filters: ApplicantFilters) {
   const axios = useAxios();
   return useQuery({
-    queryKey: ['applicants', 'requirements', filters],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set('page', String(filters.page));
-      params.set('limit', String(filters.limit));
-      if (filters.search) params.set('search', filters.search);
-      if (filters.status) params.set('status', filters.status);
-
-      const res = await axios.get(`/applicants/requirements?${params}`);
-      return {
-        data: res.data.data as ApplicantRequirementRow[],
-        meta: res.data.meta as ApplicantRequirementMeta,
-      };
-    },
-    placeholderData: keepPreviousData,
-    staleTime: 30_000,
-  });
-}
-
-export function useApplicants(filters: ApplicantFilters, enabled = true) {
-  const axios = useAxios();
-  return useQuery({
-    queryKey: ['applicants', 'list', filters],
+    queryKey: ['applicants', filters],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', String(filters.page));
@@ -72,7 +47,6 @@ export function useApplicants(filters: ApplicantFilters, enabled = true) {
         meta: res.data.meta as ApplicantListMeta,
       };
     },
-    enabled,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
@@ -93,7 +67,6 @@ export function useAssignApplicants() {
       };
     },
     onSuccess: () => {
-      // 'applicants' prefix refreshes requirement counts + every open applicant list
       queryClient.invalidateQueries({ queryKey: ['applicants'] });
     },
   });
