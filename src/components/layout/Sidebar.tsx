@@ -83,7 +83,12 @@ const NAV: NavItem[] = [
     href: '/dashboard',
     icon: LayoutDashboard,
   },
-
+  {
+    type: 'link',
+    label: 'Applicant Dashboard',
+    href: '/applicants',
+    icon: LayoutDashboard,
+  },
   { type: 'divider' },
 
   {
