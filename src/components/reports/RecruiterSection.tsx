@@ -1,11 +1,12 @@
 // File: RecruiterSection.tsx
 // Path: src/components/reports/RecruiterSection.tsx
 //
-//   1. Stats use placed/nearTerminal/inPipeline/offPipeline — matches buildRecruiterRows output.
-//   2. "Pipeline | Activity" toggle — Activity mode fetches GET /reports/recruiters/activity.
-//   3. ActivityDrillDrawer — stage count click opens raw log rows (GET /reports/recruiters/activity/drill).
-//   4. `bucket` — set by the sale summary strip on the page; narrows the pipeline table to
-//      recruiters with near-close (nearTerminal) or placed (terminal) candidates.
+//   1. Pipeline (current state) and Stage activity (historical) views.
+//   2. Buckets come from stage flags only — Placed / Pipeline / Dropped / Sourced / Active.
+//   3. ActivityDrillDrawer — stage count click opens real stage moves
+//      (GET /reports/recruiters/activity/drill; transfers / notes excluded).
+//   4. `bucket` — set by the stats panel on the page; narrows the pipeline table to
+//      recruiters with pipeline (nearTerminal) or placed (terminal) candidates.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
@@ -28,28 +29,33 @@ import { ActivityExportMenu } from '@/components/reports/ActivityExportMenu';
 import type { RecruiterGroup, RecruiterResponse, SaleBucket } from '@/components/reports/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
+// HELPERS — stage flags only
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Human-readable bucket name — same precedence as the backend
+const BUCKET = {
+  placed: 'Placed',
+  pipeline: 'Pipeline',
+  dropped: 'Dropped',
+  sourced: 'Sourced',
+  active: 'Active',
+} as const;
+
 function bucketLabel(s: any): string {
-  if (s.isTerminal) return 'Placed';
-  if (s.isNearTerminal) return 'Near close';
-  if (!s.pipeline) return 'Off pipeline';
-  if (s.isSourced) return 'Sourced';
-  return 'In pipeline';
+  if (s.isTerminal) return BUCKET.placed;
+  if (s.isNearTerminal) return BUCKET.pipeline;
+  if (s.pipeline === false) return BUCKET.dropped;
+  if (s.isSourced) return BUCKET.sourced;
+  return BUCKET.active;
 }
 
-// Bucket colour — matches the backend's classification precedence
 function stageColor(s: any, i: number): string {
   if (s.isTerminal) return '#059669'; // placed
-  if (s.isNearTerminal) return '#D97706'; // near close
-  if (!s.pipeline) return '#DC2626'; // off pipeline
+  if (s.isNearTerminal) return '#D97706'; // pipeline
+  if (s.pipeline === false) return '#DC2626'; // dropped
   if (s.isSourced) return '#64748B'; // sourced
   return FUNNEL_COLORS[i % FUNNEL_COLORS.length];
 }
 
-// Does this recruiter row belong in the selected sale bucket?
 function inBucket(row: any, bucket: SaleBucket): boolean {
   if (bucket === 'terminal') return (row.placed ?? 0) > 0;
   if (bucket === 'nearTerminal') return (row.nearTerminal ?? 0) > 0;
@@ -99,9 +105,16 @@ function LineTabs({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ACTIVITY DRILL DRAWER
-// Shows raw stage-log rows for one recruiter + optional stage filter
+// ACTIVITY DRILL DRAWER — real stage moves for one recruiter (+ optional stage)
 // ─────────────────────────────────────────────────────────────────────────────
+
+const STAGE_TYPE_STYLE: Record<string, string> = {
+  [BUCKET.placed]: 'bg-emerald-50 text-emerald-700',
+  [BUCKET.pipeline]: 'bg-amber-50 text-amber-700',
+  [BUCKET.dropped]: 'bg-red-50 text-red-500',
+  [BUCKET.sourced]: 'bg-slate-100 text-slate-600',
+  [BUCKET.active]: 'bg-indigo-50 text-indigo-700',
+};
 
 function ActivityDrillDrawer({
   recruiterId,
@@ -135,18 +148,10 @@ function ActivityDrillDrawer({
   const stageSummary: Record<string, number> = data?.stageSummary ?? {};
   const loading = drillQuery.isLoading;
 
-  const STAGE_TYPE_STYLE: Record<string, string> = {
-    Placed: 'bg-emerald-50 text-emerald-700',
-    'Near Close': 'bg-amber-50 text-amber-700',
-    'Off Pipeline': 'bg-red-50 text-red-500',
-    Active: 'bg-indigo-50 text-indigo-700',
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
       <div className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h2 className="text-[15px] font-black text-slate-900">
@@ -156,7 +161,7 @@ function ActivityDrillDrawer({
             <p className="text-[12px] text-slate-400">
               {loading
                 ? 'Loading…'
-                : `${rows.length} transition${rows.length !== 1 ? 's' : ''} in this window`}
+                : `${rows.length} stage move${rows.length !== 1 ? 's' : ''} in this window`}
             </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
@@ -164,7 +169,6 @@ function ActivityDrillDrawer({
           </button>
         </div>
 
-        {/* Stage summary pills */}
         {!loading && Object.keys(stageSummary).length > 0 && (
           <div className="flex flex-wrap gap-2 border-b border-slate-100 bg-slate-50 px-6 py-3">
             {Object.entries(stageSummary)
@@ -172,7 +176,7 @@ function ActivityDrillDrawer({
               .map(([label, count]) => (
                 <span
                   key={label}
-                  className="rounded-lg bg-white border border-slate-200 px-3 py-1 text-[12px] font-bold text-slate-700"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[12px] font-bold text-slate-700"
                 >
                   {label}
                   <span className="ml-1.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-black text-white">
@@ -183,7 +187,6 @@ function ActivityDrillDrawer({
           </div>
         )}
 
-        {/* Rows */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="space-y-2">
@@ -198,13 +201,7 @@ function ActivityDrillDrawer({
           ) : (
             <div className="space-y-2">
               {rows.map((row: any) => {
-                const stageType = row.toStage.isTerminal
-                  ? 'Placed'
-                  : row.toStage.isNearTerminal
-                    ? 'Near Close'
-                    : row.toStage.pipeline === false
-                      ? 'Off Pipeline'
-                      : 'Active';
+                const stageType: string = row.toStage.bucket ?? bucketLabel(row.toStage);
                 const typeStyle = STAGE_TYPE_STYLE[stageType] ?? 'bg-slate-100 text-slate-600';
 
                 return (
@@ -226,7 +223,6 @@ function ActivityDrillDrawer({
                       </span>
                     </div>
 
-                    {/* Stage transition */}
                     <div className="mt-2.5 flex items-center gap-2 text-[12px]">
                       <span className="rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
                         {row.fromStage?.label ?? 'Start'}
@@ -238,14 +234,18 @@ function ActivityDrillDrawer({
                             ? 'bg-emerald-100 text-emerald-800'
                             : row.toStage.isNearTerminal
                               ? 'bg-amber-100 text-amber-800'
-                              : 'bg-indigo-100 text-indigo-800'
+                              : row.toStage.pipeline === false
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-indigo-100 text-indigo-800'
                         }`}
                       >
                         {row.toStage.label}
                       </span>
+                      {row.movedBy && row.movedBy !== '—' && (
+                        <span className="text-[11px] text-slate-400">by {row.movedBy}</span>
+                      )}
                     </div>
 
-                    {/* Requirement + client */}
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-bold text-slate-500">
                         {row.requirement.reqCode}
@@ -273,8 +273,7 @@ function ActivityDrillDrawer({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ACTIVITY TABLE
-// Per-recruiter stage-entry counts from CandidatePipelineStageLog
+// ACTIVITY TABLE — per-recruiter stage-entry counts
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
@@ -288,37 +287,43 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
   const stages: any[] = group.stages ?? [];
   const data: any[] = group.data ?? [];
 
-  // Split stages into the 5 buckets — same precedence the backend uses:
-  // isTerminal > isNearTerminal > !pipeline > isSourced > in-pipeline
+  // Same precedence as the backend: placed > pipeline > dropped > sourced > active
   const terminalStages = stages.filter((s: any) => s.isTerminal);
-  const nearTermStages = stages.filter((s: any) => !s.isTerminal && s.isNearTerminal);
-  const offPipelineStages = stages.filter(
-    (s: any) => !s.isTerminal && !s.isNearTerminal && !s.pipeline
+  const pipelineStages = stages.filter((s: any) => !s.isTerminal && s.isNearTerminal);
+  const droppedStages = stages.filter(
+    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline === false
   );
   const sourcedStages = stages.filter(
-    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline && s.isSourced
+    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline !== false && s.isSourced
   );
-  const pipelineStages = stages.filter(
-    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline && !s.isSourced
+  const activeStages = stages.filter(
+    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline !== false && !s.isSourced
   );
 
-  // Ordered column list — grouped, each group internally ordered by stage order
   const orderedStages = [
     ...sourcedStages,
+    ...activeStages,
     ...pipelineStages,
-    ...nearTermStages,
     ...terminalStages,
-    ...offPipelineStages,
+    ...droppedStages,
   ];
+
+  const columnGroups = [
+    { label: BUCKET.sourced, stages: sourcedStages, cls: 'text-slate-500' },
+    { label: BUCKET.active, stages: activeStages, cls: 'text-indigo-600' },
+    { label: BUCKET.pipeline, stages: pipelineStages, cls: 'text-amber-600' },
+    { label: BUCKET.placed, stages: terminalStages, cls: 'text-emerald-700' },
+    { label: BUCKET.dropped, stages: droppedStages, cls: 'text-red-500' },
+  ].filter(g => g.stages.length > 0);
 
   const totals = useMemo(
     () => ({
       total: data.reduce((s, r) => s + (r.totalTransitions ?? 0), 0),
       sourced: data.reduce((s, r) => s + (r.sourcedCount ?? 0), 0),
-      inPipeline: data.reduce((s, r) => s + (r.activeCount ?? 0), 0),
-      nearTerminal: data.reduce((s, r) => s + (r.nearTerminalCount ?? 0), 0),
+      active: data.reduce((s, r) => s + (r.activeCount ?? 0), 0),
+      pipeline: data.reduce((s, r) => s + (r.nearTerminalCount ?? 0), 0),
       placed: data.reduce((s, r) => s + (r.terminalCount ?? 0), 0),
-      offPipeline: data.reduce((s, r) => s + (r.offPipelineCount ?? 0), 0),
+      dropped: data.reduce((s, r) => s + (r.offPipelineCount ?? 0), 0),
     }),
     [data]
   );
@@ -327,19 +332,16 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
 
   return (
     <>
-      {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <KPI label="Total transitions" value={totals.total} color="#4F46E5" />
-        <KPI label="Sourced" value={totals.sourced} color="#64748B" />
-        <KPI label="In pipeline" value={totals.inPipeline} color="#0891B2" />
-        <KPI label="Near close" value={totals.nearTerminal} color="#D97706" />
-        <KPI label="Placed" value={totals.placed} color="#059669" />
-        <KPI label="Off pipeline" value={totals.offPipeline} color="#DC2626" />
+        <KPI label="Total stage moves" value={totals.total} color="#4F46E5" />
+        <KPI label={BUCKET.sourced} value={totals.sourced} color="#64748B" />
+        <KPI label={BUCKET.active} value={totals.active} color="#0891B2" />
+        <KPI label={BUCKET.pipeline} value={totals.pipeline} color="#D97706" />
+        <KPI label={BUCKET.placed} value={totals.placed} color="#059669" />
+        <KPI label={BUCKET.dropped} value={totals.dropped} color="#DC2626" />
       </div>
 
-      {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        {/* Card header — outside the scroll area so it never moves */}
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
             <span className="text-[13px] font-black text-slate-800">
@@ -357,11 +359,9 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
           />
         </div>
 
-        {/* Scroll area — sticky header rows + sticky first column live inside this */}
         <div className="max-h-[70vh] overflow-auto rounded-b-xl">
           <table className="w-full border-separate border-spacing-0 text-left">
             <thead>
-              {/* Group header row */}
               <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <th className="sticky left-0 top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-4 py-2 text-left">
                   Recruiter
@@ -369,76 +369,43 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
                 <th className="sticky top-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-center">
                   Total
                 </th>
-                {sourcedStages.length > 0 && (
+                {columnGroups.map(g => (
                   <th
-                    colSpan={sourcedStages.length}
-                    className="sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center text-slate-500"
+                    key={g.label}
+                    colSpan={g.stages.length}
+                    className={`sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center ${g.cls}`}
                   >
-                    Sourced
+                    {g.label}
                   </th>
-                )}
-                {pipelineStages.length > 0 && (
-                  <th
-                    colSpan={pipelineStages.length}
-                    className="sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center text-indigo-600"
-                  >
-                    In pipeline
-                  </th>
-                )}
-                {nearTermStages.length > 0 && (
-                  <th
-                    colSpan={nearTermStages.length}
-                    className="sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center text-amber-600"
-                  >
-                    Near close
-                  </th>
-                )}
-                {terminalStages.length > 0 && (
-                  <th
-                    colSpan={terminalStages.length}
-                    className="sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center text-emerald-700"
-                  >
-                    Placed
-                  </th>
-                )}
-                {offPipelineStages.length > 0 && (
-                  <th
-                    colSpan={offPipelineStages.length}
-                    className="sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center text-red-500"
-                  >
-                    Off pipeline
-                  </th>
-                )}
+                ))}
               </tr>
-              {/* Stage column headers */}
               <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 <th className="sticky left-0 top-[29px] z-40 border-b-2 border-r border-slate-200 bg-white px-4 py-2" />
                 <th className="sticky top-[29px] z-30 border-b-2 border-r border-slate-200 bg-white px-3 py-2 text-center">
                   All
                 </th>
-                {orderedStages.map((s: any, i: number) => {
-                  const color = stageColor(s, i);
-                  return (
-                    <th
-                      key={s.id}
-                      className="sticky top-[29px] z-30 border-b-2 border-slate-200 bg-white px-2 py-2 text-center"
-                      title={`${s.label}\n${bucketLabel(s)}\n${(s.grandCount ?? 0).toLocaleString('en-IN')} transitions in this window${s.serviceLine ? `\nService line: ${s.serviceLine.name}` : '\nCommon to all service lines'}`}
+                {orderedStages.map((s: any, i: number) => (
+                  <th
+                    key={s.id}
+                    className="sticky top-[29px] z-30 border-b-2 border-slate-200 bg-white px-2 py-2 text-center"
+                    title={`${s.label}\n${bucketLabel(s)}\n${(s.grandCount ?? 0).toLocaleString('en-IN')} moves in this window${s.serviceLine ? `\nService line: ${s.serviceLine.name}` : '\nCommon to all service lines'}`}
+                  >
+                    <span
+                      style={{ color: stageColor(s, i) }}
+                      className="block max-w-[90px] truncate"
                     >
-                      <span style={{ color }} className="block max-w-[90px] truncate">
-                        {s.label}
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-400">
-                        ({(s.grandCount ?? 0).toLocaleString('en-IN')})
-                      </span>
-                    </th>
-                  );
-                })}
+                      {s.label}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400">
+                      ({(s.grandCount ?? 0).toLocaleString('en-IN')})
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {data.map((row: any, ri: number) => (
                 <tr key={row.recruiterId} className="group">
-                  {/* Frozen recruiter column — content scrolls behind this */}
                   <td
                     className={`sticky left-0 z-20 border-b border-r border-slate-100 px-4 py-3 ${
                       ri % 2 === 0 ? 'bg-white' : 'bg-slate-50'
@@ -448,7 +415,7 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
                       onClick={() =>
                         setDrillTarget({ recruiterId: row.recruiterId, recruiterName: row.name })
                       }
-                      title={`${row.name}\n${row.email}\n\n${row.totalTransitions.toLocaleString('en-IN')} transitions in this window\nSourced ${row.sourcedCount ?? 0} · In pipeline ${row.activeCount ?? 0} · Near close ${row.nearTerminalCount ?? 0} · Placed ${row.terminalCount ?? 0} · Off pipeline ${row.offPipelineCount ?? 0}\n\nClick to open the full activity log`}
+                      title={`${row.name}\n${row.email}\n\n${row.totalTransitions.toLocaleString('en-IN')} stage moves in this window\n${BUCKET.sourced} ${row.sourcedCount ?? 0} · ${BUCKET.active} ${row.activeCount ?? 0} · ${BUCKET.pipeline} ${row.nearTerminalCount ?? 0} · ${BUCKET.placed} ${row.terminalCount ?? 0} · ${BUCKET.dropped} ${row.offPipelineCount ?? 0}\n\nClick to open the full activity log`}
                       className="max-w-[200px] text-left"
                     >
                       <p className="truncate text-[13px] font-bold text-slate-900 hover:text-indigo-700">
@@ -466,7 +433,7 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
                       onClick={() =>
                         setDrillTarget({ recruiterId: row.recruiterId, recruiterName: row.name })
                       }
-                      title={`All ${row.totalTransitions.toLocaleString('en-IN')} transitions by ${row.name} in this window — click to open the log`}
+                      title={`All ${row.totalTransitions.toLocaleString('en-IN')} stage moves by ${row.name} in this window — click to open the log`}
                       className="text-[14px] font-black text-slate-900 hover:text-indigo-700"
                     >
                       {row.totalTransitions.toLocaleString('en-IN')}
@@ -474,16 +441,14 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
                   </td>
                   {orderedStages.map((s: any, i: number) => {
                     const count: number = row.stageCounts?.[s.id] ?? 0;
-                    const color = stageColor(s, i);
+                    const cellBg = `${ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} group-hover:bg-indigo-50/40`;
 
                     if (count === 0) {
                       return (
                         <td
                           key={s.id}
-                          className={`border-b border-slate-100 px-2 py-3 text-center ${
-                            ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                          } group-hover:bg-indigo-50/40`}
-                          title={`${row.name} — no transitions into ${s.label} in this window`}
+                          className={`border-b border-slate-100 px-2 py-3 text-center ${cellBg}`}
+                          title={`${row.name} — no moves into ${s.label} in this window`}
                         >
                           <span className="text-[13px] font-semibold text-slate-200">—</span>
                         </td>
@@ -492,9 +457,7 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
                     return (
                       <td
                         key={s.id}
-                        className={`border-b border-slate-100 px-2 py-3 text-center ${
-                          ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-                        } group-hover:bg-indigo-50/40`}
+                        className={`border-b border-slate-100 px-2 py-3 text-center ${cellBg}`}
                       >
                         <button
                           onClick={() =>
@@ -505,10 +468,13 @@ function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
                               stageLabel: s.label,
                             })
                           }
-                          title={`${row.name}\n${s.label} (${bucketLabel(s)})\n\n${count} transition${count !== 1 ? 's' : ''} into this stage in the window\n${Math.round((count / row.totalTransitions) * 100)}% of their total activity\n\nClick to see exactly which candidates and when`}
+                          title={`${row.name}\n${s.label} (${bucketLabel(s)})\n\n${count} move${count !== 1 ? 's' : ''} into this stage in the window\n${Math.round((count / row.totalTransitions) * 100)}% of their total activity\n\nClick to see exactly which candidates and when`}
                           className="inline-flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-all hover:bg-indigo-50 hover:ring-2 hover:ring-indigo-200"
                         >
-                          <span className="text-[14px] font-black tabular-nums" style={{ color }}>
+                          <span
+                            className="text-[14px] font-black tabular-nums"
+                            style={{ color: stageColor(s, i) }}
+                          >
                             {count}
                           </span>
                           {row.totalTransitions > 0 && (
@@ -572,15 +538,14 @@ export function RecruiterSection({
     hiddenStageIds?: string[],
     hiddenCandidateCols?: string[]
   ) => void;
-  baseQs: string; // needed for activity queries
-  /** Sale summary filter from the page — narrows the pipeline table. */
+  baseQs: string;
+  /** Stats-panel slice from the page — narrows the pipeline table. */
   bucket?: SaleBucket;
 }) {
   const axios = useAxios();
   const [activeKey, setActiveKey] = useState<string>('');
   const [viewMode, setViewMode] = useState<'pipeline' | 'activity'>('pipeline');
 
-  // ── Activity query — only fires when Activity tab is active ────────────────
   const activityQuery = useQuery({
     queryKey: ['report-recruiters-activity', baseQs],
     queryFn: async () => (await axios.get(`/reports/recruiters/activity?${baseQs}`)).data,
@@ -588,9 +553,6 @@ export function RecruiterSection({
     staleTime: 60_000,
   });
 
-  // ── ALL hooks must be declared before any early return ────────────────────
-
-  // Pipeline groups, narrowed by the sale bucket (empty groups dropped)
   const groups: RecruiterGroup[] = useMemo(() => {
     const raw = resp?.groups ?? [];
     if (!bucket) return raw;
@@ -613,12 +575,10 @@ export function RecruiterSection({
     return [...m.entries()].map(([id, label]) => ({ id, label }));
   }, [rows]);
 
-  // Activity mode derived state
   const activityGroups: any[] = activityQuery.data?.groups ?? [];
   const activityActive =
     activityGroups.find((g: any) => keyOf(g) === activeKey) ?? activityGroups[0];
 
-  // ── Early returns — AFTER all hooks ──────────────────────────────────────
   if (loading)
     return (
       <div className="space-y-4">
@@ -631,14 +591,8 @@ export function RecruiterSection({
       </div>
     );
 
-  // NOTE: no early return for empty groups — the Pipeline/Activity toggle must
-  // always render. A user whose RBAC scope yields no pipeline rows (e.g. a CSM
-  // who creates requirements but doesn't recruit) still needs to reach the
-  // Activity tab. The empty state is handled inside the pipeline branch instead.
-
   return (
     <div className="space-y-5">
-      {/* ── Pipeline / Activity toggle ──────────────────────────────────────── */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
           <button
@@ -669,13 +623,12 @@ export function RecruiterSection({
         </span>
       </div>
 
-      {/* ── PIPELINE MODE ──────────────────────────────────────────────────── */}
       {viewMode === 'pipeline' && groups.length === 0 && (
         <Empty
           msg={
             bucket
-              ? 'No recruiters have candidates in this slice. Click the highlighted stat again to clear it.'
-              : 'No recruiter pipeline data in your scope for this window. Try Stage activity, widen the date range, or clear filters.'
+              ? 'No recruiters have candidates in this slice. Click the highlighted card again to clear it.'
+              : 'No recruiter data in your scope for this window. Try Stage activity, widen the date range, or clear filters.'
           }
         />
       )}
@@ -686,7 +639,6 @@ export function RecruiterSection({
             <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
           )}
 
-          {/* Requirement filter */}
           {reqOptions.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
@@ -732,7 +684,6 @@ export function RecruiterSection({
         </>
       )}
 
-      {/* ── ACTIVITY MODE ──────────────────────────────────────────────────── */}
       {viewMode === 'activity' && (
         <>
           {activityQuery.isLoading ? (

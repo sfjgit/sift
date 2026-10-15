@@ -2,6 +2,11 @@
 
 // File: DrillDrawer.tsx
 // Path: src/components/reports/DrillDrawer.tsx
+//
+// New flow:
+//   status   — stage flags only: Placed / Pipeline / Dropped / On hold / stage label
+//   joining  — LWD, else today + notice period days (computed on the server)
+//   MOJ      — straight from the server (never derived from expected/actual dates)
 
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -60,22 +65,27 @@ interface DrillRow {
   stageAgeMins: number;
   stageLabel: string;
   isTerminal: boolean;
+  isNearTerminal: boolean;
   isSourced: boolean;
-  isRejected: boolean;
-  isWithdrawn: boolean;
+  isDropped: boolean;
   isOnHold: boolean;
+  stageReachedAt: string | null;
+  stageMovedBy: string | null;
   submittedAt: string | null;
   offerStatus: string | null;
   offeredCtc: number | null;
   currentCtc: number | null;
   expectedCtc: number | null;
   negotiatedCtc: number | null;
-  expectedJoiningDate: string | null;
-  monthOfJoining: string | null;
-  actualJoiningDate: string | null;
-  daysToJoin: number | null;
+  // Joining — LWD, else today + notice period days
   lastWorkingDate: string | null;
-  noticePeriod: string | null;
+  noticeDays: number | null;
+  joiningDate: string | null;
+  joiningSource: 'LWD' | 'NOTICE_PERIOD' | null;
+  joiningSourceLabel: string | null;
+  monthOfJoining: string | null;
+  mojKey: string | null; // YYYY-MM — sorts chronologically
+  daysToJoin: number | null;
   candidateName: string;
   candidateEmail: string;
   candidatePhone: string;
@@ -127,56 +137,38 @@ function fmtCtc(n: number | null | undefined): string {
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
-// If monthOfJoining is stored, use it directly.
-// Otherwise fall back to extracting month+year from actualJoiningDate or expectedJoiningDate.
-function fmtMonthOfJoining(
-  monthOfJoining: string | null | undefined,
-  expectedJoiningDate: string | null | undefined,
-  actualJoiningDate: string | null | undefined
-): string | null {
-  if (monthOfJoining) return monthOfJoining;
-  const d = actualJoiningDate ?? expectedJoiningDate;
-  if (!d) return null;
-  try {
-    return format(new Date(d), 'MMMM yyyy'); // e.g. "September 2026"
-  } catch {
-    return null;
-  }
+/** Stage-based status — the only source of truth */
+function statusOf(r: DrillRow): string {
+  if (r.isTerminal) return 'Placed';
+  if (r.isDropped) return 'Dropped';
+  if (r.isOnHold) return 'On Hold';
+  if (r.isNearTerminal) return 'Pipeline';
+  return 'Active';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS BADGE
 // ─────────────────────────────────────────────────────────────────────────────
 
+const STATUS_STYLE: Record<string, string> = {
+  Placed: 'bg-emerald-50 text-emerald-700',
+  Dropped: 'bg-red-50 text-red-600',
+  'On Hold': 'bg-amber-50 text-amber-700',
+  Pipeline: 'bg-indigo-50 text-indigo-700',
+  Active: 'bg-blue-50 text-blue-700',
+};
+
 function StatusBadge({ row }: { row: DrillRow }) {
-  if (row.isTerminal)
-    return (
-      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-        Placed
-      </span>
-    );
-  if (row.isRejected)
-    return (
-      <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600">
-        Rejected
-      </span>
-    );
-  if (row.isWithdrawn)
-    return (
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-        Withdrawn
-      </span>
-    );
-  if (row.isOnHold)
-    return (
-      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-        On Hold
-      </span>
-    );
+  const status = statusOf(row);
   return (
-    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-      {row.stageLabel}
-    </span>
+    <div>
+      <span
+        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[status] ?? ''}`}
+      >
+        {status === 'Active' ? row.stageLabel : status}
+      </span>
+      {status !== 'Active' && <p className="mt-0.5 text-[10px] text-slate-400">{row.stageLabel}</p>}
+    </div>
   );
 }
 
@@ -186,10 +178,6 @@ function StatusBadge({ row }: { row: DrillRow }) {
 
 type SortKey = keyof DrillRow;
 type SortDir = 'asc' | 'desc';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TH BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
 
 function ThBtn({
   sortKey,
@@ -239,7 +227,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
     <>
       <tr
         className={`group cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50 ${
-          row.isRejected || row.isWithdrawn ? 'opacity-50' : ''
+          row.isDropped ? 'opacity-50' : ''
         }`}
         onClick={() => setExpanded(p => !p)}
       >
@@ -273,8 +261,8 @@ function CandidateRow({ row }: { row: DrillRow }) {
 
         {/* 2. Requirement */}
         <td className="px-3 py-3">
-          <p className="text-[12px] font-semibold text-slate-800 leading-snug">{row.reqTitle}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <p className="text-[12px] font-semibold leading-snug text-slate-800">{row.reqTitle}</p>
+          <div className="mt-0.5 flex items-center gap-1.5">
             <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
               {row.reqCode}
             </span>
@@ -282,13 +270,18 @@ function CandidateRow({ row }: { row: DrillRow }) {
           </div>
         </td>
 
-        {/* 3. Stage / Status */}
+        {/* 3. Stage / Status + who moved it there */}
         <td className="px-3 py-3">
           <StatusBadge row={row} />
+          {row.stageMovedBy && (
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              {fmtDate(row.stageReachedAt)} by {row.stageMovedBy}
+            </p>
+          )}
         </td>
 
         {/* 4. CTC */}
-        <td className="px-3 py-3 whitespace-nowrap">
+        <td className="whitespace-nowrap px-3 py-3">
           {row.offeredCtc != null ? (
             <div>
               <p className="text-[11px] text-slate-400">Offered</p>
@@ -298,7 +291,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
             <div className="space-y-0.5">
               {row.currentCtc != null && (
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-slate-400 w-11">Current</span>
+                  <span className="w-11 text-[10px] text-slate-400">Current</span>
                   <span className="text-[11px] font-semibold text-slate-700">
                     {fmtCtc(row.currentCtc)}
                   </span>
@@ -306,7 +299,7 @@ function CandidateRow({ row }: { row: DrillRow }) {
               )}
               {row.expectedCtc != null && (
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-slate-400 w-11">Expected</span>
+                  <span className="w-11 text-[10px] text-slate-400">Expected</span>
                   <span className="text-[11px] font-semibold text-indigo-600">
                     {fmtCtc(row.expectedCtc)}
                   </span>
@@ -318,39 +311,35 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* 5. Last Working Date */}
-        <td className="px-3 py-3 whitespace-nowrap">
+        {/* 5. Notice period OR last working day (never both) */}
+        <td className="whitespace-nowrap px-3 py-3">
           {row.lastWorkingDate ? (
             <div>
               <p className="text-[12px] font-semibold text-slate-700">
                 {fmtDate(row.lastWorkingDate)}
               </p>
-              {row.noticePeriod && (
-                <p className="text-[10px] text-slate-400">{row.noticePeriod} notice</p>
-              )}
+              <p className="text-[10px] text-slate-400">Last working day</p>
             </div>
-          ) : (
-            <span className="text-[11px] text-slate-300">—</span>
-          )}
-        </td>
-
-        {/* 6. Date of Joining */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          {row.actualJoiningDate ? (
-            <div>
-              <p className="text-[12px] font-bold text-emerald-700">
-                {fmtDate(row.actualJoiningDate)}
-              </p>
-              <p className="text-[10px] text-slate-400">Actual</p>
-            </div>
-          ) : row.expectedJoiningDate ? (
+          ) : row.noticeDays != null ? (
             <div>
               <p className="text-[12px] font-semibold text-slate-700">
-                {fmtDate(row.expectedJoiningDate)}
+                {row.noticeDays === 0 ? 'Immediate' : `${row.noticeDays} days`}
               </p>
+              <p className="text-[10px] text-slate-400">Notice period</p>
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
+        </td>
+
+        {/* 6. Joining date */}
+        <td className="whitespace-nowrap px-3 py-3">
+          {row.joiningDate ? (
+            <div>
+              <p className="text-[12px] font-semibold text-slate-700">{fmtDate(row.joiningDate)}</p>
               <p className="text-[10px] text-slate-400">
-                Expected
-                {row.daysToJoin != null && row.daysToJoin >= 0 ? ` · ${row.daysToJoin}d` : ''}
+                {row.joiningSource === 'LWD' ? 'From LWD' : 'From notice'}
+                {row.daysToJoin != null && row.daysToJoin >= 0 ? ` · in ${row.daysToJoin}d` : ''}
               </p>
             </div>
           ) : (
@@ -358,20 +347,13 @@ function CandidateRow({ row }: { row: DrillRow }) {
           )}
         </td>
 
-        {/* 7. Month of Joining — uses stored value or falls back to month+year from joining dates */}
-        <td className="px-3 py-3 whitespace-nowrap">
-          {(() => {
-            const moj = fmtMonthOfJoining(
-              row.monthOfJoining,
-              row.expectedJoiningDate,
-              row.actualJoiningDate
-            );
-            return moj ? (
-              <p className="text-[12px] font-semibold text-slate-700">{moj}</p>
-            ) : (
-              <span className="text-[11px] text-slate-300">—</span>
-            );
-          })()}
+        {/* 7. Month of joining — from the server */}
+        <td className="whitespace-nowrap px-3 py-3">
+          {row.monthOfJoining ? (
+            <p className="text-[12px] font-semibold text-slate-700">{row.monthOfJoining}</p>
+          ) : (
+            <span className="text-[11px] text-slate-300">—</span>
+          )}
         </td>
 
         {/* 8. Recruiter */}
@@ -388,7 +370,6 @@ function CandidateRow({ row }: { row: DrillRow }) {
         </td>
       </tr>
 
-      {/* Expanded detail row */}
       {expanded && (
         <tr className="bg-indigo-50/40">
           <td colSpan={9} className="px-6 py-3">
@@ -461,197 +442,132 @@ function CandidateRow({ row }: { row: DrillRow }) {
 
 function exportToExcel(rows: DrillRow[], label: string) {
   const wb = XLSX.utils.book_new();
+  const d = (v: string | null | undefined, f = 'dd-MMM-yyyy') => (v ? format(new Date(v), f) : '');
 
-  // Sheet 1: Candidates detail
-  const candidateData = rows.map((r, i) => ({
-    '#': i + 1,
-    Candidate: r.candidateName,
-    Email: r.candidateEmail,
-    Phone: r.candidatePhone,
-    'Current Title': r.currentTitle,
-    'Current Company': r.currentCompany,
-    'Exp (yrs)': r.expYears ?? '',
-    'Top Skills': r.topSkills,
-    Stage: r.stageLabel,
-    Status: r.isTerminal
-      ? 'Placed'
-      : r.isRejected
-        ? 'Rejected'
-        : r.isWithdrawn
-          ? 'Withdrawn'
-          : r.isOnHold
-            ? 'On Hold'
-            : 'Active',
-    'Added On': r.addedOn ? format(new Date(r.addedOn), 'dd-MMM-yyyy') : '',
-    'Days in Pipeline': r.pipelineDays,
-    'Stage Aging': r.stageAging,
-    'Submitted At': r.submittedAt ? format(new Date(r.submittedAt), 'dd-MMM-yyyy HH:mm') : '',
-    'Offer Status': r.offerStatus ?? '',
-    'Current CTC': r.currentCtc ?? '',
-    'Expected CTC': r.expectedCtc ?? '',
-    'Negotiated CTC': r.negotiatedCtc ?? '',
-    'Offered CTC': r.offeredCtc ?? '',
-    'Notice Period': r.noticePeriod ?? '',
-    'Last Working Day': r.lastWorkingDate ? format(new Date(r.lastWorkingDate), 'dd-MMM-yyyy') : '',
-    'Expected Joining': r.expectedJoiningDate
-      ? format(new Date(r.expectedJoiningDate), 'dd-MMM-yyyy')
-      : '',
-    'Actual Joining': r.actualJoiningDate
-      ? format(new Date(r.actualJoiningDate), 'dd-MMM-yyyy')
-      : '',
-    'Month of Joining': r.monthOfJoining ?? '',
-    Recruiter: r.recruiterName,
-    'Recruiter Email': r.recruiterEmail,
-    'Req Code': r.reqCode,
-    Requirement: r.reqTitle,
-    'Req Status': r.reqStatus,
-    Openings: r.totalOpenings,
-    Client: r.clientName,
-    'Client SPOC': r.clientSpoc,
-    'Service Line': r.serviceLineName,
-    'Business Unit': r.businessUnitName,
-  }));
-
-  const ws1 = XLSX.utils.json_to_sheet(candidateData);
-  ws1['!cols'] = [
-    { wch: 4 },
-    { wch: 26 },
-    { wch: 28 },
-    { wch: 14 },
-    { wch: 22 },
-    { wch: 22 },
-    { wch: 8 },
-    { wch: 34 },
-    { wch: 20 },
-    { wch: 12 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 12 },
-    { wch: 18 },
-    { wch: 12 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 16 },
-    { wch: 22 },
-    { wch: 26 },
-    { wch: 14 },
-    { wch: 32 },
-    { wch: 14 },
-    { wch: 8 },
-    { wch: 22 },
-    { wch: 22 },
-    { wch: 20 },
-    { wch: 20 },
-  ];
+  const ws1 = XLSX.utils.json_to_sheet(
+    rows.map((r, i) => ({
+      '#': i + 1,
+      Candidate: r.candidateName,
+      Email: r.candidateEmail,
+      Phone: r.candidatePhone,
+      'Current Title': r.currentTitle,
+      'Current Company': r.currentCompany,
+      'Exp (yrs)': r.expYears ?? '',
+      'Top Skills': r.topSkills,
+      Stage: r.stageLabel,
+      Status: statusOf(r),
+      'Moved On': d(r.stageReachedAt),
+      'Moved By': r.stageMovedBy ?? '',
+      'Added On': d(r.addedOn),
+      'Days in Pipeline': r.pipelineDays,
+      'Stage Aging': r.stageAging,
+      'Submitted At': d(r.submittedAt, 'dd-MMM-yyyy HH:mm'),
+      'Offer Status': r.offerStatus ?? '',
+      'Current CTC': r.currentCtc ?? '',
+      'Expected CTC': r.expectedCtc ?? '',
+      'Negotiated CTC': r.negotiatedCtc ?? '',
+      'Offered CTC': r.offeredCtc ?? '',
+      'Notice (days)': r.noticeDays ?? '',
+      'Last Working Day': d(r.lastWorkingDate),
+      'Joining Date': d(r.joiningDate),
+      'Joining From': r.joiningSourceLabel ?? '',
+      'Month of Joining': r.monthOfJoining ?? '',
+      'Days to Join': r.daysToJoin ?? '',
+      Recruiter: r.recruiterName,
+      'Recruiter Email': r.recruiterEmail,
+      'Req Code': r.reqCode,
+      Requirement: r.reqTitle,
+      'Req Status': r.reqStatus,
+      Openings: r.totalOpenings,
+      Client: r.clientName,
+      'Client SPOC': r.clientSpoc,
+      'Service Line': r.serviceLineName,
+      'Business Unit': r.businessUnitName,
+    }))
+  );
   XLSX.utils.book_append_sheet(wb, ws1, 'Candidates');
 
-  // Sheet 2: By requirement
+  // By requirement
   const byReq: Record<
     string,
     {
       reqCode: string;
       title: string;
       client: string;
-      recruiterSet: Set<string>;
+      recruiters: Set<string>;
       count: number;
       placed: number;
-      rejected: number;
+      dropped: number;
     }
   > = {};
   for (const r of rows) {
-    if (!byReq[r.requirementId]) {
-      byReq[r.requirementId] = {
-        reqCode: r.reqCode,
-        title: r.reqTitle,
-        client: r.clientName,
-        recruiterSet: new Set(),
-        count: 0,
-        placed: 0,
-        rejected: 0,
-      };
-    }
-    const rq = byReq[r.requirementId];
+    const rq = (byReq[r.requirementId] ??= {
+      reqCode: r.reqCode,
+      title: r.reqTitle,
+      client: r.clientName,
+      recruiters: new Set(),
+      count: 0,
+      placed: 0,
+      dropped: 0,
+    });
     rq.count++;
-    rq.recruiterSet.add(r.recruiterId);
+    rq.recruiters.add(r.recruiterId);
     if (r.isTerminal) rq.placed++;
-    if (r.isRejected || r.isWithdrawn) rq.rejected++;
+    if (r.isDropped) rq.dropped++;
   }
-  const ws2 = XLSX.utils.json_to_sheet(
-    Object.values(byReq)
-      .sort((a, b) => b.count - a.count)
-      .map((r, i) => ({
-        '#': i + 1,
-        'Req Code': r.reqCode,
-        Requirement: r.title,
-        Client: r.client,
-        Candidates: r.count,
-        Placed: r.placed,
-        Dropped: r.rejected,
-        Recruiters: r.recruiterSet.size,
-        'Fill %': r.count > 0 ? `${((r.placed / r.count) * 100).toFixed(1)}%` : '0%',
-      }))
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(
+      Object.values(byReq)
+        .sort((a, b) => b.count - a.count)
+        .map((r, i) => ({
+          '#': i + 1,
+          'Req Code': r.reqCode,
+          Requirement: r.title,
+          Client: r.client,
+          Candidates: r.count,
+          Placed: r.placed,
+          Dropped: r.dropped,
+          Recruiters: r.recruiters.size,
+        }))
+    ),
+    'By Requirement'
   );
-  ws2['!cols'] = [
-    { wch: 4 },
-    { wch: 14 },
-    { wch: 34 },
-    { wch: 22 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 8 },
-  ];
-  XLSX.utils.book_append_sheet(wb, ws2, 'By Requirement');
 
-  // Sheet 3: By recruiter
+  // By recruiter
   const byRec: Record<
     string,
-    { name: string; email: string; count: number; placed: number; rejected: number }
+    { name: string; email: string; count: number; placed: number; dropped: number }
   > = {};
   for (const r of rows) {
-    if (!byRec[r.recruiterId]) {
-      byRec[r.recruiterId] = {
-        name: r.recruiterName,
-        email: r.recruiterEmail,
-        count: 0,
-        placed: 0,
-        rejected: 0,
-      };
-    }
-    byRec[r.recruiterId].count++;
-    if (r.isTerminal) byRec[r.recruiterId].placed++;
-    if (r.isRejected || r.isWithdrawn) byRec[r.recruiterId].rejected++;
+    const rc = (byRec[r.recruiterId] ??= {
+      name: r.recruiterName,
+      email: r.recruiterEmail,
+      count: 0,
+      placed: 0,
+      dropped: 0,
+    });
+    rc.count++;
+    if (r.isTerminal) rc.placed++;
+    if (r.isDropped) rc.dropped++;
   }
-  const ws3 = XLSX.utils.json_to_sheet(
-    Object.values(byRec)
-      .sort((a, b) => b.count - a.count)
-      .map((r, i) => ({
-        '#': i + 1,
-        Recruiter: r.name,
-        Email: r.email,
-        Candidates: r.count,
-        Placed: r.placed,
-        Dropped: r.rejected,
-        'Placement %': r.count > 0 ? `${((r.placed / r.count) * 100).toFixed(1)}%` : '0%',
-      }))
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(
+      Object.values(byRec)
+        .sort((a, b) => b.count - a.count)
+        .map((r, i) => ({
+          '#': i + 1,
+          Recruiter: r.name,
+          Email: r.email,
+          Candidates: r.count,
+          Placed: r.placed,
+          Dropped: r.dropped,
+          'Placement %': r.count > 0 ? `${((r.placed / r.count) * 100).toFixed(1)}%` : '0%',
+        }))
+    ),
+    'By Recruiter'
   );
-  ws3['!cols'] = [
-    { wch: 4 },
-    { wch: 24 },
-    { wch: 28 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 12 },
-  ];
-  XLSX.utils.book_append_sheet(wb, ws3, 'By Recruiter');
 
   const safeName = label.replace(/[^a-z0-9]/gi, '_').toLowerCase();
   XLSX.writeFile(wb, `drill_${safeName}_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
@@ -674,7 +590,7 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   const toggleSort = (k: SortKey) => {
-    if (k === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    if (k === sortKey) setSortDir(dir => (dir === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(k);
       setSortDir('asc');
@@ -744,11 +660,9 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
+      <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-5xl flex-col bg-white shadow-2xl">
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 py-4">
           <div>
@@ -829,7 +743,6 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
             </div>
           ) : (
             <table className="w-full border-collapse text-[12px]">
-              {/* ── SINGLE thead — 9 columns matching the 9 <td>s in CandidateRow ── */}
               <thead className="sticky top-0 z-10 bg-slate-50">
                 <tr className="border-b-2 border-slate-200">
                   <ThBtn
@@ -838,7 +751,7 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
                     onToggle={toggleSort}
                     k="candidateName"
                     label="Candidate"
-                    className="px-4 w-64"
+                    className="w-64 px-4"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -854,7 +767,7 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
                     onToggle={toggleSort}
                     k="stageLabel"
                     label="Stage / Status"
-                    className="w-32"
+                    className="w-40"
                   />
                   <ThBtn
                     sortKey={sortKey}
@@ -868,23 +781,23 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
-                    k="lastWorkingDate"
-                    label="Last Working Date"
+                    k="noticeDays"
+                    label="Notice / LWD"
                     className="w-36"
                   />
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
-                    k="expectedJoiningDate"
-                    label="Date of Joining"
+                    k="joiningDate"
+                    label="Joining"
                     className="w-36"
                   />
                   <ThBtn
                     sortKey={sortKey}
                     sortDir={sortDir}
                     onToggle={toggleSort}
-                    k="monthOfJoining"
+                    k="mojKey"
                     label="Month of Joining"
                     className="w-32"
                   />
@@ -915,7 +828,6 @@ export function DrillDrawer({ target, baseQs, onClose }: DrillDrawerProps) {
           )}
         </div>
 
-        {/* Footer */}
         {sorted.length > 0 && (
           <div className="shrink-0 border-t border-slate-100 bg-slate-50 px-6 py-2.5">
             <p className="text-[11px] text-slate-400">
