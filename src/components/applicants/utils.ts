@@ -1,6 +1,10 @@
 // File: utils.ts
 // Path: src/components/applicants/utils.ts
 
+// ── Tabs (frontend view keys; bucket keys like UNASSIGNED / ASSIGNED come from backend) ──
+export const ALL_TAB = 'ALL';
+export const REQUIREMENTS_TAB = 'REQUIREMENTS'; // every requirement in scope
+
 export const toStatusLabel = (key: string) =>
   key.charAt(0) + key.slice(1).toLowerCase().replace(/_/g, ' ');
 

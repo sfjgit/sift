@@ -3,6 +3,7 @@
 
 'use client';
 
+import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -17,20 +18,161 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { formatDate, formatExperience, personName } from '@/components/applicants/utils';
 import type { Applicant } from '@/types/applicant';
 
 const MAX_SKILLS = 3;
 const SKELETON_ROWS = 6;
-const COL_COUNT = 9;
-const HEAD = 'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground';
+
+// one border + padding rule for every header / cell → even grid lines
+const BORDER = 'border-r border-border last:border-r-0';
+const HEAD = cn(
+  BORDER,
+  'h-10 px-3 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'
+);
+const CELL = cn(BORDER, 'px-3 py-2.5 align-middle text-[13px]');
+const NOWRAP = 'whitespace-nowrap';
+
+// visible on the muted header and on rows
+const CHECKBOX = 'border-muted-foreground/60 bg-background';
 
 // existing candidate detail page — keyed by Candidate Service id
 const candidateDetailPath = (candidateServiceId: string) => `/candidates/${candidateServiceId}`;
 
+interface CellContext {
+  onAssign: (applicant: Applicant) => void;
+}
+
+export interface ApplicantColumn {
+  key: string;
+  label: string;
+  locked?: boolean; // always visible, can't be hidden
+  headClassName?: string;
+  cellClassName?: string;
+  stopRowClick?: boolean; // interactive cell — don't open the candidate page
+  render: (a: Applicant, ctx: CellContext) => ReactNode;
+}
+
+// single source of truth — headers, cells, column picker and export all read this
+export const APPLICANT_COLUMNS: ApplicantColumn[] = [
+  {
+    key: 'actions',
+    label: 'Actions',
+    locked: true,
+    headClassName: 'text-center',
+    cellClassName: 'text-center',
+    stopRowClick: true,
+    render: (a, { onAssign }) =>
+      a.pipeline ? (
+        <span className="text-[12px] text-muted-foreground">Assigned</span>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2.5 text-[12px]"
+          onClick={() => onAssign(a)}
+        >
+          <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
+        </Button>
+      ),
+  },
+  {
+    key: 'appliedOn',
+    label: 'Applied on',
+    cellClassName: NOWRAP,
+    render: a => formatDate(a.snapshotAt),
+  },
+  {
+    key: 'name',
+    label: 'Name',
+    locked: true,
+    cellClassName: cn(NOWRAP, 'font-medium'),
+    render: a => a.fullName,
+  },
+  {
+    key: 'email',
+    label: 'Email',
+    cellClassName: NOWRAP,
+    render: a => a.email,
+  },
+  {
+    key: 'phone',
+    label: 'Ph.no',
+    cellClassName: NOWRAP,
+    render: a => a.phone ?? '—',
+  },
+  {
+    key: 'experience',
+    label: 'Experience',
+    cellClassName: NOWRAP,
+    render: a => formatExperience(a.totalExpYears),
+  },
+  {
+    key: 'skills',
+    label: 'Skills',
+    render: a =>
+      a.topSkills.length ? (
+        <div className="flex min-w-40 max-w-55 flex-wrap gap-1">
+          {a.topSkills.slice(0, MAX_SKILLS).map(s => (
+            <Badge key={s} variant="secondary" className="font-normal">
+              {s}
+            </Badge>
+          ))}
+          {a.topSkills.length > MAX_SKILLS && (
+            <Badge
+              variant="outline"
+              className="font-normal"
+              title={a.topSkills.slice(MAX_SKILLS).join(', ')}
+            >
+              +{a.topSkills.length - MAX_SKILLS}
+            </Badge>
+          )}
+        </div>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+  },
+  {
+    key: 'currentCompany',
+    label: 'Current company',
+    cellClassName: NOWRAP,
+    render: a => a.currentCompany ?? '—',
+  },
+  {
+    key: 'designation',
+    label: 'Designation',
+    cellClassName: NOWRAP,
+    render: a => a.currentTitle ?? '—',
+  },
+  {
+    key: 'appliedFor',
+    label: 'Applied for',
+    render: a => (
+      <div className="max-w-60">
+        <p className="truncate font-medium">{a.requirement.title}</p>
+        <p className="truncate text-[12px] text-muted-foreground">{a.requirement.reqCode}</p>
+      </div>
+    ),
+  },
+  {
+    key: 'client',
+    label: 'Client',
+    cellClassName: NOWRAP,
+    render: a => a.requirement.client?.name ?? '—',
+  },
+  {
+    key: 'createdBy',
+    label: 'Created by',
+    cellClassName: NOWRAP,
+    render: a => personName(a.requirement.createdBy),
+  },
+];
+
 interface Props {
   rows: Applicant[];
   isLoading: boolean;
+  hiddenColumns: string[]; // keys from APPLICANT_COLUMNS
   selected: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: (ids: string[], checked: boolean) => void;
@@ -40,6 +182,7 @@ interface Props {
 export function ApplicantsTable({
   rows,
   isLoading,
+  hiddenColumns,
   selected,
   onToggle,
   onToggleAll,
@@ -47,39 +190,41 @@ export function ApplicantsTable({
 }: Props) {
   const router = useRouter();
 
-  const selectableIds = rows.filter(r => !r.pipeline).map(r => r.id);
-  const allChecked = selectableIds.length > 0 && selectableIds.every(id => selected.has(id));
-  const someChecked = selectableIds.some(id => selected.has(id));
+  const columns = APPLICANT_COLUMNS.filter(c => c.locked || !hiddenColumns.includes(c.key));
+  const colCount = columns.length + 1; // + checkbox
+
+  // every row is selectable (export); assign only acts on the unassigned ones
+  const rowIds = rows.map(r => r.id);
+  const allChecked = rowIds.length > 0 && rowIds.every(id => selected.has(id));
+  const someChecked = rowIds.some(id => selected.has(id));
 
   return (
     <Table>
       <TableHeader className="sticky top-0 z-10 bg-muted">
-        <TableRow className="hover:bg-transparent">
-          <TableHead className="w-10">
+        <TableRow className="border-b border-border hover:bg-transparent">
+          <TableHead className={cn(BORDER, 'w-10 px-3')}>
             <Checkbox
+              className={CHECKBOX}
               checked={allChecked ? true : someChecked ? 'indeterminate' : false}
-              disabled={!selectableIds.length}
-              onCheckedChange={c => onToggleAll(selectableIds, c === true)}
-              aria-label="Select all unassigned"
+              disabled={!rowIds.length}
+              onCheckedChange={c => onToggleAll(rowIds, c === true)}
+              aria-label="Select all on this page"
             />
           </TableHead>
-          <TableHead className={`${HEAD} text-`}>Name</TableHead>
-          <TableHead className={`${HEAD} text-`}>Experience</TableHead>
-          <TableHead className={`${HEAD} text-center`}>Skills</TableHead>
-          <TableHead className={`${HEAD} text-`}>Current company</TableHead>
-          <TableHead className={`${HEAD} text-`}>Applied for</TableHead>
-          <TableHead className={`${HEAD} text-center`}>Applied on</TableHead>
-          <TableHead className={`${HEAD} text-center`}>Status</TableHead>
-          <TableHead className={`${HEAD} text-center`}>Actions</TableHead>
+          {columns.map(c => (
+            <TableHead key={c.key} className={cn(HEAD, c.headClassName)}>
+              {c.label}
+            </TableHead>
+          ))}
         </TableRow>
       </TableHeader>
 
       <TableBody>
         {isLoading &&
           Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-            <TableRow key={`sk-${i}`}>
-              {Array.from({ length: COL_COUNT }).map((__, j) => (
-                <TableCell key={j}>
+            <TableRow key={`sk-${i}`} className="border-b border-border">
+              {Array.from({ length: colCount }).map((__, j) => (
+                <TableCell key={j} className={CELL}>
                   <Skeleton className="h-4 w-full" />
                 </TableCell>
               ))}
@@ -89,7 +234,7 @@ export function ApplicantsTable({
         {!isLoading && rows.length === 0 && (
           <TableRow>
             <TableCell
-              colSpan={COL_COUNT}
+              colSpan={colCount}
               className="h-28 text-center text-[13px] text-muted-foreground"
             >
               No applicants match these filters.
@@ -98,130 +243,33 @@ export function ApplicantsTable({
         )}
 
         {!isLoading &&
-          rows.map(a => {
-            const assigned = !!a.pipeline;
-            return (
-              <TableRow
-                key={a.id}
-                className="cursor-pointer"
-                data-state={selected.has(a.id) ? 'selected' : undefined}
-                onClick={() => router.push(candidateDetailPath(a.candidateServiceId))}
-              >
-                <TableCell onClick={e => e.stopPropagation()}>
-                  <Checkbox
-                    checked={selected.has(a.id)}
-                    disabled={assigned}
-                    onCheckedChange={() => onToggle(a.id)}
-                    aria-label={`Select ${a.fullName}`}
-                  />
-                </TableCell>
+          rows.map(a => (
+            <TableRow
+              key={a.id}
+              className="cursor-pointer border-b border-border"
+              data-state={selected.has(a.id) ? 'selected' : undefined}
+              onClick={() => router.push(candidateDetailPath(a.candidateServiceId))}
+            >
+              <TableCell className={cn(BORDER, 'w-10 px-3')} onClick={e => e.stopPropagation()}>
+                <Checkbox
+                  className={CHECKBOX}
+                  checked={selected.has(a.id)}
+                  onCheckedChange={() => onToggle(a.id)}
+                  aria-label={`Select ${a.fullName}`}
+                />
+              </TableCell>
 
-                {/* Name */}
-                <TableCell>
-                  <p className="text-[13px] font-medium">{a.fullName}</p>
-                  <p className="text-[12px] text-muted-foreground">{a.email}</p>
-                  {a.phone && <p className="text-[12px] text-muted-foreground">{a.phone}</p>}
+              {columns.map(c => (
+                <TableCell
+                  key={c.key}
+                  className={cn(CELL, c.cellClassName)}
+                  onClick={c.stopRowClick ? e => e.stopPropagation() : undefined}
+                >
+                  {c.render(a, { onAssign })}
                 </TableCell>
-
-                {/* Experience */}
-                <TableCell className="whitespace-nowrap text-[13px]">
-                  {formatExperience(a.totalExpYears)}
-                </TableCell>
-
-                {/* Skills */}
-                <TableCell>
-                  {a.topSkills.length ? (
-                    <div className="flex max-w-55 flex-wrap gap-1">
-                      {a.topSkills.slice(0, MAX_SKILLS).map(s => (
-                        <Badge key={s} variant="secondary" className="font-normal">
-                          {s}
-                        </Badge>
-                      ))}
-                      {a.topSkills.length > MAX_SKILLS && (
-                        <Badge
-                          variant="outline"
-                          className="font-normal"
-                          title={a.topSkills.slice(MAX_SKILLS).join(', ')}
-                        >
-                          +{a.topSkills.length - MAX_SKILLS}
-                        </Badge>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-[13px] text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-
-                {/* Current company */}
-                <TableCell>
-                  <p className="text-[13px]">{a.currentCompany ?? '—'}</p>
-                  {a.currentTitle && (
-                    <p className="text-[12px] text-muted-foreground">{a.currentTitle}</p>
-                  )}
-                </TableCell>
-
-                {/* Applied for */}
-                <TableCell>
-                  <p className="text-[13px] font-medium">{a.requirement.reqCode}</p>
-                  <p className="max-w-60 truncate text-[12px] text-muted-foreground">
-                    {a.requirement.title}
-                  </p>
-                  <p className="max-w-60 truncate text-[11px] text-muted-foreground">
-                    {a.requirement.client?.name ?? '—'} · by {personName(a.requirement.createdBy)}
-                  </p>
-                </TableCell>
-
-                {/* Applied on */}
-                <TableCell className="whitespace-nowrap text-[13px]">
-                  {formatDate(a.snapshotAt, true)}
-                </TableCell>
-
-                {/* Status */}
-                <TableCell>
-                  {assigned ? (
-                    <>
-                      <Badge variant="secondary">{a.pipeline!.currentStage.label}</Badge>
-                      <p className="mt-1 text-[12px] text-muted-foreground">
-                        {personName(a.pipeline!.recruiter)}
-                      </p>
-                    </>
-                  ) : (
-                    <Badge variant="outline">Unassigned</Badge>
-                  )}
-                </TableCell>
-
-                {/* Actions */}
-                <TableCell onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center justify-end gap-1.5">
-                    {!assigned && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-[12px]"
-                        onClick={() => onAssign(a)}
-                      >
-                        <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Assign
-                      </Button>
-                    )}
-                    {/* {a.resumeUrl && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        title="View resume"
-                        aria-label="View resume"
-                        asChild
-                      >
-                        <a href={a.resumeUrl} target="_blank" rel="noopener noreferrer">
-                          <FileText className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    )} */}
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
+              ))}
+            </TableRow>
+          ))}
       </TableBody>
     </Table>
   );
