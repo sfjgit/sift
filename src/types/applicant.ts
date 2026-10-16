@@ -6,6 +6,7 @@ export interface UserLite {
   firstName: string;
   lastName: string;
 }
+
 export interface RequirementAssignmentLite {
   id: string;
   depth: number;
@@ -34,7 +35,7 @@ export interface Applicant {
     reqCode: string;
     title: string;
     status: string;
-    client: { name: string } | null;
+    client: { id: string; name: string } | null;
     createdBy: UserLite | null;
     assignments: RequirementAssignmentLite[];
   };
@@ -47,7 +48,7 @@ export interface Applicant {
 }
 
 export interface ApplicantFilters {
-  requirementId?: string;
+  requirementIds?: string[]; // multi-select — empty / undefined = all
   status?: string;
   search?: string;
   from?: string;
@@ -62,12 +63,25 @@ export interface ApplicantRequirementOption {
   title: string;
   status: string;
   createdAt: string;
-  client: { name: string } | null;
+  client: { id: string; name: string } | null;
   createdBy: UserLite | null;
   assignments: RequirementAssignmentLite[];
-
   counts: Record<string, number>; // per bucket (UNASSIGNED / ASSIGNED)
   count: number; // total applicants, 0 when none
+}
+
+export interface ApplicantClientBreakdown {
+  id: string;
+  name: string;
+  applicantCount: number;
+  requirements: {
+    id: string;
+    reqCode: string;
+    title: string;
+    status: string;
+    count: number;
+    counts: Record<string, number>;
+  }[];
 }
 
 export interface ApplicantSummary {
@@ -75,6 +89,8 @@ export interface ApplicantSummary {
   counts: Record<string, number>;
   totalRequirements: number;
   requirementsWithApplicants: number;
+  clientsWithApplicants: number;
+  clients: ApplicantClientBreakdown[];
   trend: { date: string; count: number }[];
   topRequirements: ApplicantRequirementOption[];
 }
