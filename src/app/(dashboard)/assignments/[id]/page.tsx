@@ -518,8 +518,10 @@ const needsInterviewSchedule = (canonical: string | null | undefined) =>
 // A candidate already has everything Submitted-to-Client needs when both the
 // notice period and the month of joining have been saved once via the
 // Joining Details tab. Once true, Move Stage no longer needs to redirect.
+// const hasJoiningInfo = (pipeline: PipelineCandidate) =>
+//   !!pipeline.noticePeriod && !!pipeline.monthOfJoining;
 const hasJoiningInfo = (pipeline: PipelineCandidate) =>
-  !!pipeline.noticePeriod && !!pipeline.monthOfJoining;
+  !!pipeline.noticePeriod || !!pipeline.lastWorkingDate;
 
 // Service lines where notice period / month of joining is NOT mandatory
 const NOTICE_PERIOD_EXEMPT_SERVICE_LINE_IDS = [
@@ -1515,7 +1517,7 @@ function MoveStageDialog({
     mutationFn: async () => {
       if (needsJoiningRedirect) {
         throw new Error(
-          'Notice period & month of joining are required — enter them in Joining Details'
+          'Notice period or last working day is required — enter it in Joining Details'
         );
       }
       const body: any = { stageId, note: note.trim() || undefined };
@@ -1525,6 +1527,7 @@ function MoveStageDialog({
         // it's already saved from a previous Joining Details visit) has to
         // resend it here.
         body.noticePeriod = pipeline.noticePeriod ?? undefined;
+        body.lastWorkingDate = pipeline.lastWorkingDate ?? undefined;
       }
       if (showInterview) {
         body.interview = {
@@ -1705,11 +1708,11 @@ function MoveStageDialog({
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-xs font-bold text-amber-800">
-                  Notice period & month of joining are required
+                  Notice period or last working day is required
                 </p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  These are entered once, in the candidate's Joining Details. Save them there and
-                  this candidate will move to Submitted to Client automatically.
+                  Enter either one in the candidate&apos;s Joining Details and this candidate will
+                  move to Submitted to Client automatically.
                 </p>
                 <Button
                   type="button"
@@ -2154,6 +2157,342 @@ function OfferCtcTab({ pipeline, axios, onDone, onClose }: any) {
   );
 }
 
+// function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
+//   const MONTH_NAMES = [
+//     'January',
+//     'February',
+//     'March',
+//     'April',
+//     'May',
+//     'June',
+//     'July',
+//     'August',
+//     'September',
+//     'October',
+//     'November',
+//     'December',
+//   ];
+
+//   // Pulls a leading number out of whatever's stored — handles both the new
+//   // plain-numeric format and legacy free-text values like "30 days".
+//   const extractDays = (val: string | null | undefined): string => {
+//     if (!val) return '';
+//     const match = val.toString().match(/^\d+/);
+//     return match ? match[0] : '';
+//   };
+
+//   // Strips any trailing year off old saved values like "November 2026" so it
+//   // matches one of the plain month-name dropdown options. Falls back to ''
+//   // if nothing recognizable is found.
+//   const extractMonthName = (val: string | null | undefined): string => {
+//     if (!val) return '';
+//     const found = MONTH_NAMES.find(m => val.toString().toLowerCase().startsWith(m.toLowerCase()));
+//     return found ?? '';
+//   };
+
+//   const NOTICE_PRESETS = [0, 30, 60, 90];
+
+//   const [noticePeriodDays, setNoticePeriodDays] = useState(extractDays(pipeline.noticePeriod));
+//   const [isCustomNotice, setIsCustomNotice] = useState(
+//     extractDays(pipeline.noticePeriod) !== '' &&
+//       !NOTICE_PRESETS.includes(parseInt(extractDays(pipeline.noticePeriod), 10))
+//   );
+//   const [lastWorkingDate, setLastWorkingDate] = useState(
+//     pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : ''
+//   );
+//   const [expectedJoiningDate, setExpectedJoiningDate] = useState(
+//     pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+//   );
+//   const [actualJoiningDate, setActualJoiningDate] = useState(
+//     pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : ''
+//   );
+//   const [monthOfJoining, setMonthOfJoining] = useState(extractMonthName(pipeline.monthOfJoining));
+
+//   // Tracks whether the NEXT noticePeriodDays change came from a prop-resync
+//   // (real DB data) vs an actual user click/edit — only user edits should
+//   // trigger the auto-calc effect below.
+//   const isFirstRender = useRef(true);
+
+//   // Re-sync all local state whenever the incoming pipeline data actually
+//   // changes in the DB — e.g. notice period was updated from somewhere else
+//   // in the app. Without this, the tab keeps showing whatever it first loaded.
+//   useEffect(() => {
+//     setNoticePeriodDays(extractDays(pipeline.noticePeriod));
+//     setIsCustomNotice(
+//       extractDays(pipeline.noticePeriod) !== '' &&
+//         !NOTICE_PRESETS.includes(parseInt(extractDays(pipeline.noticePeriod), 10))
+//     );
+//     setLastWorkingDate(pipeline.lastWorkingDate ? pipeline.lastWorkingDate.slice(0, 10) : '');
+//     setExpectedJoiningDate(
+//       pipeline.expectedJoiningDate ? pipeline.expectedJoiningDate.slice(0, 10) : ''
+//     );
+//     setActualJoiningDate(pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : '');
+//     setMonthOfJoining(extractMonthName(pipeline.monthOfJoining));
+//     // Block the auto-calc effect from firing because of this sync — it should
+//     // only fire when the user actually clicks a preset or types a value.
+//     isFirstRender.current = true;
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [
+//     pipeline.id,
+//     pipeline.noticePeriod,
+//     pipeline.lastWorkingDate,
+//     pipeline.expectedJoiningDate,
+//     pipeline.actualJoiningDate,
+//     pipeline.monthOfJoining,
+//   ]);
+
+//   // Auto-calc Last Working Date + Expected Joining Date whenever the user
+//   // actually changes the notice period. Dates remain manually editable after
+//   // — this just sets the default. NOTE: this is intentionally NOT tied to
+//   // expectedJoiningDate — picking a joining date never recalculates anything.
+//   useEffect(() => {
+//     if (isFirstRender.current) {
+//       isFirstRender.current = false;
+//       return;
+//     }
+//     const n = parseInt(noticePeriodDays, 10);
+//     if (!noticePeriodDays || Number.isNaN(n) || n < 0) return;
+//     //const calculated = new Date();
+//     //calculated.setDate(calculated.getDate() + n);
+//     //const iso = calculated.toISOString().slice(0, 10);
+//     const iso = format(addDays(new Date(), n), 'yyyy-MM-dd');
+//     setLastWorkingDate(iso);
+//     setExpectedJoiningDate(iso);
+//   }, [noticePeriodDays]);
+
+//   // "Days to Join" is always derived live from expectedJoiningDate vs today —
+//   // no background job needed to keep this fresh. (A daily cron to re-derive
+//   // this after a recruiter changes the notice period later is a possible
+//   // follow-up but is intentionally NOT implemented here.)
+//   const previewRemainingDays = useMemo(() => {
+//     if (actualJoiningDate) return 0;
+//     if (expectedJoiningDate) {
+//       //return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
+//       return differenceInCalendarDays(parseISO(expectedJoiningDate), new Date());
+//     }
+//     return null;
+//   }, [actualJoiningDate, expectedJoiningDate]);
+
+//   const isNoticePeriodValid =
+//     noticePeriodDays.toString().trim() !== '' && !Number.isNaN(parseInt(noticePeriodDays, 10));
+//   const isMonthOfJoiningValid = monthOfJoining.trim() !== '';
+
+//   const mut = useMutation({
+//     mutationFn: async () => {
+//       if (!isNoticePeriodValid) {
+//         throw new Error('Notice period is required');
+//       }
+//       if (!isMonthOfJoiningValid) {
+//         throw new Error('Month of joining is required');
+//       }
+//       await axios.patch(`/pipeline/${pipeline.id}/details`, {
+//         noticePeriod: String(noticePeriodDays),
+//         lastWorkingDate: lastWorkingDate || null,
+//         expectedJoiningDate: expectedJoiningDate || null,
+//         actualJoiningDate: actualJoiningDate || null,
+//         monthOfJoining: monthOfJoining || null,
+//       });
+//       // If this tab was opened from Move Stage (redirected here because
+//       // Submitted to Client needs these fields first), complete the move
+//       // right after saving — one click does both. The backend validates
+//       // noticePeriod on the stage-move request itself, so it has to be
+//       // resent here even though /details just saved it a moment ago.
+//       if (pendingStageId) {
+//         await axios.patch(`/pipeline/${pipeline.id}/stage`, {
+//           stageId: pendingStageId,
+//           noticePeriod: String(noticePeriodDays),
+//         });
+//       }
+//     },
+//     onSuccess: () => {
+//       toast.success(
+//         pendingStageId
+//           ? 'Joining details saved · moved to Submitted to Client'
+//           : 'Joining details saved'
+//       );
+//       onDone();
+//       onClose();
+//     },
+//     onError: (e: any) => toast.error(e?.message ?? e?.response?.data?.message ?? 'Failed to save'),
+//   });
+
+//   return (
+//     <div className="space-y-4">
+//       {pendingStageId && (
+//         <div className="flex items-start gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+//           <CalendarCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+//           <p className="text-xs text-indigo-800">
+//             Saving these details will also move this candidate to{' '}
+//             <span className="font-bold">Submitted to Client</span>.
+//           </p>
+//         </div>
+//       )}
+
+//       <div>
+//         <Label className="text-xs font-semibold text-slate-600 mb-2 block">
+//           Notice Period (days) <span className="text-rose-500">*</span>
+//         </Label>
+//         <div className="flex flex-wrap gap-1.5">
+//           {NOTICE_PRESETS.map(preset => {
+//             const selected = !isCustomNotice && noticePeriodDays === String(preset);
+//             return (
+//               <button
+//                 key={preset}
+//                 type="button"
+//                 onClick={() => {
+//                   setIsCustomNotice(false);
+//                   setNoticePeriodDays(String(preset));
+//                 }}
+//                 className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+//                   selected
+//                     ? 'bg-primary/10 text-primary border-primary'
+//                     : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+//                 }`}
+//               >
+//                 {preset === 0 ? 'Immediate Joiner' : `${preset} days`}
+//               </button>
+//             );
+//           })}
+//           <button
+//             type="button"
+//             onClick={() => {
+//               setIsCustomNotice(true);
+//               setNoticePeriodDays('');
+//             }}
+//             className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+//               isCustomNotice
+//                 ? 'bg-primary/10 text-primary border-primary'
+//                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+//             }`}
+//           >
+//             Custom
+//           </button>
+//         </div>
+
+//         {isCustomNotice && (
+//           <Input
+//             type="number"
+//             min={0}
+//             value={noticePeriodDays}
+//             onChange={e => setNoticePeriodDays(e.target.value)}
+//             placeholder="Enter number of days, e.g. 45"
+//             className={`h-9 text-sm w-40 mt-2 ${!isNoticePeriodValid ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
+//           />
+//         )}
+
+//         {!isNoticePeriodValid && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+//         <p className="text-[10px] text-slate-400 mt-1">
+//           Auto-fills Last Working Day and Expected Joining Date as today + this many days. You can
+//           still edit the dates manually after.
+//         </p>
+//       </div>
+
+//       <div className="grid grid-cols-2 gap-3">
+//         <div>
+//           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+//             Last Working Day (current company)
+//           </Label>
+//           <Input
+//             type="date"
+//             value={lastWorkingDate}
+//             onChange={e => setLastWorkingDate(e.target.value)}
+//             className="h-9 text-sm"
+//           />
+//         </div>
+
+//         <div>
+//           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+//             Expected Joining Date
+//           </Label>
+//           <Input
+//             type="date"
+//             value={expectedJoiningDate}
+//             onChange={e => setExpectedJoiningDate(e.target.value)}
+//             className="h-9 text-sm"
+//           />
+//         </div>
+
+//         <div>
+//           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+//             Month of Joining <span className="text-rose-500">*</span>
+//           </Label>
+//           <Select value={monthOfJoining} onValueChange={setMonthOfJoining}>
+//             <SelectTrigger
+//               className={`h-9 text-sm ${!isMonthOfJoiningValid ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
+//             >
+//               <SelectValue placeholder="Select month" />
+//             </SelectTrigger>
+//             <SelectContent>
+//               {MONTH_NAMES.map(m => (
+//                 <SelectItem key={m} value={m} className="text-sm">
+//                   {m}
+//                 </SelectItem>
+//               ))}
+//             </SelectContent>
+//           </Select>
+//           {!isMonthOfJoiningValid && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+//         </div>
+
+//         <div>
+//           <Label className="text-xs font-semibold text-slate-600 mb-1.5 block">
+//             Actual Joining Date{' '}
+//             <span className="font-normal text-slate-400">(fill once candidate joins)</span>
+//           </Label>
+//           <Input
+//             type="date"
+//             value={actualJoiningDate}
+//             onChange={e => setActualJoiningDate(e.target.value)}
+//             className="h-9 text-sm"
+//           />
+//         </div>
+//       </div>
+
+//       <div className="grid grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+//         <div>
+//           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+//             Days to Join
+//           </p>
+//           <p
+//             className={`text-sm font-semibold mt-0.5 ${
+//               previewRemainingDays != null && previewRemainingDays < 0
+//                 ? 'text-rose-600'
+//                 : 'text-slate-700'
+//             }`}
+//           >
+//             {previewRemainingDays != null
+//               ? actualJoiningDate
+//                 ? 'Joined ✓'
+//                 : previewRemainingDays < 0
+//                   ? `${Math.abs(previewRemainingDays)}d overdue`
+//                   : `${previewRemainingDays}d`
+//               : '—'}
+//           </p>
+//         </div>
+//         <div>
+//           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+//             Month of Joining
+//           </p>
+//           <p className="text-sm font-semibold text-slate-700 mt-0.5">{monthOfJoining || '—'}</p>
+//         </div>
+//       </div>
+
+//       <div className="flex justify-end">
+//         <Button
+//           disabled={mut.isPending || !isNoticePeriodValid || !isMonthOfJoiningValid}
+//           onClick={() => mut.mutate()}
+//           className="gap-2"
+//         >
+//           {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+//           {pendingStageId ? 'Save & Move to Submitted to Client' : 'Save Joining Details'}
+//         </Button>
+//       </div>
+//     </div>
+//   );
+// }
+
+// File: page.tsx
+// Path: src/app/(dashboard)/assignments/[id]/page.tsx
+
 function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
   const MONTH_NAMES = [
     'January',
@@ -2170,17 +2509,15 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
     'December',
   ];
 
-  // Pulls a leading number out of whatever's stored — handles both the new
-  // plain-numeric format and legacy free-text values like "30 days".
+  // Redirect from Move Stage → only Notice Period / LWD, exactly one required.
+  const isQuickMode = !!pendingStageId;
+
   const extractDays = (val: string | null | undefined): string => {
     if (!val) return '';
     const match = val.toString().match(/^\d+/);
     return match ? match[0] : '';
   };
 
-  // Strips any trailing year off old saved values like "November 2026" so it
-  // matches one of the plain month-name dropdown options. Falls back to ''
-  // if nothing recognizable is found.
   const extractMonthName = (val: string | null | undefined): string => {
     if (!val) return '';
     const found = MONTH_NAMES.find(m => val.toString().toLowerCase().startsWith(m.toLowerCase()));
@@ -2205,14 +2542,8 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
   );
   const [monthOfJoining, setMonthOfJoining] = useState(extractMonthName(pipeline.monthOfJoining));
 
-  // Tracks whether the NEXT noticePeriodDays change came from a prop-resync
-  // (real DB data) vs an actual user click/edit — only user edits should
-  // trigger the auto-calc effect below.
   const isFirstRender = useRef(true);
 
-  // Re-sync all local state whenever the incoming pipeline data actually
-  // changes in the DB — e.g. notice period was updated from somewhere else
-  // in the app. Without this, the tab keeps showing whatever it first loaded.
   useEffect(() => {
     setNoticePeriodDays(extractDays(pipeline.noticePeriod));
     setIsCustomNotice(
@@ -2225,8 +2556,6 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
     );
     setActualJoiningDate(pipeline.actualJoiningDate ? pipeline.actualJoiningDate.slice(0, 10) : '');
     setMonthOfJoining(extractMonthName(pipeline.monthOfJoining));
-    // Block the auto-calc effect from firing because of this sync — it should
-    // only fire when the user actually clicks a preset or types a value.
     isFirstRender.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2238,33 +2567,24 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
     pipeline.monthOfJoining,
   ]);
 
-  // Auto-calc Last Working Date + Expected Joining Date whenever the user
-  // actually changes the notice period. Dates remain manually editable after
-  // — this just sets the default. NOTE: this is intentionally NOT tied to
-  // expectedJoiningDate — picking a joining date never recalculates anything.
+  // Auto-calc LWD + Expected Joining from notice period — full mode only.
+  // In quick mode it would auto-fill LWD and immediately trip the "both" rule.
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
+    if (isQuickMode) return;
     const n = parseInt(noticePeriodDays, 10);
     if (!noticePeriodDays || Number.isNaN(n) || n < 0) return;
-    //const calculated = new Date();
-    //calculated.setDate(calculated.getDate() + n);
-    //const iso = calculated.toISOString().slice(0, 10);
     const iso = format(addDays(new Date(), n), 'yyyy-MM-dd');
     setLastWorkingDate(iso);
     setExpectedJoiningDate(iso);
-  }, [noticePeriodDays]);
+  }, [noticePeriodDays, isQuickMode]);
 
-  // "Days to Join" is always derived live from expectedJoiningDate vs today —
-  // no background job needed to keep this fresh. (A daily cron to re-derive
-  // this after a recruiter changes the notice period later is a possible
-  // follow-up but is intentionally NOT implemented here.)
   const previewRemainingDays = useMemo(() => {
     if (actualJoiningDate) return 0;
     if (expectedJoiningDate) {
-      //return Math.floor((new Date(expectedJoiningDate).getTime() - Date.now()) / 86_400_000);
       return differenceInCalendarDays(parseISO(expectedJoiningDate), new Date());
     }
     return null;
@@ -2274,14 +2594,35 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
     noticePeriodDays.toString().trim() !== '' && !Number.isNaN(parseInt(noticePeriodDays, 10));
   const isMonthOfJoiningValid = monthOfJoining.trim() !== '';
 
+  // ── Quick-mode rule: exactly one of Notice Period / LWD ──
+  const hasNotice = isNoticePeriodValid;
+  const hasLwd = lastWorkingDate.trim() !== '';
+  const bothSelected = hasNotice && hasLwd;
+  const noneSelected = !hasNotice && !hasLwd;
+  const isQuickValid = hasNotice !== hasLwd;
+
   const mut = useMutation({
     mutationFn: async () => {
-      if (!isNoticePeriodValid) {
-        throw new Error('Notice period is required');
+      if (isQuickMode) {
+        if (bothSelected) {
+          throw new Error('Select either Notice Period or Last Working Day — not both');
+        }
+        if (noneSelected) {
+          throw new Error('Notice Period or Last Working Day is required');
+        }
+        await axios.patch(`/pipeline/${pipeline.id}/details`, {
+          noticePeriod: hasNotice ? String(noticePeriodDays) : null,
+          lastWorkingDate: hasLwd ? lastWorkingDate : null,
+        });
+        await axios.patch(`/pipeline/${pipeline.id}/stage`, {
+          stageId: pendingStageId,
+          ...(hasNotice ? { noticePeriod: String(noticePeriodDays) } : { lastWorkingDate }),
+        });
+        return;
       }
-      if (!isMonthOfJoiningValid) {
-        throw new Error('Month of joining is required');
-      }
+
+      if (!isNoticePeriodValid) throw new Error('Notice period is required');
+      if (!isMonthOfJoiningValid) throw new Error('Month of joining is required');
       await axios.patch(`/pipeline/${pipeline.id}/details`, {
         noticePeriod: String(noticePeriodDays),
         lastWorkingDate: lastWorkingDate || null,
@@ -2289,100 +2630,169 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
         actualJoiningDate: actualJoiningDate || null,
         monthOfJoining: monthOfJoining || null,
       });
-      // If this tab was opened from Move Stage (redirected here because
-      // Submitted to Client needs these fields first), complete the move
-      // right after saving — one click does both. The backend validates
-      // noticePeriod on the stage-move request itself, so it has to be
-      // resent here even though /details just saved it a moment ago.
-      if (pendingStageId) {
-        await axios.patch(`/pipeline/${pipeline.id}/stage`, {
-          stageId: pendingStageId,
-          noticePeriod: String(noticePeriodDays),
-        });
-      }
     },
     onSuccess: () => {
       toast.success(
-        pendingStageId
+        isQuickMode
           ? 'Joining details saved · moved to Submitted to Client'
           : 'Joining details saved'
       );
       onDone();
       onClose();
     },
-    onError: (e: any) => toast.error(e?.message ?? e?.response?.data?.message ?? 'Failed to save'),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? e?.message ?? 'Failed to save'),
   });
 
-  return (
-    <div className="space-y-4">
-      {pendingStageId && (
-        <div className="flex items-start gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
-          <CalendarCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-indigo-800">
-            Saving these details will also move this candidate to{' '}
-            <span className="font-bold">Submitted to Client</span>.
-          </p>
-        </div>
+  // ── Shared notice-period chips (click a selected chip again to clear it) ──
+  const noticeField = (
+    <div>
+      <Label className="text-xs font-semibold text-slate-600 mb-2 block">
+        Notice Period (days) {!isQuickMode && <span className="text-rose-500">*</span>}
+      </Label>
+      <div className="flex flex-wrap gap-1.5">
+        {NOTICE_PRESETS.map(preset => {
+          const selected = !isCustomNotice && noticePeriodDays === String(preset);
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => {
+                if (selected) {
+                  setNoticePeriodDays('');
+                  return;
+                }
+                setIsCustomNotice(false);
+                setNoticePeriodDays(String(preset));
+              }}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                selected
+                  ? 'bg-primary/10 text-primary border-primary'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              {preset === 0 ? 'Immediate Joiner' : `${preset} days`}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => {
+            setIsCustomNotice(v => !v);
+            setNoticePeriodDays('');
+          }}
+          className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+            isCustomNotice
+              ? 'bg-primary/10 text-primary border-primary'
+              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+          }`}
+        >
+          Custom
+        </button>
+      </div>
+
+      {isCustomNotice && (
+        <Input
+          type="number"
+          min={0}
+          value={noticePeriodDays}
+          onChange={e => setNoticePeriodDays(e.target.value)}
+          placeholder="Enter number of days, e.g. 45"
+          className={`h-9 text-sm w-40 mt-2 ${
+            (!isQuickMode && !isNoticePeriodValid) || (isQuickMode && bothSelected)
+              ? 'border-rose-300 focus-visible:ring-rose-400'
+              : ''
+          }`}
+        />
       )}
 
-      <div>
-        <Label className="text-xs font-semibold text-slate-600 mb-2 block">
-          Notice Period (days) <span className="text-rose-500">*</span>
-        </Label>
-        <div className="flex flex-wrap gap-1.5">
-          {NOTICE_PRESETS.map(preset => {
-            const selected = !isCustomNotice && noticePeriodDays === String(preset);
-            return (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => {
-                  setIsCustomNotice(false);
-                  setNoticePeriodDays(String(preset));
-                }}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-                  selected
-                    ? 'bg-primary/10 text-primary border-primary'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                {preset === 0 ? 'Immediate Joiner' : `${preset} days`}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => {
-              setIsCustomNotice(true);
-              setNoticePeriodDays('');
-            }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
-              isCustomNotice
-                ? 'bg-primary/10 text-primary border-primary'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            Custom
-          </button>
-        </div>
-
-        {isCustomNotice && (
-          <Input
-            type="number"
-            min={0}
-            value={noticePeriodDays}
-            onChange={e => setNoticePeriodDays(e.target.value)}
-            placeholder="Enter number of days, e.g. 45"
-            className={`h-9 text-sm w-40 mt-2 ${!isNoticePeriodValid ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
-          />
-        )}
-
-        {!isNoticePeriodValid && <p className="text-[10px] text-rose-500 mt-1">Required</p>}
+      {!isQuickMode && !isNoticePeriodValid && (
+        <p className="text-[10px] text-rose-500 mt-1">Required</p>
+      )}
+      {!isQuickMode && (
         <p className="text-[10px] text-slate-400 mt-1">
           Auto-fills Last Working Day and Expected Joining Date as today + this many days. You can
           still edit the dates manually after.
         </p>
+      )}
+    </div>
+  );
+
+  // ─────────────────────────── QUICK MODE ───────────────────────────
+  if (isQuickMode) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-start gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2.5">
+          <CalendarCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-indigo-800">
+            Enter <span className="font-bold">either</span> Notice Period{' '}
+            <span className="font-bold">or</span> Last Working Day. Saving will also move this
+            candidate to <span className="font-bold">Submitted to Client</span>.
+          </p>
+        </div>
+
+        {noticeField}
+
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Or</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <Label className="text-xs font-semibold text-slate-600">
+              Last Working Day (current company)
+            </Label>
+            {hasLwd && (
+              <button
+                type="button"
+                onClick={() => setLastWorkingDate('')}
+                className="text-[11px] font-semibold text-slate-400 hover:text-rose-500 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <Input
+            type="date"
+            value={lastWorkingDate}
+            onChange={e => setLastWorkingDate(e.target.value)}
+            className={`h-9 text-sm w-56 ${bothSelected ? 'border-rose-300 focus-visible:ring-rose-400' : ''}`}
+          />
+        </div>
+
+        {bothSelected && (
+          <div className="flex items-start gap-2 px-3 py-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              Select either Notice Period or Last Working Day — not both. Clear one to continue.
+            </span>
+          </div>
+        )}
+        {noneSelected && (
+          <p className="text-[10px] text-rose-500">
+            Required — enter Notice Period or Last Working Day
+          </p>
+        )}
+
+        <div className="flex justify-end">
+          <Button
+            disabled={mut.isPending || !isQuickValid}
+            onClick={() => mut.mutate()}
+            className="gap-2"
+          >
+            {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Save & Move to Submitted to Client
+          </Button>
+        </div>
       </div>
+    );
+  }
+
+  // ─────────────────────────── FULL MODE ───────────────────────────
+  return (
+    <div className="space-y-4">
+      {noticeField}
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -2480,7 +2890,7 @@ function JoiningTab({ pipeline, axios, onDone, onClose, pendingStageId }: any) {
           className="gap-2"
         >
           {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-          {pendingStageId ? 'Save & Move to Submitted to Client' : 'Save Joining Details'}
+          Save Joining Details
         </Button>
       </div>
     </div>
