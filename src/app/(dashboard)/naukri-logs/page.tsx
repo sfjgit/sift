@@ -43,6 +43,18 @@ import * as XLSX from 'xlsx';
 // TYPES  (mirror the candidate-service Naukri tables)
 // ─────────────────────────────────────────────────────────────────────────────
 
+interface SummaryRow {
+  recruiterEmail: string;
+  recruiterName: string | null;
+  bu: string | null;
+  naukri_consumed: number;
+  ats_captured: number;
+  gap: number;
+  days_not_filled: number;
+  days_leaking: number;
+  recruiter_id: string | null;
+  joined_count: number | null; // null = core service unreachable
+}
 interface DailyRow {
   id: string;
   reportDate: string;
@@ -451,9 +463,23 @@ export default function NaukriLogsPage() {
     };
   }, [filteredDaily]);
 
+  // const rangeAnalytics = useMemo(() => {
+  //   const naukri = filteredSummary.reduce((s, r) => s + Number(r.naukri_consumed), 0);
+  //   const ats = filteredSummary.reduce((s, r) => s + Number(r.ats_captured), 0);
+
+  //   return {
+  //     naukri,
+  //     ats,
+  //     gap: naukri - ats,
+  //     notFilled: filteredSummary.reduce((s, r) => s + Number(r.days_not_filled), 0),
+  //     leaking: filteredSummary.reduce((s, r) => s + Number(r.days_leaking), 0),
+  //   };
+  // }, [filteredSummary]);
+
   const rangeAnalytics = useMemo(() => {
     const naukri = filteredSummary.reduce((s, r) => s + Number(r.naukri_consumed), 0);
     const ats = filteredSummary.reduce((s, r) => s + Number(r.ats_captured), 0);
+    const joinedAvailable = filteredSummary.some(r => r.joined_count != null);
 
     return {
       naukri,
@@ -461,6 +487,9 @@ export default function NaukriLogsPage() {
       gap: naukri - ats,
       notFilled: filteredSummary.reduce((s, r) => s + Number(r.days_not_filled), 0),
       leaking: filteredSummary.reduce((s, r) => s + Number(r.days_leaking), 0),
+      joined: joinedAvailable
+        ? filteredSummary.reduce((s, r) => s + Number(r.joined_count ?? 0), 0)
+        : null,
     };
   }, [filteredSummary]);
 
@@ -520,6 +549,7 @@ export default function NaukriLogsPage() {
         { Metric: 'Total Gap', Value: rangeAnalytics.gap },
         { Metric: 'Not-filled Days', Value: rangeAnalytics.notFilled },
         { Metric: 'Leaking Days', Value: rangeAnalytics.leaking },
+        { Metric: 'Joined', Value: rangeAnalytics.joined ?? '' },
       ];
 
       const summaryWs = XLSX.utils.json_to_sheet(summaryRows);
@@ -535,6 +565,7 @@ export default function NaukriLogsPage() {
         Gap: r.gap,
         'Days Not Filled': r.days_not_filled,
         'Days Leaking': r.days_leaking,
+        Joined: r.joined_count ?? '',
       }));
 
       const ws = XLSX.utils.json_to_sheet(rows);
@@ -1091,6 +1122,7 @@ export default function NaukriLogsPage() {
                       <th className="text-right font-semibold px-3 py-2.5">Naukri</th>
                       <th className="text-right font-semibold px-3 py-2.5">ATS</th>
                       <th className="text-right font-semibold px-3 py-2.5">Gap</th>
+                      <th className="text-right font-semibold px-3 py-2.5">Joined</th>
                       <th className="text-right font-semibold px-3 py-2.5">Not filled</th>
                       <th className="text-right font-semibold px-5 py-2.5">Leaking</th>
                     </tr>
@@ -1126,7 +1158,9 @@ export default function NaukriLogsPage() {
                         >
                           {Number(r.gap) > 0 ? `+${r.gap}` : r.gap}
                         </td>
-
+                        <td className="px-3 py-3 text-right tabular-nums font-bold text-emerald-600">
+                          {r.joined_count ?? <span className="text-slate-300">—</span>}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums text-amber-600 font-semibold">
                           {r.days_not_filled}
                         </td>

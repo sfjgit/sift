@@ -357,7 +357,7 @@ const avatarColor = (s: string) => AVATAR_COLORS[s.charCodeAt(0) % AVATAR_COLORS
 
 function fmtCurrency(n: number | null | undefined): string {
   if (n == null) return '—';
-  return `₹${n.toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
 function formulaLine(req: Requirement): string | null {
