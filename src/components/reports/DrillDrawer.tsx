@@ -130,11 +130,10 @@ function fmtDateTime(d: string | null | undefined): string {
   }
 }
 
+/** Full rupees with Indian grouping — ₹1,00,000 (no K / L / Cr) */
 function fmtCtc(n: number | null | undefined): string {
   if (n == null) return '—';
-  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
-  return `₹${n.toLocaleString('en-IN')}`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
 /** Stage-based status — the only source of truth */

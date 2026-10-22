@@ -421,11 +421,9 @@ function downloadBlob(data: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/** Full rupees with Indian grouping — ₹1,00,000 (no K / L / Cr) */
 function fmtCurrency(n: number): string {
-  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
-  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
-  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  return `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
 }
 
 /** Appends export options (stage picks etc.) onto a filter query string */

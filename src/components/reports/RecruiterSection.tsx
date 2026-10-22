@@ -110,11 +110,9 @@ function bucketOfStage(s: any): ActivityBucket {
   return 'active';
 }
 
+/** Full rupees with Indian grouping — ₹1,00,000 (no K / L / Cr) */
 export function fmtMoney(n: number | null | undefined): string {
   if (!n) return '—';
-  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
-  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
-  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
   return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
