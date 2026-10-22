@@ -55,8 +55,7 @@ import { useAuth } from '@/context/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
 import { CandidatesSection } from '@/components/reports/CandidatesSection';
 import type {
-  RecruiterResponse,
-  RecruiterSaleSummaryResponse,
+  RecruiterActivityResponse,
   RequirementGroup,
   RequirementReportResponse,
   SaleBucket,
@@ -70,7 +69,11 @@ import { TeamTreePicker } from '@/components/reports/TeamTreePicker';
 import type { TeamSelection } from '@/components/reports/TeamTreePicker';
 import { Empty, Skel } from '@/components/reports/reportUi';
 import { RequirementTable, SortKey } from '@/components/reports/RequirementTable';
-import { RecruiterSection } from '@/components/reports/RecruiterSection';
+import {
+  RecruiterSection,
+  ActivityDrillDrawer,
+  type ActivityDrillTarget,
+} from '@/components/reports/RecruiterSection';
 import { useTour } from '@/features/tour/useTour';
 import { TourButton } from '@/features/tour/TourButton';
 import { tourTarget } from '@/features/tour/tour.constants';
@@ -298,7 +301,7 @@ const TAB_CONFIG: {
     key: 'recruiters',
     label: 'Recruiters',
     icon: Users,
-    description: 'Who sourced, moved and placed candidates',
+    description: 'What each person did in the selected period',
   },
   {
     key: 'candidates',
@@ -2425,7 +2428,7 @@ export default function ReportsPage() {
   const [filters, setFilters] = useState<Filters>({});
   const [win, setWin] = useState<WinState>(DEFAULT_WIN);
   const [standardOnly] = useState(false);
-  const [recReqFilter, setRecReqFilter] = useState('');
+  const [recDrill, setRecDrill] = useState<ActivityDrillTarget | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [drillTarget, setDrillTarget] = useState<DrillTarget | null>(null);
   const [salesDrillPayload, setSalesDrillPayload] = useState<SalesDrillPayload | null>(null);
@@ -2510,10 +2513,9 @@ export default function ReportsPage() {
 
   const baseQs = baseParams.toString();
 
-  // Recruiter tab: base + MOJ + requirement drill filter
+  // Recruiter tab: base + MOJ
   const recParams = useMemo(() => {
     const p = new URLSearchParams(baseQs);
-    if (recReqFilter) p.set('requirementId', recReqFilter);
     const months = filters.mojMonths ?? [];
     if (months.length) {
       months.forEach(m => p.append('mojMonth', m));
@@ -2521,7 +2523,7 @@ export default function ReportsPage() {
       p.set('mojYear', filters.mojYear);
     }
     return p.toString();
-  }, [baseQs, recReqFilter, filters.mojMonths, filters.mojYear]);
+  }, [baseQs, filters.mojMonths, filters.mojYear]);
 
   // Requirements tab FILTERS (no sort) — shared by table, funnel stats AND exports.
   // Generic window params are dropped — requirements use their own two date filters
@@ -2557,10 +2559,12 @@ export default function ReportsPage() {
     staleTime: 60_000,
   });
 
-  const recruiterQuery = useQuery({
-    queryKey: ['report-recruiters', recParams],
+  // Recruiters tab — ONE call: activity rows + stats summary (logs only)
+  const recruiterActivityQuery = useQuery({
+    queryKey: ['report-recruiters-activity', recParams],
     queryFn: async () =>
-      (await axios.get(`/reports/recruiters?${recParams}`)).data as RecruiterResponse,
+      (await axios.get(`/reports/recruiters/activity?${recParams}`))
+        .data as RecruiterActivityResponse,
     enabled: hasAccess && activeTab === 'recruiters',
     staleTime: 60_000,
   });
@@ -2570,15 +2574,6 @@ export default function ReportsPage() {
     queryFn: async () =>
       (await axios.get(`/reports/requirements?${reqParams}`)).data as RequirementReportResponse,
     enabled: hasAccess && activeTab === 'requirements',
-    staleTime: 60_000,
-  });
-
-  const recruiterSaleQuery = useQuery({
-    queryKey: ['report-recruiters-sale-summary', recParams],
-    queryFn: async () =>
-      (await axios.get(`/reports/recruiters/sale-summary?${recParams}`))
-        .data as RecruiterSaleSummaryResponse,
-    enabled: hasAccess && activeTab === 'recruiters',
     staleTime: 60_000,
   });
 
@@ -2648,48 +2643,6 @@ export default function ReportsPage() {
 
   const dateStr = new Date().toISOString().split('T')[0];
 
-  const handleRecruiterAll = useCallback(
-    (
-      slId?: string,
-      stageIds?: string[],
-      hiddenStageIds?: string[],
-      hiddenCandidateCols?: string[]
-    ) => {
-      const p = withExportOptions(recParams, {
-        slId,
-        stageIds,
-        hiddenStageIds,
-        hiddenCandidateCols,
-      });
-      download(`/reports/recruiters/export?${p}`, `recruiter-report-${dateStr}.xlsx`, 'rec-all');
-    },
-    [recParams, download, dateStr]
-  );
-
-  const handleRecruiterSelected = useCallback(
-    (
-      ids: string[],
-      slId?: string,
-      stageIds?: string[],
-      hiddenStageIds?: string[],
-      hiddenCandidateCols?: string[]
-    ) => {
-      const p = withExportOptions(recParams, {
-        ids,
-        slId,
-        stageIds,
-        hiddenStageIds,
-        hiddenCandidateCols,
-      });
-      download(
-        `/reports/recruiters/export?${p}`,
-        `recruiter-report-selected-${dateStr}.xlsx`,
-        'rec-sel'
-      );
-    },
-    [recParams, download, dateStr]
-  );
-
   const handleRequirementAll = useCallback(
     (
       slId?: string,
@@ -2753,10 +2706,10 @@ export default function ReportsPage() {
     );
 
   const reqSaleValueSummary = requirementQuery.data?.saleValueSummary ?? null;
-  const recSale = recruiterSaleQuery.data?.data ?? null;
+  const recSummary = recruiterActivityQuery.data?.meta?.summary ?? null;
   const isFetching =
     (activeTab === 'requirements' && requirementQuery.isFetching) ||
-    (activeTab === 'recruiters' && recruiterQuery.isFetching);
+    (activeTab === 'recruiters' && recruiterActivityQuery.isFetching);
 
   return (
     <Tabs
@@ -2883,19 +2836,27 @@ export default function ReportsPage() {
           />
         )}
 
-        {activeTab === 'recruiters' && recSale && (
+        {activeTab === 'recruiters' && recSummary && (
           <SaleOverview
-            summary={recSale.summary}
+            summary={recSummary.sale}
             counts={{
-              requirements: recSale.requirementCount,
+              requirements: recSummary.requirementCount,
               requirementsLabel: 'Requirements assigned',
-              candidates: (recSale as any).sourcedCandidates ?? null,
-              pipeline: recSale.nearTerminalCandidates ?? null,
-              placed: recSale.terminalCandidates ?? null,
+              candidates: recSummary.candidates,
+              pipeline: recSummary.pipeline,
+              placed: recSummary.placed,
             }}
             bucket={recBucket}
             onBucketChange={setRecBucket}
-            onOpenCandidates={type => setCandidateSheet({ source: 'recruiters', type })}
+            onOpenCandidates={type =>
+              setRecDrill(
+                type === 'placed'
+                  ? { title: 'Placed in this period', bucket: 'placed' }
+                  : type === 'pipeline'
+                    ? { title: 'Moved to pipeline in this period', bucket: 'pipeline' }
+                    : { title: 'All activity in this period' }
+              )
+            }
           />
         )}
 
@@ -2931,14 +2892,11 @@ export default function ReportsPage() {
         <TabsContent value="recruiters" className="m-0">
           <div className={cn(PANEL, 'flex flex-col gap-3 p-3')}>
             <RecruiterSection
-              resp={recruiterQuery.data}
-              loading={recruiterQuery.isLoading}
-              reqFilter={recReqFilter}
-              onReqFilter={setRecReqFilter}
-              onDownloadAll={handleRecruiterAll}
-              onDownloadSelected={handleRecruiterSelected}
+              resp={recruiterActivityQuery.data}
+              loading={recruiterActivityQuery.isLoading}
               baseQs={recParams}
               bucket={recBucket}
+              onDrill={setRecDrill}
             />
           </div>
         </TabsContent>
@@ -2961,19 +2919,18 @@ export default function ReportsPage() {
       {/* Candidates behind the counts */}
       <CandidatesSheet
         state={candidateSheet}
-        qs={candidateSheet?.source === 'recruiters' ? recParams : reqExportQs}
-        counts={
-          candidateSheet?.source === 'recruiters'
-            ? {
-                all: (recSale as any)?.sourcedCandidates ?? null,
-                pipeline: recSale?.nearTerminalCandidates ?? null,
-                placed: recSale?.terminalCandidates ?? null,
-              }
-            : { all: reqCounts.candidates, pipeline: reqCounts.pipeline, placed: reqCounts.placed }
-        }
+        qs={reqExportQs}
+        counts={{
+          all: reqCounts.candidates,
+          pipeline: reqCounts.pipeline,
+          placed: reqCounts.placed,
+        }}
         onType={type => setCandidateSheet(s => (s ? { ...s, type } : s))}
         onClose={() => setCandidateSheet(null)}
       />
+
+      {/* Recruiters tab — the stage moves behind any number */}
+      <ActivityDrillDrawer target={recDrill} baseQs={recParams} onClose={() => setRecDrill(null)} />
 
       {/* Drawers */}
       <DrillDrawer target={drillTarget} baseQs={reqFilterQs} onClose={() => setDrillTarget(null)} />

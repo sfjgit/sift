@@ -1,76 +1,712 @@
 // File: RecruiterSection.tsx
 // Path: src/components/reports/RecruiterSection.tsx
 //
-//   1. Pipeline (current state) and Stage activity (historical) views.
-//   2. Buckets come from stage flags only — Placed / Pipeline / Dropped / Sourced / Active.
-//   3. ActivityDrillDrawer — stage count click opens real stage moves
-//      (GET /reports/recruiters/activity/drill; transfers / notes excluded).
-//   4. `bucket` — set by the stats panel on the page; narrows the pipeline table to
-//      recruiters with pipeline (nearTerminal) or placed (terminal) candidates.
+// Recruiters tab — ACTIVITY ONLY. "What happened in the selected window."
+//   Data     GET /reports/recruiters/activity (fetched by the page, passed in)
+//   Rows     one per person, hierarchy order (you → your reports → theirs)
+//   Money    Funnel · Pipeline · Achieved per row (+ team rollup in the expand)
+//   Counts   unique candidates; Placed = still placed now, Reversed shown apart
+//   Drill    any count → the real stage moves behind it
+//   Columns  drag headers or use the Columns panel; save layouts as views (★ default)
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useAxios } from '@/hooks/useAxios';
-import { Empty, FUNNEL_COLORS, KPI, Skel } from '@/components/reports/reportUi';
-import { RecruiterTable } from '@/components/reports/RecruiterTable';
-import { ActivityExportMenu } from '@/components/reports/ActivityExportMenu';
-import type { RecruiterGroup, RecruiterResponse, SaleBucket } from '@/components/reports/types';
+import { DataTable, type ColumnDef } from './DataTable';
+import { ColumnViewMenu } from './ColumnViewMenu';
+import {
+  Empty,
+  GroupHeader,
+  MiniStat,
+  Skel,
+  StickyTableCard,
+  makeExpandColumn,
+  makeSelectColumn,
+  makeSrColumn,
+  useExpanded,
+  useSelection,
+} from './reportUi';
+import { ActivityExportMenu } from './ActivityExportMenu';
+import { useReportTableLayout } from '@/stores/reportViewStore';
+import type {
+  ActivityBucket,
+  RecruiterActivityGroup,
+  RecruiterActivityResponse,
+  RecruiterActivityRow,
+  SaleBucket,
+} from './types';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HELPERS — stage flags only
+// BUCKETS + FORMATTERS — stage flags only
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BUCKET = {
-  placed: 'Placed',
-  pipeline: 'Pipeline',
-  dropped: 'Dropped',
-  sourced: 'Sourced',
-  active: 'Active',
-} as const;
+export const ACTIVITY_BUCKETS: {
+  key: ActivityBucket;
+  label: string;
+  rowKey:
+    | 'sourcedCount'
+    | 'activeCount'
+    | 'nearTerminalCount'
+    | 'terminalCount'
+    | 'offPipelineCount';
+  color: string;
+  hint: string;
+}[] = [
+  {
+    key: 'sourced',
+    label: 'Added',
+    rowKey: 'sourcedCount',
+    color: '#64748B',
+    hint: 'Candidates added in the window',
+  },
+  {
+    key: 'active',
+    label: 'Active',
+    rowKey: 'activeCount',
+    color: '#4F46E5',
+    hint: 'Moved through screening / interview stages',
+  },
+  {
+    key: 'pipeline',
+    label: 'Pipeline',
+    rowKey: 'nearTerminalCount',
+    color: '#D97706',
+    hint: 'Moved to near-close stages',
+  },
+  {
+    key: 'placed',
+    label: 'Placed',
+    rowKey: 'terminalCount',
+    color: '#059669',
+    hint: 'Placed in the window and still placed now',
+  },
+  {
+    key: 'dropped',
+    label: 'Dropped',
+    rowKey: 'offPipelineCount',
+    color: '#DC2626',
+    hint: 'Moved to off-pipeline stages',
+  },
+];
 
-function bucketLabel(s: any): string {
-  if (s.isTerminal) return BUCKET.placed;
-  if (s.isNearTerminal) return BUCKET.pipeline;
-  if (s.pipeline === false) return BUCKET.dropped;
-  if (s.isSourced) return BUCKET.sourced;
-  return BUCKET.active;
+const BUCKET_STYLE: Record<string, string> = {
+  Added: 'bg-slate-100 text-slate-600',
+  Active: 'bg-indigo-50 text-indigo-700',
+  Pipeline: 'bg-amber-50 text-amber-700',
+  Placed: 'bg-emerald-50 text-emerald-700',
+  Dropped: 'bg-red-50 text-red-500',
+};
+
+function bucketOfStage(s: any): ActivityBucket {
+  if (s.isTerminal) return 'placed';
+  if (s.isNearTerminal) return 'pipeline';
+  if (s.pipeline === false) return 'dropped';
+  if (s.isSourced) return 'sourced';
+  return 'active';
 }
 
-function stageColor(s: any, i: number): string {
-  if (s.isTerminal) return '#059669'; // placed
-  if (s.isNearTerminal) return '#D97706'; // pipeline
-  if (s.pipeline === false) return '#DC2626'; // dropped
-  if (s.isSourced) return '#64748B'; // sourced
-  return FUNNEL_COLORS[i % FUNNEL_COLORS.length];
+export function fmtMoney(n: number | null | undefined): string {
+  if (!n) return '—';
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(2)}Cr`;
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${Math.round(n).toLocaleString('en-IN')}`;
 }
 
-function inBucket(row: any, bucket: SaleBucket): boolean {
-  if (bucket === 'terminal') return (row.placed ?? 0) > 0;
-  if (bucket === 'nearTerminal') return (row.nearTerminal ?? 0) > 0;
+const getId = (r: RecruiterActivityRow) => r.id;
+
+function inBucket(r: RecruiterActivityRow, bucket: SaleBucket) {
+  if (bucket === 'terminal') return r.terminalCount > 0;
+  if (bucket === 'nearTerminal') return r.nearTerminalCount > 0;
   return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITY DRILL — the real stage moves behind any number
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ActivityDrillTarget {
+  recruiterId?: string; // undefined = everyone in scope
+  title: string;
+  stageId?: string;
+  bucket?: ActivityBucket;
+}
+
+export function ActivityDrillDrawer({
+  target,
+  baseQs,
+  onClose,
+}: {
+  target: ActivityDrillTarget | null;
+  baseQs: string;
+  onClose: () => void;
+}) {
+  const axios = useAxios();
+  const [query, setQuery] = useState('');
+
+  const qs = useMemo(() => {
+    if (!target) return '';
+    const p = new URLSearchParams(baseQs);
+    p.set('recruiterId', target.recruiterId ?? '__all__');
+    if (target.stageId) p.set('stageId', target.stageId);
+    if (target.bucket) p.set('bucket', target.bucket);
+    return p.toString();
+  }, [target, baseQs]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['recruiter-activity-drill', qs],
+    queryFn: async () => (await axios.get(`/reports/recruiters/activity/drill?${qs}`)).data,
+    enabled: !!target,
+    staleTime: 60_000,
+  });
+
+  if (!target) return null;
+
+  const rows: any[] = data?.data?.rows ?? [];
+  const stageSummary: Record<string, number> = data?.data?.stageSummary ?? {};
+  const term = query.trim().toLowerCase();
+  const shown = term
+    ? rows.filter(r =>
+        [
+          r.candidate.name,
+          r.candidate.email,
+          r.requirement.reqCode,
+          r.requirement.title,
+          r.client?.name,
+          r.recruiterName,
+          r.movedBy,
+        ]
+          .filter(Boolean)
+          .some((v: string) => v.toLowerCase().includes(term))
+      )
+    : rows;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-[15px] font-black text-slate-900">{target.title}</h2>
+            <p className="text-[12px] text-slate-400">
+              {isLoading
+                ? 'Loading…'
+                : `${rows.length} stage move${rows.length !== 1 ? 's' : ''} in this window${data?.data?.capped ? ' (first 3,000)' : ''}`}
+            </p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-2 border-b border-slate-100 bg-slate-50 px-6 py-3">
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search candidate, requirement, client, recruiter"
+            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 text-[12px] outline-none focus:border-indigo-300"
+          />
+          {!isLoading && Object.keys(stageSummary).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(stageSummary)
+                .sort((a, b) => b[1] - a[1])
+                .map(([label, count]) => (
+                  <span
+                    key={label}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[12px] font-bold text-slate-700"
+                  >
+                    {label}
+                    <span className="ml-1.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-black text-white">
+                      {count}
+                    </span>
+                  </span>
+                ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-xl" />
+              ))}
+            </div>
+          ) : shown.length === 0 ? (
+            <div className="flex h-40 items-center justify-center text-[13px] text-slate-400">
+              {term ? 'No matches for that search.' : 'No activity in this window.'}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {shown.map((row: any) => (
+                <div
+                  key={row.logId}
+                  className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-bold text-slate-900">
+                        {row.candidate.name}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-400">
+                        {[row.candidate.email, row.candidate.phone].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {row.reversed && (
+                        <span
+                          className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-600"
+                          title={`No longer placed. Now in: ${row.currentStageLabel ?? '—'}`}
+                        >
+                          Reversed
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${BUCKET_STYLE[row.toStage.bucket] ?? 'bg-slate-100 text-slate-600'}`}
+                      >
+                        {row.toStage.bucket}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[12px]">
+                    <span className="rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
+                      {row.fromStage?.label ?? 'Start'}
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <span
+                      className={`rounded px-2 py-0.5 font-bold ${
+                        row.toStage.isTerminal
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : row.toStage.isNearTerminal
+                            ? 'bg-amber-100 text-amber-800'
+                            : row.toStage.pipeline === false
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-indigo-100 text-indigo-800'
+                      }`}
+                    >
+                      {row.toStage.label}
+                    </span>
+                    {row.movedBy && row.movedBy !== '—' && (
+                      <span className="text-[11px] text-slate-400">by {row.movedBy}</span>
+                    )}
+                    {!target.recruiterId && row.recruiterName && (
+                      <span className="text-[11px] text-slate-400">
+                        · owner {row.recruiterName}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-bold text-slate-500">
+                      {row.requirement.reqCode}
+                    </span>
+                    <span className="truncate">{row.requirement.title}</span>
+                    {row.client && <span>· {row.client.name}</span>}
+                    <span className="ml-auto font-medium text-slate-500">
+                      {new Date(row.createdAt).toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CELLS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CountCell({
+  value,
+  color,
+  onClick,
+  title,
+}: {
+  value: number;
+  color?: string;
+  onClick?: () => void;
+  title?: string;
+}) {
+  if (!value) return <span className="text-[13px] font-semibold text-slate-200">—</span>;
+  if (!onClick)
+    return (
+      <span className="text-[13px] font-black tabular-nums" style={{ color }}>
+        {value}
+      </span>
+    );
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={title}
+      className="rounded-lg px-2 py-1 transition-all hover:bg-indigo-50 hover:ring-2 hover:ring-indigo-200"
+    >
+      <span className="text-[13px] font-black tabular-nums" style={{ color }}>
+        {value}
+      </span>
+    </button>
+  );
+}
+
+const MoneyCell = ({ value, strong }: { value?: number | null; strong?: boolean }) => (
+  <span
+    className={`text-[12px] tabular-nums ${value ? (strong ? 'font-black text-emerald-700' : 'font-semibold text-slate-800') : 'text-slate-200'}`}
+  >
+    {fmtMoney(value)}
+  </span>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLE — one service line
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ActivityTable({
+  group,
+  baseQs,
+  onDrill,
+}: {
+  group: RecruiterActivityGroup;
+  baseQs: string;
+  onDrill: (t: ActivityDrillTarget) => void;
+}) {
+  const tableKey = `reports.recruiterActivity:${group.serviceLine?.id ?? 'unassigned'}`;
+  const data = group.data;
+  const { selected, toggle, toggleAll } = useSelection();
+  const { expanded, toggleExp } = useExpanded();
+  const { hidden, order, setOrder } = useReportTableLayout(tableKey);
+
+  const allIds = useMemo(() => data.map(getId), [data]);
+
+  // Stage columns grouped the same way as the buckets
+  const stageGroups = useMemo(
+    () =>
+      ACTIVITY_BUCKETS.map(b => ({
+        bucket: b,
+        stages: group.stages.filter(s => bucketOfStage(s) === b.key),
+      })).filter(g => g.stages.length > 0),
+    [group.stages]
+  );
+
+  const baseColumns = useMemo<ColumnDef<RecruiterActivityRow>[]>(
+    () => [
+      makeSelectColumn<RecruiterActivityRow>(getId, allIds, selected, toggle, toggleAll),
+      makeExpandColumn<RecruiterActivityRow>(getId, expanded, toggleExp),
+      makeSrColumn<RecruiterActivityRow>(),
+      {
+        id: 'recruiter',
+        label: 'Recruiter',
+        frozen: true,
+        locked: true,
+        width: 260,
+        exportFields: [
+          { label: 'Recruiter', value: (r: RecruiterActivityRow) => r.name },
+          { label: 'Email', value: (r: RecruiterActivityRow) => r.email },
+        ],
+        cell: (r: RecruiterActivityRow) => (
+          <div className="overflow-hidden" style={{ paddingLeft: Math.min(r.depth ?? 0, 4) * 12 }}>
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                onDrill({ recruiterId: r.id, title: `${r.name} — all activity` });
+              }}
+              className="block max-w-full truncate text-left text-[13px] font-bold text-slate-900 hover:text-indigo-700"
+              title="Open everything this person did in the window"
+            >
+              {r.name}
+            </button>
+            <div className="truncate text-[11px] text-slate-500">
+              {[r.role?.replaceAll('_', ' '), r.managerName && `reports to ${r.managerName}`]
+                .filter(Boolean)
+                .join(' · ') || r.email}
+            </div>
+          </div>
+        ),
+      },
+
+      // ── Money ──────────────────────────────────────────────────────────
+      {
+        id: 'assignedReqs',
+        label: 'Assigned reqs',
+        align: 'center',
+        group: 'Money',
+        headerTitle: 'Requirements assigned to this person (in the window, when a window is set)',
+        exportValue: (r: RecruiterActivityRow) => r.assignedReqCount,
+        cell: (r: RecruiterActivityRow) => <CountCell value={r.assignedReqCount} color="#334155" />,
+      },
+      {
+        id: 'funnel',
+        label: 'Funnel',
+        align: 'center',
+        group: 'Money',
+        headerTitle: 'Value of requirements assigned to this person',
+        exportValue: (r: RecruiterActivityRow) => r.funnelValue,
+        cell: (r: RecruiterActivityRow) => <MoneyCell value={r.funnelValue} />,
+      },
+      {
+        id: 'pipelineValue',
+        label: 'Pipeline',
+        align: 'center',
+        group: 'Money',
+        headerTitle:
+          'Value share of candidates moved to near-close in the window (capped at openings)',
+        exportValue: (r: RecruiterActivityRow) => r.pipelineValue,
+        cell: (r: RecruiterActivityRow) => <MoneyCell value={r.pipelineValue} />,
+      },
+      {
+        id: 'achievedValue',
+        label: 'Achieved',
+        align: 'center',
+        group: 'Money',
+        headerTitle:
+          'Value share of placements made in the window that still stand (capped at openings)',
+        exportValue: (r: RecruiterActivityRow) => r.achievedValue,
+        cell: (r: RecruiterActivityRow) => <MoneyCell value={r.achievedValue} strong />,
+      },
+      {
+        id: 'achievedPct',
+        label: 'Achieved %',
+        align: 'center',
+        group: 'Money',
+        headerTitle: 'Achieved ÷ Funnel',
+        exportValue: (r: RecruiterActivityRow) => r.achievedPct,
+        cell: (r: RecruiterActivityRow) => (
+          <span
+            className={`text-[12px] font-bold tabular-nums ${r.achievedPct > 0 ? 'text-emerald-700' : 'text-slate-200'}`}
+          >
+            {r.achievedPct > 0 ? `${r.achievedPct}%` : '—'}
+          </span>
+        ),
+      },
+
+      // ── Activity ───────────────────────────────────────────────────────
+      {
+        id: 'candidates',
+        label: 'Candidates',
+        align: 'center',
+        group: 'Activity',
+        headerTitle: 'Unique candidates this person moved in the window',
+        exportValue: (r: RecruiterActivityRow) => r.candidates,
+        cell: (r: RecruiterActivityRow) => (
+          <CountCell
+            value={r.candidates}
+            color="#0F172A"
+            title="Open every move"
+            onClick={() => onDrill({ recruiterId: r.id, title: `${r.name} — all activity` })}
+          />
+        ),
+      },
+      {
+        id: 'moves',
+        label: 'Moves',
+        align: 'center',
+        group: 'Activity',
+        headerTitle: 'Total stage moves (a candidate moved 3 times = 3)',
+        exportValue: (r: RecruiterActivityRow) => r.totalTransitions,
+        cell: (r: RecruiterActivityRow) => <CountCell value={r.totalTransitions} color="#475569" />,
+      },
+      ...ACTIVITY_BUCKETS.map<ColumnDef<RecruiterActivityRow>>(b => ({
+        id: `bucket:${b.key}`,
+        label: b.label,
+        align: 'center',
+        group: 'Activity',
+        dotColor: b.color,
+        headerTitle: b.hint,
+        exportValue: (r: RecruiterActivityRow) => r[b.rowKey],
+        cell: (r: RecruiterActivityRow) => (
+          <CountCell
+            value={r[b.rowKey]}
+            color={b.color}
+            title={`Open ${b.label.toLowerCase()} moves`}
+            onClick={() =>
+              onDrill({ recruiterId: r.id, bucket: b.key, title: `${r.name} — ${b.label}` })
+            }
+          />
+        ),
+      })),
+      {
+        id: 'reversed',
+        label: 'Reversed',
+        align: 'center',
+        group: 'Activity',
+        headerTitle:
+          'Placed in the window but no longer placed — never counted as Placed or Achieved',
+        exportValue: (r: RecruiterActivityRow) => r.reversedCount,
+        cell: (r: RecruiterActivityRow) => <CountCell value={r.reversedCount} color="#DC2626" />,
+      },
+
+      // ── Stages (unique candidates who entered the stage) ───────────────
+      ...stageGroups.flatMap(g =>
+        g.stages.map<ColumnDef<RecruiterActivityRow>>(s => ({
+          id: `stage:${s.id}`,
+          label: s.label,
+          align: 'center',
+          group: `${g.bucket.label} stages`,
+          dotColor: g.bucket.color,
+          headerTitle: `${s.label} — unique candidates who entered this stage in the window${s.isTerminal ? ' (still placed)' : ''}`,
+          exportValue: (r: RecruiterActivityRow) => r.stageCounts?.[s.id] ?? 0,
+          cell: (r: RecruiterActivityRow) => (
+            <CountCell
+              value={r.stageCounts?.[s.id] ?? 0}
+              color={g.bucket.color}
+              title={`${r.stageMoves?.[s.id] ?? 0} move(s) — click to open`}
+              onClick={() =>
+                onDrill({ recruiterId: r.id, stageId: s.id, title: `${r.name} — ${s.label}` })
+              }
+            />
+          ),
+        }))
+      ),
+    ],
+    [allIds, selected, toggle, toggleAll, expanded, toggleExp, stageGroups, onDrill]
+  );
+
+  // Footer — count columns only. Money totals are unique per requirement, so
+  // adding rows would double count; the stats panel above shows the true totals.
+  const footerRow = useMemo(() => {
+    const t: Record<string, number> = {};
+    const add = (k: string, v: number) => (t[k] = (t[k] ?? 0) + (v ?? 0));
+    for (const r of data) {
+      add('candidates', r.candidates);
+      add('moves', r.totalTransitions);
+      add('reversed', r.reversedCount);
+      for (const b of ACTIVITY_BUCKETS) add(`bucket:${b.key}`, r[b.rowKey]);
+      for (const s of group.stages) add(`stage:${s.id}`, r.stageCounts?.[s.id] ?? 0);
+    }
+    return t;
+  }, [data, group.stages]);
+
+  const totalMoves = useMemo(() => data.reduce((n, r) => n + r.totalTransitions, 0), [data]);
+
+  return (
+    <StickyTableCard>
+      <GroupHeader
+        title={group.serviceLine?.name ?? null}
+        count={data.length}
+        countLabel="people"
+        leftSlot={
+          <span className="text-[10px] font-medium text-slate-400">
+            Unique candidates per stage · click any number to see the moves behind it
+          </span>
+        }
+        rightSlot={
+          <>
+            <ColumnViewMenu tableKey={tableKey} columns={baseColumns} />
+            <ActivityExportMenu
+              baseQs={baseQs}
+              serviceLineId={group.serviceLine?.id}
+              // @ts-expect-error err
+              selectedIds={[...selected]}
+              rowCount={data.length}
+              transitionCount={totalMoves}
+            />
+          </>
+        }
+      />
+
+      <DataTable
+        columns={baseColumns}
+        rows={data}
+        rowKey={getId}
+        hiddenColumns={hidden}
+        columnOrder={order}
+        onReorder={setOrder}
+        emptyMessage="No activity in this window."
+        isExpanded={r => expanded.has(r.id)}
+        rowClassName={r => (expanded.has(r.id) ? 'bg-indigo-50' : 'hover:bg-slate-50')}
+        frozenBgClass={r =>
+          expanded.has(r.id) ? 'bg-indigo-50' : 'bg-white group-hover:bg-slate-50'
+        }
+        footerRow={footerRow}
+        renderExpanded={r => (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-6 rounded-lg border border-slate-200 bg-white px-4 py-3">
+              <MiniStat l="Assigned reqs" v={r.assignedReqCount} />
+              <MiniStat l="Candidates" v={r.candidates} />
+              <MiniStat l="Placed" v={r.terminalCount} c="text-emerald-700" />
+              <MiniStat l="Pipeline" v={r.nearTerminalCount} c="text-amber-600" />
+              <MiniStat l="Reversed" v={r.reversedCount} c="text-red-500" />
+              <MiniStat l="Placed on unassigned" v={r.unassignedPlaced} c="text-slate-500" />
+              <button
+                onClick={() => onDrill({ recruiterId: r.id, title: `${r.name} — all activity` })}
+                className="ml-auto flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-[11px] font-bold text-indigo-600 transition-colors hover:bg-indigo-100"
+              >
+                Open activity log →
+              </button>
+            </div>
+
+            {r.team ? (
+              <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                  Team ({r.team.members} people, each requirement counted once)
+                </p>
+                <div className="flex flex-wrap items-end gap-6">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-500">Funnel</p>
+                    <p className="text-[16px] font-black text-slate-900">
+                      {fmtMoney(r.team.funnelValue)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-500">Pipeline</p>
+                    <p className="text-[16px] font-black text-amber-600">
+                      {fmtMoney(r.team.pipelineValue)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-500">Achieved</p>
+                    <p className="text-[16px] font-black text-emerald-700">
+                      {fmtMoney(r.team.achievedValue)}
+                      <span className="ml-1 text-[11px] font-bold text-slate-400">
+                        {r.team.achievedPct}%
+                      </span>
+                    </p>
+                  </div>
+                  <MiniStat l="Reqs" v={r.team.assignedReqCount} />
+                  <MiniStat l="Candidates" v={r.team.candidates} />
+                  <MiniStat l="Placed" v={r.team.placed} c="text-emerald-700" />
+                  <MiniStat l="Pipeline" v={r.team.pipeline} c="text-amber-600" />
+                  <MiniStat l="Reversed" v={r.team.reversed} c="text-red-500" />
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400">No team under this person in the result.</p>
+            )}
+          </div>
+        )}
+      />
+    </StickyTableCard>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICE LINE TABS
+// ─────────────────────────────────────────────────────────────────────────────
+
 const keyOf = (g: { serviceLine: any }) => g.serviceLine?.id ?? '__none__';
-const nameOf = (g: { serviceLine: any }) => g.serviceLine?.name ?? 'Unassigned';
 
 function LineTabs({
   groups,
   activeKey,
   onSelect,
 }: {
-  groups: { serviceLine: any; total: number }[];
+  groups: RecruiterActivityGroup[];
   activeKey: string;
   onSelect: (k: string) => void;
 }) {
@@ -89,11 +725,9 @@ function LineTabs({
                 : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'
             }`}
           >
-            {nameOf(g)}
+            {g.serviceLine?.name ?? 'Unassigned'}
             <span
-              className={`rounded-full px-2 py-0.5 text-[12px] font-black ${
-                active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
-              }`}
+              className={`rounded-full px-2 py-0.5 text-[12px] font-black ${active ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}
             >
               {g.total}
             </span>
@@ -105,455 +739,26 @@ function LineTabs({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ACTIVITY DRILL DRAWER — real stage moves for one recruiter (+ optional stage)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const STAGE_TYPE_STYLE: Record<string, string> = {
-  [BUCKET.placed]: 'bg-emerald-50 text-emerald-700',
-  [BUCKET.pipeline]: 'bg-amber-50 text-amber-700',
-  [BUCKET.dropped]: 'bg-red-50 text-red-500',
-  [BUCKET.sourced]: 'bg-slate-100 text-slate-600',
-  [BUCKET.active]: 'bg-indigo-50 text-indigo-700',
-};
-
-function ActivityDrillDrawer({
-  recruiterId,
-  recruiterName,
-  stageId,
-  stageLabel,
-  baseQs,
-  onClose,
-}: {
-  recruiterId: string;
-  recruiterName: string;
-  stageId?: string;
-  stageLabel?: string;
-  baseQs: string;
-  onClose: () => void;
-}) {
-  const axios = useAxios();
-
-  const drillQuery = useQuery({
-    queryKey: ['recruiter-activity-drill', recruiterId, stageId, baseQs],
-    queryFn: async () => {
-      const p = new URLSearchParams(baseQs);
-      p.set('recruiterId', recruiterId);
-      if (stageId) p.set('stageId', stageId);
-      return (await axios.get(`/reports/recruiters/activity/drill?${p}`)).data;
-    },
-  });
-
-  const data = drillQuery.data?.data;
-  const rows: any[] = data?.rows ?? [];
-  const stageSummary: Record<string, number> = data?.stageSummary ?? {};
-  const loading = drillQuery.isLoading;
-
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <h2 className="text-[15px] font-black text-slate-900">
-              {recruiterName}
-              {stageLabel ? ` — ${stageLabel}` : ' — All activity'}
-            </h2>
-            <p className="text-[12px] text-slate-400">
-              {loading
-                ? 'Loading…'
-                : `${rows.length} stage move${rows.length !== 1 ? 's' : ''} in this window`}
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {!loading && Object.keys(stageSummary).length > 0 && (
-          <div className="flex flex-wrap gap-2 border-b border-slate-100 bg-slate-50 px-6 py-3">
-            {Object.entries(stageSummary)
-              .sort((a, b) => b[1] - a[1])
-              .map(([label, count]) => (
-                <span
-                  key={label}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-[12px] font-bold text-slate-700"
-                >
-                  {label}
-                  <span className="ml-1.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-black text-white">
-                    {count}
-                  </span>
-                </span>
-              ))}
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <Skeleton key={i} className="h-16 rounded-xl" />
-              ))}
-            </div>
-          ) : rows.length === 0 ? (
-            <div className="flex h-40 items-center justify-center text-[13px] text-slate-400">
-              No activity in this window.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {rows.map((row: any) => {
-                const stageType: string = row.toStage.bucket ?? bucketLabel(row.toStage);
-                const typeStyle = STAGE_TYPE_STYLE[stageType] ?? 'bg-slate-100 text-slate-600';
-
-                return (
-                  <div
-                    key={row.logId}
-                    className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] font-bold text-slate-900">
-                          {row.candidate.name}
-                        </p>
-                        <p className="truncate text-[11px] text-slate-400">{row.candidate.email}</p>
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${typeStyle}`}
-                      >
-                        {stageType}
-                      </span>
-                    </div>
-
-                    <div className="mt-2.5 flex items-center gap-2 text-[12px]">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
-                        {row.fromStage?.label ?? 'Start'}
-                      </span>
-                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <span
-                        className={`rounded px-2 py-0.5 font-bold ${
-                          row.toStage.isTerminal
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : row.toStage.isNearTerminal
-                              ? 'bg-amber-100 text-amber-800'
-                              : row.toStage.pipeline === false
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-indigo-100 text-indigo-800'
-                        }`}
-                      >
-                        {row.toStage.label}
-                      </span>
-                      {row.movedBy && row.movedBy !== '—' && (
-                        <span className="text-[11px] text-slate-400">by {row.movedBy}</span>
-                      )}
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono font-bold text-slate-500">
-                        {row.requirement.reqCode}
-                      </span>
-                      <span className="truncate">{row.requirement.title}</span>
-                      {row.client && <span>· {row.client.name}</span>}
-                      <span className="ml-auto font-medium text-slate-500">
-                        {new Date(row.createdAt).toLocaleString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ACTIVITY TABLE — per-recruiter stage-entry counts
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ActivityTable({ group, baseQs }: { group: any; baseQs: string }) {
-  const [drillTarget, setDrillTarget] = useState<{
-    recruiterId: string;
-    recruiterName: string;
-    stageId?: string;
-    stageLabel?: string;
-  } | null>(null);
-
-  const stages: any[] = group.stages ?? [];
-  const data: any[] = group.data ?? [];
-
-  // Same precedence as the backend: placed > pipeline > dropped > sourced > active
-  const terminalStages = stages.filter((s: any) => s.isTerminal);
-  const pipelineStages = stages.filter((s: any) => !s.isTerminal && s.isNearTerminal);
-  const droppedStages = stages.filter(
-    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline === false
-  );
-  const sourcedStages = stages.filter(
-    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline !== false && s.isSourced
-  );
-  const activeStages = stages.filter(
-    (s: any) => !s.isTerminal && !s.isNearTerminal && s.pipeline !== false && !s.isSourced
-  );
-
-  const orderedStages = [
-    ...sourcedStages,
-    ...activeStages,
-    ...pipelineStages,
-    ...terminalStages,
-    ...droppedStages,
-  ];
-
-  const columnGroups = [
-    { label: BUCKET.sourced, stages: sourcedStages, cls: 'text-slate-500' },
-    { label: BUCKET.active, stages: activeStages, cls: 'text-indigo-600' },
-    { label: BUCKET.pipeline, stages: pipelineStages, cls: 'text-amber-600' },
-    { label: BUCKET.placed, stages: terminalStages, cls: 'text-emerald-700' },
-    { label: BUCKET.dropped, stages: droppedStages, cls: 'text-red-500' },
-  ].filter(g => g.stages.length > 0);
-
-  const totals = useMemo(
-    () => ({
-      total: data.reduce((s, r) => s + (r.totalTransitions ?? 0), 0),
-      sourced: data.reduce((s, r) => s + (r.sourcedCount ?? 0), 0),
-      active: data.reduce((s, r) => s + (r.activeCount ?? 0), 0),
-      pipeline: data.reduce((s, r) => s + (r.nearTerminalCount ?? 0), 0),
-      placed: data.reduce((s, r) => s + (r.terminalCount ?? 0), 0),
-      dropped: data.reduce((s, r) => s + (r.offPipelineCount ?? 0), 0),
-    }),
-    [data]
-  );
-
-  if (!data.length) return <Empty msg="No stage activity in this window." />;
-
-  return (
-    <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <KPI label="Total stage moves" value={totals.total} color="#4F46E5" />
-        <KPI label={BUCKET.sourced} value={totals.sourced} color="#64748B" />
-        <KPI label={BUCKET.active} value={totals.active} color="#0891B2" />
-        <KPI label={BUCKET.pipeline} value={totals.pipeline} color="#D97706" />
-        <KPI label={BUCKET.placed} value={totals.placed} color="#059669" />
-        <KPI label={BUCKET.dropped} value={totals.dropped} color="#DC2626" />
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-          <div>
-            <span className="text-[13px] font-black text-slate-800">
-              Stage activity — {group.serviceLine?.name ?? 'All'}
-            </span>
-            <span className="ml-2 text-[11px] font-semibold text-slate-400">
-              entries into each stage · hover any cell for detail · click to open the log
-            </span>
-          </div>
-          <ActivityExportMenu
-            baseQs={baseQs}
-            serviceLineId={group.serviceLine?.id}
-            rowCount={data.length}
-            transitionCount={totals.total}
-          />
-        </div>
-
-        <div className="max-h-[70vh] overflow-auto rounded-b-xl">
-          <table className="w-full border-separate border-spacing-0 text-left">
-            <thead>
-              <tr className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                <th className="sticky left-0 top-0 z-40 border-b border-r border-slate-200 bg-slate-50 px-4 py-2 text-left">
-                  Recruiter
-                </th>
-                <th className="sticky top-0 z-30 border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-center">
-                  Total
-                </th>
-                {columnGroups.map(g => (
-                  <th
-                    key={g.label}
-                    colSpan={g.stages.length}
-                    className={`sticky top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2 text-center ${g.cls}`}
-                  >
-                    {g.label}
-                  </th>
-                ))}
-              </tr>
-              <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                <th className="sticky left-0 top-[29px] z-40 border-b-2 border-r border-slate-200 bg-white px-4 py-2" />
-                <th className="sticky top-[29px] z-30 border-b-2 border-r border-slate-200 bg-white px-3 py-2 text-center">
-                  All
-                </th>
-                {orderedStages.map((s: any, i: number) => (
-                  <th
-                    key={s.id}
-                    className="sticky top-[29px] z-30 border-b-2 border-slate-200 bg-white px-2 py-2 text-center"
-                    title={`${s.label}\n${bucketLabel(s)}\n${(s.grandCount ?? 0).toLocaleString('en-IN')} moves in this window${s.serviceLine ? `\nService line: ${s.serviceLine.name}` : '\nCommon to all service lines'}`}
-                  >
-                    <span
-                      style={{ color: stageColor(s, i) }}
-                      className="block max-w-[90px] truncate"
-                    >
-                      {s.label}
-                    </span>
-                    <span className="text-[9px] font-bold text-slate-400">
-                      ({(s.grandCount ?? 0).toLocaleString('en-IN')})
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((row: any, ri: number) => (
-                <tr key={row.recruiterId} className="group">
-                  <td
-                    className={`sticky left-0 z-20 border-b border-r border-slate-100 px-4 py-3 ${
-                      ri % 2 === 0 ? 'bg-white' : 'bg-slate-50'
-                    } group-hover:bg-indigo-50`}
-                  >
-                    <button
-                      onClick={() =>
-                        setDrillTarget({ recruiterId: row.recruiterId, recruiterName: row.name })
-                      }
-                      title={`${row.name}\n${row.email}\n\n${row.totalTransitions.toLocaleString('en-IN')} stage moves in this window\n${BUCKET.sourced} ${row.sourcedCount ?? 0} · ${BUCKET.active} ${row.activeCount ?? 0} · ${BUCKET.pipeline} ${row.nearTerminalCount ?? 0} · ${BUCKET.placed} ${row.terminalCount ?? 0} · ${BUCKET.dropped} ${row.offPipelineCount ?? 0}\n\nClick to open the full activity log`}
-                      className="max-w-[200px] text-left"
-                    >
-                      <p className="truncate text-[13px] font-bold text-slate-900 hover:text-indigo-700">
-                        {row.name}
-                      </p>
-                      <p className="truncate text-[11px] text-slate-400">{row.email}</p>
-                    </button>
-                  </td>
-                  <td
-                    className={`sticky left-[216px] z-20 border-b border-r border-slate-200 px-3 py-3 text-center ${
-                      ri % 2 === 0 ? 'bg-white' : 'bg-slate-50'
-                    } group-hover:bg-indigo-50`}
-                  >
-                    <button
-                      onClick={() =>
-                        setDrillTarget({ recruiterId: row.recruiterId, recruiterName: row.name })
-                      }
-                      title={`All ${row.totalTransitions.toLocaleString('en-IN')} stage moves by ${row.name} in this window — click to open the log`}
-                      className="text-[14px] font-black text-slate-900 hover:text-indigo-700"
-                    >
-                      {row.totalTransitions.toLocaleString('en-IN')}
-                    </button>
-                  </td>
-                  {orderedStages.map((s: any, i: number) => {
-                    const count: number = row.stageCounts?.[s.id] ?? 0;
-                    const cellBg = `${ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} group-hover:bg-indigo-50/40`;
-
-                    if (count === 0) {
-                      return (
-                        <td
-                          key={s.id}
-                          className={`border-b border-slate-100 px-2 py-3 text-center ${cellBg}`}
-                          title={`${row.name} — no moves into ${s.label} in this window`}
-                        >
-                          <span className="text-[13px] font-semibold text-slate-200">—</span>
-                        </td>
-                      );
-                    }
-                    return (
-                      <td
-                        key={s.id}
-                        className={`border-b border-slate-100 px-2 py-3 text-center ${cellBg}`}
-                      >
-                        <button
-                          onClick={() =>
-                            setDrillTarget({
-                              recruiterId: row.recruiterId,
-                              recruiterName: row.name,
-                              stageId: s.id,
-                              stageLabel: s.label,
-                            })
-                          }
-                          title={`${row.name}\n${s.label} (${bucketLabel(s)})\n\n${count} move${count !== 1 ? 's' : ''} into this stage in the window\n${Math.round((count / row.totalTransitions) * 100)}% of their total activity\n\nClick to see exactly which candidates and when`}
-                          className="inline-flex flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-all hover:bg-indigo-50 hover:ring-2 hover:ring-indigo-200"
-                        >
-                          <span
-                            className="text-[14px] font-black tabular-nums"
-                            style={{ color: stageColor(s, i) }}
-                          >
-                            {count}
-                          </span>
-                          {row.totalTransitions > 0 && (
-                            <span className="text-[9px] font-semibold text-slate-400">
-                              {Math.round((count / row.totalTransitions) * 100)}%
-                            </span>
-                          )}
-                        </button>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {drillTarget && (
-        <ActivityDrillDrawer
-          recruiterId={drillTarget.recruiterId}
-          recruiterName={drillTarget.recruiterName}
-          stageId={drillTarget.stageId}
-          stageLabel={drillTarget.stageLabel}
-          baseQs={baseQs}
-          onClose={() => setDrillTarget(null)}
-        />
-      )}
-    </>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // RECRUITER SECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function RecruiterSection({
   resp,
   loading,
-  reqFilter,
-  onReqFilter,
-  onDownloadAll,
-  onDownloadSelected,
   baseQs,
   bucket = null,
+  onDrill,
 }: {
-  resp?: RecruiterResponse;
+  resp?: RecruiterActivityResponse;
   loading: boolean;
-  reqFilter: string;
-  onReqFilter: (v: string) => void;
-  onDownloadAll: (
-    slId?: string,
-    stageIds?: string[],
-    hiddenStageIds?: string[],
-    hiddenCandidateCols?: string[]
-  ) => void;
-  onDownloadSelected: (
-    ids: string[],
-    slId?: string,
-    stageIds?: string[],
-    hiddenStageIds?: string[],
-    hiddenCandidateCols?: string[]
-  ) => void;
   baseQs: string;
-  /** Stats-panel slice from the page — narrows the pipeline table. */
+  /** Stats-panel slice from the page — keeps people with pipeline / placed moves */
   bucket?: SaleBucket;
+  onDrill: (t: ActivityDrillTarget) => void;
 }) {
-  const axios = useAxios();
-  const [activeKey, setActiveKey] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'pipeline' | 'activity'>('pipeline');
+  const [activeKey, setActiveKey] = useState('');
 
-  const activityQuery = useQuery({
-    queryKey: ['report-recruiters-activity', baseQs],
-    queryFn: async () => (await axios.get(`/reports/recruiters/activity?${baseQs}`)).data,
-    enabled: viewMode === 'activity',
-    staleTime: 60_000,
-  });
-
-  const groups: RecruiterGroup[] = useMemo(() => {
+  const groups = useMemo(() => {
     const raw = resp?.groups ?? [];
     if (!bucket) return raw;
     return raw
@@ -564,153 +769,27 @@ export function RecruiterSection({
       .filter(g => g.data.length > 0);
   }, [resp, bucket]);
 
-  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
-  const rows = active?.data ?? [];
+  if (loading) return <Skel rows={8} />;
 
-  const reqOptions = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of rows)
-      for (const rq of r.requirementBreakdown)
-        m.set(rq.requirementId, `${rq.reqCode} · ${rq.title}`);
-    return [...m.entries()].map(([id, label]) => ({ id, label }));
-  }, [rows]);
-
-  const activityGroups: any[] = activityQuery.data?.groups ?? [];
-  const activityActive =
-    activityGroups.find((g: any) => keyOf(g) === activeKey) ?? activityGroups[0];
-
-  if (loading)
+  if (!groups.length)
     return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
-        <Skel rows={6} />
-      </div>
+      <Empty
+        msg={
+          bucket
+            ? 'Nobody has moves in this slice. Click the highlighted card again to clear it.'
+            : 'No activity in your scope for this window. Widen the dates or clear filters.'
+        }
+      />
     );
 
+  const active = groups.find(g => keyOf(g) === activeKey) ?? groups[0];
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
-          <button
-            onClick={() => setViewMode('pipeline')}
-            className={`rounded-md px-4 py-2 text-[12px] font-bold transition-all ${
-              viewMode === 'pipeline'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Pipeline (current state)
-          </button>
-          <button
-            onClick={() => setViewMode('activity')}
-            className={`rounded-md px-4 py-2 text-[12px] font-bold transition-all ${
-              viewMode === 'activity'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Stage activity (historical)
-          </button>
-        </div>
-        <span className="text-[11px] font-semibold text-slate-400">
-          {viewMode === 'pipeline'
-            ? 'Where candidates sit right now'
-            : 'How many times each stage was entered in this window'}
-        </span>
-      </div>
-
-      {viewMode === 'pipeline' && groups.length === 0 && (
-        <Empty
-          msg={
-            bucket
-              ? 'No recruiters have candidates in this slice. Click the highlighted card again to clear it.'
-              : 'No recruiter data in your scope for this window. Try Stage activity, widen the date range, or clear filters.'
-          }
-        />
+    <div className="space-y-3">
+      {groups.length > 1 && (
+        <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
       )}
-
-      {viewMode === 'pipeline' && groups.length > 0 && (
-        <>
-          {groups.length > 1 && (
-            <LineTabs groups={groups} activeKey={keyOf(active)} onSelect={setActiveKey} />
-          )}
-
-          {reqOptions.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12px] font-black uppercase tracking-wider text-slate-600">
-                Filter by requirement
-              </span>
-              <Select
-                value={reqFilter || 'ALL'}
-                onValueChange={v => onReqFilter(v === 'ALL' ? '' : v)}
-              >
-                <SelectTrigger className="h-9 w-80 border-2 border-slate-200 text-[13px] font-semibold">
-                  <SelectValue placeholder="All requirements" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All requirements</SelectItem>
-                  {reqOptions.map(o => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {reqFilter && (
-                <button
-                  onClick={() => onReqFilter('')}
-                  className="flex h-9 items-center gap-1 rounded-lg border border-red-200 px-3 text-[13px] font-semibold text-red-600 hover:bg-red-50"
-                >
-                  <X className="h-3.5 w-3.5" /> Clear
-                </button>
-              )}
-            </div>
-          )}
-
-          <RecruiterTable
-            key={keyOf(active)}
-            title={active?.serviceLine?.name ?? null}
-            serviceLineId={active?.serviceLine?.id}
-            data={active?.data ?? []}
-            stages={active?.stages ?? []}
-            baseQs={baseQs}
-            onDownloadAll={onDownloadAll}
-            onDownloadSelected={onDownloadSelected}
-          />
-        </>
-      )}
-
-      {viewMode === 'activity' && (
-        <>
-          {activityQuery.isLoading ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-5 gap-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-xl" />
-                ))}
-              </div>
-              <Skel rows={6} />
-            </div>
-          ) : activityGroups.length === 0 ? (
-            <Empty msg="No stage activity in this window." />
-          ) : (
-            <>
-              {activityGroups.length > 1 && (
-                <LineTabs
-                  groups={activityGroups}
-                  activeKey={keyOf(activityActive)}
-                  onSelect={setActiveKey}
-                />
-              )}
-              <ActivityTable group={activityActive} baseQs={baseQs} />
-            </>
-          )}
-        </>
-      )}
+      <ActivityTable key={keyOf(active)} group={active} baseQs={baseQs} onDrill={onDrill} />
     </div>
   );
 }

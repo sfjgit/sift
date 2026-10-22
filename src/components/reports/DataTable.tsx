@@ -2,6 +2,12 @@
 
 // File: DataTable.tsx
 // Path: src/components/reports/DataTable.tsx
+//
+// Generic report table. Layout is data:
+//   frozen columns  declared first, offsets derived from widths
+//   hiddenColumns   ids to hide (new columns default to visible)
+//   columnOrder     order of movable columns (frozen / locked never move)
+//   onReorder       when given, headers become drag handles (dnd-kit)
 
 import {
   Fragment,
@@ -12,17 +18,31 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLUMN MODEL
-// Every column is data — nothing about the layout is hardcoded per table.
-// `frozen` columns must be declared first and contiguously; their horizontal
-// offsets are derived from their widths, never written by hand.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ColumnDef<T> {
-  /** Stable id. Used as the localStorage key for visibility, so keep it stable. */
+  /** Stable id. Used as the storage key for visibility + order, so keep it stable. */
   id: string;
   /** Plain-text label — shown in the header and in the column picker. */
   label: string;
@@ -37,21 +57,14 @@ export interface ColumnDef<T> {
   /** Fixed pixel width. Required for frozen columns (offsets are summed from it). */
   width?: number;
   align?: 'left' | 'center' | 'right';
-  /** Cannot be hidden and does not appear in the column picker. */
+  /** Cannot be hidden or moved and does not appear in the column picker. */
   locked?: boolean;
   /** Groups columns in the picker, e.g. 'Pipeline stages'. */
   group?: string;
   cell: (row: T, index: number) => ReactNode;
-  /**
-   * Plain value for local (client-side) exports. Columns without this — checkboxes,
-   * chevrons, action buttons — are simply skipped when exporting.
-   */
+  /** Plain value for client-side exports. Columns without it are skipped. */
   exportValue?: (row: T, index: number) => string | number | boolean | null | undefined;
-  /**
-   * For cells that render several facts at once (name + email, code + title + client).
-   * Takes precedence over `exportValue` and expands into one spreadsheet column each,
-   * so the export can be granular without duplicating columns in the UI.
-   */
+  /** Several facts in one cell → one spreadsheet column each. Wins over exportValue. */
   exportFields?: {
     label: string;
     value: (row: T, index: number) => string | number | boolean | null | undefined;
@@ -71,28 +84,84 @@ export function computeFrozenLayout<T>(columns: ColumnDef<T>[]) {
   const offsets = new Map<string, number>();
   let acc = 0;
   let lastFrozenId: string | null = null;
-
   for (const col of columns) {
     if (!col.frozen) break;
     offsets.set(col.id, acc);
     acc += col.width ?? FALLBACK_FROZEN_WIDTH;
     lastFrozenId = col.id;
   }
-
   return { offsets, lastFrozenId, frozenWidth: acc };
 }
 
-/** A column is only hidable if it is neither locked nor frozen. */
+/** A column can be hidden / moved only if it is neither locked nor frozen. */
 export function hidableColumns<T>(columns: ColumnDef<T>[]) {
   return columns.filter(c => !c.locked && !c.frozen);
 }
 
+/** Ids of the columns that can move, in their current order */
+export function movableIds<T>(columns: ColumnDef<T>[]) {
+  return hidableColumns(columns).map(c => c.id);
+}
+
 /**
- * Single source of truth for what is on screen. The exporter uses this too, so
- * "download this view" can never disagree with what the user is looking at.
+ * Applies a saved order. Frozen / locked columns stay where they are (first);
+ * movable ones follow the saved order; columns not in the order (new stages,
+ * new fields) keep their natural position at the end — so nothing ever vanishes.
  */
+export function orderColumns<T>(columns: ColumnDef<T>[], order: string[] = []) {
+  if (!order.length) return columns;
+  const fixed = columns.filter(c => c.frozen || c.locked);
+  const free = hidableColumns(columns);
+  const pos = new Map(order.map((id, i) => [id, i]));
+  const known = free.filter(c => pos.has(c.id)).sort((a, b) => pos.get(a.id)! - pos.get(b.id)!);
+  const fresh = free.filter(c => !pos.has(c.id));
+  return [...fixed, ...known, ...fresh];
+}
+
+/** Single source of truth for what is on screen (exports use it too). */
 export function visibleColumns<T>(columns: ColumnDef<T>[], hidden: string[]) {
   return columns.filter(c => c.locked || c.frozen || !hidden.includes(c.id));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SORTABLE HEADER CELL
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SortableTh({
+  id,
+  className,
+  style,
+  title,
+  children,
+}: {
+  id: string;
+  className: string;
+  style?: CSSProperties;
+  title: string;
+  children: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  return (
+    <th
+      ref={setNodeRef}
+      scope="col"
+      title={`${title}\nDrag to move this column`}
+      className={`${className} group/th cursor-grab select-none active:cursor-grabbing ${isDragging ? 'z-50 bg-indigo-50 shadow-lg ring-2 ring-indigo-300' : ''}`}
+      style={{
+        ...style,
+        transform: CSS.Translate.toString(transform),
+        transition,
+        position: style?.position ?? 'relative',
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="absolute left-0.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-300 opacity-0 transition-opacity group-hover/th:opacity-100" />
+      {children}
+    </th>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,13 +172,13 @@ export interface DataTableProps<T> {
   columns: ColumnDef<T>[];
   rows: T[];
   rowKey: (row: T) => string;
-  /** Column ids to hide. Anything not listed here is visible — new columns default to on. */
+  /** Column ids to hide. Anything not listed is visible — new columns default to on. */
   hiddenColumns?: string[];
-  /**
-   * Fill the parent flex column (the default). The scroll region takes whatever
-   * height is left after the toolbar, so capping height belongs on the parent
-   * card — no measuring, no scroll listeners.
-   */
+  /** Order of movable columns (ids). Empty = natural order. */
+  columnOrder?: string[];
+  /** Enables drag-to-reorder on headers; receives the full new order of movable ids. */
+  onReorder?: (ids: string[]) => void;
+  /** Fill the parent flex column (the default). */
   fill?: boolean;
   /** Only used when `fill` is false. */
   maxHeight?: string;
@@ -128,6 +197,8 @@ export function DataTable<T>({
   rows,
   rowKey,
   hiddenColumns = [],
+  columnOrder = [],
+  onReorder,
   fill = true,
   maxHeight = 'calc(100vh - 340px)',
   minHeight = '200px',
@@ -138,22 +209,39 @@ export function DataTable<T>({
   emptyMessage = 'Nothing to show for these filters.',
   footerRow,
 }: DataTableProps<T>) {
-  const visible = useMemo(() => visibleColumns(columns, hiddenColumns), [columns, hiddenColumns]);
-
+  const ordered = useMemo(() => orderColumns(columns, columnOrder), [columns, columnOrder]);
+  const visible = useMemo(() => visibleColumns(ordered, hiddenColumns), [ordered, hiddenColumns]);
   const { offsets, lastFrozenId } = useMemo(() => computeFrozenLayout(visible), [visible]);
 
-  // Expanded rows span the whole (very wide) table, so their content is pinned to
-  // the left edge of the viewport and sized to it — otherwise the details scroll away.
+  const sortableIds = useMemo(
+    () => visible.filter(c => !c.frozen && !c.locked).map(c => c.id),
+    [visible]
+  );
+
+  // A small move threshold keeps clicks on header buttons working
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    if (!onReorder || !e.over || e.active.id === e.over.id) return;
+    // Reorder the FULL movable list (hidden columns keep their relative place)
+    const ids = movableIds(ordered);
+    const from = ids.indexOf(String(e.active.id));
+    const to = ids.indexOf(String(e.over.id));
+    if (from < 0 || to < 0) return;
+    onReorder(arrayMove(ids, from, to));
+  };
+
+  // Expanded rows are pinned to the viewport width so their content doesn't scroll away
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(entries => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      setViewportWidth(w);
-    });
+    const ro = new ResizeObserver(entries => setViewportWidth(entries[0]?.contentRect.width ?? 0));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -195,8 +283,15 @@ export function DataTable<T>({
       .filter(Boolean)
       .join(' ');
 
-  // IDs that should show nothing in the footer (utility columns with no numeric meaning)
-  const FOOTER_SKIP_IDS = new Set(['__select__', '__expand__', '__sr__']);
+  // Utility columns with no numeric meaning in the footer
+  const FOOTER_SKIP_IDS = new Set([
+    '__select',
+    '__expand',
+    '__sr',
+    '__select__',
+    '__expand__',
+    '__sr__',
+  ]);
 
   const footClass = (col: ColumnDef<T>) =>
     [
@@ -208,6 +303,18 @@ export function DataTable<T>({
       .filter(Boolean)
       .join(' ');
 
+  const headerContent = (col: ColumnDef<T>) =>
+    col.header ?? (
+      <div
+        className={`flex flex-col gap-0.5 ${(col.align ?? 'left') === 'center' ? 'items-center' : 'items-start'}`}
+      >
+        {col.dotColor && (
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: col.dotColor }} />
+        )}
+        <span className="block max-w-27.5 truncate">{col.label}</span>
+      </div>
+    );
+
   return (
     <div className={`dt-wrap ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
       <div
@@ -215,130 +322,120 @@ export function DataTable<T>({
         className={`dt-scroll overflow-auto overscroll-x-contain ${fill ? 'min-h-0 flex-1' : ''}`}
         style={fill ? undefined : { maxHeight, minHeight }}
       >
-        <table className="w-full border-separate border-spacing-0 text-sm">
-          <thead className="sticky top-0 z-30">
-            <tr>
-              {visible.map(col => (
-                <th
-                  key={col.id}
-                  scope="col"
-                  className={headClass(col)}
-                  style={styleFor(col)}
-                  title={col.headerTitle ?? col.label}
-                >
-                  {col.header ?? (
-                    <div
-                      className={`flex flex-col gap-0.5 ${
-                        (col.align ?? 'left') === 'center' ? 'items-center' : 'items-start'
-                      }`}
-                    >
-                      {col.dotColor && (
-                        <span
-                          className="h-1.5 w-1.5 rounded-full"
-                          style={{ backgroundColor: col.dotColor }}
-                        />
-                      )}
-                      <span className="block max-w-27.5 truncate">{col.label}</span>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <table className="w-full border-separate border-spacing-0 text-sm">
+            <thead className="sticky top-0 z-30">
+              <tr>
+                <SortableContext items={sortableIds} strategy={horizontalListSortingStrategy}>
+                  {visible.map(col =>
+                    onReorder && !col.frozen && !col.locked ? (
+                      <SortableTh
+                        key={col.id}
+                        id={col.id}
+                        className={headClass(col)}
+                        style={styleFor(col)}
+                        title={col.headerTitle ?? col.label}
+                      >
+                        {headerContent(col)}
+                      </SortableTh>
+                    ) : (
+                      <th
+                        key={col.id}
+                        scope="col"
+                        className={headClass(col)}
+                        style={styleFor(col)}
+                        title={col.headerTitle ?? col.label}
+                      >
+                        {headerContent(col)}
+                      </th>
+                    )
+                  )}
+                </SortableContext>
+              </tr>
+            </thead>
+
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={visible.length} className="px-4 py-16">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <AlertCircle className="h-9 w-9 opacity-30" />
+                      <p className="text-sm font-medium">{emptyMessage}</p>
                     </div>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
+                  </td>
+                </tr>
+              )}
 
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={visible.length} className="px-4 py-16">
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
-                    <AlertCircle className="h-9 w-9 opacity-30" />
-                    <p className="text-sm font-medium">{emptyMessage}</p>
-                  </div>
-                </td>
-              </tr>
-            )}
-
-            {rows.map((row, index) => {
-              const key = rowKey(row);
-              const expanded = isExpanded?.(row) ?? false;
-              return (
-                <Fragment key={key}>
-                  <tr
-                    className={`group transition-colors ${
-                      rowClassName?.(row, index) ?? 'hover:bg-slate-50'
-                    }`}
-                  >
-                    {visible.map(col => (
-                      <td key={col.id} className={bodyClass(col, row, index)} style={styleFor(col)}>
-                        {col.cell(row, index)}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {expanded && renderExpanded && (
-                    <tr className="bg-slate-50/60">
-                      <td colSpan={visible.length} className="border-b border-slate-100 p-0">
-                        <div
-                          className="sticky left-0"
-                          style={viewportWidth ? { width: viewportWidth } : undefined}
+              {rows.map((row, index) => {
+                const key = rowKey(row);
+                const expanded = isExpanded?.(row) ?? false;
+                return (
+                  <Fragment key={key}>
+                    <tr
+                      className={`group transition-colors ${rowClassName?.(row, index) ?? 'hover:bg-slate-50'}`}
+                    >
+                      {visible.map(col => (
+                        <td
+                          key={col.id}
+                          className={bodyClass(col, row, index)}
+                          style={styleFor(col)}
                         >
-                          <div className="px-5 py-4">{renderExpanded(row, index)}</div>
-                        </div>
-                      </td>
+                          {col.cell(row, index)}
+                        </td>
+                      ))}
                     </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-          {/* ── Footer: column-wise totals ────────────────────────────────── */}
-          {footerRow && rows.length > 0 && (
-            <tfoot>
-              <tr>
-                {visible.map(col => {
-                  // Utility columns (checkbox, expand, sr#) → empty cell
-                  if (FOOTER_SKIP_IDS.has(col.id)) {
-                    return <td key={col.id} className={footClass(col)} style={styleFor(col)} />;
-                  }
 
-                  // Frozen recruiter name column → "Total" label
-                  if (col.id === 'recruiter') {
+                    {expanded && renderExpanded && (
+                      <tr className="bg-slate-50/60">
+                        <td colSpan={visible.length} className="border-b border-slate-100 p-0">
+                          <div
+                            className="sticky left-0"
+                            style={viewportWidth ? { width: viewportWidth } : undefined}
+                          >
+                            <div className="px-5 py-4">{renderExpanded(row, index)}</div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+
+            {footerRow && rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  {visible.map(col => {
+                    if (FOOTER_SKIP_IDS.has(col.id))
+                      return <td key={col.id} className={footClass(col)} style={styleFor(col)} />;
+
+                    if (col.id === 'recruiter')
+                      return (
+                        <td key={col.id} className={footClass(col)} style={styleFor(col)}>
+                          <span className="text-[12px] font-black uppercase tracking-widest text-slate-600">
+                            Total
+                          </span>
+                        </td>
+                      );
+
+                    const val = footerRow[col.id];
                     return (
                       <td key={col.id} className={footClass(col)} style={styleFor(col)}>
-                        <span className="text-[12px] font-black uppercase tracking-widest text-slate-600">
-                          Total
-                        </span>
+                        {val != null && val > 0 ? (
+                          <span className="text-[13px] font-black tabular-nums text-slate-800">
+                            {val}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-300">—</span>
+                        )}
                       </td>
                     );
-                  }
-
-                  // avgDays → skip (not summable)
-                  if (col.id === 'avgDays') {
-                    return (
-                      <td key={col.id} className={footClass(col)} style={styleFor(col)}>
-                        <span className="text-[11px] text-slate-300">—</span>
-                      </td>
-                    );
-                  }
-
-                  const val = footerRow[col.id];
-
-                  return (
-                    <td key={col.id} className={footClass(col)} style={styleFor(col)}>
-                      {val != null && val > 0 ? (
-                        <span className="text-[13px] font-black text-slate-800 tabular-nums">
-                          {val}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-slate-300">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tfoot>
-          )}
-        </table>
+                  })}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </DndContext>
       </div>
 
       <style jsx>{`

@@ -118,8 +118,109 @@ export interface RequirementReportResponse {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RECRUITER SALE SUMMARY — GET /reports/recruiters/sale-summary
-// Team totals over UNIQUE requirements assigned to the team, capped at openings.
+// RECRUITERS TAB — ACTIVITY ONLY — GET /reports/recruiters/activity
+// Counts = unique candidates; Placed = still placed; money capped at openings.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ActivityBucket = 'sourced' | 'active' | 'pipeline' | 'placed' | 'dropped';
+
+export interface ActivityStageMeta extends StageMeta {
+  code: string;
+  isSourced: boolean;
+  pipeline: boolean;
+  grandCount: number;
+}
+
+export interface RecruiterActivityTeam {
+  members: number;
+  assignedReqCount: number;
+  funnelValue: number;
+  pipelineValue: number;
+  achievedValue: number;
+  achievedPct: number;
+  candidates: number;
+  moves: number;
+  placed: number;
+  pipeline: number;
+  reversed: number;
+}
+
+export interface RecruiterActivityRow {
+  id: string;
+  recruiterId: string;
+  name: string;
+  email: string;
+  role: string | null;
+  department: { id: string; name: string } | null;
+  managerName: string | null;
+  depth: number | null; // 0 = you, 1 = direct report, …
+  isActive: boolean;
+  serviceLine: ServiceLineRef | null;
+
+  // Activity (unique candidates)
+  candidates: number;
+  totalTransitions: number; // moves
+  sourcedCount: number; // added
+  activeCount: number;
+  nearTerminalCount: number; // pipeline
+  terminalCount: number; // placed (still placed)
+  reversedCount: number;
+  offPipelineCount: number; // dropped
+  stageCounts: Record<string, number>;
+  stageMoves: Record<string, number>;
+
+  // Money
+  assignedReqCount: number;
+  funnelValue: number;
+  pipelineValue: number;
+  achievedValue: number;
+  achievedPct: number;
+  unassignedPlaced: number;
+
+  team: RecruiterActivityTeam | null;
+}
+
+export interface RecruiterActivityGroup {
+  serviceLine: ServiceLineRef | null;
+  stages: ActivityStageMeta[];
+  data: RecruiterActivityRow[];
+  total: number;
+  totalTransitions: number;
+}
+
+export interface RecruiterActivitySummary {
+  people: number;
+  candidates: number;
+  moves: number;
+  added: number;
+  active: number;
+  pipeline: number;
+  placed: number;
+  reversed: number;
+  dropped: number;
+  requirementCount: number;
+  unassignedPlaced: number;
+  achievedPct: number;
+  sale: SaleValueSummary; // Funnel / Pipeline / Achieved totals, each requirement once
+}
+
+export interface RecruiterActivityResponse {
+  success: boolean;
+  groups: RecruiterActivityGroup[];
+  meta: {
+    window: string;
+    standardOnly: boolean;
+    total: number;
+    totalTransitions: number;
+    multiLine: boolean;
+    capped: boolean;
+    summary: RecruiterActivitySummary;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY — current-state recruiter endpoints (no longer used by the Recruiters
+// tab). Kept so older components that still import them keep compiling.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface RecruiterSaleShare {
@@ -136,18 +237,12 @@ export interface RecruiterSaleSummaryResponse {
     nearTerminalCandidates: number;
     terminalCandidates: number;
     sourcedCandidates?: number;
-    requirementCount: number; // unique requirements assigned
+    requirementCount: number;
     unassignedPlaced?: number;
     achievedPct?: number;
     byRecruiter: Record<string, RecruiterSaleShare>;
   };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RECRUITER ROW — GET /reports/recruiters
-// Legacy fields kept exactly as before so existing components keep compiling;
-// new-flow fields are optional additions.
-// ─────────────────────────────────────────────────────────────────────────────
 
 export interface RequirementBreakdown {
   requirementId: string;
@@ -157,34 +252,20 @@ export interface RequirementBreakdown {
   status: string;
   sourced: number;
   stageCounts: Record<string, number>;
-  // new flow
   totalOpenings?: number;
   submitted?: number;
   offered?: number;
   placed?: number;
   nearTerminal?: number;
   inPipeline?: number;
-  offPipeline?: number; // dropped
+  offPipeline?: number;
   isAssigned?: boolean;
-  saleValue?: number | null; // funnel of this req (only when assigned)
+  saleValue?: number | null;
   achievedValue?: number | null;
   nearTerminalValue?: number | null;
-  // legacy (kept as-is so existing components compile)
   joined: number;
   active: number;
   dropped: number;
-}
-
-export interface RecruiterTeamRollup {
-  members: number;
-  assignedReqCount: number;
-  saleValue: number;
-  achievedValue: number;
-  nearTerminalValue: number;
-  achievedPct: number;
-  sourced: number;
-  placed: number;
-  nearTerminal: number;
 }
 
 export interface RecruiterRow {
@@ -193,30 +274,7 @@ export interface RecruiterRow {
   sourced: number;
   stageCounts: Record<string, number>;
   requirementBreakdown: RequirementBreakdown[];
-  // new flow
   name?: string;
-  department?: { id: string; name: string } | null;
-  managerName?: string | null;
-  depth?: number | null; // 0 = you, 1 = direct report, …
-  isActive?: boolean;
-  submitted?: number;
-  offered?: number;
-  placed?: number;
-  nearTerminal?: number;
-  inPipeline?: number;
-  offPipeline?: number; // dropped
-  submissionRate?: number;
-  offerRate?: number;
-  placementRate?: number;
-  avgTimeToSubmitDays?: number | null;
-  assignedReqCount?: number;
-  saleValue?: number; // funnel of assigned reqs
-  achievedValue?: number;
-  nearTerminalValue?: number;
-  achievedPct?: number;
-  unassignedPlaced?: number;
-  team?: RecruiterTeamRollup | null;
-  // legacy (kept as-is so existing components compile)
   firstName: string;
   lastName: string;
   role: string;
@@ -244,7 +302,7 @@ export interface RecruiterResponse {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CANDIDATE DRILL ROW — shared shape from every drill endpoint
+// CANDIDATE DRILL ROW — shared shape from the requirement / overview drills
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface CandidateDrillRow {
@@ -265,7 +323,6 @@ export interface CandidateDrillRow {
   currentCtc?: number | null;
   expectedCtc?: number | null;
   negotiatedCtc?: number | null;
-  // joining — LWD, else today + notice period days
   lastWorkingDate?: string | null;
   noticeDays?: number | null;
   joiningDate?: string | null;
