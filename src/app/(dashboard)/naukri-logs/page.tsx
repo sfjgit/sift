@@ -48,6 +48,7 @@ interface SummaryRow {
   recruiterEmail: string;
   recruiterName: string | null;
   bu: string | null;
+  rm: string | null;
   naukri_consumed: number;
   ats_captured: number;
   gap: number;
@@ -1118,6 +1119,7 @@ export default function NaukriLogsPage() {
                         Recruiter
                       </th>
                       <th className="text-left text-slate-700 font-bold px-3 py-2.5">BU</th>
+                      <th className="text-left text-slate-700 font-bold px-3 py-2.5">RM</th>
                       <th className="text-right text-slate-700 font-bold px-3 py-2.5">Naukri</th>
                       <th className="text-right text-slate-700 font-bold px-3 py-2.5">ATS</th>
                       <th className="text-right text-slate-700 font-bold px-3 py-2.5">Gap</th>
@@ -1142,6 +1144,8 @@ export default function NaukriLogsPage() {
                         </td>
 
                         <td className="px-3 py-3 text-slate-700 text-xs">{r.bu ?? '—'}</td>
+
+                        <td className="px-3 py-3 text-slate-700 text-xs">{r.rm ?? '—'}</td>
 
                         <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-700">
                           {r.naukri_consumed}
