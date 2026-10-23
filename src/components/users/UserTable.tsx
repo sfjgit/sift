@@ -23,6 +23,7 @@ import {
   EyeOff,
   Loader2,
   Network,
+  LogIn,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,6 +70,7 @@ interface Props {
   onPageChange: (page: number) => void;
   onToggle?: (user: UserListItem) => void;
   isSuperAdmin?: boolean;
+  onLoginAs?: (user: UserListItem) => void;
 }
 
 interface ResetState {
@@ -132,6 +134,7 @@ export function UserTable({
   onPageChange,
   onToggle,
   isSuperAdmin = false,
+  onLoginAs,
 }: Props) {
   const router = useRouter();
   const [reset, setReset] = useState<ResetState>(RESET_INIT);
@@ -418,6 +421,16 @@ export function UserTable({
                               className="gap-2 text-xs text-violet-600 focus:text-violet-600 focus:bg-violet-50"
                             >
                               <EyeIcon className="h-3.5 w-3.5" /> Reveal password
+                            </DropdownMenuItem>
+                          )}
+
+                          {/* ── Login as user — real super admin only ── */}
+                          {onLoginAs && user.isActive && (
+                            <DropdownMenuItem
+                              onClick={() => onLoginAs(user)}
+                              className="gap-2 text-xs text-emerald-600 focus:text-emerald-600 focus:bg-emerald-50"
+                            >
+                              <LogIn className="h-3.5 w-3.5" /> Login as user
                             </DropdownMenuItem>
                           )}
 
