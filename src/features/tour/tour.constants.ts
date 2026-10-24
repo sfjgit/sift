@@ -2,7 +2,7 @@
 // Path: src/features/tour/tour.constants.ts
 
 export const TOUR_CONFIG = {
-  storageKey: 'app-tours',
+  storageKey: 'crm-tours',
   storageVersion: 1,
   /** Delay before auto-start so the page settles first. */
   autoStartDelayMs: 600,
@@ -10,9 +10,9 @@ export const TOUR_CONFIG = {
   targetTimeoutMs: 2500,
   /** Shorter wait for optional targets before skipping them. */
   optionalTargetTimeoutMs: 1200,
-  overlayOpacity: 0.45,
+  overlayOpacity: 0.55,
   stagePadding: 6,
-  stageRadius: 4,
+  stageRadius: 10,
   popoverClass: 'app-tour',
   labels: {
     next: 'Next',

@@ -1,0 +1,309 @@
+// File: crm.ts
+// Path: src/types/crm.ts
+//
+// Client / SPOC / CSR shapes — mirror the selects in crm-core-service controllers.
+
+import type { LookupRef, NamedRef, Person } from './api';
+
+export type ClientStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE';
+export type EmailStatus = 'UNVERIFIED' | 'GOOD' | 'RISKY' | 'BAD';
+export type ValidationBand = 'READY' | 'REVIEW' | 'NOT_USABLE';
+
+export type ClientActivityType =
+  | 'CLIENT_CREATED'
+  | 'CLIENT_UPDATED'
+  | 'CLIENT_APPROVED'
+  | 'SPOC_ADDED'
+  | 'SPOC_UPDATED'
+  | 'SPOC_REASSIGNED'
+  | 'NOTE_ADDED'
+  | 'LOCATION_ADDED'
+  | 'TECHNOLOGY_UPDATED'
+  | 'DOCUMENT_ADDED'
+  | 'FINANCIALS_UPDATED'
+  | 'PROGRAMS_ADDED'
+  | 'OUTREACH_GENERATED'
+  | 'STEP_RUN_STARTED'
+  | 'STEP_RUN_FINISHED'
+  | 'STEP_RUN_FAILED';
+
+// ── clients ──────────────────────────────────────────────────────────────────
+
+export interface ClientListItem {
+  id: string;
+  name: string;
+  shortName: string | null;
+  cin: string | null;
+  website: string | null;
+  status: ClientStatus;
+  createdAt: string;
+  updatedAt: string;
+  industry: LookupRef | null;
+  category: LookupRef | null;
+  createdBy: Person;
+  locations: { id: string; city: string | null; state: string | null; country: string | null }[];
+  _count: { spocs: number };
+}
+
+export interface ClientLocation {
+  id: string;
+  name: string | null;
+  addressLine: string | null;
+  city: string | null;
+  district: string | null;
+  state: string | null;
+  country: string | null;
+  pincode: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  dmEvidence: string | null;
+  createdAt: string;
+  type: LookupRef | null;
+  addedBy: Person | null;
+  _count: { spocs: number };
+}
+
+export interface ClientTechnology {
+  id: string;
+  details: string;
+  updatedAt: string;
+  category: LookupRef;
+  addedBy: Person | null;
+}
+
+export interface ClientNote {
+  id: string;
+  content: string;
+  createdAt: string;
+  author: Person;
+}
+
+export interface ClientDocument {
+  id: string;
+  fy: string;
+  fileKey: string;
+  fileName: string | null;
+  sourceUrl: string | null;
+  createdAt: string;
+  type: LookupRef;
+}
+
+export interface ClientProgram {
+  id: string;
+  fy: string;
+  name: string;
+  budgetRs: string | null;
+  locations: string | null;
+  beneficiaries: string | null;
+  implementor: string | null;
+  sourceUrl: string | null;
+  sector: LookupRef | null;
+}
+
+export interface ClientFinancial {
+  id: string;
+  fy: string;
+  obligationRs: string | null;
+  budgetRs: string | null;
+  spentRs: string | null;
+  unspentRs: string | null;
+  evidence: string | null;
+  confidence: string | null;
+  isLocked: boolean;
+  updatedAt: string;
+}
+
+export interface ClientDetail extends Omit<ClientListItem, 'locations'> {
+  linkedinUrl: string | null;
+  approvedAt: string | null;
+  approvedBy: Person | null;
+  locations: ClientLocation[];
+  technologies: ClientTechnology[];
+  notes: ClientNote[];
+  documents: ClientDocument[];
+  programs: ClientProgram[];
+  /** Present only with clients.view_financials */
+  financials?: ClientFinancial[];
+}
+
+export interface ClientInput {
+  name: string;
+  shortName?: string | null;
+  cin?: string | null;
+  website?: string | null;
+  linkedinUrl?: string | null;
+  industryId?: string | null;
+  categoryId?: string | null;
+}
+
+export interface LocationInput {
+  typeId?: string | null;
+  name?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  district?: string | null;
+  state?: string | null;
+  country?: string | null;
+  pincode?: string | null;
+  isPrimary?: boolean;
+  dmEvidence?: string | null;
+}
+
+export interface ClientActivity {
+  id: string;
+  type: ClientActivityType;
+  summary: string;
+  meta: Record<string, unknown> | null;
+  createdAt: string;
+  actor: Person | null;
+  spoc: Person | null;
+  client?: NamedRef;
+}
+
+// ── spocs ────────────────────────────────────────────────────────────────────
+
+export interface Spoc {
+  id: string;
+  firstName: string;
+  lastName: string | null;
+  /** null when the caller lacks spocs.view_contact */
+  email: string | null;
+  phone: string | null;
+  designation: string | null;
+  department: string | null;
+  linkedinUrl: string | null;
+  seniority: string | null;
+  totalExpYears: string | null;
+  currentOrgExpYears: string | null;
+  emailStatus: EmailStatus;
+  validationScore: number | null;
+  validationBand: ValidationBand | null;
+  validatedAt: string | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  client: NamedRef;
+  handler: Person;
+  addedBy: Person;
+  businessUnit: NamedRef;
+  serviceLine: NamedRef;
+  location: { id: string; name: string | null; city: string | null; state: string | null } | null;
+  source: LookupRef | null;
+  emailSource: LookupRef | null;
+  salesStatus: LookupRef | null;
+}
+
+export interface SpocAssignment {
+  id: string;
+  reason: string | null;
+  assignedAt: string;
+  endedAt: string | null;
+  assignedTo: Person;
+  assignedBy: Person;
+}
+
+export interface SpocDetail extends Spoc {
+  validationChecks: Record<string, unknown> | null;
+  assignments?: SpocAssignment[];
+}
+
+export interface SpocInput {
+  clientId?: string;
+  handlerId?: string;
+  firstName: string;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  designation?: string | null;
+  department?: string | null;
+  linkedinUrl?: string | null;
+  seniority?: string | null;
+  totalExpYears?: number | null;
+  currentOrgExpYears?: number | null;
+  businessUnitId: string;
+  serviceLineId: string;
+  locationId?: string | null;
+  sourceId?: string | null;
+  emailSourceId?: string | null;
+  salesStatusId?: string | null;
+  isPrimary?: boolean;
+  notes?: string | null;
+}
+
+export interface BulkResult {
+  updated: number;
+  skipped: { id: string; reason: string }[];
+}
+
+// ── outreach + pipeline ──────────────────────────────────────────────────────
+
+export type StepRunStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'DONE'
+  | 'EMPTY'
+  | 'FAILED'
+  | 'STOPPED'
+  | 'DISPATCH_FAILED'
+  | 'TIMED_OUT';
+
+export interface PipelineStep {
+  id: string;
+  key: string;
+  label: string;
+  target: 'CLIENT' | 'SPOC';
+  uiOrder: number | null;
+  userClientLimit: number | null;
+  service: { code: string; name: string; isActive: boolean; lastHealthOk: boolean | null };
+}
+
+export interface StepRun {
+  id: string;
+  status: StepRunStatus;
+  progress: number | null;
+  note: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  howToContinue: string | null;
+  costUsd: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  parentRunId: string | null;
+  step: { id: string; key: string; label: string; target: 'CLIENT' | 'SPOC' };
+  client: NamedRef;
+  spoc: Person | null;
+  requestedBy: Person;
+  _count?: { childRuns: number; events: number };
+}
+
+export interface StepRunDetail extends StepRun {
+  options: unknown;
+  viewData: unknown;
+  resultSummary: unknown;
+  credits: Record<string, number> | null;
+  events: {
+    id: string;
+    fromStatus: StepRunStatus | null;
+    toStatus: StepRunStatus | null;
+    message: string;
+    createdAt: string;
+  }[];
+  /** lighter rows than the list — no client / SPOC / requester / cost */
+  childRuns: Pick<StepRun, 'id' | 'status' | 'progress' | 'note' | 'createdAt' | 'step'>[];
+}
+
+export interface OutreachPack {
+  id: string;
+  model: string | null;
+  fileKey: string | null;
+  createdAt: string;
+  client: NamedRef;
+  spoc: Person & { designation: string | null; email: string | null };
+  sourceRun: { id: string; step: { label: string } } | null;
+  messages: { id: string; sequenceNo: number; subject: string; body: string }[];
+}

@@ -4,7 +4,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { seenKey, useTourStore } from './tourStore';
 import { registerTourHandlers, unregisterTourHandlers } from './tourHandlers';
 import { TOUR_CONFIG } from './tour.constants';

@@ -25,6 +25,11 @@ export interface TourStep<R extends string = string> {
 
 export interface TourDefinition<R extends string = string> {
   id: string;
+  /** Shown in the help center */
+  title: string;
+  description: string;
+  /** Path prefix the tour belongs to — the topbar offers it on matching pages */
+  route: string;
   /** Bump when steps change meaningfully — users who saw an older version see it again. */
   version: number;
   steps: TourStep<R>[];

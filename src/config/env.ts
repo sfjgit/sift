@@ -1,10 +1,12 @@
+// File: env.ts
+// Path: src/config/env.ts
+
 const env = {
   NODE_ENV: process.env.NODE_ENV,
+  /** Gateway origin — proxied through next.config rewrites as /api/proxy */
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
-  NEXT_PUBLIC_STRIPE_PK: process.env.NEXT_PUBLIC_STRIPE_PK,
-  NEXT_PUBLIC_STRIPE_SK: process.env.NEXT_PUBLIC_STRIPE_SK,
-  NEXT_PUBLIC_STRIPE_WEBHOOK_SECRET: process.env.NEXT_PUBLIC_STRIPE_WEBHOOK_SECRET,
-  NEXT_PUBLIC_STRIPE_SUCCESS_URL: process.env.NEXT_PUBLIC_STRIPE_SUCCESS_URL,
+  /** Same-origin base for every core-service call (cookies stay first-party). */
+  API_BASE: '/api/proxy/core/api',
 };
 
 export default env;

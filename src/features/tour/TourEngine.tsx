@@ -8,7 +8,7 @@ import { driver } from 'driver.js';
 import type { DriveStep, PopoverDOM } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import './tour.css';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/features/auth/AuthProvider';
 import { useTourStore } from './tourStore';
 import { getTour } from './tours';
 import { getTourHandlers } from './tourHandlers';
