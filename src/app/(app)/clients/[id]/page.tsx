@@ -23,7 +23,7 @@ import { CsrTab } from '@/features/clients/detail/CsrTab';
 import { LocationsTab } from '@/features/clients/detail/LocationsTab';
 import { NotesPanel } from '@/features/clients/detail/NotesPanel';
 import { OutreachList } from '@/features/clients/detail/OutreachList';
-import { RunsList } from '@/features/clients/detail/RunsList';
+import { PipelinePanel } from '@/features/pipeline/PipelinePanel';
 import { TechnologyTab } from '@/features/clients/detail/TechnologyTab';
 import { spocColumns, spocFilters } from '@/features/spocs/columns';
 import { tourTarget } from '@/features/tour/tour.constants';
@@ -263,7 +263,7 @@ function ClientPage() {
             <CsrTab client={client} />
           </TabsContent>
           <TabsContent value="outreach">{tab === 'outreach' && <OutreachList clientId={client.id} />}</TabsContent>
-          <TabsContent value="pipeline">{tab === 'pipeline' && <RunsList clientId={client.id} />}</TabsContent>
+          <TabsContent value="pipeline">{tab === 'pipeline' && <PipelinePanel clientId={client.id} clientName={client.name} />}</TabsContent>
           <TabsContent value="activity">{tab === 'activity' && <ActivityFull clientId={client.id} />}</TabsContent>
         </div>
       </Tabs>

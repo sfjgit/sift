@@ -8,6 +8,8 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
+  BadgeCheck,
+  CircleSlash,
   ArrowRightLeft,
   Building2,
   CheckCircle2,
@@ -29,7 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Breadcrumbs } from '@/components/common/PageHeader';
 import { DetailList, Panel } from '@/components/common/Panel';
-import { BandBadge, EmailStatusBadge, LookupBadge, Pill } from '@/components/common/badges';
+import { ApprovalBadge, BandBadge, EmailStatusBadge, LookupBadge, Pill } from '@/components/common/badges';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { ErrorState } from '@/components/common/states';
 import { useConfirm } from '@/components/common/ConfirmProvider';
@@ -46,7 +48,7 @@ import { reportsApi, spocsApi } from '@/lib/api/endpoints';
 import { fmtDate, fmtDateTime, fmtRelative, fullName, placeOf, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { ApiError } from '@/lib/api/client';
-import type { SpocDetail } from '@/types/crm';
+import type { SpocDetail, SpocApprovalStatus } from '@/types/crm';
 
 function ContactRow({ icon: Icon, value, href, hidden }: { icon: typeof Mail; value: string | null; href?: string; hidden: boolean }) {
   if (!value)
@@ -165,6 +167,10 @@ function SpocPage() {
     enabled: !!spoc && can('clients.read') && can('reports.read'),
   });
 
+  const decide = useAction((decision: SpocApprovalStatus) => spocsApi.decide([id], decision), {
+    success: (_r, d) => (d === 'APPROVED' ? 'Approved for outreach' : d === 'REJECTED' ? 'Rejected' : 'Back to pending'),
+    invalidate: [spocHooks.keys.all],
+  });
   const deactivate = useAction(() => spocsApi.remove(id), {
     success: 'SPOC deactivated',
     invalidate: [spocHooks.keys.all],
@@ -228,12 +234,26 @@ function SpocPage() {
               </Link>
             </p>
             <div className="flex flex-wrap items-center gap-2">
+              <ApprovalBadge status={spoc.approvalStatus} />
               <BandBadge band={spoc.validationBand} score={spoc.validationScore} />
               <EmailStatusBadge status={spoc.emailStatus} />
               {spoc.salesStatus && <LookupBadge lookup={spoc.salesStatus} />}
             </div>
+            {spoc.reviewFlag && spoc.reviewReason && (
+              <p className="text-xs text-warning">Needs review: {spoc.reviewReason}</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
+            {can('spocs.approve') && spoc.isActive && spoc.approvalStatus !== 'APPROVED' && (
+              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate('APPROVED')}>
+                <BadgeCheck /> Approve
+              </Button>
+            )}
+            {can('spocs.approve') && spoc.isActive && spoc.approvalStatus === 'PENDING' && (
+              <Button variant="outline" size="sm" disabled={decide.isPending} onClick={() => decide.mutate('REJECTED')}>
+                <CircleSlash /> Reject
+              </Button>
+            )}
             {can('spocs.assign') && spoc.isActive && (
               <Button variant="outline" size="sm" onClick={() => setAssigning(true)}>
                 <ArrowRightLeft /> Reassign

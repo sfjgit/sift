@@ -5,7 +5,7 @@
 
 import Link from 'next/link';
 import { Linkedin, Lock, Mail, Phone, Star } from 'lucide-react';
-import { BAND, BandBadge, EMAIL_STATUS, EmailStatusBadge, LookupBadge } from '@/components/common/badges';
+import { APPROVAL, ApprovalBadge, BAND, BandBadge, EMAIL_STATUS, EmailStatusBadge, LookupBadge } from '@/components/common/badges';
 import { PersonCell, UserAvatar } from '@/components/common/UserAvatar';
 import type { DataColumn, FilterDef } from '@/components/data-table';
 import { fmtDate, fmtRelative, fullName, placeOf } from '@/lib/format';
@@ -28,6 +28,12 @@ export const spocFilters: FilterDef[] = [
     label: 'Quality band',
     type: 'select',
     options: (['READY', 'REVIEW', 'NOT_USABLE'] as const).map(value => ({ value, label: BAND[value].label })),
+  },
+  {
+    key: 'approvalStatus',
+    label: 'Approval',
+    type: 'select',
+    options: (['PENDING', 'APPROVED', 'REJECTED'] as const).map(value => ({ value, label: APPROVAL[value].label })),
   },
   { key: 'isActive', label: 'Status', type: 'boolean', trueLabel: 'Active', falseLabel: 'Inactive' },
 ];
@@ -131,6 +137,18 @@ export const spocColumns = ({
       exportValue: s => `${BAND[s.validationBand ?? 'UNSCORED'].label}${s.validationScore !== null ? ` (${s.validationScore})` : ''}`,
     },
     cell: ({ row }) => <BandBadge band={row.original.validationBand} score={row.original.validationScore} />,
+  },
+  {
+    id: 'approval',
+    accessorFn: s => APPROVAL[s.approvalStatus]?.label ?? '',
+    header: 'Approval',
+    meta: { label: 'Approval' },
+    cell: ({ row }) => (
+      <span className="inline-flex items-center gap-1.5" title={row.original.reviewReason ?? undefined}>
+        <ApprovalBadge status={row.original.approvalStatus} />
+        {row.original.reviewFlag && <span className="size-1.5 rounded-full bg-warning" aria-label="Flagged for review" />}
+      </span>
+    ),
   },
   {
     id: 'salesStatus',

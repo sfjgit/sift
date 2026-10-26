@@ -197,7 +197,17 @@ export interface Spoc {
   source: LookupRef | null;
   emailSource: LookupRef | null;
   salesStatus: LookupRef | null;
+  /** where each contact field came from — { email: "apollo", linkedinUrl: "brightdata" } */
+  fieldSources: Record<string, string> | null;
+  reviewFlag: boolean;
+  reviewReason: string | null;
+  approvalStatus: SpocApprovalStatus;
+  approvedAt: string | null;
+  approvalNote: string | null;
+  approvedBy: Person | null;
 }
+
+export type SpocApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface SpocAssignment {
   id: string;
@@ -308,4 +318,91 @@ export interface OutreachPack {
   spoc: Person & { designation: string | null; email: string | null };
   sourceRun: { id: string; step: { label: string } } | null;
   messages: { id: string; sequenceNo: number; subject: string; body: string }[];
+}
+
+// ── running steps ────────────────────────────────────────────────────────────
+
+export interface StartRunInput {
+  stepKey: string;
+  clientId: string;
+  spocIds?: string[];
+  businessUnitId?: string;
+  serviceLineId?: string;
+  /** forwarded to the engine; run_all: { steps[], dryRun, stepOptions{} } */
+  options?: Record<string, unknown>;
+}
+
+export type StartedRun = Pick<StepRun, 'id' | 'status' | 'note' | 'createdAt' | 'parentRunId'> & {
+  step: { id: string; key: string; label: string };
+  duplicate: boolean;
+};
+
+export interface StepOverview {
+  counts: {
+    spocs: number;
+    approvedSpocs: number;
+    documents: number;
+    financials: number;
+    programs: number;
+    outreachPacks: number;
+  };
+  steps: (Pick<PipelineStep, 'id' | 'key' | 'label' | 'uiOrder' | 'userClientLimit'> & {
+    service: { isActive: boolean; lastHealthOk: boolean | null };
+    lastRun: Pick<StepRun, 'id' | 'status' | 'progress' | 'note' | 'errorMessage' | 'createdAt' | 'finishedAt'> | null;
+  })[];
+}
+
+/** viewData written by the CRM when it saved a run's results */
+export interface RunViewData {
+  conflicts?: { spocId: string; name: string; field: string; current?: string; proposed: unknown; source?: string | null; reason?: string }[];
+  skipped?: { kind: string; name?: string; reason: string; [k: string]: unknown }[];
+  flaggedFigures?: { fy: string; reviewReason?: string; [k: string]: unknown }[];
+}
+
+// ── integrations (admin) ─────────────────────────────────────────────────────
+
+export interface IntegrationStep {
+  id: string;
+  key: string;
+  label: string;
+  target: 'CLIENT' | 'SPOC';
+  uiOrder: number | null;
+  userClientLimit: number | null;
+  isActive: boolean;
+  config: Record<string, unknown> | null;
+}
+
+export interface IntegrationService {
+  id: string;
+  code: string;
+  name: string;
+  baseUrl: string | null;
+  outboundKeyEnv: string | null;
+  outboundKeySet: boolean;
+  inboundKeySet: boolean;
+  scopes: string[];
+  timeoutMins: number;
+  maxDispatchTries: number;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  lastHealthAt: string | null;
+  lastHealthOk: boolean | null;
+  steps: IntegrationStep[];
+}
+
+export interface EngineHealth {
+  ok: boolean;
+  reachable: boolean;
+  error: string | null;
+  engine: {
+    ok: boolean;
+    worker: { online: boolean; ageSeconds: number | null };
+    queued: number;
+    keys: Record<string, boolean>;
+    callbackKeySet: boolean;
+    s3: boolean;
+    limits: Record<string, string | null>;
+    crmMode: boolean;
+    version: string;
+  } | null;
 }

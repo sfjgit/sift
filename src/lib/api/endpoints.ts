@@ -18,11 +18,18 @@ import type {
   ClientStatus,
   ClientTechnology,
   LocationInput,
+  EngineHealth,
+  IntegrationService,
+  IntegrationStep,
   OutreachPack,
   PipelineStep,
   Spoc,
   SpocDetail,
+  SpocApprovalStatus,
   SpocInput,
+  StartedRun,
+  StartRunInput,
+  StepOverview,
   StepRun,
   StepRunDetail,
 } from '@/types/crm';
@@ -92,6 +99,8 @@ export const spocsApi = {
     api.patch<Spoc>(`/spocs/${id}/assign`, { assignToId, reason }),
   bulkAssign: (spocIds: string[], assignToId: string, reason?: string) =>
     api.patch<BulkResult>('/spocs/bulk-assign', { spocIds, assignToId, reason }),
+  decide: (spocIds: string[], decision: SpocApprovalStatus, note?: string) =>
+    api.post<{ updated: number; unchanged: number; notFound: number }>('/spocs/approval', { spocIds, decision, note }),
 };
 
 // ── users / roles / permissions ──────────────────────────────────────────────
@@ -216,6 +225,22 @@ export const pipelineApi = {
   steps: () => api.get<PipelineStep[]>('/pipeline-steps'),
   runs: (params?: ListParams) => api.page<StepRun>('/step-runs', params),
   run: (id: string) => api.get<StepRunDetail>(`/step-runs/${id}`),
+  start: (body: StartRunInput) => api.post<StartedRun>('/step-runs', body),
+  stop: (id: string) => api.post<void>(`/step-runs/${id}/stop`),
+  overview: (clientId: string) => api.get<StepOverview>('/step-runs/overview', { clientId }),
+};
+
+export const integrationsApi = {
+  list: () =>
+    api.get<{ services: IntegrationService[]; last24h: Partial<Record<StepRun['status'], number>> }>('/integrations'),
+  health: (id: string) => api.get<EngineHealth>(`/integrations/${id}/health`),
+  testKey: (id: string, provider: string) =>
+    api.post<{ ok: boolean; detail: string | null }>(`/integrations/${id}/test-key`, { provider }),
+  rotateKey: (id: string) => api.post<{ key: string }>(`/integrations/${id}/rotate-key`),
+  updateService: (id: string, body: Partial<Pick<IntegrationService, 'baseUrl' | 'isActive' | 'timeoutMins' | 'maxDispatchTries'>>) =>
+    api.patch<IntegrationService>(`/integrations/${id}`, body),
+  updateStep: (id: string, body: Partial<Pick<IntegrationStep, 'label' | 'isActive' | 'userClientLimit' | 'config'>>) =>
+    api.patch<IntegrationStep>(`/integrations/steps/${id}`, body),
 };
 
 export const outreachApi = {

@@ -9,7 +9,11 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Coins, Lightbulb, SearchX } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Coins, Lightbulb, SearchX, Square } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/common/ConfirmProvider';
+import { usePermissions } from '@/features/auth/usePermissions';
+import { useAction } from '@/hooks/useResource';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
@@ -21,7 +25,7 @@ import { ApiError } from '@/lib/api/client';
 import { pipelineApi } from '@/lib/api/endpoints';
 import { fmtDateTime, fmtNumber, fmtRelative, fullName } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { StepRunDetail } from '@/types/crm';
+import type { RunViewData, StepRunDetail } from '@/types/crm';
 import { fmtDuration, fmtUsd, humanizeKey, isActive } from './runFormat';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -45,20 +49,102 @@ const renderValue = (v: unknown) => {
   return <code className="font-mono text-xs break-all">{JSON.stringify(v)}</code>;
 };
 
+// { spocs: { created: 2, updated: 1 }, engine: { "Needs review": 2 } } → one row per group, chips inside
 function ResultSummary({ value }: { value: unknown }) {
   if (value === null || value === undefined) return <p className="text-sm text-muted-foreground">No result recorded.</p>;
-  const flat = isPlainObject(value) && Object.values(value).every(v => !isPlainObject(v) || Object.keys(v).length <= 3);
-  if (flat && Object.keys(value).length) {
+  if (!isPlainObject(value) || !Object.keys(value).length) {
     return (
-      <div className="rounded-lg border bg-surface p-3">
-        <DetailList items={Object.entries(value).map(([k, v]) => ({ label: humanizeKey(k), value: renderValue(v) }))} />
-      </div>
+      <pre className="max-h-80 overflow-auto rounded-lg border bg-surface p-3 font-mono text-[11px] leading-relaxed">
+        {JSON.stringify(value, null, 2)}
+      </pre>
     );
   }
+  const scalars = Object.entries(value).filter(([, v]) => !isPlainObject(v));
+  const groups = Object.entries(value).filter(([, v]) => isPlainObject(v) && Object.keys(v).length) as [string, Record<string, unknown>][];
   return (
-    <pre className="max-h-80 overflow-auto rounded-lg border bg-surface p-3 font-mono text-[11px] leading-relaxed">
-      {JSON.stringify(value, null, 2)}
-    </pre>
+    <div className="space-y-2">
+      {scalars.length > 0 && (
+        <div className="rounded-lg border bg-surface p-3">
+          <DetailList items={scalars.map(([k, v]) => ({ label: humanizeKey(k), value: renderValue(v) }))} />
+        </div>
+      )}
+      {groups.map(([group, v]) => (
+        <div key={group} className="rounded-lg border bg-surface p-3">
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            {group === 'engine' ? 'Reported by the pipeline' : humanizeKey(group)}
+          </p>
+          <ul className="flex flex-wrap gap-1.5">
+            {Object.entries(v).map(([k, x]) => (
+              <li key={k} className="inline-flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-xs ring-1 ring-border">
+                <span className="text-muted-foreground">{humanizeKey(k)}</span>
+                <span className="font-medium tabular">{renderValue(x) ?? '—'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// what the CRM did not take from the pipeline, for a person to look at
+function ReviewItems({ value }: { value: unknown }) {
+  const v = (isPlainObject(value) ? value : {}) as RunViewData;
+  const conflicts = v.conflicts ?? [];
+  const skipped = v.skipped ?? [];
+  const flagged = v.flaggedFigures ?? [];
+  if (!conflicts.length && !skipped.length && !flagged.length) return null;
+  return (
+    <Section title="Needs a look">
+      <div className="space-y-2">
+        {conflicts.length > 0 && (
+          <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+            <p className="mb-2 text-[13px] font-medium">
+              {conflicts.length} value{conflicts.length === 1 ? '' : 's'} differ from the CRM — the CRM value was kept
+            </p>
+            <ul className="space-y-1.5 text-xs">
+              {conflicts.slice(0, 50).map((c, i) => (
+                <li key={i} className="flex flex-wrap gap-x-1.5">
+                  <Link href={`/spocs/${c.spocId}`} className="font-medium hover:text-primary">
+                    {c.name}
+                  </Link>
+                  <span className="text-muted-foreground">{humanizeKey(c.field)}:</span>
+                  {c.current && <span className="line-through opacity-70">{c.current}</span>}
+                  <span>→ {String(c.proposed)}</span>
+                  {(c.source || c.reason) && <span className="text-muted-foreground">({c.reason ?? c.source})</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {flagged.length > 0 && (
+          <div className="rounded-lg border bg-surface p-3 text-xs">
+            <p className="mb-1.5 text-[13px] font-medium">{flagged.length} CSR figure year(s) flagged, not saved</p>
+            <ul className="space-y-1">
+              {flagged.map((f, i) => (
+                <li key={i}>
+                  <span className="font-medium">{f.fy}</span>
+                  {f.reviewReason && <span className="text-muted-foreground"> — {f.reviewReason}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {skipped.length > 0 && (
+          <div className="rounded-lg border bg-surface p-3 text-xs">
+            <p className="mb-1.5 text-[13px] font-medium">{skipped.length} row(s) skipped</p>
+            <ul className="space-y-1">
+              {skipped.slice(0, 50).map((x, i) => (
+                <li key={i}>
+                  <span className="font-medium">{x.name ?? humanizeKey(x.kind)}</span>
+                  <span className="text-muted-foreground"> — {x.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -128,6 +214,8 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
       <Section title="Result">
         <ResultSummary value={run.resultSummary} />
       </Section>
+
+      <ReviewItems value={run.viewData} />
 
       {credits && credits.length > 0 && (
         <Section title="Credits used">
@@ -223,6 +311,9 @@ export function RunSheet({
     enabled: !!runId,
     refetchInterval: q => (q.state.data && isActive(q.state.data.status) ? 5000 : false),
   });
+  const { can } = usePermissions();
+  const confirm = useConfirm();
+  const stop = useAction(pipelineApi.stop, { success: 'Stop requested', invalidate: [['step-runs']] });
 
   return (
     <Sheet open={!!runId} onOpenChange={onOpenChange}>
@@ -247,6 +338,20 @@ export function RunSheet({
                 <Pill tone="neutral" dot={false}>
                   {run.step?.target === 'SPOC' ? 'SPOC step' : 'Client step'}
                 </Pill>
+                {isActive(run.status) && can('step_runs.cancel') && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="ml-auto"
+                    disabled={stop.isPending}
+                    onClick={async () => {
+                      if (await confirm({ title: 'Stop this run?', description: 'What it has already found is kept.', confirmLabel: 'Stop' }))
+                        stop.mutate(run.id);
+                    }}
+                  >
+                    <Square /> Stop
+                  </Button>
+                )}
               </div>
               <SheetDescription>
                 {run.client?.name}

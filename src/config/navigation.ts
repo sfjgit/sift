@@ -5,7 +5,9 @@
 // can't open; `anyPerm` shows it when any one of the keys is granted.
 
 import {
+  BadgeCheck,
   BarChart3,
+  Cable,
   Bell,
   Building2,
   ContactRound,
@@ -47,6 +49,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Clients', href: '/clients', icon: Building2, perm: 'clients.read', tour: 'nav-clients', keywords: ['companies', 'accounts'] },
       { label: 'SPOCs', href: '/spocs', icon: ContactRound, perm: 'spocs.read', tour: 'nav-spocs', keywords: ['contacts', 'people', 'leads'] },
       { label: 'Reports', href: '/reports', icon: BarChart3, perm: 'reports.read', anyPerm: ['clients.read', 'spocs.read'], tour: 'nav-reports', keywords: ['analytics', 'insights', 'charts'] },
+      { label: 'Approvals', href: '/approvals', icon: BadgeCheck, perm: 'spocs.read', keywords: ['approve', 'review', 'pending', 'outreach'] },
       { label: 'Pipeline runs', href: '/pipeline-runs', icon: GitBranch, perm: 'step_runs.read', keywords: ['steps', 'jobs', 'enrichment'] },
     ],
   },
@@ -57,6 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Roles & access', href: '/admin/roles', icon: ShieldCheck, perm: 'roles.read', keywords: ['permissions'] },
       { label: 'Org structure', href: '/admin/org', icon: Network, perm: 'org.manage', keywords: ['business units', 'service lines', 'departments', 'designations'] },
       { label: 'Pick-lists', href: '/admin/lookups', icon: ListTree, perm: 'lookups.manage', keywords: ['lookups', 'industry', 'sales status'] },
+      { label: 'Integrations', href: '/admin/integrations', icon: Cable, perm: 'integrations.manage', keywords: ['pipeline', 'engine', 'api keys', 'health'] },
       { label: 'Login history', href: '/admin/auth-logs', icon: History, perm: 'audit.view_login_history', keywords: ['audit', 'auth logs'] },
     ],
   },

@@ -6,7 +6,7 @@
 
 import { cn } from '@/lib/utils';
 import { titleCase } from '@/lib/format';
-import type { ClientStatus, EmailStatus, StepRunStatus, ValidationBand } from '@/types/crm';
+import type { ClientStatus, EmailStatus, SpocApprovalStatus, StepRunStatus, ValidationBand } from '@/types/crm';
 
 export type Tone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'violet';
 
@@ -92,6 +92,16 @@ export function BandBadge({ band, score }: { band: ValidationBand | null; score?
     </Pill>
   );
 }
+
+export const APPROVAL: Record<SpocApprovalStatus, { label: string; tone: Tone }> = {
+  PENDING: { label: 'To approve', tone: 'warning' },
+  APPROVED: { label: 'Approved', tone: 'success' },
+  REJECTED: { label: 'Rejected', tone: 'neutral' },
+};
+
+export const ApprovalBadge = ({ status }: { status: SpocApprovalStatus }) => (
+  <Pill tone={APPROVAL[status]?.tone}>{APPROVAL[status]?.label ?? titleCase(status)}</Pill>
+);
 
 export const STEP_STATUS: Record<StepRunStatus, { label: string; tone: Tone }> = {
   QUEUED: { label: 'Queued', tone: 'neutral' },
