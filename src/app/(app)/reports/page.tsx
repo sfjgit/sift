@@ -25,7 +25,14 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,7 +57,15 @@ import { usePermissions } from '@/features/auth/usePermissions';
 import { DrillSheet, type DrillTarget } from '@/features/reports/DrillSheet';
 import { ReportBuilder } from '@/features/reports/ReportBuilder';
 import { ReportResult, toExportRows } from '@/features/reports/ReportResult';
-import { DEFAULT_SPEC, TEMPLATES, breakdownParams, dimLabel, drillHref, type ReportSpec, type Viz } from '@/features/reports/spec';
+import {
+  DEFAULT_SPEC,
+  TEMPLATES,
+  breakdownParams,
+  dimLabel,
+  drillHref,
+  type ReportSpec,
+  type Viz,
+} from '@/features/reports/spec';
 import { tourTarget } from '@/features/tour/tour.constants';
 import { useTour } from '@/features/tour/useTour';
 import { reportsTour } from '@/features/tour/tours/catalog';
@@ -92,7 +107,11 @@ function ReportsPage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [drill, setDrill] = useState<DrillTarget | null>(null);
 
-  const saved = useQuery({ queryKey: VIEW_KEY, queryFn: () => viewsApi.list<ReportSpec>('reports'), staleTime: 60_000 });
+  const saved = useQuery({
+    queryKey: VIEW_KEY,
+    queryFn: () => viewsApi.list<ReportSpec>('reports'),
+    staleTime: 60_000,
+  });
 
   // ?report=<id> can only resolve once saved reports have loaded
   useEffect(() => {
@@ -136,7 +155,8 @@ function ReportsPage() {
     setTemplateId(null);
   };
 
-  const title = active?.name ?? TEMPLATES.find(t => t.id === templateId)?.title ?? 'Untitled report';
+  const title =
+    active?.name ?? TEMPLATES.find(t => t.id === templateId)?.title ?? 'Untitled report';
   const subtitle = useMemo(
     () =>
       `${spec.entity === 'spocs' ? 'SPOCs' : 'Clients'} by ${dimLabel(spec.entity, spec.groupBy).toLowerCase()}${
@@ -163,7 +183,11 @@ function ReportsPage() {
 
   const exportXlsx = async () => {
     if (!breakdown.data) return;
-    await downloadRecords(toExportRows(spec, breakdown.data), title.replace(/\s+/g, '-').toLowerCase(), 'xlsx');
+    await downloadRecords(
+      toExportRows(spec, breakdown.data),
+      title.replace(/\s+/g, '-').toLowerCase(),
+      'xlsx'
+    );
   };
 
   const copyLink = () => {
@@ -186,7 +210,11 @@ function ReportsPage() {
   };
 
   const vizOptions: { value: Viz; label: string; icon: typeof BarChart3 }[] = [
-    { value: spec.splitBy ? 'stacked' : 'bar', label: spec.splitBy ? 'Stacked' : 'Bars', icon: spec.splitBy ? BarChart3 : BarChartHorizontal },
+    {
+      value: spec.splitBy ? 'stacked' : 'bar',
+      label: spec.splitBy ? 'Stacked' : 'Bars',
+      icon: spec.splitBy ? BarChart3 : BarChartHorizontal,
+    },
     ...(!spec.splitBy ? [{ value: 'donut' as Viz, label: 'Donut', icon: PieChart }] : []),
     { value: 'table', label: 'Table', icon: Table2 },
     { value: 'trend', label: 'Trend', icon: LineChart },
@@ -223,7 +251,9 @@ function ReportsPage() {
                       >
                         <span className="flex-1 truncate">{v.name}</span>
                         {v.isShared && <Globe2 className="size-3.5 text-muted-foreground" />}
-                        {!v.isOwner && <span className="text-xs text-muted-foreground">{v.user.firstName}</span>}
+                        {!v.isOwner && (
+                          <span className="text-xs text-muted-foreground">{v.user.firstName}</span>
+                        )}
                         {v.isOwner && (
                           <button
                             type="button"
@@ -232,7 +262,14 @@ function ReportsPage() {
                             onClick={async e => {
                               e.preventDefault();
                               e.stopPropagation();
-                              if (!(await confirm({ title: `Delete “${v.name}”?`, destructive: true, confirmLabel: 'Delete' }))) return;
+                              if (
+                                !(await confirm({
+                                  title: `Delete “${v.name}”?`,
+                                  destructive: true,
+                                  confirmLabel: 'Delete',
+                                }))
+                              )
+                                return;
                               await viewsApi.remove(v.id);
                               if (active?.id === v.id) setActive(null);
                               qc.invalidateQueries({ queryKey: VIEW_KEY });
@@ -245,7 +282,9 @@ function ReportsPage() {
                     ))}
                   </>
                 ) : (
-                  <p className="px-2 py-3 text-xs text-muted-foreground">No saved reports yet. Build one and hit Save.</p>
+                  <p className="px-2 py-3 text-xs text-muted-foreground">
+                    No saved reports yet. Build one and hit Save.
+                  </p>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -262,7 +301,12 @@ function ReportsPage() {
             <Button variant="outline" size="sm" onClick={copyLink}>
               <Link2 /> Copy link
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void exportXlsx()} disabled={isTrend || !breakdown.data}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void exportXlsx()}
+              disabled={isTrend || !breakdown.data}
+            >
               <Download /> Export
             </Button>
             <Button size="sm" onClick={() => void saveActive()}>
@@ -273,8 +317,13 @@ function ReportsPage() {
       />
 
       {/* templates */}
-      <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1" {...tourTarget('reports-templates')}>
-        {TEMPLATES.filter(t => (t.spec.entity === 'spocs' ? can('spocs.read') : can('clients.read'))).map(t => (
+      <div
+        className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1"
+        {...tourTarget('reports-templates')}
+      >
+        {TEMPLATES.filter(t =>
+          t.spec.entity === 'spocs' ? can('spocs.read') : can('clients.read')
+        ).map(t => (
           <button
             key={t.id}
             type="button"
@@ -308,12 +357,17 @@ function ReportsPage() {
           title={
             <span className="flex items-center gap-2">
               {title}
-              {active?.isShared && <Globe2 className="size-3.5 text-muted-foreground" aria-label="Shared" />}
+              {active?.isShared && (
+                <Globe2 className="size-3.5 text-muted-foreground" aria-label="Shared" />
+              )}
             </span>
           }
           description={subtitle}
           actions={
-            <div className="flex flex-wrap items-center justify-end gap-2" {...tourTarget('reports-viz')}>
+            <div
+              className="flex flex-wrap items-center justify-end gap-2"
+              {...tourTarget('reports-viz')}
+            >
               {isTrend && (
                 <Segmented<TrendInterval>
                   size="xs"
@@ -328,16 +382,29 @@ function ReportsPage() {
               )}
               {spec.splitBy && !isTrend && (
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Switch size="sm" checked={!!spec.percent} onCheckedChange={percent => update({ ...spec, percent })} /> %
+                  <Switch
+                    size="sm"
+                    checked={!!spec.percent}
+                    onCheckedChange={percent => update({ ...spec, percent })}
+                  />{' '}
+                  %
                 </label>
               )}
-              <Segmented<Viz> size="xs" value={spec.viz} onChange={viz => update({ ...spec, viz })} options={vizOptions} />
+              <Segmented<Viz>
+                size="xs"
+                value={spec.viz}
+                onChange={viz => update({ ...spec, viz })}
+                options={vizOptions}
+              />
             </div>
           }
         >
           <div {...tourTarget('reports-result')} className="min-h-[320px]">
             {!canEntity ? (
-              <EmptyState title="You can’t report on this" description="Your role doesn’t include read access to these records." />
+              <EmptyState
+                title="You can’t report on this"
+                description="Your role doesn’t include read access to these records."
+              />
             ) : q.isLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-8 w-40" />
@@ -346,10 +413,19 @@ function ReportsPage() {
             ) : q.error ? (
               <ErrorState error={q.error} onRetry={() => q.refetch()} />
             ) : !isTrend && !breakdown.data?.rows.length ? (
-              <EmptyState icon={BarChart3} title="No data for this combination" description="Loosen the filters or widen the date range." />
+              <EmptyState
+                icon={BarChart3}
+                title="No data for this combination"
+                description="Loosen the filters or widen the date range."
+              />
             ) : (
               <div className={cn('transition-opacity', q.isFetching && 'opacity-60')}>
-                <ReportResult spec={spec} breakdown={breakdown.data} trend={trend.data} onDrill={onDrill} />
+                <ReportResult
+                  spec={spec}
+                  breakdown={breakdown.data}
+                  trend={trend.data}
+                  onDrill={onDrill}
+                />
               </div>
             )}
           </div>
@@ -361,7 +437,12 @@ function ReportsPage() {
         onOpenChange={setSaveOpen}
         defaultName={active?.name ?? TEMPLATES.find(t => t.id === templateId)?.title ?? ''}
         onSave={async (name, isShared) => {
-          const v = await viewsApi.create<ReportSpec>({ module: 'reports', name, isShared, config: spec });
+          const v = await viewsApi.create<ReportSpec>({
+            module: 'reports',
+            name,
+            isShared,
+            config: spec,
+          });
           setActive(v);
           setTemplateId(null);
           qc.invalidateQueries({ queryKey: VIEW_KEY });
@@ -384,6 +465,7 @@ function SaveReportDialog({
   defaultName: string;
   onSave: (name: string, isShared: boolean) => Promise<void>;
 }) {
+  const canShare = usePermissions().can('views.share');
   const [name, setName] = useState(defaultName);
   const [shared, setShared] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -399,7 +481,9 @@ function SaveReportDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Save report</DialogTitle>
-          <DialogDescription>Saved reports keep the grouping, filters and visual.</DialogDescription>
+          <DialogDescription>
+            Saved reports keep the grouping, filters and visual.
+          </DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -419,15 +503,26 @@ function SaveReportDialog({
         >
           <div className="space-y-1.5">
             <Label htmlFor="report-name">Name</Label>
-            <Input id="report-name" autoFocus maxLength={100} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Weekly pipeline review" />
+            <Input
+              id="report-name"
+              autoFocus
+              maxLength={100}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. Weekly pipeline review"
+            />
           </div>
-          <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
-            <span>
-              <span className="block text-sm font-medium">Share with everyone</span>
-              <span className="block text-xs text-muted-foreground">Others see the numbers for their own scope.</span>
-            </span>
-            <Switch checked={shared} onCheckedChange={setShared} />
-          </label>
+          {canShare && (
+            <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
+              <span>
+                <span className="block text-sm font-medium">Share with everyone</span>
+                <span className="block text-xs text-muted-foreground">
+                  Others see the numbers for their own scope.
+                </span>
+              </span>
+              <Switch checked={shared} onCheckedChange={setShared} />
+            </label>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
@@ -444,7 +539,7 @@ function SaveReportDialog({
 
 export default function Page() {
   return (
-    <RequirePermission any={['clients.read', 'spocs.read']}>
+    <RequirePermission perm="reports.read" any={['clients.read', 'spocs.read']}>
       <ReportsPage />
     </RequirePermission>
   );

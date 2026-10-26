@@ -8,7 +8,16 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { KeyRound, Lock, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2, Users } from 'lucide-react';
+import {
+  KeyRound,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -23,6 +32,7 @@ import { Pill } from '@/components/common/badges';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { EmptyState, ErrorState } from '@/components/common/states';
 import { RequirePermission } from '@/features/auth/RequirePermission';
+import { usePermissions } from '@/features/auth/usePermissions';
 import { RoleFormDialog } from '@/features/admin/RoleFormDialog';
 import { roleHooks, useRoles } from '@/hooks/queries';
 import { useAction } from '@/hooks/useResource';
@@ -38,6 +48,9 @@ function RoleCard({
   onEdit: (r: Role) => void;
   onDelete: (r: Role) => void;
 }) {
+  const { can } = usePermissions();
+  const canUpdate = can('roles.update');
+  const canDelete = can('roles.delete');
   const users = role._count?.users ?? 0;
   const perms = role._count?.permissions ?? 0;
   return (
@@ -61,21 +74,30 @@ function RoleCard({
             )}
           </div>
         </div>
-        {!role.isSystem && (
+        {!role.isSystem && (canUpdate || canDelete) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className="relative z-10" aria-label={`Actions for ${role.name}`}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="relative z-10"
+                aria-label={`Actions for ${role.name}`}
+              >
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onSelect={() => onEdit(role)}>
-                <Pencil /> Rename
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={() => onDelete(role)}>
-                <Trash2 /> Delete
-              </DropdownMenuItem>
+              {canUpdate && (
+                <DropdownMenuItem onSelect={() => onEdit(role)}>
+                  <Pencil /> Rename
+                </DropdownMenuItem>
+              )}
+              {canUpdate && canDelete && <DropdownMenuSeparator />}
+              {canDelete && (
+                <DropdownMenuItem variant="destructive" onSelect={() => onDelete(role)}>
+                  <Trash2 /> Delete
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -86,7 +108,8 @@ function RoleCard({
       <div className="flex items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <Users className="size-3.5" />
-          <span className="tabular font-medium text-foreground">{users}</span> {users === 1 ? 'user' : 'users'}
+          <span className="tabular font-medium text-foreground">{users}</span>{' '}
+          {users === 1 ? 'user' : 'users'}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <KeyRound className="size-3.5" />
@@ -99,6 +122,7 @@ function RoleCard({
 }
 
 function RolesPage() {
+  const { can } = usePermissions();
   const router = useRouter();
   const confirm = useConfirm();
   const { data: roles, isLoading, error, refetch } = useRoles();
@@ -132,9 +156,11 @@ function RolesPage() {
         title="Roles & access"
         description="A role is a set of permissions. Each user has exactly one; scoped permissions decide whose records they see."
         actions={
-          <Button onClick={() => setDialog({ role: null })}>
-            <Plus /> New role
-          </Button>
+          can('roles.create') && (
+            <Button onClick={() => setDialog({ role: null })}>
+              <Plus /> New role
+            </Button>
+          )
         }
       />
 
@@ -155,16 +181,23 @@ function RolesPage() {
             title="No roles yet"
             description="Create a role, then tick what it can do."
             action={
-              <Button size="sm" onClick={() => setDialog({ role: null })}>
-                <Plus /> New role
-              </Button>
+              can('roles.create') && (
+                <Button size="sm" onClick={() => setDialog({ role: null })}>
+                  <Plus /> New role
+                </Button>
+              )
             }
           />
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map(r => (
-            <RoleCard key={r.id} role={r} onEdit={role => setDialog({ role })} onDelete={askDelete} />
+            <RoleCard
+              key={r.id}
+              role={r}
+              onEdit={role => setDialog({ role })}
+              onDelete={askDelete}
+            />
           ))}
         </div>
       )}
@@ -181,7 +214,7 @@ function RolesPage() {
 
 export default function Page() {
   return (
-    <RequirePermission perm="admin.manage_roles">
+    <RequirePermission perm="roles.read">
       <RolesPage />
     </RequirePermission>
   );

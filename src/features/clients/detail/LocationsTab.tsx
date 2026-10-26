@@ -24,7 +24,13 @@ import { Pill } from '@/components/common/badges';
 import { EmptyState } from '@/components/common/states';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { FormDialog, FormSection } from '@/components/forms/FormDialog';
-import { PickerField, SwitchField, TextAreaField, applyServerErrors, blankToNull } from '@/components/forms/fields';
+import {
+  PickerField,
+  SwitchField,
+  TextAreaField,
+  applyServerErrors,
+  blankToNull,
+} from '@/components/forms/fields';
 import { LookupPicker } from '@/components/pickers/pickers';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { useAction } from '@/hooks/useResource';
@@ -51,13 +57,18 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
   const { can } = usePermissions();
   const confirm = useConfirm();
   const [editing, setEditing] = useState<ClientLocation | 'new' | null>(null);
-  const canEdit = can('clients.update');
+  const canAdd = can('client_locations.create');
+  const canEdit = can('client_locations.update');
+  const canRemove = can('client_locations.delete');
   const key = clientHooks.keys.detail(client.id);
 
-  const setPrimary = useAction((id: string) => clientsApi.updateLocation(client.id, id, { isPrimary: true }), {
-    success: 'Primary location updated',
-    invalidate: [key],
-  });
+  const setPrimary = useAction(
+    (id: string) => clientsApi.updateLocation(client.id, id, { isPrimary: true }),
+    {
+      success: 'Primary location updated',
+      invalidate: [key],
+    }
+  );
   const remove = useAction((id: string) => clientsApi.removeLocation(client.id, id), {
     success: 'Location removed',
     invalidate: [key],
@@ -67,9 +78,10 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Head office, branches, plants and dev centres — SPOCs can be linked to the office they work from.
+          Head office, branches, plants and dev centres — SPOCs can be linked to the office they
+          work from.
         </p>
-        {canEdit && (
+        {canAdd && (
           <Button size="sm" onClick={() => setEditing('new')}>
             <Plus /> Add location
           </Button>
@@ -82,7 +94,7 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
           title="No locations yet"
           description="Add the head office first — it becomes the primary address."
           action={
-            canEdit && (
+            canAdd && (
               <Button size="sm" variant="outline" onClick={() => setEditing('new')}>
                 <Plus /> Add location
               </Button>
@@ -113,7 +125,7 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
                     </div>
                   </div>
                 </div>
-                {canEdit && (
+                {(canEdit || canRemove) && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon-sm" aria-label="Location actions">
@@ -121,31 +133,35 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => setEditing(l)}>
-                        <Pencil /> Edit
-                      </DropdownMenuItem>
-                      {!l.isPrimary && (
+                      {canEdit && (
+                        <DropdownMenuItem onSelect={() => setEditing(l)}>
+                          <Pencil /> Edit
+                        </DropdownMenuItem>
+                      )}
+                      {canEdit && !l.isPrimary && (
                         <DropdownMenuItem onSelect={() => setPrimary.mutate(l.id)}>
                           <Star /> Make primary
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onSelect={async () => {
-                          if (
-                            await confirm({
-                              title: 'Remove this location?',
-                              description: 'SPOCs linked to it keep the link for history.',
-                              destructive: true,
-                              confirmLabel: 'Remove',
-                            })
-                          )
-                            remove.mutate(l.id);
-                        }}
-                      >
-                        <Trash2 /> Remove
-                      </DropdownMenuItem>
+                      {canEdit && canRemove && <DropdownMenuSeparator />}
+                      {canRemove && (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={async () => {
+                            if (
+                              await confirm({
+                                title: 'Remove this location?',
+                                description: 'SPOCs linked to it keep the link for history.',
+                                destructive: true,
+                                confirmLabel: 'Remove',
+                              })
+                            )
+                              remove.mutate(l.id);
+                          }}
+                        >
+                          <Trash2 /> Remove
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -157,12 +173,15 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
               </address>
               {l.dmEvidence && (
                 <p className="mt-3 rounded-lg bg-surface p-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Why decision-makers are here: </span>
+                  <span className="font-medium text-foreground">
+                    Why decision-makers are here:{' '}
+                  </span>
                   {l.dmEvidence}
                 </p>
               )}
               <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Users className="size-3.5" /> {l._count.spocs} SPOC{l._count.spocs === 1 ? '' : 's'}
+                <Users className="size-3.5" /> {l._count.spocs} SPOC
+                {l._count.spocs === 1 ? '' : 's'}
               </p>
             </article>
           ))}
@@ -194,7 +213,10 @@ function LocationDialog({
   onOpenChange: (o: boolean) => void;
 }) {
   const qc = useQueryClient();
-  const form = useForm<LocationValues>({ resolver: zodResolver(locationSchema), defaultValues: toValues(location, first) });
+  const form = useForm<LocationValues>({
+    resolver: zodResolver(locationSchema),
+    defaultValues: toValues(location, first),
+  });
 
   useEffect(() => {
     if (open) form.reset(toValues(location, first));
@@ -222,7 +244,12 @@ function LocationDialog({
       busy={form.formState.isSubmitting}
       submitLabel={location ? 'Save' : 'Add location'}
     >
-      <PickerField form={form} name="typeId" label="Type" render={p => <LookupPicker type="LOCATION_TYPE" placeholder="HQ, branch, plant…" {...p} />} />
+      <PickerField
+        form={form}
+        name="typeId"
+        label="Type"
+        render={p => <LookupPicker type="LOCATION_TYPE" placeholder="HQ, branch, plant…" {...p} />}
+      />
       <FormSection title="Address">
         <LocationFields form={form} />
       </FormSection>
@@ -233,7 +260,12 @@ function LocationDialog({
         rows={2}
         hint="Why you believe decision-makers sit here (optional)."
       />
-      <SwitchField form={form} name="isPrimary" label="Primary location" hint="Shown on the client list. Replaces the current primary." />
+      <SwitchField
+        form={form}
+        name="isPrimary"
+        label="Primary location"
+        hint="Shown on the client list. Replaces the current primary."
+      />
     </FormDialog>
   );
 }

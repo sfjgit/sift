@@ -60,6 +60,7 @@ function ClientsPage() {
     queryKey: ['reports', 'overview', 'client-counts'],
     queryFn: () => reportsApi.overview(),
     staleTime: 60_000,
+    enabled: can('reports.read'),
   });
 
   const remove = useAction((id: string) => clientsApi.remove(id), {

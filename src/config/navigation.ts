@@ -46,7 +46,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, tour: 'nav-dashboard', keywords: ['home'] },
       { label: 'Clients', href: '/clients', icon: Building2, perm: 'clients.read', tour: 'nav-clients', keywords: ['companies', 'accounts'] },
       { label: 'SPOCs', href: '/spocs', icon: ContactRound, perm: 'spocs.read', tour: 'nav-spocs', keywords: ['contacts', 'people', 'leads'] },
-      { label: 'Reports', href: '/reports', icon: BarChart3, anyPerm: ['clients.read', 'spocs.read'], tour: 'nav-reports', keywords: ['analytics', 'insights', 'charts'] },
+      { label: 'Reports', href: '/reports', icon: BarChart3, perm: 'reports.read', anyPerm: ['clients.read', 'spocs.read'], tour: 'nav-reports', keywords: ['analytics', 'insights', 'charts'] },
       { label: 'Pipeline runs', href: '/pipeline-runs', icon: GitBranch, perm: 'step_runs.read', keywords: ['steps', 'jobs', 'enrichment'] },
     ],
   },
@@ -54,10 +54,10 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Organisation',
     items: [
       { label: 'Users', href: '/admin/users', icon: Users, perm: 'users.read', keywords: ['team', 'people', 'employees'] },
-      { label: 'Roles & access', href: '/admin/roles', icon: ShieldCheck, perm: 'admin.manage_roles', keywords: ['permissions'] },
-      { label: 'Org structure', href: '/admin/org', icon: Network, perm: 'admin.manage_lookups', keywords: ['business units', 'service lines', 'departments', 'designations'] },
-      { label: 'Pick-lists', href: '/admin/lookups', icon: ListTree, perm: 'admin.manage_lookups', keywords: ['lookups', 'industry', 'sales status'] },
-      { label: 'Login history', href: '/admin/auth-logs', icon: History, perm: 'admin.view_auth_logs', keywords: ['audit', 'auth logs'] },
+      { label: 'Roles & access', href: '/admin/roles', icon: ShieldCheck, perm: 'roles.read', keywords: ['permissions'] },
+      { label: 'Org structure', href: '/admin/org', icon: Network, perm: 'org.manage', keywords: ['business units', 'service lines', 'departments', 'designations'] },
+      { label: 'Pick-lists', href: '/admin/lookups', icon: ListTree, perm: 'lookups.manage', keywords: ['lookups', 'industry', 'sales status'] },
+      { label: 'Login history', href: '/admin/auth-logs', icon: History, perm: 'audit.view_login_history', keywords: ['audit', 'auth logs'] },
     ],
   },
 ];

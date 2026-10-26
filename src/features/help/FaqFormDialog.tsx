@@ -1,7 +1,7 @@
 // File: FaqFormDialog.tsx
 // Path: src/features/help/FaqFormDialog.tsx
 //
-// Create / edit an FAQ (admin.manage_help). The answer supports the
+// Create / edit an FAQ (help.manage). The answer supports the
 // MarkdownLite subset, previewed live next to the editor.
 
 'use client';

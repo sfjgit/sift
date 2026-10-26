@@ -45,7 +45,7 @@ function SectionTitle({ icon: Icon, title, description }: { icon: typeof BookOpe
 export default function HelpPage() {
   const confirm = useConfirm();
   const { can } = usePermissions();
-  const canManage = can('admin.manage_help');
+  const canManage = can('help.manage');
   const [search, setSearch] = useState('');
   const [debounced] = useDebounce(search.trim(), 250);
   const [category, setCategory] = useState<string | null>(null);

@@ -162,7 +162,7 @@ function SpocPage() {
   const activity = useQuery({
     queryKey: ['spoc-activity', id],
     queryFn: () => reportsApi.activities({ spocId: id, limit: 40 }),
-    enabled: !!spoc && can('clients.read'),
+    enabled: !!spoc && can('clients.read') && can('reports.read'),
   });
 
   const deactivate = useAction(() => spocsApi.remove(id), {
@@ -334,7 +334,9 @@ function SpocPage() {
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList variant="line" className="h-auto gap-1 bg-transparent p-0">
               <TabsTrigger value="activity" className="flex-none px-3">Activity</TabsTrigger>
-              <TabsTrigger value="outreach" className="flex-none px-3">Outreach</TabsTrigger>
+              {can('outreach.read') && (
+                <TabsTrigger value="outreach" className="flex-none px-3">Outreach</TabsTrigger>
+              )}
               {can('step_runs.read') && <TabsTrigger value="pipeline" className="flex-none px-3">Pipeline</TabsTrigger>}
             </TabsList>
             <div className="pt-4">

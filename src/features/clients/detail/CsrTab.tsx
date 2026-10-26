@@ -27,9 +27,15 @@ const FIN_SERIES = [
 export function CsrTab({ client }: { client: ClientDetail }) {
   const { can } = usePermissions();
   const fin = client.financials ?? [];
+  const programs = client.programs ?? [];
+  const documents = client.documents ?? [];
   const chartData = [...fin]
     .sort((a, b) => a.fy.localeCompare(b.fy))
-    .map(f => ({ label: f.fy, spent: Number(f.spentRs ?? 0) / 1e7, unspent: Number(f.unspentRs ?? 0) / 1e7 }));
+    .map(f => ({
+      label: f.fy,
+      spent: Number(f.spentRs ?? 0) / 1e7,
+      unspent: Number(f.unspentRs ?? 0) / 1e7,
+    }));
 
   const openDoc = async (docId: string) => {
     try {
@@ -42,14 +48,19 @@ export function CsrTab({ client }: { client: ClientDetail }) {
 
   return (
     <div className="space-y-4">
-      {can('clients.view_financials') ? (
+      {can('client_financials.read') ? (
         <Panel
           title="CSR spend"
           description="Accepted figures per financial year (₹ crore in the chart)"
           actions={fin.length > 0 && <Legend series={FIN_SERIES} />}
         >
           {fin.length === 0 ? (
-            <EmptyState compact icon={IndianRupee} title="No CSR figures yet" description="They appear once the pipeline extracts them from filings." />
+            <EmptyState
+              compact
+              icon={IndianRupee}
+              title="No CSR figures yet"
+              description="They appear once the pipeline extracts them from filings."
+            />
           ) : (
             <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
               <ColumnChart data={chartData} series={FIN_SERIES} height={220} />
@@ -70,7 +81,12 @@ export function CsrTab({ client }: { client: ClientDetail }) {
                         <td className="py-2">
                           <span className="flex items-center gap-1.5">
                             {f.fy}
-                            {f.isLocked && <Lock className="size-3 text-muted-foreground" aria-label="Confirmed manually" />}
+                            {f.isLocked && (
+                              <Lock
+                                className="size-3 text-muted-foreground"
+                                aria-label="Confirmed manually"
+                              />
+                            )}
                           </span>
                         </td>
                         <td className="py-2 text-right">{fmtInr(f.obligationRs)}</td>
@@ -91,63 +107,82 @@ export function CsrTab({ client }: { client: ClientDetail }) {
         </div>
       )}
 
-      <Panel title="CSR programmes" description={`${client.programs.length} programme${client.programs.length === 1 ? '' : 's'}`}>
-        {client.programs.length === 0 ? (
-          <EmptyState compact icon={Sprout} title="No programmes captured" />
-        ) : (
-          <ul className="divide-y">
-            {client.programs.map(p => (
-              <li key={p.id} className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-medium">{p.name}</p>
-                  <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Pill dot={false}>FY {p.fy}</Pill>
-                    {p.sector && <Pill tone="success">{p.sector.label}</Pill>}
-                    {p.implementor && <span>By {p.implementor}</span>}
-                    {p.locations && <span>· {p.locations}</span>}
-                  </p>
-                  {p.beneficiaries && <p className="text-xs text-muted-foreground">Beneficiaries: {p.beneficiaries}</p>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold tabular">{fmtInr(p.budgetRs)}</span>
-                  {p.sourceUrl && (
-                    <Button asChild variant="ghost" size="icon-xs" aria-label="Source">
-                      <a href={p.sourceUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink />
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+      {can('client_programs.read') && (
+        <Panel
+          title="CSR programmes"
+          description={`${programs.length} programme${programs.length === 1 ? '' : 's'}`}
+        >
+          {programs.length === 0 ? (
+            <EmptyState compact icon={Sprout} title="No programmes captured" />
+          ) : (
+            <ul className="divide-y">
+              {programs.map(p => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-sm font-medium">{p.name}</p>
+                    <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <Pill dot={false}>FY {p.fy}</Pill>
+                      {p.sector && <Pill tone="success">{p.sector.label}</Pill>}
+                      {p.implementor && <span>By {p.implementor}</span>}
+                      {p.locations && <span>· {p.locations}</span>}
+                    </p>
+                    {p.beneficiaries && (
+                      <p className="text-xs text-muted-foreground">
+                        Beneficiaries: {p.beneficiaries}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold tabular">{fmtInr(p.budgetRs)}</span>
+                    {p.sourceUrl && (
+                      <Button asChild variant="ghost" size="icon-xs" aria-label="Source">
+                        <a href={p.sourceUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink />
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      )}
 
-      <Panel title="Documents" description="Annual reports and CSR filings">
-        {client.documents.length === 0 ? (
-          <EmptyState compact icon={FileText} title="No documents yet" />
-        ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {client.documents.map(d => (
-              <li key={d.id} className="flex items-center gap-3 rounded-lg border p-3">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                  <FileText className="size-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{d.fileName ?? d.type.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {d.type.label} · FY {d.fy} · {fmtDate(d.createdAt)}
-                  </p>
-                </div>
-                <Button variant="ghost" size="icon-sm" aria-label="Download" onClick={() => void openDoc(d.id)}>
-                  <Download />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
+      {can('client_documents.read') && (
+        <Panel title="Documents" description="Annual reports and CSR filings">
+          {documents.length === 0 ? (
+            <EmptyState compact icon={FileText} title="No documents yet" />
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {documents.map(d => (
+                <li key={d.id} className="flex items-center gap-3 rounded-lg border p-3">
+                  <span className="flex size-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                    <FileText className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium">{d.fileName ?? d.type.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {d.type.label} · FY {d.fy} · {fmtDate(d.createdAt)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Download"
+                    onClick={() => void openDoc(d.id)}
+                  >
+                    <Download />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }

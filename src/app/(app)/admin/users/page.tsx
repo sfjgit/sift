@@ -35,7 +35,7 @@ function UsersPage() {
         title="Users"
         description="Everyone with access to the CRM — their role, team and reporting line."
         actions={
-          actions.canManage && (
+          actions.canCreate && (
             <Button onClick={actions.openCreate}>
               <Plus /> New user
             </Button>
@@ -56,7 +56,7 @@ function UsersPage() {
         empty={{
           title: 'No users yet',
           description: 'Invite your team — each person gets an email to set their password.',
-          action: actions.canManage && (
+          action: actions.canCreate && (
             <Button size="sm" onClick={actions.openCreate}>
               <Plus /> New user
             </Button>

@@ -295,7 +295,7 @@ function LookupsPage() {
 
 export default function Page() {
   return (
-    <RequirePermission perm="admin.manage_lookups">
+    <RequirePermission perm="lookups.manage">
       <LookupsPage />
     </RequirePermission>
   );

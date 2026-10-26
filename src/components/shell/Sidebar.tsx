@@ -20,9 +20,12 @@ import { cn } from '@/lib/utils';
 export function useVisibleNav() {
   const { can, canAny, isSuperAdmin } = usePermissions();
   const visible = (i: NavItem) =>
-    (!i.perm || can(i.perm)) && (!i.anyPerm || canAny(i.anyPerm)) && (!i.superAdmin || isSuperAdmin);
+    isSuperAdmin ||
+    ((!i.perm || can(i.perm)) && (!i.anyPerm || canAny(i.anyPerm)) && !i.superAdmin);
   return {
-    sections: NAV_SECTIONS.map(s => ({ ...s, items: s.items.filter(visible) })).filter(s => s.items.length),
+    sections: NAV_SECTIONS.map(s => ({ ...s, items: s.items.filter(visible) })).filter(
+      s => s.items.length
+    ),
     footer: FOOTER_NAV.filter(visible),
   };
 }
@@ -57,8 +60,12 @@ function NavLink({
         collapsed && 'justify-center px-0'
       )}
     >
-      {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary" />}
-      <item.icon className={cn('size-4 shrink-0', active ? 'text-sidebar-primary' : 'opacity-75')} />
+      {active && (
+        <span className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary" />
+      )}
+      <item.icon
+        className={cn('size-4 shrink-0', active ? 'text-sidebar-primary' : 'opacity-75')}
+      />
       {!collapsed && <span className="truncate">{item.label}</span>}
       {!!badge && (
         <span
@@ -96,7 +103,9 @@ export function SidebarContent({
 
   return (
     <div className="flex h-full flex-col" {...tourTarget('sidebar')}>
-      <div className={cn('flex h-14 shrink-0 items-center px-4', collapsed && 'justify-center px-0')}>
+      <div
+        className={cn('flex h-14 shrink-0 items-center px-4', collapsed && 'justify-center px-0')}
+      >
         <Link href="/dashboard" onClick={onNavigate} aria-label="SFJBS CRM home">
           <Logo compact={collapsed} />
         </Link>
@@ -139,7 +148,11 @@ export function SidebarContent({
             )}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+            {collapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <PanelLeftClose className="size-4" />
+            )}
             {!collapsed && 'Collapse'}
           </button>
         )}

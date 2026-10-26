@@ -44,7 +44,7 @@ export function useUserActions() {
   const confirm = useConfirm();
   const { user: me } = useAuth();
   const { can, isSuperAdmin } = usePermissions();
-  const canManage = can('admin.manage_users');
+  const canCreate = can('users.create');
 
   // undefined = closed, null = create, string = edit that user
   const [formUserId, setFormUserId] = useState<string | null | undefined>(undefined);
@@ -58,9 +58,16 @@ export function useUserActions() {
 
   const isSelf = useCallback((u: ActionableUser) => u.id === me?.id, [me?.id]);
   /** super admins can only be managed by super admins (backend: assertCanManage) */
-  const canEdit = useCallback((u: ActionableUser) => canManage && (!u.isSuperAdmin || isSuperAdmin), [canManage, isSuperAdmin]);
-  const canToggle = useCallback((u: ActionableUser) => canManage && !isSelf(u) && !u.isSuperAdmin, [canManage, isSelf]);
-  const canReset = useCallback((u: ActionableUser) => canEdit(u) && !isSelf(u) && u.isActive, [canEdit, isSelf]);
+  const manageable = useCallback((u: ActionableUser) => !u.isSuperAdmin || isSuperAdmin, [isSuperAdmin]);
+  const canEdit = useCallback((u: ActionableUser) => can('users.update') && manageable(u), [can, manageable]);
+  const canToggle = useCallback(
+    (u: ActionableUser) => can('users.deactivate') && !isSelf(u) && !u.isSuperAdmin,
+    [can, isSelf]
+  );
+  const canReset = useCallback(
+    (u: ActionableUser) => can('users.reset_password') && manageable(u) && !isSelf(u) && u.isActive,
+    [can, manageable, isSelf]
+  );
   const canImpersonate = useCallback(
     (u: ActionableUser) => isSuperAdmin && !isSelf(u) && !u.isSuperAdmin && u.isActive,
     [isSuperAdmin, isSelf]
@@ -114,7 +121,7 @@ export function useUserActions() {
   );
 
   return {
-    canManage,
+    canCreate,
     canEdit,
     canToggle,
     canReset,

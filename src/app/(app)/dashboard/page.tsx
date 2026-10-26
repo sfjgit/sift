@@ -50,8 +50,10 @@ export default function DashboardPage() {
   const [range, setRange] = useState<Range>('30d');
   const r = RANGES[range];
   const from = useMemo(() => format(r.from(), 'yyyy-MM-dd'), [r]);
-  const canClients = can('clients.read');
-  const canSpocs = can('spocs.read');
+  // every widget here comes from /reports/*, which needs reports.read too
+  const canReports = can('reports.read');
+  const canClients = canReports && can('clients.read');
+  const canSpocs = canReports && can('spocs.read');
 
   const overview = useQuery({
     queryKey: ['reports', 'overview', from],

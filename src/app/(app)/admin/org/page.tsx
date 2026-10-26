@@ -62,7 +62,7 @@ function OrgPage() {
 
 export default function Page() {
   return (
-    <RequirePermission perm="admin.manage_lookups">
+    <RequirePermission perm="org.manage">
       <OrgPage />
     </RequirePermission>
   );

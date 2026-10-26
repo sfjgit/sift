@@ -68,7 +68,7 @@ function AuthLogsPage() {
 
 export default function Page() {
   return (
-    <RequirePermission perm="admin.view_auth_logs">
+    <RequirePermission perm="audit.view_login_history">
       <AuthLogsPage />
     </RequirePermission>
   );

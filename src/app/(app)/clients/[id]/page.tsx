@@ -223,7 +223,7 @@ function ClientPage() {
     { value: 'locations', label: 'Locations', icon: MapPin, count: client.locations.length },
     { value: 'technology', label: 'Technology', icon: Cpu, count: client.technologies.length },
     { value: 'csr', label: 'CSR', icon: IndianRupee },
-    { value: 'outreach', label: 'Outreach', icon: Mail },
+    { value: 'outreach', label: 'Outreach', icon: Mail, hidden: !can('outreach.read') },
     { value: 'pipeline', label: 'Pipeline', icon: GitBranch, hidden: !can('step_runs.read') },
     { value: 'activity', label: 'Activity', icon: History },
   ];

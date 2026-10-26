@@ -26,12 +26,18 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
   const { can } = usePermissions();
   const confirm = useConfirm();
   const { data: categories = [], isLoading } = useLookups('TECH_CATEGORY');
-  const [editing, setEditing] = useState<{ categoryId: string; label: string; details: string } | null>(null);
-  const canEdit = can('clients.update');
+  const [editing, setEditing] = useState<{
+    categoryId: string;
+    label: string;
+    details: string;
+  } | null>(null);
+  const canEdit = can('client_technologies.update');
+  const canRemove = can('client_technologies.delete');
   const key = clientHooks.keys.detail(client.id);
 
   const save = useAction(
-    (v: { categoryId: string; details: string }) => clientsApi.saveTechnology(client.id, v.categoryId, v.details),
+    (v: { categoryId: string; details: string }) =>
+      clientsApi.saveTechnology(client.id, v.categoryId, v.details),
     { success: 'Saved', invalidate: [key], onSuccess: () => setEditing(null) }
   );
   const remove = useAction((id: string) => clientsApi.removeTechnology(client.id, id), {
@@ -53,13 +59,16 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
   // also show filled categories whose lookup was deactivated
   const cards = [
     ...categories.map(c => ({ id: c.id, label: c.label })),
-    ...client.technologies.filter(t => !categories.some(c => c.id === t.category.id)).map(t => t.category),
+    ...client.technologies
+      .filter(t => !categories.some(c => c.id === t.category.id))
+      .map(t => t.category),
   ];
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        What the client runs today and where they need help — {client.technologies.length} of {cards.length} areas captured.
+        What the client runs today and where they need help — {client.technologies.length} of{' '}
+        {cards.length} areas captured.
       </p>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cards.map(c => {
@@ -74,29 +83,42 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-sm font-medium">
-                  <Cpu className={cn('size-4', t ? 'text-primary' : 'text-muted-foreground')} /> {c.label}
+                  <Cpu className={cn('size-4', t ? 'text-primary' : 'text-muted-foreground')} />{' '}
+                  {c.label}
                 </span>
-                {canEdit && t && (
+                {(canEdit || canRemove) && t && (
                   <span className="flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Edit ${c.label}`}
-                      onClick={() => setEditing({ categoryId: c.id, label: c.label, details: t.details })}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Remove ${c.label}`}
-                      onClick={async () => {
-                        if (await confirm({ title: `Remove ${c.label}?`, destructive: true, confirmLabel: 'Remove' }))
-                          remove.mutate(t.id);
-                      }}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Edit ${c.label}`}
+                        onClick={() =>
+                          setEditing({ categoryId: c.id, label: c.label, details: t.details })
+                        }
+                      >
+                        <Pencil />
+                      </Button>
+                    )}
+                    {canRemove && (
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Remove ${c.label}`}
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: `Remove ${c.label}?`,
+                              destructive: true,
+                              confirmLabel: 'Remove',
+                            })
+                          )
+                            remove.mutate(t.id);
+                        }}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </span>
                 )}
               </div>
@@ -129,7 +151,10 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
         size="sm"
         title={editing?.label ?? ''}
         description="What they use or need in this area."
-        onSubmit={() => editing?.details.trim() && save.mutate({ categoryId: editing.categoryId, details: editing.details.trim() })}
+        onSubmit={() =>
+          editing?.details.trim() &&
+          save.mutate({ categoryId: editing.categoryId, details: editing.details.trim() })
+        }
         busy={save.isPending}
       >
         <Field label="Details" required>

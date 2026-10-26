@@ -20,12 +20,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { viewsApi } from '@/lib/api/endpoints';
+import { usePermissions } from '@/features/auth/usePermissions';
 import { tourTarget } from '@/features/tour/tour.constants';
 import type { ApiError } from '@/lib/api/client';
 import type { SavedView } from '@/types/org';
@@ -92,7 +100,14 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
   };
 
   const remove = async (v: SavedView<TableViewConfig>) => {
-    if (!(await confirm({ title: `Delete view “${v.name}”?`, destructive: true, confirmLabel: 'Delete' }))) return;
+    if (
+      !(await confirm({
+        title: `Delete view “${v.name}”?`,
+        destructive: true,
+        confirmLabel: 'Delete',
+      }))
+    )
+      return;
     try {
       await viewsApi.remove(v.id);
       if (activeId === v.id) setActiveId(null);
@@ -130,7 +145,13 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
                 }}
                 className="rounded p-0.5 hover:bg-background"
               >
-                <Star className={v.isDefault ? 'size-3.5 fill-warning text-warning' : 'size-3.5 text-muted-foreground'} />
+                <Star
+                  className={
+                    v.isDefault
+                      ? 'size-3.5 fill-warning text-warning'
+                      : 'size-3.5 text-muted-foreground'
+                  }
+                />
               </button>
               <button
                 type="button"
@@ -190,7 +211,13 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
         open={dialog}
         onOpenChange={setDialog}
         onSave={async ({ name, isDefault, isShared }) => {
-          const v = await viewsApi.create({ module, name, isDefault, isShared, config: controller.captureView() });
+          const v = await viewsApi.create({
+            module,
+            name,
+            isDefault,
+            isShared,
+            config: controller.captureView(),
+          });
           setActiveId(v.id);
           toast.success(`View “${name}” saved`);
           refresh();
@@ -209,6 +236,7 @@ function SaveViewDialog({
   onOpenChange: (o: boolean) => void;
   onSave: (v: { name: string; isDefault: boolean; isShared: boolean }) => Promise<void>;
 }) {
+  const canShare = usePermissions().can('views.share');
   const [name, setName] = useState('');
   const [isDefault, setDefault] = useState(false);
   const [isShared, setShared] = useState(false);
@@ -235,7 +263,9 @@ function SaveViewDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Save view</DialogTitle>
-          <DialogDescription>Saves the current search, filters, sort, columns and density.</DialogDescription>
+          <DialogDescription>
+            Saves the current search, filters, sort, columns and density.
+          </DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -258,19 +288,23 @@ function SaveViewDialog({
           <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <span>
               <span className="block text-sm font-medium">Open by default</span>
-              <span className="block text-xs text-muted-foreground">Load this view every time you open the page.</span>
+              <span className="block text-xs text-muted-foreground">
+                Load this view every time you open the page.
+              </span>
             </span>
             <Switch checked={isDefault} onCheckedChange={setDefault} />
           </label>
-          <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
-            <span>
-              <span className="block text-sm font-medium">Share with everyone</span>
-              <span className="block text-xs text-muted-foreground">
-                Others can apply it — they still only see records in their own scope.
+          {canShare && (
+            <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
+              <span>
+                <span className="block text-sm font-medium">Share with everyone</span>
+                <span className="block text-xs text-muted-foreground">
+                  Others can apply it — they still only see records in their own scope.
+                </span>
               </span>
-            </span>
-            <Switch checked={isShared} onCheckedChange={setShared} />
-          </label>
+              <Switch checked={isShared} onCheckedChange={setShared} />
+            </label>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

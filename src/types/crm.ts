@@ -122,9 +122,11 @@ export interface ClientDetail extends Omit<ClientListItem, 'locations'> {
   locations: ClientLocation[];
   technologies: ClientTechnology[];
   notes: ClientNote[];
-  documents: ClientDocument[];
-  programs: ClientProgram[];
-  /** Present only with clients.view_financials */
+  /** Present only with client_documents.read */
+  documents?: ClientDocument[];
+  /** Present only with client_programs.read */
+  programs?: ClientProgram[];
+  /** Present only with client_financials.read */
   financials?: ClientFinancial[];
 }
 

@@ -20,6 +20,7 @@ import { Pill } from '@/components/common/badges';
 import { PersonCell } from '@/components/common/UserAvatar';
 import { EmptyState, ErrorState, Spinner } from '@/components/common/states';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { usePermissions } from '@/features/auth/usePermissions';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import {
   PermissionGrid,
@@ -70,7 +71,9 @@ function RoleDetailPage() {
   const saved = useMemo(() => grantsToMap(role?.permissions ?? []), [role?.permissions]);
   const value = draft ?? saved;
   const changes = draft ? diffCount(draft, saved) : 0;
-  const readOnly = !!role?.isSystem;
+  const { can } = usePermissions();
+  // system roles are fixed; otherwise you need the right to change permissions
+  const readOnly = !!role?.isSystem || !can('roles.assign_permissions');
 
   const scopeDescriptions = useMemo(
     () =>
@@ -135,7 +138,8 @@ function RoleDetailPage() {
         }
         description={role.description || 'No description'}
         actions={
-          !readOnly && (
+          !role.isSystem &&
+          can('roles.update') && (
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Pencil /> Rename
             </Button>
@@ -143,7 +147,7 @@ function RoleDetailPage() {
         }
       />
 
-      {readOnly && (
+      {role.isSystem && (
         <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/8 px-4 py-3 text-sm">
           <Info className="mt-0.5 size-4 shrink-0 text-info" />
           <p>
@@ -230,7 +234,7 @@ function RoleDetailPage() {
 
 export default function Page() {
   return (
-    <RequirePermission perm="admin.manage_roles">
+    <RequirePermission perm="roles.read">
       <RoleDetailPage />
     </RequirePermission>
   );
