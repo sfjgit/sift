@@ -6,8 +6,22 @@
 'use client';
 
 import type { Table } from '@tanstack/react-table';
-import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Columns3, GripVertical, Rows2, Rows4 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,7 +45,10 @@ function SortableRow({
   locked?: boolean;
   onToggle: (v: boolean) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: locked });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: locked,
+  });
   return (
     <div
       ref={setNodeRef}
@@ -48,7 +65,12 @@ function SortableRow({
       >
         <GripVertical className="size-3.5" />
       </button>
-      <Checkbox checked={checked} disabled={locked} onCheckedChange={v => onToggle(!!v)} id={`col-${id}`} />
+      <Checkbox
+        checked={checked}
+        disabled={locked}
+        onCheckedChange={v => onToggle(!!v)}
+        id={`col-${id}`}
+      />
       <label htmlFor={`col-${id}`} className="flex-1 cursor-pointer truncate text-[13px]">
         {label}
       </label>
@@ -56,7 +78,13 @@ function SortableRow({
   );
 }
 
-export function ColumnsMenu<T>({ table, controller }: { table: Table<T>; controller: TableController }) {
+export function ColumnsMenu<T>({
+  table,
+  controller,
+}: {
+  table: Table<T>;
+  controller: TableController;
+}) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -93,7 +121,11 @@ export function ColumnsMenu<T>({ table, controller }: { table: Table<T>; control
         </div>
         <div className="flex items-center justify-between px-3 pt-2 pb-1">
           <span className="text-xs font-semibold">Columns</span>
-          <button type="button" className="text-xs text-primary hover:underline" onClick={controller.actions.resetColumns}>
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={controller.actions.resetColumns}
+          >
             Reset
           </button>
         </div>

@@ -60,7 +60,10 @@ const columns: DataColumn<StepRun>[] = [
     meta: { label: 'Client' },
     cell: ({ row }) =>
       row.original.client ? (
-        <Link href={`/clients/${row.original.client.id}`} className="whitespace-nowrap hover:text-primary">
+        <Link
+          href={`/clients/${row.original.client.id}`}
+          className="whitespace-nowrap hover:text-primary"
+        >
           {row.original.client.name}
         </Link>
       ) : (
@@ -74,7 +77,10 @@ const columns: DataColumn<StepRun>[] = [
     meta: { label: 'SPOC' },
     cell: ({ row }) =>
       row.original.spoc ? (
-        <Link href={`/spocs/${row.original.spoc.id}`} className="whitespace-nowrap hover:text-primary">
+        <Link
+          href={`/spocs/${row.original.spoc.id}`}
+          className="whitespace-nowrap hover:text-primary"
+        >
           {fullName(row.original.spoc)}
         </Link>
       ) : (
@@ -115,7 +121,9 @@ const columns: DataColumn<StepRun>[] = [
     header: 'Duration',
     meta: { label: 'Duration', align: 'right' },
     cell: ({ row }) => (
-      <span className="text-muted-foreground">{fmtDuration(row.original.startedAt, row.original.finishedAt)}</span>
+      <span className="text-muted-foreground">
+        {fmtDuration(row.original.startedAt, row.original.finishedAt)}
+      </span>
     ),
   },
   {
@@ -131,7 +139,9 @@ const columns: DataColumn<StepRun>[] = [
     header: 'Error',
     meta: { label: 'Error', defaultHidden: true },
     cell: ({ row }) => (
-      <span className="block max-w-[260px] truncate text-xs text-destructive">{row.original.errorMessage ?? ''}</span>
+      <span className="block max-w-[260px] truncate text-xs text-destructive">
+        {row.original.errorMessage ?? ''}
+      </span>
     ),
   },
 ];
@@ -150,8 +160,19 @@ function StepsStrip({ steps, isLoading }: { steps?: PipelineStep[]; isLoading: b
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-medium text-muted-foreground">Configured steps</span>
       {steps.map(s => {
-        const health = !s.service.isActive ? 'paused' : s.service.lastHealthOk === null ? 'unknown' : s.service.lastHealthOk ? 'ok' : 'down';
-        const label = { ok: 'Service healthy', down: 'Service failing health checks', unknown: 'Health not checked yet', paused: 'Service paused' }[health];
+        const health = !s.service.isActive
+          ? 'paused'
+          : s.service.lastHealthOk === null
+            ? 'unknown'
+            : s.service.lastHealthOk
+              ? 'ok'
+              : 'down';
+        const label = {
+          ok: 'Service healthy',
+          down: 'Service failing health checks',
+          unknown: 'Health not checked yet',
+          paused: 'Service paused',
+        }[health];
         return (
           <Tooltip key={s.id}>
             <TooltipTrigger asChild>
@@ -170,7 +191,9 @@ function StepsStrip({ steps, isLoading }: { steps?: PipelineStep[]; isLoading: b
                   )}
                 />
                 <span className="font-medium">{s.label}</span>
-                <span className="text-muted-foreground">{s.target === 'SPOC' ? 'SPOC' : 'Client'}</span>
+                <span className="text-muted-foreground">
+                  {s.target === 'SPOC' ? 'SPOC' : 'Client'}
+                </span>
               </span>
             </TooltipTrigger>
             <TooltipContent>
@@ -193,7 +216,11 @@ function PipelineRunsPage() {
   const table = useTableState('step_runs', FILTER_KEYS);
   const params = useMemo(() => toApiParams(table.params), [table.params]);
 
-  const steps = useQuery({ queryKey: ['pipeline-steps'], queryFn: () => pipelineApi.steps(), staleTime: 60_000 });
+  const steps = useQuery({
+    queryKey: ['pipeline-steps'],
+    queryFn: () => pipelineApi.steps(),
+    staleTime: 60_000,
+  });
   const query = useQuery({
     queryKey: ['step-runs', 'list', params],
     queryFn: () => pipelineApi.runs(params),
@@ -208,16 +235,21 @@ function PipelineRunsPage() {
         key: 'status',
         label: 'Status',
         type: 'select',
-        options: (Object.keys(STEP_STATUS) as StepRunStatus[]).map(s => ({ value: s, label: STEP_STATUS[s].label })),
+        multi: true,
+        options: (Object.keys(STEP_STATUS) as StepRunStatus[]).map(s => ({
+          value: s,
+          label: STEP_STATUS[s].label,
+        })),
       },
       {
         key: 'stepId',
         label: 'Step',
         type: 'select',
+        multi: true,
         options: (steps.data ?? []).map(s => ({ value: s.id, label: s.label })),
       },
       { key: 'clientId', label: 'Client', type: 'client' },
-      { key: 'requestedById', label: 'Requested by', type: 'user' },
+      { key: 'requestedById', label: 'Requested by', type: 'user', multi: true },
     ],
     [steps.data]
   );

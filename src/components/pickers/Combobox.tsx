@@ -8,7 +8,14 @@
 
 import { useState, type ReactNode } from 'react';
 import { ChevronsUpDown, X } from 'lucide-react';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Spinner } from '@/components/common/states';
 import { cn } from '@/lib/utils';
@@ -75,7 +82,12 @@ export function Combobox({
             className
           )}
         >
-          <span className={cn('flex min-w-0 items-center gap-1.5 truncate', !label && 'text-muted-foreground')}>
+          <span
+            className={cn(
+              'flex min-w-0 items-center gap-1.5 truncate',
+              !label && 'text-muted-foreground'
+            )}
+          >
             {current?.icon}
             <span className="truncate">{label ?? placeholder}</span>
           </span>
@@ -123,7 +135,9 @@ export function Combobox({
                   {o.icon}
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate">{o.label}</span>
-                    {o.hint && <span className="truncate text-xs text-muted-foreground">{o.hint}</span>}
+                    {o.hint && (
+                      <span className="truncate text-xs text-muted-foreground">{o.hint}</span>
+                    )}
                   </span>
                 </CommandItem>
               ))}

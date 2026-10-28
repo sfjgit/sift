@@ -47,6 +47,10 @@ const META: Record<ClientActivityType, { icon: LucideIcon; cls: string; verb: st
   STEP_RUN_STARTED: { icon: PlayCircle, cls: 'bg-info/12 text-info', verb: 'Pipeline started' },
   STEP_RUN_FINISHED: { icon: CheckCircle2, cls: 'bg-success/12 text-success', verb: 'Pipeline finished' },
   STEP_RUN_FAILED: { icon: XCircle, cls: 'bg-destructive/10 text-destructive', verb: 'Pipeline failed' },
+  SPOC_APPROVED: { icon: BadgeCheck, cls: 'bg-success/12 text-success', verb: 'SPOC approved' },
+  SPOC_REJECTED: { icon: XCircle, cls: 'bg-muted text-muted-foreground', verb: 'SPOC rejected' },
+  OUTREACH_UPDATED: { icon: Mail, cls: 'bg-info/12 text-info', verb: 'Outreach' },
+  CLIENT_ASSIGNED: { icon: ArrowRightLeft, cls: 'bg-info/12 text-info', verb: 'Assigned' },
 };
 
 export function ActivityTimeline({

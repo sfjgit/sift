@@ -26,6 +26,7 @@ export function FormDialog({
   onSubmit,
   submitLabel = 'Save',
   busy,
+  submitDisabled,
   size = 'md',
   children,
   footerExtra,
@@ -37,6 +38,8 @@ export function FormDialog({
   onSubmit: () => void;
   submitLabel?: string;
   busy?: boolean;
+  /** e.g. nothing allowed to submit yet */
+  submitDisabled?: boolean;
   size?: 'sm' | 'md' | 'lg';
   children: ReactNode;
   footerExtra?: ReactNode;
@@ -59,7 +62,7 @@ export function FormDialog({
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={e => {
             e.preventDefault();
-            onSubmit();
+            if (!submitDisabled) onSubmit();
           }}
           noValidate
         >
@@ -69,7 +72,7 @@ export function FormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || submitDisabled}>
               {busy && <Spinner className="text-current" />}
               {submitLabel}
             </Button>

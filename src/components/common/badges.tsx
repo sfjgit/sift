@@ -6,7 +6,7 @@
 
 import { cn } from '@/lib/utils';
 import { titleCase } from '@/lib/format';
-import type { ClientStatus, EmailStatus, SpocApprovalStatus, StepRunStatus, ValidationBand } from '@/types/crm';
+import type { ClientStatus, EmailStatus, OutreachStatus, SpocApprovalStatus, StepRunStatus, ValidationBand } from '@/types/crm';
 
 export type Tone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'violet';
 
@@ -136,3 +136,16 @@ export function LookupBadge({
   for (const c of lookup.code) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return <Pill tone={meta?.tone ?? LOOKUP_TONES[h % LOOKUP_TONES.length]}>{lookup.label}</Pill>;
 }
+
+export const OUTREACH_STATUS: Record<OutreachStatus, { label: string; tone: Tone; hint: string }> = {
+  DRAFT: { label: 'Draft', tone: 'neutral', hint: 'Written by the pipeline — read and review it first' },
+  REVIEWED: { label: 'Reviewed', tone: 'info', hint: 'Checked by a person — ready to send from Outlook' },
+  SENT: { label: 'Sent', tone: 'primary', hint: 'At least one mail sent — waiting for a reply' },
+  REPLIED: { label: 'Replied', tone: 'success', hint: 'The SPOC replied' },
+  NO_REPLY: { label: 'No reply', tone: 'warning', hint: 'Sequence finished without a reply' },
+  BOUNCED: { label: 'Bounced', tone: 'danger', hint: 'The mail did not reach the SPOC' },
+};
+
+export const OutreachStatusBadge = ({ status }: { status: OutreachStatus }) => (
+  <Pill tone={OUTREACH_STATUS[status]?.tone}>{OUTREACH_STATUS[status]?.label ?? status}</Pill>
+);

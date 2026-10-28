@@ -10,7 +10,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useDebounce } from 'use-debounce';
-import { BookOpen, Keyboard, LifeBuoy, MessageCircleQuestion, Plus, Search, Sparkles, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Keyboard, LifeBuoy, MessageCircleQuestion, Plus, Search, Sparkles, Workflow, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
@@ -138,6 +138,22 @@ export default function HelpPage() {
           </div>
         </div>
       </section>
+
+      <Link
+        href="/help/pipeline"
+        className="group flex flex-wrap items-center gap-4 rounded-xl border bg-card p-4 shadow-card transition-colors hover:border-primary/40"
+      >
+        <span className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary">
+          <Workflow className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold group-hover:text-primary">How the pipeline works</span>
+          <span className="block text-[13px] text-muted-foreground">
+            The journey from a client to a reply, what happens after you click Run, each step, and where to see every result.
+          </span>
+        </span>
+        <ArrowRight className="size-4 text-muted-foreground group-hover:text-primary" />
+      </Link>
 
       {/* FAQs */}
       <section>

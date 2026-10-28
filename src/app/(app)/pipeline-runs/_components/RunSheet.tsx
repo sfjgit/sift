@@ -18,14 +18,14 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { DetailList } from '@/components/common/Panel';
-import { Pill, STEP_STATUS, StepRunBadge } from '@/components/common/badges';
+import { ApprovalBadge, BandBadge, Pill, STEP_STATUS, StepRunBadge } from '@/components/common/badges';
 import { PersonCell } from '@/components/common/UserAvatar';
 import { EmptyState, ErrorState } from '@/components/common/states';
 import { ApiError } from '@/lib/api/client';
 import { pipelineApi } from '@/lib/api/endpoints';
 import { fmtDateTime, fmtNumber, fmtRelative, fullName } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { RunViewData, StepRunDetail } from '@/types/crm';
+import type { RunProduced, RunViewData, StepRunDetail } from '@/types/crm';
 import { fmtDuration, fmtUsd, humanizeKey, isActive } from './runFormat';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -34,6 +34,121 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
       {children}
     </section>
+  );
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  score: 'score',
+  linkedinUrl: 'LinkedIn',
+  email: 'email',
+  phone: 'phone',
+  designation: 'designation',
+  department: 'department',
+  lastName: 'last name',
+  seniority: 'seniority',
+  totalExpYears: 'experience',
+  currentOrgExpYears: 'years at company',
+};
+
+const OpenLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
+  <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+    {children} <ArrowRight className="size-3" />
+  </Link>
+);
+
+/** The records this run put into the CRM, each linking to where it lives. */
+function Produced({ p }: { p: RunProduced }) {
+  const added = p.spocs.filter(s => s.change === 'added');
+  const scored = p.spocs.some(s => s.fields.includes('score'));
+  const empty = !p.spocs.length && !p.documents.length && !p.outreach.length && !p.programs && !p.financials;
+  if (empty) return null;
+  const tab = (t: string) => `/clients/${p.clientId}?tab=${t}`;
+
+  return (
+    <Section title="What this run produced">
+      <div className="space-y-3">
+        {p.spocs.length > 0 && (
+          <div className="rounded-lg border">
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+              <span className="text-[13px] font-medium">
+                {scored ? `${p.spocs.length} SPOC(s) scored` : `${p.spocs.length} SPOC(s)`}
+                {added.length > 0 && ` · ${added.length} new, waiting for approval`}
+              </span>
+              {added.length > 0 ? <OpenLink href="/approvals">Approvals</OpenLink> : <OpenLink href={tab('spocs')}>SPOCs tab</OpenLink>}
+            </div>
+            <ul className="divide-y">
+              {p.spocs.map(s => (
+                <li key={`${s.id}-${s.change}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-[13px]">
+                  <Link href={`/spocs/${s.id}`} className="min-w-0 font-medium hover:text-primary">
+                    {fullName(s)}
+                  </Link>
+                  {s.designation && <span className="truncate text-xs text-muted-foreground">{s.designation}</span>}
+                  <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                    {s.change === 'added' ? (
+                      <ApprovalBadge status={s.approvalStatus} />
+                    ) : (
+                      s.fields.filter(f => f !== 'score').length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          added {s.fields.filter(f => f !== 'score').map(f => FIELD_LABELS[f] ?? humanizeKey(f)).join(', ')}
+                        </span>
+                      )
+                    )}
+                    {(scored || s.validationScore !== null) && <BandBadge band={s.validationBand} score={s.validationScore} />}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {p.outreach.length > 0 && (
+          <div className="rounded-lg border">
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+              <span className="text-[13px] font-medium">{p.outreach.length} email pack(s) written</span>
+              <OpenLink href={tab('outreach')}>Read them</OpenLink>
+            </div>
+            <ul className="divide-y">
+              {p.outreach.map(o => (
+                <li key={o.id} className="space-y-0.5 px-3 py-2 text-[13px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{fullName(o.spoc)}</span>
+                    <span className="text-xs text-muted-foreground">{o.messages} emails</span>
+                  </div>
+                  {o.firstSubject && <p className="truncate text-xs text-muted-foreground">First: {o.firstSubject}</p>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(p.documents.length > 0 || p.programs > 0 || p.financials > 0) && (
+          <div className="rounded-lg border">
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+              <span className="text-[13px] font-medium">
+                {[
+                  p.documents.length && `${p.documents.length} report(s)`,
+                  p.financials && `${p.financials} year(s) of figures`,
+                  p.programs && `${p.programs} programme(s)`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+              <OpenLink href={tab('csr')}>CSR tab</OpenLink>
+            </div>
+            {p.documents.length > 0 && (
+              <ul className="divide-y">
+                {p.documents.map(d => (
+                  <li key={d.id} className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]">
+                    <span className="font-medium">{d.type}</span>
+                    <span className="text-xs text-muted-foreground">FY {d.fy}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -210,6 +325,8 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
           ]}
         />
       </Section>
+
+      {run.produced && <Produced p={run.produced} />}
 
       <Section title="Result">
         <ResultSummary value={run.resultSummary} />

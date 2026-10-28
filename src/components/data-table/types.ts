@@ -27,15 +27,30 @@ declare module '@tanstack/react-table' {
 
 export type DataColumn<T> = ColumnDef<T, unknown>;
 
-export type FilterDef =
-  | { key: string; label: string; type: 'select'; options: { value: string; label: string }[] }
-  | { key: string; label: string; type: 'lookup'; lookupType: LookupType }
-  | { key: string; label: string; type: 'master'; kind: MasterKind }
-  | { key: string; label: string; type: 'user'; purpose?: 'assign' | 'filter' }
-  | { key: string; label: string; type: 'client' }
-  | { key: string; label: string; type: 'date'; placeholder?: string }
-  | { key: string; label: string; type: 'text'; placeholder?: string }
-  | { key: string; label: string; type: 'boolean'; trueLabel?: string; falseLabel?: string };
+/** shared by every filter: where it sits in the filter sheet and its one-line guide */
+interface FilterBase {
+  key: string;
+  label: string;
+  /** section in the filter sheet ("Ownership", "Pipeline"…) */
+  group?: string;
+  /** one-line guide under the control, and the chip tooltip */
+  hint?: string;
+}
+
+/** multi: several values, sent as "a,b,c" */
+export type FilterDef = FilterBase &
+  (
+    | { type: 'select'; options: { value: string; label: string }[]; multi?: boolean }
+    | { type: 'lookup'; lookupType: LookupType; multi?: boolean }
+    | { type: 'master'; kind: MasterKind; multi?: boolean }
+    | { type: 'user'; purpose?: 'assign' | 'filter'; multi?: boolean }
+    | { type: 'client' }
+    /** country → state → city; a level lists only what fits the picked parents (by their filter keys) */
+    | { type: 'geo'; level: 'country' | 'state' | 'city'; multi?: boolean; countryKey?: string; stateKey?: string }
+    | { type: 'date'; placeholder?: string }
+    | { type: 'text'; placeholder?: string }
+    | { type: 'boolean'; trueLabel?: string; falseLabel?: string }
+  );
 
 export type Density = 'compact' | 'comfortable';
 

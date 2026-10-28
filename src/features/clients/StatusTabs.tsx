@@ -27,7 +27,11 @@ export function StatusTabs({
   total?: number;
 }) {
   return (
-    <div className="flex gap-1 overflow-x-auto border-b" role="tablist" {...tourTarget('clients-status')}>
+    <div
+      className="flex gap-1 overflow-x-auto border-b"
+      role="tablist"
+      {...tourTarget('clients-status')}
+    >
       {TABS.map(t => {
         const active = value === t.value;
         const n = t.value ? counts?.[t.value] : total;
@@ -55,7 +59,9 @@ export function StatusTabs({
                 {fmtNumber(n)}
               </span>
             )}
-            {active && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />}
+            {active && (
+              <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />
+            )}
           </button>
         );
       })}

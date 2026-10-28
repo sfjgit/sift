@@ -53,10 +53,15 @@ export const useMasters = (kind: MasterKind, { activeOnly = false, enabled = tru
 export const useRoles = () =>
   useQuery({ queryKey: roleHooks.keys.list(), queryFn: () => rolesApi.all(), staleTime: STATIC });
 
-export const useUserOptions = (search: string, purpose: 'assign' | 'filter' = 'filter', enabled = true) =>
+export const useUserOptions = (
+  search: string,
+  purpose: 'assign' | 'client_assign' | 'filter' = 'filter',
+  enabled = true,
+  limit = 20
+) =>
   useQuery({
-    queryKey: ['user-options', purpose, search],
-    queryFn: () => usersApi.options({ search: search || undefined, for: purpose, limit: 20 }),
+    queryKey: ['user-options', purpose, search, limit],
+    queryFn: () => usersApi.options({ search: search || undefined, for: purpose, limit }),
     staleTime: 60_000,
     enabled,
   });

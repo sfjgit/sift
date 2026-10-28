@@ -1,9 +1,11 @@
 // File: FilterBar.tsx
 // Path: src/components/data-table/FilterBar.tsx
 //
-// "Filter" popover listing every FilterDef + removable chips for active ones.
-// Chip labels resolve from cached lookups/masters; users fall back to the
-// label captured when the filter was picked (also stored in saved views).
+// The filter panel itself is FilterSheet.tsx. Applied filters show as chips above
+// the table — click one to open the sheet at that filter, × removes it.
+// Multi filters keep "a,b,c" as their value (URL + saved views stay strings).
+// Chip labels resolve from cached lookups/masters; people fall back to the
+// names captured when they were picked (also stored in saved views).
 
 'use client';
 
@@ -11,14 +13,36 @@ import { useMemo, useState } from 'react';
 import { ListFilter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Combobox } from '@/components/pickers/Combobox';
-import { ClientPicker, LookupPicker, MasterPicker, UserPicker } from '@/components/pickers/pickers';
+import { MasterMultiPicker, MultiCombobox } from '@/components/pickers/MultiCombobox';
+import {
+  ClientPicker,
+  LookupMultiPicker,
+  LookupPicker,
+  MasterPicker,
+  UserMultiPicker,
+  UserPicker,
+} from '@/components/pickers/pickers';
 import { fmtDate } from '@/lib/format';
 import { useLookups, useMasters } from '@/hooks/queries';
 import { tourTarget } from '@/features/tour/tour.constants';
 import type { FilterDef } from './types';
 import type { TableController } from './useTableState';
+
+const split = (v?: string) => (v ? v.split(',').filter(Boolean) : []);
+const isMulti = (def: FilterDef) => 'multi' in def && !!def.multi;
+
+// people filters store {id: name} as JSON so chips and saved views can name them
+const parseNames = (stored?: string): Record<string, string> => {
+  if (!stored) return {};
+  try {
+    const v = JSON.parse(stored);
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+};
 
 export function FilterControl({
   def,
@@ -31,16 +55,49 @@ export function FilterControl({
   label?: string;
   onChange: (v: string | null, label?: string) => void;
 }) {
-  const common = { value: value ?? null, size: 'sm' as const, placeholder: `Any ${def.label.toLowerCase()}` };
+  const common = {
+    value: value ?? null,
+    size: 'sm' as const,
+    placeholder: `Any ${def.label.toLowerCase()}`,
+  };
+  const multi = {
+    value: split(value),
+    placeholder: `Any ${def.label.toLowerCase()}`,
+    onChange: (ids: string[]) => onChange(ids.join(',') || null),
+  };
   switch (def.type) {
     case 'select':
-      return <Combobox {...common} options={def.options} onChange={(v, o) => onChange(v, o?.label)} />;
+      return def.multi ? (
+        <MultiCombobox {...multi} options={def.options} />
+      ) : (
+        <Combobox {...common} options={def.options} onChange={(v, o) => onChange(v, o?.label)} />
+      );
     case 'lookup':
-      return <LookupPicker {...common} type={def.lookupType} onChange={(v, o) => onChange(v, o?.label)} />;
+      return def.multi ? (
+        <LookupMultiPicker {...multi} type={def.lookupType} />
+      ) : (
+        <LookupPicker
+          {...common}
+          type={def.lookupType}
+          onChange={(v, o) => onChange(v, o?.label)}
+        />
+      );
     case 'master':
-      return <MasterPicker {...common} kind={def.kind} onChange={(v, o) => onChange(v, o?.label)} />;
+      return def.multi ? (
+        <MasterMultiPicker {...multi} kind={def.kind} />
+      ) : (
+        <MasterPicker {...common} kind={def.kind} onChange={(v, o) => onChange(v, o?.label)} />
+      );
     case 'user':
-      return (
+      return def.multi ? (
+        <UserMultiPicker
+          value={split(value)}
+          labels={parseNames(label)}
+          purpose={def.purpose}
+          placeholder={`Anyone`}
+          onChange={(ids, names) => onChange(ids.join(',') || null, JSON.stringify(names))}
+        />
+      ) : (
         <UserPicker
           {...common}
           purpose={def.purpose}
@@ -49,14 +106,22 @@ export function FilterControl({
         />
       );
     case 'client':
-      return <ClientPicker {...common} selectedLabel={label} onChange={(v, o) => onChange(v, o?.label)} />;
+      return (
+        <ClientPicker
+          {...common}
+          selectedLabel={label}
+          onChange={(v, o) => onChange(v, o?.label)}
+        />
+      );
     case 'date':
       return (
         <Input
           type="date"
-          className="h-7"
+          className="h-8"
           value={value ?? ''}
-          onChange={e => onChange(e.target.value || null, e.target.value ? fmtDate(e.target.value) : undefined)}
+          onChange={e =>
+            onChange(e.target.value || null, e.target.value ? fmtDate(e.target.value) : undefined)
+          }
         />
       );
     case 'boolean':
@@ -70,8 +135,16 @@ export function FilterControl({
           onChange={v => onChange(v)}
         />
       );
+    case 'geo':
     case 'text':
-      return <TextFilter value={value} placeholder={def.placeholder} onChange={onChange} />;
+      return (
+        <TextFilter
+          key={value ?? ''}
+          value={value}
+          placeholder={def.type === 'text' ? def.placeholder : undefined}
+          onChange={onChange}
+        />
+      );
   }
 }
 
@@ -87,7 +160,7 @@ function TextFilter({
   const [draft, setDraft] = useState(value ?? '');
   return (
     <Input
-      className="h-7"
+      className="h-8"
       value={draft}
       placeholder={placeholder ?? 'Type and press Enter'}
       onChange={e => setDraft(e.target.value)}
@@ -106,28 +179,66 @@ function useChipLabel(def: FilterDef, value: string, stored?: string) {
     enabled: def.type === 'master',
   });
   return useMemo(() => {
-    if (def.type === 'select') return def.options.find(o => o.value === value)?.label ?? value;
-    if (def.type === 'boolean') return value === 'true' ? (def.trueLabel ?? 'Yes') : (def.falseLabel ?? 'No');
-    if (def.type === 'lookup') return lookups.data?.find(l => l.id === value)?.label ?? stored ?? '…';
-    if (def.type === 'master') return masters.data?.find(m => m.id === value)?.name ?? stored ?? '…';
-    if (def.type === 'user') return stored ?? 'Selected person';
-    if (def.type === 'client') return stored ?? 'Selected client';
-    if (def.type === 'date') return fmtDate(value);
-    return value;
+    const one = (v: string) => {
+      if (def.type === 'select') return def.options.find(o => o.value === v)?.label ?? v;
+      if (def.type === 'boolean')
+        return v === 'true' ? (def.trueLabel ?? 'Yes') : (def.falseLabel ?? 'No');
+      if (def.type === 'lookup') return lookups.data?.find(l => l.id === v)?.label ?? '…';
+      if (def.type === 'master') return masters.data?.find(m => m.id === v)?.name ?? '…';
+      if (def.type === 'user') return parseNames(stored)[v] ?? 'Selected person';
+      if (def.type === 'date') return fmtDate(v);
+      return v;
+    };
+    if (!isMulti(def)) {
+      if (def.type === 'lookup' || def.type === 'master')
+        return one(value) === '…' ? (stored ?? '…') : one(value);
+      if (def.type === 'user') return stored && !stored.startsWith('{') ? stored : one(value);
+      if (def.type === 'client') return stored ?? 'Selected client';
+      return one(value);
+    }
+    const names = split(value).map(one);
+    return names.length > 2
+      ? `${names.slice(0, 2).join(', ')} +${names.length - 2}`
+      : names.join(', ');
   }, [def, value, stored, lookups.data, masters.data]);
 }
 
-function FilterChip({ def, value, stored, onRemove }: { def: FilterDef; value: string; stored?: string; onRemove: () => void }) {
+function FilterChip({
+  def,
+  value,
+  stored,
+  onOpen,
+  onRemove,
+}: {
+  def: FilterDef;
+  value: string;
+  stored?: string;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
   const label = useChipLabel(def, value, stored);
   return (
-    <span className="inline-flex h-7 items-center gap-1 rounded-lg border border-primary/25 bg-primary/8 pr-1 pl-2 text-xs">
-      <span className="text-muted-foreground">{def.label}:</span>
-      <span className="max-w-40 truncate font-medium text-foreground">{label}</span>
+    <span className="inline-flex h-7 items-center rounded-lg border border-primary/25 bg-primary/8 text-xs">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex h-full items-center gap-1 rounded-l-lg pr-1 pl-2 hover:bg-primary/12"
+          >
+            <span className="text-muted-foreground">{def.label}:</span>
+            <span className="max-w-48 truncate font-medium text-foreground">{label}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-64">
+          {def.hint ? `${def.hint} ` : ''}Click to change.
+        </TooltipContent>
+      </Tooltip>
       <button
         type="button"
         onClick={onRemove}
         aria-label={`Remove ${def.label} filter`}
-        className="rounded p-0.5 text-muted-foreground hover:bg-primary/15 hover:text-foreground"
+        className="mr-0.5 rounded p-0.5 text-muted-foreground hover:bg-primary/15 hover:text-foreground"
       >
         <X className="size-3" />
       </button>
@@ -135,51 +246,41 @@ function FilterChip({ def, value, stored, onRemove }: { def: FilterDef; value: s
   );
 }
 
-export function FilterButton({ filters, table }: { filters: FilterDef[]; table: TableController }) {
-  const { state, actions } = table;
-  const count = Object.keys(state.filters).filter(k => filters.some(f => f.key === k)).length;
+const activeCount = (filters: FilterDef[], table: TableController) =>
+  Object.keys(table.state.filters).filter(k => filters.some(f => f.key === k)).length;
 
+export function FilterButton({
+  filters,
+  table,
+  onOpen,
+}: {
+  filters: FilterDef[];
+  table: TableController;
+  onOpen: () => void;
+}) {
+  const count = activeCount(filters, table);
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" {...tourTarget('table-filters')}>
-          <ListFilter />
-          Filter
-          {count > 0 && (
-            <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground">
-              {count}
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 gap-0 p-0">
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-xs font-semibold">Filters</span>
-          {count > 0 && (
-            <button type="button" onClick={actions.clearFilters} className="text-xs text-primary hover:underline">
-              Clear all
-            </button>
-          )}
-        </div>
-        <div className="max-h-[60vh] space-y-2.5 overflow-y-auto p-3">
-          {filters.map(def => (
-            <label key={def.key} className="grid grid-cols-[96px_1fr] items-center gap-2">
-              <span className="truncate text-xs text-muted-foreground">{def.label}</span>
-              <FilterControl
-                def={def}
-                value={state.filters[def.key]}
-                label={state.filterLabels[def.key]}
-                onChange={(v, label) => actions.setFilter(def.key, v, label)}
-              />
-            </label>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+    <Button variant="outline" size="sm" onClick={onOpen} {...tourTarget('table-filters')}>
+      <ListFilter />
+      Filters
+      {count > 0 && (
+        <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground">
+          {count}
+        </span>
+      )}
+    </Button>
   );
 }
 
-export function FilterChips({ filters, table }: { filters: FilterDef[]; table: TableController }) {
+export function FilterChips({
+  filters,
+  table,
+  onOpen,
+}: {
+  filters: FilterDef[];
+  table: TableController;
+  onOpen: (key: string) => void;
+}) {
   const { state, actions } = table;
   const active = filters.filter(f => state.filters[f.key]);
   if (!active.length) return null;
@@ -189,12 +290,17 @@ export function FilterChips({ filters, table }: { filters: FilterDef[]; table: T
         <FilterChip
           key={def.key}
           def={def}
-          value={state.filters[def.key]}
+          value={state.filters[def.key]!}
           stored={state.filterLabels[def.key]}
+          onOpen={() => onOpen(def.key)}
           onRemove={() => actions.setFilter(def.key, null)}
         />
       ))}
-      <button type="button" onClick={actions.clearFilters} className="px-1 text-xs text-muted-foreground hover:text-foreground">
+      <button
+        type="button"
+        onClick={actions.clearFilters}
+        className="px-1 text-xs text-muted-foreground hover:text-foreground"
+      >
         Reset
       </button>
     </div>
