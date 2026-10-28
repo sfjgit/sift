@@ -51,12 +51,44 @@ export function LocationFields<T extends FieldValues>({
 
   return (
     <div className="space-y-3">
-      {!compact && <TextField form={form} name={p('name')} label="Label" placeholder="e.g. NASSCOM IT Park office" />}
-      {!compact && <TextField form={form} name={p('addressLine')} label="Address" placeholder="Building, street, area" />}
+      {!compact && (
+        <TextField
+          form={form}
+          name={p('name')}
+          label="Label"
+          placeholder="e.g. NASSCOM IT Park office"
+        />
+      )}
+      {!compact && (
+        <TextField
+          form={form}
+          name={p('addressLine')}
+          label="Address"
+          placeholder="Building, street, area"
+        />
+      )}
       <FormGrid cols={3}>
-        <TextField form={form} name={p('city')} label="City" list={`${listId}-cities`} autoComplete="off" />
-        <TextField form={form} name={p('state')} label="State" list={`${listId}-states`} autoComplete="off" />
-        <TextField form={form} name={p('country')} label="Country" list={`${listId}-countries`} autoComplete="off" />
+        <TextField
+          form={form}
+          name={p('city')}
+          label="City"
+          list={`${listId}-cities`}
+          autoComplete="off"
+        />
+        <TextField
+          form={form}
+          name={p('state')}
+          label="State"
+          list={`${listId}-states`}
+          autoComplete="off"
+        />
+        <TextField
+          form={form}
+          name={p('country')}
+          label="Country"
+          list={`${listId}-countries`}
+          autoComplete="off"
+        />
       </FormGrid>
       {!compact && (
         <FormGrid>

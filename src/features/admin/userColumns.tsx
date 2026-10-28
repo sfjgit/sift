@@ -11,20 +11,46 @@ import { fmtDate, fullName } from '@/lib/format';
 import type { Role, UserListItem } from '@/types/org';
 
 export const userFilters = (roles: Role[] = []): FilterDef[] => [
-  { key: 'roleId', label: 'Role', type: 'select', options: roles.map(r => ({ value: r.id, label: r.name })) },
-  { key: 'departmentId', label: 'Department', type: 'master', kind: 'departments' },
-  { key: 'designationId', label: 'Designation', type: 'master', kind: 'designations' },
-  { key: 'businessUnitId', label: 'Business unit', type: 'master', kind: 'business-units' },
-  { key: 'serviceLineId', label: 'Service line', type: 'master', kind: 'service-lines' },
-  { key: 'reportingToId', label: 'Reports to', type: 'user' },
-  { key: 'isActive', label: 'Status', type: 'boolean', trueLabel: 'Active', falseLabel: 'Inactive' },
+  {
+    key: 'roleId',
+    label: 'Role',
+    type: 'select',
+    multi: true,
+    options: roles.map(r => ({ value: r.id, label: r.name })),
+  },
+  { key: 'departmentId', label: 'Department', type: 'master', multi: true, kind: 'departments' },
+  { key: 'designationId', label: 'Designation', type: 'master', multi: true, kind: 'designations' },
+  {
+    key: 'businessUnitId',
+    label: 'Business unit',
+    type: 'master',
+    multi: true,
+    kind: 'business-units',
+  },
+  {
+    key: 'serviceLineId',
+    label: 'Service line',
+    type: 'master',
+    multi: true,
+    kind: 'service-lines',
+  },
+  { key: 'reportingToId', label: 'Reports to', type: 'user', multi: true },
+  {
+    key: 'isActive',
+    label: 'Status',
+    type: 'boolean',
+    trueLabel: 'Active',
+    falseLabel: 'Inactive',
+  },
 ];
 
 export const userFilterKeys = userFilters().map(f => f.key);
 
 const dash = <span className="text-muted-foreground">—</span>;
 
-export const userColumns = (actions?: (u: UserListItem) => React.ReactNode): DataColumn<UserListItem>[] => [
+export const userColumns = (
+  actions?: (u: UserListItem) => React.ReactNode
+): DataColumn<UserListItem>[] => [
   {
     id: 'name',
     accessorFn: u => fullName(u),
@@ -37,7 +63,10 @@ export const userColumns = (actions?: (u: UserListItem) => React.ReactNode): Dat
           <UserAvatar person={u} size="md" />
           <div className="min-w-0">
             <span className="flex items-center gap-1.5">
-              <Link href={`/admin/users/${u.id}`} className="truncate font-medium hover:text-primary">
+              <Link
+                href={`/admin/users/${u.id}`}
+                className="truncate font-medium hover:text-primary"
+              >
                 {fullName(u)}
               </Link>
               {u.isSuperAdmin && (
@@ -58,7 +87,11 @@ export const userColumns = (actions?: (u: UserListItem) => React.ReactNode): Dat
     header: 'Employee ID',
     meta: { label: 'Employee ID' },
     cell: ({ row }) =>
-      row.original.employeeId ? <span className="font-mono text-xs">{row.original.employeeId}</span> : dash,
+      row.original.employeeId ? (
+        <span className="font-mono text-xs">{row.original.employeeId}</span>
+      ) : (
+        dash
+      ),
   },
   {
     id: 'role',
@@ -110,14 +143,22 @@ export const userColumns = (actions?: (u: UserListItem) => React.ReactNode): Dat
     accessorFn: u => fmtDate(u.dateOfJoin),
     header: 'Joined',
     meta: { label: 'Joined', sortKey: 'dateOfJoin', defaultHidden: true },
-    cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{fmtDate(row.original.dateOfJoin)}</span>,
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground">
+        {fmtDate(row.original.dateOfJoin)}
+      </span>
+    ),
   },
   {
     id: 'createdAt',
     accessorFn: u => fmtDate(u.createdAt),
     header: 'Added',
     meta: { label: 'Added', sortKey: 'createdAt' },
-    cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{fmtDate(row.original.createdAt)}</span>,
+    cell: ({ row }) => (
+      <span className="whitespace-nowrap text-muted-foreground">
+        {fmtDate(row.original.createdAt)}
+      </span>
+    ),
   },
   {
     id: 'lastName',

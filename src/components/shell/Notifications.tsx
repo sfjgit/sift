@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCheck, MessageSquareText, UserPlus, Workflow, XCircle } from 'lucide-react';
+import { Bell, CheckCheck, MessageSquareText, ShieldAlert, UserCheck, UserPlus, Workflow, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EmptyState, Spinner } from '@/components/common/states';
@@ -15,24 +15,37 @@ import { notificationKeys, useUnreadCount } from '@/hooks/queries';
 import { tourTarget } from '@/features/tour/tour.constants';
 import { fmtRelative } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import type { AppNotification } from '@/types/org';
+import type { AppNotification, NotificationSeverity } from '@/types/org';
 
 export const notificationHref = (n: AppNotification) =>
-  n.referenceType === 'CLIENT'
+  n.link ??
+  (n.referenceType === 'CLIENT'
     ? `/clients/${n.referenceId}`
     : n.referenceType === 'SPOC'
       ? `/spocs/${n.referenceId}`
-      : `/pipeline-runs?run=${n.referenceId}`;
+      : n.referenceType === 'SYSTEM_ALERT'
+        ? '/admin/alerts'
+        : `/pipeline-runs?run=${n.referenceId}`);
 
 const ICONS = {
   SPOC_ASSIGNED: { icon: UserPlus, cls: 'bg-primary/10 text-primary' },
   NOTE_ADDED: { icon: MessageSquareText, cls: 'bg-info/12 text-info' },
   STEP_RUN_FINISHED: { icon: Workflow, cls: 'bg-success/12 text-success' },
   STEP_RUN_FAILED: { icon: XCircle, cls: 'bg-destructive/10 text-destructive' },
+  SPOC_APPROVAL_NEEDED: { icon: UserCheck, cls: 'bg-warning/15 text-warning' },
+  SYSTEM_ALERT: { icon: ShieldAlert, cls: 'bg-destructive/10 text-destructive' },
 } as const;
+
+// severity wins over the type's default colour
+const SEVERITY_CLS: Partial<Record<NotificationSeverity, string>> = {
+  SUCCESS: 'bg-success/12 text-success',
+  WARNING: 'bg-warning/15 text-warning',
+  ERROR: 'bg-destructive/10 text-destructive',
+};
 
 export function NotificationItem({ n, onOpen }: { n: AppNotification; onOpen: (n: AppNotification) => void }) {
   const meta = ICONS[n.type] ?? ICONS.NOTE_ADDED;
+  const cls = (n.severity && SEVERITY_CLS[n.severity]) ?? meta.cls;
   return (
     <button
       type="button"
@@ -42,7 +55,7 @@ export function NotificationItem({ n, onOpen }: { n: AppNotification; onOpen: (n
         !n.isRead && 'bg-accent/40'
       )}
     >
-      <span className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg', meta.cls)}>
+      <span className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg', cls)}>
         <meta.icon className="size-3.5" />
       </span>
       <span className="min-w-0 flex-1">
@@ -107,7 +120,7 @@ export function NotificationsPopover() {
           ) : data?.data.length ? (
             data.data.map(n => <NotificationItem key={n.id} n={n} onOpen={openOne} />)
           ) : (
-            <EmptyState compact icon={Bell} title="You’re all caught up" description="New assignments and notes show up here." />
+            <EmptyState compact icon={Bell} title="You’re all caught up" description="Assignments, notes, run results and alerts show up here." />
           )}
         </div>
         <div className="border-t p-1.5">

@@ -5,7 +5,13 @@
 
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { fmtNumber } from '@/lib/format';
 import type { PageMeta } from '@/types/api';
 import { PAGE_SIZES } from './useTableState';
@@ -67,16 +73,40 @@ export function Pagination({
           Page {page} of {pages}
         </span>
         <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => onPage(1)} aria-label="First page">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={page <= 1}
+            onClick={() => onPage(1)}
+            aria-label="First page"
+          >
             <ChevronsLeft />
           </Button>
-          <Button variant="ghost" size="icon-sm" disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={page <= 1}
+            onClick={() => onPage(page - 1)}
+            aria-label="Previous page"
+          >
             <ChevronLeft />
           </Button>
-          <Button variant="ghost" size="icon-sm" disabled={page >= pages} onClick={() => onPage(page + 1)} aria-label="Next page">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={page >= pages}
+            onClick={() => onPage(page + 1)}
+            aria-label="Next page"
+          >
             <ChevronRight />
           </Button>
-          <Button variant="ghost" size="icon-sm" disabled={page >= pages} onClick={() => onPage(pages)} aria-label="Last page">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={page >= pages}
+            onClick={() => onPage(pages)}
+            aria-label="Last page"
+          >
             <ChevronsRight />
           </Button>
         </div>

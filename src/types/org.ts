@@ -148,15 +148,26 @@ export interface Lookup {
   meta: Record<string, unknown> | null;
 }
 
-export type NotificationType = 'SPOC_ASSIGNED' | 'NOTE_ADDED' | 'STEP_RUN_FINISHED' | 'STEP_RUN_FAILED';
+export type NotificationType =
+  | 'SPOC_ASSIGNED'
+  | 'NOTE_ADDED'
+  | 'STEP_RUN_FINISHED'
+  | 'STEP_RUN_FAILED'
+  | 'SPOC_APPROVAL_NEEDED'
+  | 'SYSTEM_ALERT';
+
+export type NotificationSeverity = 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
 
 export interface AppNotification {
   id: string;
   type: NotificationType;
+  severity: NotificationSeverity;
   title: string;
   body: string | null;
+  /** in-app path to open, e.g. /clients/<id>?tab=pipeline */
+  link: string | null;
   referenceId: string;
-  referenceType: 'CLIENT' | 'SPOC' | 'STEP_RUN';
+  referenceType: 'CLIENT' | 'SPOC' | 'STEP_RUN' | 'SYSTEM_ALERT';
   isRead: boolean;
   readAt: string | null;
   createdAt: string;
@@ -219,4 +230,22 @@ export interface SearchResults {
     client: NamedRef;
   }[];
   users: { id: string; firstName: string; lastName: string; email: string; designation: { name: string } | null }[];
+}
+
+// ── system alerts ────────────────────────────────────────────────────────────
+
+export interface SystemAlert {
+  id: string;
+  key: string;
+  severity: NotificationSeverity;
+  source: 'pipeline' | 'engine' | 'api';
+  title: string;
+  body: string | null;
+  link: string | null;
+  meta: Record<string, unknown> | null;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  resolvedBy: { id: string; firstName: string; lastName: string | null } | null;
 }

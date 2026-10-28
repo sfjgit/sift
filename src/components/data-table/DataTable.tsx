@@ -5,6 +5,8 @@
 // views, column chooser (show / hide / reorder), density, row selection with
 // a bulk-action bar, CSV/Excel export (page or every matching row), sticky
 // header + first column, URL-synced state, "/" focuses search.
+// Full-page tables fit the screen: rows scroll inside the grid (header stays),
+// and a second horizontal scrollbar sits on top of the grid.
 //
 // Usage:
 //   const table = useTableState('clients', FILTERS.map(f => f.key), { sort: { id: 'createdAt', desc: true } });
@@ -54,6 +56,7 @@ import type { ListParams, Paginated } from '@/types/api';
 import { ColumnsMenu } from './ColumnsMenu';
 import { downloadRecords, rowsToRecords, type ExportFormat } from './exporter';
 import { FilterButton, FilterChips } from './FilterBar';
+import { FilterSheet } from './FilterSheet';
 import { Pagination } from './Pagination';
 import { ViewsMenu } from './ViewsMenu';
 import type { DataColumn, FilterDef } from './types';
@@ -90,6 +93,8 @@ export interface DataTableProps<T> {
   savedViews?: boolean;
   /** Minimal chrome for embedded tables (detail tabs) */
   embedded?: boolean;
+  /** Fit the grid to the screen and scroll rows inside it (default: not embedded) */
+  fit?: boolean;
   className?: string;
 }
 
@@ -135,6 +140,7 @@ export function DataTable<T>({
   empty,
   savedViews = true,
   embedded = false,
+  fit = !embedded,
   className,
 }: DataTableProps<T>) {
   const router = useRouter();
@@ -143,6 +149,13 @@ export function DataTable<T>({
   const [selectedCache, setSelectedCache] = useState<Record<string, T>>({});
   const [searchDraft, setSearchDraft] = useState(state.search);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [filterSheet, setFilterSheet] = useState<{ open: boolean; focus?: string | null }>({
+    open: false,
+  });
+  const gridRef = useRef<HTMLDivElement>(null);
+  const topBarRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [maxHeight, setMaxHeight] = useState<number>();
 
   // debounce search → state (and keep draft in sync when a view is applied)
   useEffect(() => setSearchDraft(state.search), [state.search]);
@@ -170,6 +183,35 @@ export function DataTable<T>({
   }, []);
 
   const rows = useMemo(() => query.data?.data ?? [], [query.data]);
+
+  // top scrollbar width + grid height that ends at the bottom of the screen
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const measure = () => {
+      setScrollWidth(el.scrollWidth > el.clientWidth + 1 ? el.scrollWidth : 0);
+      if (!fit) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      // pagination bar + main padding below the grid
+      setMaxHeight(Math.max(360, window.innerHeight - top - 84));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    ro.observe(document.body);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [fit]);
+
+  const syncScroll = (from: 'top' | 'grid') => {
+    const a = from === 'top' ? topBarRef.current : gridRef.current;
+    const b = from === 'top' ? gridRef.current : topBarRef.current;
+    if (a && b && b.scrollLeft !== a.scrollLeft) b.scrollLeft = a.scrollLeft;
+  };
   const allColumns = useMemo(
     () => (bulkActions ? [selectColumn<T>(), ...columns] : columns),
     [bulkActions, columns]
@@ -253,7 +295,15 @@ export function DataTable<T>({
   };
 
   const open = (row: T, e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('a,button,[role=checkbox],[data-no-row-click]')) return;
+    // menus / dialogs / sheets opened from a cell render in a portal, but their
+    // clicks still bubble here through React — only clicks inside the row count
+    if (!(e.currentTarget as HTMLElement).contains(e.target as Node)) return;
+    if (
+      (e.target as HTMLElement).closest(
+        'a,button,input,label,[role=checkbox],[role=menuitem],[data-no-row-click]'
+      )
+    )
+      return;
     if (onRowClick) return onRowClick(row);
     if (!rowHref) return;
     const href = rowHref(row);
@@ -296,7 +346,13 @@ export function DataTable<T>({
             </span>
           </div>
         )}
-        {filters.length > 0 && <FilterButton filters={filters} table={controller} />}
+        {filters.length > 0 && (
+          <FilterButton
+            filters={filters}
+            table={controller}
+            onOpen={() => setFilterSheet({ open: true })}
+          />
+        )}
         {savedViews && !embedded && <ViewsMenu module={id} controller={controller} />}
         <div className="ml-auto flex items-center gap-2">
           {toolbar}
@@ -335,7 +391,20 @@ export function DataTable<T>({
         </div>
       </div>
 
-      <FilterChips filters={filters} table={controller} />
+      <FilterChips
+        filters={filters}
+        table={controller}
+        onOpen={key => setFilterSheet({ open: true, focus: key })}
+      />
+      {filters.length > 0 && (
+        <FilterSheet
+          filters={filters}
+          table={controller}
+          open={filterSheet.open}
+          focusKey={filterSheet.focus}
+          onOpenChange={open => setFilterSheet(s => ({ ...s, open }))}
+        />
+      )}
 
       {/* grid */}
       <div className="relative overflow-hidden rounded-xl border bg-card shadow-card">
@@ -344,7 +413,22 @@ export function DataTable<T>({
             <div className="h-full w-1/3 animate-[progress_1s_ease-in-out_infinite] bg-primary" />
           </div>
         )}
-        <div className="overflow-x-auto">
+        {scrollWidth > 0 && (
+          <div
+            ref={topBarRef}
+            onScroll={() => syncScroll('top')}
+            className="overflow-x-auto overflow-y-hidden border-b bg-surface"
+            aria-hidden
+          >
+            <div style={{ width: scrollWidth, height: 1 }} />
+          </div>
+        )}
+        <div
+          ref={gridRef}
+          onScroll={() => syncScroll('grid')}
+          className="overflow-auto overscroll-x-contain"
+          style={maxHeight ? { maxHeight } : undefined}
+        >
           <table className="w-full caption-bottom border-separate border-spacing-0 text-[13px]">
             <thead className="sticky top-0 z-10">
               {table.getHeaderGroups().map(hg => (

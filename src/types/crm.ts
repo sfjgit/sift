@@ -6,6 +6,13 @@
 import type { LookupRef, NamedRef, Person } from './api';
 
 export type ClientStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE';
+
+/** BU / service line as embedded in a client */
+export interface OrgRef {
+  id: string;
+  name: string;
+  code: string | null;
+}
 export type EmailStatus = 'UNVERIFIED' | 'GOOD' | 'RISKY' | 'BAD';
 export type ValidationBand = 'READY' | 'REVIEW' | 'NOT_USABLE';
 
@@ -25,7 +32,11 @@ export type ClientActivityType =
   | 'OUTREACH_GENERATED'
   | 'STEP_RUN_STARTED'
   | 'STEP_RUN_FINISHED'
-  | 'STEP_RUN_FAILED';
+  | 'STEP_RUN_FAILED'
+  | 'SPOC_APPROVED'
+  | 'SPOC_REJECTED'
+  | 'OUTREACH_UPDATED'
+  | 'CLIENT_ASSIGNED';
 
 // ── clients ──────────────────────────────────────────────────────────────────
 
@@ -40,9 +51,45 @@ export interface ClientListItem {
   updatedAt: string;
   industry: LookupRef | null;
   category: LookupRef | null;
+  businessUnit: OrgRef | null;
+  serviceLines: { serviceLine: OrgRef }[];
   createdBy: Person;
   locations: { id: string; city: string | null; state: string | null; country: string | null }[];
   _count: { spocs: number };
+  /** people who work this client (set by super admin / clients.assign) */
+  assignments: { assignedAt: string; user: Person }[];
+  /** list rows only: what the CRM holds and the last pipeline run */
+  coverage?: ClientCoverage;
+}
+
+export interface ClientAssignment {
+  id: string;
+  note: string | null;
+  assignedAt: string;
+  endedAt: string | null;
+  user: Person & { email: string };
+  assignedBy: Person & { email: string };
+}
+
+/** latest run of one step for a client (anyone's) — the list's step columns */
+export interface ClientStepCell {
+  id: string;
+  status: StepRunStatus;
+  note: string | null;
+  createdAt: string;
+  requestedBy: Person;
+}
+
+export interface ClientCoverage {
+  reports: number;
+  spocs: number;
+  approvedSpocs: number;
+  figureYears: number;
+  programs: number;
+  outreachPacks: number;
+  outreachSent: number;
+  lastRun: { id: string; status: StepRunStatus; note: string | null; createdAt: string; step: { key: string; label: string } } | null;
+  steps: Partial<Record<string, ClientStepCell>>;
 }
 
 export interface ClientLocation {
@@ -138,6 +185,9 @@ export interface ClientInput {
   linkedinUrl?: string | null;
   industryId?: string | null;
   categoryId?: string | null;
+  businessUnitId?: string | null;
+  /** replaces the client's whole set */
+  serviceLineIds?: string[];
 }
 
 export interface LocationInput {
@@ -307,6 +357,39 @@ export interface StepRunDetail extends StepRun {
   }[];
   /** lighter rows than the list — no client / SPOC / requester / cost */
   childRuns: Pick<StepRun, 'id' | 'status' | 'progress' | 'note' | 'createdAt' | 'step'>[];
+  /** what this run put into the CRM (null for "Run all": see its child runs) */
+  produced: RunProduced | null;
+}
+
+export interface RunProduced {
+  clientId: string;
+  spocs: (Person & {
+    designation: string | null;
+    approvalStatus: SpocApprovalStatus;
+    validationScore: number | null;
+    validationBand: ValidationBand | null;
+    emailStatus: EmailStatus | null;
+    change: 'added' | 'updated';
+    /** fields this run filled in; "score" = validated */
+    fields: string[];
+  })[];
+  documents: { id: string; type: string; fy: string; fileName: string | null }[];
+  outreach: { id: string; spoc: Person; messages: number; firstSubject: string | null }[];
+  programs: number;
+  financials: number;
+}
+
+export type OutreachStatus = 'DRAFT' | 'REVIEWED' | 'SENT' | 'REPLIED' | 'NO_REPLY' | 'BOUNCED';
+
+export interface OutreachMessage {
+  id: string;
+  sequenceNo: number;
+  subject: string;
+  body: string;
+  editedAt: string | null;
+  editedBy: Person | null;
+  sentAt: string | null;
+  sentBy: Person | null;
 }
 
 export interface OutreachPack {
@@ -314,10 +397,21 @@ export interface OutreachPack {
   model: string | null;
   fileKey: string | null;
   createdAt: string;
+  status: OutreachStatus;
+  reviewedAt: string | null;
+  reviewedBy: Person | null;
+  outcomeNote: string | null;
+  repliedAt: string | null;
+  statusAt: string | null;
+  statusBy: Person | null;
   client: NamedRef;
   spoc: Person & { designation: string | null; email: string | null };
   sourceRun: { id: string; step: { label: string } } | null;
-  messages: { id: string; sequenceNo: number; subject: string; body: string }[];
+  messages: OutreachMessage[];
+}
+
+export interface OutreachPackDetail extends OutreachPack {
+  history: { id: string; type: string; summary: string; createdAt: string; actor: Person | null }[];
 }
 
 // ── running steps ────────────────────────────────────────────────────────────
@@ -328,6 +422,8 @@ export interface StartRunInput {
   spocIds?: string[];
   businessUnitId?: string;
   serviceLineId?: string;
+  /** run again although it was done recently (super admin / step_runs.rerun) */
+  rerun?: boolean;
   /** forwarded to the engine; run_all: { steps[], dryRun, stepOptions{} } */
   options?: Record<string, unknown>;
 }
@@ -345,11 +441,65 @@ export interface StepOverview {
     financials: number;
     programs: number;
     outreachPacks: number;
+    /** SPOCs this user handles (or sees through their team); the rest are other people's */
+    mySpocs: number;
+    myApprovedSpocs: number;
+    othersSpocs: number;
   };
-  steps: (Pick<PipelineStep, 'id' | 'key' | 'label' | 'uiOrder' | 'userClientLimit'> & {
-    service: { isActive: boolean; lastHealthOk: boolean | null };
-    lastRun: Pick<StepRun, 'id' | 'status' | 'progress' | 'note' | 'errorMessage' | 'createdAt' | 'finishedAt'> | null;
-  })[];
+  /** may run a step again before its re-run date */
+  canRerun: boolean;
+  /** super admin / step_runs.unlimited: no run slots */
+  unlimitedSlots: boolean;
+  steps: StepOverviewRow[];
+}
+
+export type StepOverviewRow = Pick<PipelineStep, 'id' | 'key' | 'label' | 'uiOrder' | 'userClientLimit'> & {
+  rerunAfterDays: number | null;
+  service: { isActive: boolean; lastHealthOk: boolean | null };
+  lastRun: Pick<StepRun, 'id' | 'status' | 'progress' | 'note' | 'errorMessage' | 'createdAt' | 'finishedAt'> | null;
+  /** last finished run that counts for this user (anyone's for client-level steps) */
+  done: { runId: string; at: string; by: string; byMe: boolean; note: string | null; until: string } | null;
+  /** done recently with nothing new since — a re-run needs an admin */
+  rerunBlocked: { message: string; until: string } | null;
+  slots: RunSlot[];
+};
+
+// ── run slots ────────────────────────────────────────────────────────────────
+
+export type QuotaPeriod = 'DAY' | 'WEEK' | 'MONTH';
+
+export interface RunSlot {
+  ruleId: string;
+  stepId: string | null;
+  stepLabel: string | null;
+  appliesTo: 'USER' | 'ROLE' | 'EVERYONE';
+  period: QuotaPeriod;
+  max: number;
+  used: number;
+  left: number;
+  resetsAt: string;
+}
+
+export interface RunQuota {
+  id: string;
+  period: QuotaPeriod;
+  maxRuns: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  step: { id: string; key: string; label: string } | null;
+  role: { id: string; name: string } | null;
+  user: (Person & { email: string }) | null;
+  createdBy: Person;
+}
+
+export interface RunQuotaInput {
+  stepId?: string | null;
+  roleId?: string | null;
+  userId?: string | null;
+  period: QuotaPeriod;
+  maxRuns: number;
+  isActive?: boolean;
 }
 
 /** viewData written by the CRM when it saved a run's results */
@@ -368,6 +518,7 @@ export interface IntegrationStep {
   target: 'CLIENT' | 'SPOC';
   uiOrder: number | null;
   userClientLimit: number | null;
+  rerunAfterDays: number | null;
   isActive: boolean;
   config: Record<string, unknown> | null;
 }

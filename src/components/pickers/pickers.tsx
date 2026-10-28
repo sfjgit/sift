@@ -10,6 +10,7 @@ import { useDebounce } from 'use-debounce';
 import { useQuery } from '@tanstack/react-query';
 import { clientsApi } from '@/lib/api/endpoints';
 import { Combobox, type ComboboxProps } from './Combobox';
+import { MultiCombobox, type MultiComboboxProps } from './MultiCombobox';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useLookups, useMasters, useRoles, useUserOptions } from '@/hooks/queries';
 import { fullName } from '@/lib/format';
@@ -24,10 +25,7 @@ export function LookupPicker({ type, ...props }: PickerProps & { type: LookupTyp
   return <Combobox options={options} loading={isLoading && !data.length} {...props} />;
 }
 
-export function MasterPicker({
-  kind,
-  ...props
-}: PickerProps & { kind: MasterKind }) {
+export function MasterPicker({ kind, ...props }: PickerProps & { kind: MasterKind }) {
   const { data = [], isLoading } = useMasters(kind);
   const options = useMemo(
     () =>
@@ -61,7 +59,7 @@ export function UserPicker({
   onChange,
   selectedLabel,
   ...props
-}: PickerProps & { purpose?: 'assign' | 'filter' }) {
+}: PickerProps & { purpose?: 'assign' | 'client_assign' | 'filter' }) {
   const [search, setSearch] = useState('');
   const [debounced] = useDebounce(search, 250);
   const [picked, setPicked] = useState<string | undefined>(selectedLabel);
@@ -92,7 +90,13 @@ export function ClientPicker({ onChange, selectedLabel, ...props }: PickerProps)
   const [picked, setPicked] = useState<string | undefined>(selectedLabel);
   const { data, isFetching } = useQuery({
     queryKey: ['client-options', debounced],
-    queryFn: () => clientsApi.list({ search: debounced || undefined, limit: 20, sortBy: 'name', sortDir: 'asc' }),
+    queryFn: () =>
+      clientsApi.list({
+        search: debounced || undefined,
+        limit: 20,
+        sortBy: 'name',
+        sortDir: 'asc',
+      }),
     staleTime: 60_000,
   });
   const options = useMemo(
@@ -100,7 +104,9 @@ export function ClientPicker({ onChange, selectedLabel, ...props }: PickerProps)
       (data?.data ?? []).map(c => ({
         value: c.id,
         label: c.name,
-        hint: [c.locations[0]?.city, c.status === 'PENDING' ? 'Pending' : null].filter(Boolean).join(' · '),
+        hint: [c.locations[0]?.city, c.status === 'PENDING' ? 'Pending' : null]
+          .filter(Boolean)
+          .join(' · '),
       })),
     [data]
   );
@@ -125,4 +131,64 @@ export function EnumPicker<T extends string>({
   ...props
 }: PickerProps & { options: { value: T; label: string }[] }) {
   return <Combobox options={options} {...props} />;
+}
+
+/** Multi-select over a lookup pick-list. */
+export function LookupMultiPicker({
+  type,
+  value,
+  ...props
+}: Omit<MultiComboboxProps, 'options'> & { type: LookupType }) {
+  const { data = [], isLoading } = useLookups(type);
+  const options = useMemo(() => data.map(l => ({ value: l.id, label: l.label })), [data]);
+  return (
+    <MultiCombobox options={options} value={value} loading={isLoading && !data.length} {...props} />
+  );
+}
+
+/**
+ * Multi-select with async people search. `labels` = names of already-picked
+ * ids (they may not be in the current search results); onChange returns both.
+ */
+export function UserMultiPicker({
+  purpose = 'filter',
+  value,
+  labels,
+  onChange,
+  ...props
+}: Omit<MultiComboboxProps, 'options' | 'onChange'> & {
+  purpose?: 'assign' | 'client_assign' | 'filter';
+  labels?: Record<string, string>;
+  onChange: (ids: string[], labels: Record<string, string>) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [debounced] = useDebounce(search, 250);
+  const [known, setKnown] = useState<Record<string, string>>(labels ?? {});
+  const { data = [], isFetching } = useUserOptions(debounced, purpose);
+  const options = useMemo(() => {
+    const found = data.map(toUserOption);
+    const seen = new Set(found.map(o => o.value));
+    const picked = value
+      .filter(v => !seen.has(v))
+      .map(v => ({ value: v, label: known[v] ?? labels?.[v] ?? 'Selected person' }));
+    return [...picked, ...found];
+  }, [data, value, known, labels]);
+
+  return (
+    <MultiCombobox
+      {...props}
+      value={value}
+      options={options}
+      onSearch={setSearch}
+      searchPlaceholder="Search people…"
+      emptyText={debounced ? 'No one matches' : 'Type to search'}
+      loading={isFetching && !data.length}
+      onChange={ids => {
+        const next = { ...known };
+        for (const o of options) if (ids.includes(o.value)) next[o.value] = o.label;
+        setKnown(next);
+        onChange(ids, Object.fromEntries(ids.map(i => [i, next[i] ?? 'Selected person'])));
+      }}
+    />
+  );
 }

@@ -5,6 +5,7 @@
 // can't open; `anyPerm` shows it when any one of the keys is granted.
 
 import {
+  Gauge,
   BadgeCheck,
   BarChart3,
   Cable,
@@ -16,8 +17,10 @@ import {
   LayoutDashboard,
   LifeBuoy,
   ListTree,
+  Mail,
   Network,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Users,
   type LucideIcon,
@@ -50,6 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'SPOCs', href: '/spocs', icon: ContactRound, perm: 'spocs.read', tour: 'nav-spocs', keywords: ['contacts', 'people', 'leads'] },
       { label: 'Reports', href: '/reports', icon: BarChart3, perm: 'reports.read', anyPerm: ['clients.read', 'spocs.read'], tour: 'nav-reports', keywords: ['analytics', 'insights', 'charts'] },
       { label: 'Approvals', href: '/approvals', icon: BadgeCheck, perm: 'spocs.read', keywords: ['approve', 'review', 'pending', 'outreach'] },
+      { label: 'Outreach', href: '/outreach', icon: Mail, perm: 'outreach.read', keywords: ['emails', 'mails', 'sent', 'replies', 'follow-ups'] },
       { label: 'Pipeline runs', href: '/pipeline-runs', icon: GitBranch, perm: 'step_runs.read', keywords: ['steps', 'jobs', 'enrichment'] },
     ],
   },
@@ -61,6 +65,8 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: 'Org structure', href: '/admin/org', icon: Network, perm: 'org.manage', keywords: ['business units', 'service lines', 'departments', 'designations'] },
       { label: 'Pick-lists', href: '/admin/lookups', icon: ListTree, perm: 'lookups.manage', keywords: ['lookups', 'industry', 'sales status'] },
       { label: 'Integrations', href: '/admin/integrations', icon: Cable, perm: 'integrations.manage', keywords: ['pipeline', 'engine', 'api keys', 'health'] },
+      { label: 'Run slots', href: '/admin/run-slots', icon: Gauge, perm: 'run_slots.manage', keywords: ['limits', 'quota', 'per day', 'per week', 'per month'] },
+      { label: 'System alerts', href: '/admin/alerts', icon: ShieldAlert, perm: 'system_alerts.read', keywords: ['errors', 'health', 'failures', 'monitoring'] },
       { label: 'Login history', href: '/admin/auth-logs', icon: History, perm: 'audit.view_login_history', keywords: ['audit', 'auth logs'] },
     ],
   },

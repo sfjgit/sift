@@ -9,7 +9,14 @@
 
 import { useMemo, useState } from 'react';
 import { ChevronsUpDown, X } from 'lucide-react';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Spinner } from '@/components/common/states';
 import { useMasters } from '@/hooks/queries';
@@ -31,6 +38,8 @@ export interface MultiComboboxProps {
   id?: string;
   /** chips shown before collapsing into "+N" */
   maxChips?: number;
+  /** server-side search: options are already filtered, the list doesn't filter again */
+  onSearch?: (q: string) => void;
 }
 
 export function MultiCombobox({
@@ -46,6 +55,7 @@ export function MultiCombobox({
   className,
   id,
   maxChips = 4,
+  onSearch,
 }: MultiComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = useMemo(() => new Set(value), [value]);
@@ -108,8 +118,8 @@ export function MultiCombobox({
         </div>
       </PopoverAnchor>
       <PopoverContent className="w-(--radix-popover-trigger-width) min-w-64 p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={!onSearch}>
+          <CommandInput placeholder={searchPlaceholder} onValueChange={onSearch} />
           <CommandList>
             {loading ? (
               <div className="flex justify-center py-6">
@@ -129,7 +139,9 @@ export function MultiCombobox({
                   {o.icon}
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate">{o.label}</span>
-                    {o.hint && <span className="truncate text-xs text-muted-foreground">{o.hint}</span>}
+                    {o.hint && (
+                      <span className="truncate text-xs text-muted-foreground">{o.hint}</span>
+                    )}
                   </span>
                 </CommandItem>
               ))}
@@ -163,5 +175,7 @@ export function MasterMultiPicker({
         .map(m => ({ value: m.id, label: m.name, hint: m.code ?? undefined })),
     [data, value]
   );
-  return <MultiCombobox options={options} value={value} loading={isLoading && !data.length} {...props} />;
+  return (
+    <MultiCombobox options={options} value={value} loading={isLoading && !data.length} {...props} />
+  );
 }

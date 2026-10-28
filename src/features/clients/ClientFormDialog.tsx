@@ -9,14 +9,21 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FormDialog, FormGrid, FormSection } from '@/components/forms/FormDialog';
-import { PickerField, TextField, applyServerErrors, blankToNull } from '@/components/forms/fields';
-import { LookupPicker } from '@/components/pickers/pickers';
+import {
+  Field,
+  PickerField,
+  TextField,
+  applyServerErrors,
+  blankToNull,
+} from '@/components/forms/fields';
+import { LookupPicker, MasterPicker } from '@/components/pickers/pickers';
+import { MasterMultiPicker } from '@/components/pickers/MultiCombobox';
 import { clientsApi } from '@/lib/api/endpoints';
 import { clientHooks } from '@/hooks/queries';
 import { useUi } from '@/stores/ui';
@@ -43,6 +50,8 @@ const schema = z.object({
   linkedinUrl: url,
   industryId: z.string().nullable(),
   categoryId: z.string().nullable(),
+  businessUnitId: z.string().nullable(),
+  serviceLineIds: z.array(z.string()),
   hq: locationSchema.partial(),
 });
 
@@ -57,6 +66,8 @@ const toDefaults = (c?: ClientDetail | null): Values => ({
   linkedinUrl: c?.linkedinUrl ?? '',
   industryId: c?.industry?.id ?? null,
   categoryId: c?.category?.id ?? null,
+  businessUnitId: c?.businessUnit?.id ?? null,
+  serviceLineIds: c?.serviceLines?.map(s => s.serviceLine.id) ?? [],
   hq: { city: '', state: '', country: 'India' } as Partial<LocationValues>,
 });
 
@@ -77,7 +88,10 @@ export function ClientFormDialog({
   const open = openProp ?? (!isEdit && storeOpen);
   const onOpenChange = onOpenChangeProp ?? openClientDialog;
 
-  const form = useForm<Values, unknown, Output>({ resolver: zodResolver(schema), defaultValues: toDefaults(client) });
+  const form = useForm<Values, unknown, Output>({
+    resolver: zodResolver(schema),
+    defaultValues: toDefaults(client),
+  });
   const busy = form.formState.isSubmitting;
 
   useEffect(() => {
@@ -85,8 +99,8 @@ export function ClientFormDialog({
   }, [open, client, form]);
 
   const submit = form.handleSubmit(async v => {
-    const { hq, ...rest } = v;
-    const body = blankToNull(rest);
+    const { hq, serviceLineIds, ...rest } = v;
+    const body = { ...blankToNull(rest), serviceLineIds };
     try {
       if (isEdit) {
         await clientsApi.update(client.id, body);
@@ -99,9 +113,15 @@ export function ClientFormDialog({
       if (hq?.city || hq?.state) {
         await clientsApi
           .addLocation(created.id, { ...blankToNull(hq), isPrimary: true })
-          .catch(() => toast.warning('Client created, but the location couldn’t be saved — add it from the profile.'));
+          .catch(() =>
+            toast.warning(
+              'Client created, but the location couldn’t be saved — add it from the profile.'
+            )
+          );
       }
-      toast.success(`${created.name} created`, { description: 'It’s pending approval until someone activates it.' });
+      toast.success(`${created.name} created`, {
+        description: 'It’s pending approval until someone activates it.',
+      });
       qc.invalidateQueries({ queryKey: clientHooks.keys.all });
       onOpenChange(false);
       router.push(`/clients/${created.id}`);
@@ -115,16 +135,31 @@ export function ClientFormDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={isEdit ? `Edit ${client.name}` : 'New client'}
-      description={isEdit ? undefined : 'Add the company now — SPOCs, locations and technology can follow.'}
+      description={
+        isEdit ? undefined : 'Add the company now — SPOCs, locations and technology can follow.'
+      }
       onSubmit={submit}
       submitLabel={isEdit ? 'Save changes' : 'Create client'}
       busy={busy}
     >
       <FormSection title="Company">
-        <TextField form={form} name="name" label="Client name" required autoFocus placeholder="e.g. ASM Technologies Ltd" />
+        <TextField
+          form={form}
+          name="name"
+          label="Client name"
+          required
+          autoFocus
+          placeholder="e.g. ASM Technologies Ltd"
+        />
         <FormGrid>
           <TextField form={form} name="shortName" label="Short name" placeholder="ASM" />
-          <TextField form={form} name="cin" label="CIN" placeholder="L85110KA1992PLC013421" className="uppercase" />
+          <TextField
+            form={form}
+            name="cin"
+            label="CIN"
+            placeholder="L85110KA1992PLC013421"
+            className="uppercase"
+          />
         </FormGrid>
         <FormGrid>
           <PickerField
@@ -137,14 +172,57 @@ export function ClientFormDialog({
             form={form}
             name="categoryId"
             label="Category"
-            render={p => <LookupPicker type="CLIENT_CATEGORY" placeholder="Select category" {...p} />}
+            render={p => (
+              <LookupPicker type="CLIENT_CATEGORY" placeholder="Select category" {...p} />
+            )}
           />
+        </FormGrid>
+      </FormSection>
+      <FormSection title="Ownership">
+        <FormGrid>
+          <PickerField
+            form={form}
+            name="businessUnitId"
+            label="Business unit"
+            render={p => <MasterPicker kind="business-units" placeholder="Select BU" {...p} />}
+          />
+          <Field
+            label="Service lines"
+            htmlFor="serviceLineIds"
+            hint="New SPOCs from pipeline runs go under one of these."
+          >
+            <Controller
+              control={form.control}
+              name="serviceLineIds"
+              render={({ field }) => (
+                <MasterMultiPicker
+                  id="serviceLineIds"
+                  kind="service-lines"
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  placeholder="None"
+                />
+              )}
+            />
+          </Field>
         </FormGrid>
       </FormSection>
       <FormSection title="Online">
         <FormGrid>
-          <TextField form={form} name="website" label="Website" placeholder="asmltd.com" inputMode="url" />
-          <TextField form={form} name="linkedinUrl" label="LinkedIn" placeholder="linkedin.com/company/…" inputMode="url" />
+          <TextField
+            form={form}
+            name="website"
+            label="Website"
+            placeholder="asmltd.com"
+            inputMode="url"
+          />
+          <TextField
+            form={form}
+            name="linkedinUrl"
+            label="LinkedIn"
+            placeholder="linkedin.com/company/…"
+            inputMode="url"
+          />
         </FormGrid>
       </FormSection>
       {!isEdit && (

@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -15,6 +15,7 @@ import {
   Plus,
   Trash2,
   UserPlus,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,7 +35,15 @@ import { usePermissions } from '@/features/auth/usePermissions';
 import { tourTarget } from '@/features/tour/tour.constants';
 import { useTour } from '@/features/tour/useTour';
 import { clientsTour } from '@/features/tour/tours/catalog';
-import { clientColumns, clientFilterKeys, clientFilters } from '@/features/clients/columns';
+import {
+  clientColumns,
+  clientFilterKeys,
+  clientFilters,
+  type RunStepHandler,
+} from '@/features/clients/columns';
+import { AssignClientsDialog } from '@/features/clients/AssignClientsDialog';
+import { ClientDataSheet, type DataTab } from '@/features/clients/ClientDataSheet';
+import { RunStepLauncher, type RunTarget } from '@/features/pipeline/RunStepLauncher';
 import { StatusTabs } from '@/features/clients/StatusTabs';
 import { clientHooks } from '@/hooks/queries';
 import { useAction } from '@/hooks/useResource';
@@ -53,6 +62,11 @@ function ClientsPage() {
     sort: { id: 'createdAt', desc: true },
   });
   const query = clientHooks.useList(table.params);
+  const [assigning, setAssigning] = useState<{ rows: ClientListItem[]; clear?: () => void } | null>(
+    null
+  );
+  const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
+  const [dataSheet, setDataSheet] = useState<{ client: ClientListItem; tab: DataTab } | null>(null);
   useTour(clientsTour, { ready: !query.isLoading });
   useHotkey('n', () => openClientDialog(true), can('clients.create'));
 
@@ -102,6 +116,11 @@ function ClientsPage() {
               <UserPlus /> Add SPOC
             </DropdownMenuItem>
           )}
+          {can('clients.assign') && (
+            <DropdownMenuItem onSelect={() => setAssigning({ rows: [c] })}>
+              <Users /> Assign people
+            </DropdownMenuItem>
+          )}
           {can('clients.delete') && (
             <>
               <DropdownMenuSeparator />
@@ -130,13 +149,26 @@ function ClientsPage() {
     [can, confirm, openSpocDialog, removeClient, router]
   );
 
-  const columns = useMemo(() => clientColumns(rowActions), [rowActions]);
+  // Run buttons in the step columns; emails also need outreach.generate
+  const runHandler = useCallback(
+    (stepKey: string): RunStepHandler | undefined =>
+      can('step_runs.run') && (stepKey !== 'emails' || can('outreach.generate'))
+        ? (c, key) => setRunTarget({ clientId: c.id, clientName: c.name, stepKey: key })
+        : undefined,
+    [can]
+  );
+
+  const columns = useMemo(
+    () => clientColumns(rowActions, runHandler, (client, tab) => setDataSheet({ client, tab })),
+    [rowActions, runHandler]
+  );
+  const canBulk = can('clients.approve') || can('clients.assign');
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="Clients"
-        description="Every company you work with — status, coverage and the people who own them."
+        description="Every company you work with — who works it, what each pipeline step has done, and what is missing."
         actions={
           <>
             <HelpButton module="clients" />
@@ -177,37 +209,66 @@ function ClientsPage() {
           ),
         }}
         bulkActions={
-          can('clients.approve')
+          canBulk
             ? (rows, clear) => (
                 <>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      bulkStatus.mutate(
-                        { ids: rows.map(r => r.id), status: 'ACTIVE' },
-                        { onSuccess: clear }
-                      )
-                    }
-                  >
-                    <CheckCircle2 className="text-success" /> Activate
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      bulkStatus.mutate(
-                        { ids: rows.map(r => r.id), status: 'INACTIVE' },
-                        { onSuccess: clear }
-                      )
-                    }
-                  >
-                    <PauseCircle /> Deactivate
-                  </Button>
+                  {can('clients.assign') && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setAssigning({ rows, clear })}
+                    >
+                      <Users /> Assign
+                    </Button>
+                  )}
+                  {can('clients.approve') && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          bulkStatus.mutate(
+                            { ids: rows.map(r => r.id), status: 'ACTIVE' },
+                            { onSuccess: clear }
+                          )
+                        }
+                      >
+                        <CheckCircle2 className="text-success" /> Activate
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          bulkStatus.mutate(
+                            { ids: rows.map(r => r.id), status: 'INACTIVE' },
+                            { onSuccess: clear }
+                          )
+                        }
+                      >
+                        <PauseCircle /> Deactivate
+                      </Button>
+                    </>
+                  )}
                 </>
               )
             : undefined
         }
+      />
+
+      {assigning && (
+        <AssignClientsDialog
+          clients={assigning.rows}
+          open
+          onOpenChange={o => !o && setAssigning(null)}
+          onDone={assigning.clear}
+        />
+      )}
+      <RunStepLauncher target={runTarget} onClose={() => setRunTarget(null)} />
+      <ClientDataSheet
+        client={dataSheet?.client ?? null}
+        tab={dataSheet?.tab ?? 'reports'}
+        onTabChange={tab => setDataSheet(d => (d ? { ...d, tab } : d))}
+        onOpenChange={o => !o && setDataSheet(null)}
       />
     </div>
   );

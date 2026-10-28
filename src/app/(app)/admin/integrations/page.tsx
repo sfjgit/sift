@@ -15,7 +15,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { PageHeader } from '@/components/common/PageHeader';
 import { DetailList, Panel } from '@/components/common/Panel';
 import { Pill, STEP_STATUS } from '@/components/common/badges';
@@ -36,7 +42,15 @@ const KEY_LABELS: Record<string, string> = {
   s3: 'File storage (S3)',
 };
 
-const Ok = ({ ok, yes = 'Yes', no = 'No' }: { ok: boolean | null | undefined; yes?: string; no?: string }) =>
+const Ok = ({
+  ok,
+  yes = 'Yes',
+  no = 'No',
+}: {
+  ok: boolean | null | undefined;
+  yes?: string;
+  no?: string;
+}) =>
   ok ? (
     <span className="inline-flex items-center gap-1 text-success">
       <CheckCircle2 className="size-3.5" /> {yes}
@@ -49,14 +63,26 @@ const Ok = ({ ok, yes = 'Yes', no = 'No' }: { ok: boolean | null | undefined; ye
 
 function StepRow({ step }: { step: IntegrationStep }) {
   const [limit, setLimit] = useState(step.userClientLimit?.toString() ?? '');
-  const save = useAction((body: Parameters<typeof integrationsApi.updateStep>[1]) => integrationsApi.updateStep(step.id, body), {
-    success: 'Step saved',
-    invalidate: [['integrations'], ['step-runs']],
-  });
+  const [days, setDays] = useState(step.rerunAfterDays?.toString() ?? '');
+  const save = useAction(
+    (body: Parameters<typeof integrationsApi.updateStep>[1]) =>
+      integrationsApi.updateStep(step.id, body),
+    {
+      success: 'Step saved',
+      invalidate: [['integrations'], ['step-runs']],
+    }
+  );
   const commitLimit = () => {
     const v = limit.trim() === '' ? null : Number(limit);
-    if (v !== null && (!Number.isInteger(v) || v < 1)) return toast.error('Limit must be a whole number, or blank for no limit');
+    if (v !== null && (!Number.isInteger(v) || v < 1))
+      return toast.error('Limit must be a whole number, or blank for no limit');
     if (v !== step.userClientLimit) save.mutate({ userClientLimit: v });
+  };
+  const commitDays = () => {
+    const v = days.trim() === '' ? null : Number(days);
+    if (v !== null && (!Number.isInteger(v) || v < 1))
+      return toast.error('Days must be a whole number, or blank to always allow');
+    if (v !== step.rerunAfterDays) save.mutate({ rerunAfterDays: v });
   };
   return (
     <li className="flex flex-wrap items-center gap-3 px-4 py-3">
@@ -77,12 +103,38 @@ function StepRow({ step }: { step: IntegrationStep }) {
           disabled={step.key === 'run_all'}
         />
       </label>
-      <Switch checked={step.isActive} onCheckedChange={isActive => save.mutate({ isActive })} aria-label={`${step.label} on / off`} />
+      <label
+        className="flex items-center gap-2 text-xs text-muted-foreground"
+        title="Once done for a client, the step is not run again for this many days unless something new came in. Admins may still run it again."
+      >
+        Re-run after (days)
+        <Input
+          value={days}
+          onChange={e => setDays(e.target.value)}
+          onBlur={commitDays}
+          onKeyDown={e => e.key === 'Enter' && commitDays()}
+          placeholder="Any time"
+          inputMode="numeric"
+          className="h-8 w-24"
+          disabled={step.key === 'run_all'}
+        />
+      </label>
+      <Switch
+        checked={step.isActive}
+        onCheckedChange={isActive => save.mutate({ isActive })}
+        aria-label={`${step.label} on / off`}
+      />
     </li>
   );
 }
 
-function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Partial<Record<StepRunStatus, number>> }) {
+function ServicePanel({
+  svc,
+  last24h,
+}: {
+  svc: IntegrationService;
+  last24h: Partial<Record<StepRunStatus, number>>;
+}) {
   const confirm = useConfirm();
   const [newKey, setNewKey] = useState<string | null>(null);
   const health = useQuery({
@@ -90,17 +142,26 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
     queryFn: () => integrationsApi.health(svc.id),
     refetchInterval: 30_000,
   });
-  const test = useAction(({ provider }: { provider: string }) => integrationsApi.testKey(svc.id, provider), {
-    onSuccess: (r, v) => (r.ok ? toast.success(`${KEY_LABELS[v.provider]} key works`) : toast.error(r.detail ?? 'Key test failed')),
-  });
+  const test = useAction(
+    ({ provider }: { provider: string }) => integrationsApi.testKey(svc.id, provider),
+    {
+      onSuccess: (r, v) =>
+        r.ok
+          ? toast.success(`${KEY_LABELS[v.provider]} key works`)
+          : toast.error(r.detail ?? 'Key test failed'),
+    }
+  );
   const rotate = useAction(() => integrationsApi.rotateKey(svc.id), {
     invalidate: [['integrations']],
     onSuccess: r => setNewKey(r.key),
   });
-  const toggle = useAction((isActive: boolean) => integrationsApi.updateService(svc.id, { isActive }), {
-    success: 'Service saved',
-    invalidate: [['integrations'], ['step-runs']],
-  });
+  const toggle = useAction(
+    (isActive: boolean) => integrationsApi.updateService(svc.id, { isActive }),
+    {
+      success: 'Service saved',
+      invalidate: [['integrations'], ['step-runs']],
+    }
+  );
 
   const e = health.data?.engine;
   return (
@@ -110,10 +171,19 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
         description={svc.baseUrl ?? 'No address set'}
         actions={
           <>
-            <Button size="xs" variant="ghost" onClick={() => health.refetch()} disabled={health.isFetching}>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => health.refetch()}
+              disabled={health.isFetching}
+            >
               <RefreshCw className={health.isFetching ? 'animate-spin' : undefined} /> Check now
             </Button>
-            <Switch checked={svc.isActive} onCheckedChange={v => toggle.mutate(v)} aria-label="Service on / off" />
+            <Switch
+              checked={svc.isActive}
+              onCheckedChange={v => toggle.mutate(v)}
+              aria-label="Service on / off"
+            />
           </>
         }
       >
@@ -129,19 +199,52 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
               ) : (
                 <Pill tone="danger">Not reachable</Pill>
               )}
-              {health.data?.error && <span className="text-xs text-muted-foreground">{health.data.error}</span>}
-              {e?.crmMode === false && <Pill tone="warning">Old pages still open (CRM_MODE off)</Pill>}
+              {health.data?.error && (
+                <span className="text-xs text-muted-foreground">{health.data.error}</span>
+              )}
+              {e?.crmMode === false && (
+                <Pill tone="warning">Old pages still open (CRM_MODE off)</Pill>
+              )}
             </div>
             <DetailList
               columns={3}
               items={[
-                { label: 'Worker', value: e && <Ok ok={e.worker.online} yes="Online" no="Offline" /> },
+                {
+                  label: 'Worker',
+                  value: e && <Ok ok={e.worker.online} yes="Online" no="Offline" />,
+                },
                 { label: 'Jobs waiting', value: e && fmtNumber(e.queued) },
                 { label: 'Version', value: e?.version },
-                { label: 'CRM → pipeline key', value: <Ok ok={svc.outboundKeySet} yes={`Set (${svc.outboundKeyEnv})`} no={`Missing env ${svc.outboundKeyEnv ?? ''}`} /> },
-                { label: 'Pipeline → CRM key', value: <Ok ok={svc.inboundKeySet && e?.callbackKeySet !== false} yes="Set" no="Missing" /> },
-                { label: 'File storage', value: e && <Ok ok={e.s3} yes="Set up" no="Not set — reports stay on the pipeline" /> },
-                { label: 'Last health check', value: svc.lastHealthAt && fmtRelative(svc.lastHealthAt) },
+                {
+                  label: 'CRM → pipeline key',
+                  value: (
+                    <Ok
+                      ok={svc.outboundKeySet}
+                      yes={`Set (${svc.outboundKeyEnv})`}
+                      no={`Missing env ${svc.outboundKeyEnv ?? ''}`}
+                    />
+                  ),
+                },
+                {
+                  label: 'Pipeline → CRM key',
+                  value: (
+                    <Ok
+                      ok={svc.inboundKeySet && e?.callbackKeySet !== false}
+                      yes="Set"
+                      no="Missing"
+                    />
+                  ),
+                },
+                {
+                  label: 'File storage',
+                  value: e && (
+                    <Ok ok={e.s3} yes="Set up" no="Not set — reports stay on the pipeline" />
+                  ),
+                },
+                {
+                  label: 'Last health check',
+                  value: svc.lastHealthAt && fmtRelative(svc.lastHealthAt),
+                },
                 { label: 'Last callback', value: svc.lastUsedAt && fmtRelative(svc.lastUsedAt) },
                 { label: 'Timeout', value: `${svc.timeoutMins} min` },
               ]}
@@ -151,7 +254,10 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="API keys" description="Keys are kept on the pipeline server (.env), never in the CRM.">
+        <Panel
+          title="API keys"
+          description="Keys are kept on the pipeline server (.env), never in the CRM."
+        >
           {e ? (
             <ul className="divide-y">
               {Object.entries(KEY_LABELS).map(([k, label]) => (
@@ -179,7 +285,10 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
         <Panel title="Credit limits" description="Set on the pipeline; shown here for reference.">
           {e ? (
             <DetailList
-              items={Object.entries(e.limits).map(([k, v]) => ({ label: humanizeKey(k), value: v ?? 'Default' }))}
+              items={Object.entries(e.limits).map(([k, v]) => ({
+                label: humanizeKey(k),
+                value: v ?? 'Default',
+              }))}
             />
           ) : (
             <EmptyState compact icon={Cable} title="Pipeline not reachable" />
@@ -187,7 +296,10 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
         </Panel>
       </div>
 
-      <Panel title="Steps" description="Switch a step off to hide its Run button. Limits cap how many clients one user can run a step for (super admins are exempt).">
+      <Panel
+        title="Steps"
+        description="Switch a step off to hide its Run button. Limits cap how many clients one user can run a step for (super admins are exempt)."
+      >
         <ul className="-m-4 divide-y">
           {svc.steps.map(s => (
             <StepRow key={s.id} step={s} />
@@ -201,7 +313,9 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
             <ul className="flex flex-wrap gap-2">
               {Object.entries(last24h).map(([k, n]) => (
                 <li key={k} className="inline-flex items-center gap-2">
-                  <Pill tone={STEP_STATUS[k as StepRunStatus]?.tone}>{STEP_STATUS[k as StepRunStatus]?.label ?? k}</Pill>
+                  <Pill tone={STEP_STATUS[k as StepRunStatus]?.tone}>
+                    {STEP_STATUS[k as StepRunStatus]?.label ?? k}
+                  </Pill>
                   <span className="text-sm font-medium tabular">{fmtNumber(n ?? 0)}</span>
                 </li>
               ))}
@@ -210,7 +324,10 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
             <p className="text-sm text-muted-foreground">No runs yet.</p>
           )}
         </Panel>
-        <Panel title="Callback key" description="The key the pipeline sends with progress and results.">
+        <Panel
+          title="Callback key"
+          description="The key the pipeline sends with progress and results."
+        >
           <Button
             size="sm"
             variant="outline"
@@ -219,7 +336,8 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
               if (
                 await confirm({
                   title: 'Create a new callback key?',
-                  description: 'The old key stops working at once. Results from running jobs are refused until the pipeline has the new key.',
+                  description:
+                    'The old key stops working at once. Results from running jobs are refused until the pipeline has the new key.',
                   confirmLabel: 'Create new key',
                   destructive: true,
                 })
@@ -237,16 +355,24 @@ function ServicePanel({ svc, last24h }: { svc: IntegrationService; last24h: Part
           <DialogHeader>
             <DialogTitle>New callback key</DialogTitle>
             <DialogDescription>
-              Put it in the pipeline’s .env as <code className="font-mono">CRM_CALLBACK_KEY</code> and restart it. It is not shown again.
+              Put it in the pipeline’s .env as <code className="font-mono">CRM_CALLBACK_KEY</code>{' '}
+              and restart it. It is not shown again.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
-            <Input readOnly value={newKey ?? ''} className="font-mono text-xs" onFocus={e => e.target.select()} />
+            <Input
+              readOnly
+              value={newKey ?? ''}
+              className="font-mono text-xs"
+              onFocus={e => e.target.select()}
+            />
             <Button
               size="icon"
               variant="outline"
               aria-label="Copy key"
-              onClick={() => newKey && navigator.clipboard.writeText(newKey).then(() => toast.success('Copied'))}
+              onClick={() =>
+                newKey && navigator.clipboard.writeText(newKey).then(() => toast.success('Copied'))
+              }
             >
               <Copy />
             </Button>

@@ -135,6 +135,9 @@ export function useTableState(id: string, filterKeys: string[], defaults: Defaul
           }
           return { ...s, filters, filterLabels, page: 1 };
         }),
+      /** replace every filter at once (the filter sheet's Apply) */
+      setFilters: (filters: Record<string, string>, filterLabels: Record<string, string>) =>
+        patch({ filters, filterLabels, page: 1 }),
       clearFilters: () => patch({ filters: defaultsRef.current.filters ?? {}, filterLabels: {}, search: '', page: 1 }),
       resetColumns: () => patch({ columnVisibility: {}, columnOrder: [] }),
       applyView: (v: TableViewConfig) =>

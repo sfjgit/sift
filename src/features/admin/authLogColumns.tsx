@@ -27,13 +27,17 @@ export const AUTH_EVENTS: Record<AuthLogType, { label: string; tone: Tone }> = {
 };
 
 export const authLogFilters: FilterDef[] = [
-  { key: 'userId', label: 'Person', type: 'user' },
-  { key: 'departmentId', label: 'Department', type: 'master', kind: 'departments' },
+  { key: 'userId', label: 'Person', type: 'user', multi: true },
+  { key: 'departmentId', label: 'Department', type: 'master', multi: true, kind: 'departments' },
   {
     key: 'type',
     label: 'Event',
     type: 'select',
-    options: (Object.keys(AUTH_EVENTS) as AuthLogType[]).map(k => ({ value: k, label: AUTH_EVENTS[k].label })),
+    multi: true,
+    options: (Object.keys(AUTH_EVENTS) as AuthLogType[]).map(k => ({
+      value: k,
+      label: AUTH_EVENTS[k].label,
+    })),
   },
   { key: 'startDate', label: 'From', type: 'date' },
   { key: 'endDate', label: 'To', type: 'date' },
@@ -52,31 +56,46 @@ export interface Device {
 
 export function parseUserAgent(ua?: string | null): Device {
   if (!ua) return { browser: null, os: null, kind: 'desktop', label: 'Unknown device' };
-  const browser =
-    /Edg(e|A|iOS)?\//.test(ua) ? 'Edge'
-    : /OPR\/|Opera/.test(ua) ? 'Opera'
-    : /SamsungBrowser\//.test(ua) ? 'Samsung Internet'
-    : /Firefox\/|FxiOS\//.test(ua) ? 'Firefox'
-    : /Chrome\/|CriOS\//.test(ua) ? 'Chrome'
-    : /Safari\//.test(ua) && /Version\//.test(ua) ? 'Safari'
-    : /PostmanRuntime/.test(ua) ? 'Postman'
-    : /curl\//.test(ua) ? 'curl'
-    : /node|axios|undici/i.test(ua) ? 'API client'
-    : null;
-  const os =
-    /iPad/.test(ua) ? 'iPadOS'
-    : /iPhone|iPod/.test(ua) ? 'iOS'
-    : /Android/.test(ua) ? 'Android'
-    : /Windows/.test(ua) ? 'Windows'
-    : /CrOS/.test(ua) ? 'ChromeOS'
-    : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
-    : /Linux/.test(ua) ? 'Linux'
-    : null;
-  const kind = /iPad|Tablet/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))
-    ? 'tablet'
-    : /Mobi|iPhone|Android/.test(ua)
-      ? 'mobile'
-      : 'desktop';
+  const browser = /Edg(e|A|iOS)?\//.test(ua)
+    ? 'Edge'
+    : /OPR\/|Opera/.test(ua)
+      ? 'Opera'
+      : /SamsungBrowser\//.test(ua)
+        ? 'Samsung Internet'
+        : /Firefox\/|FxiOS\//.test(ua)
+          ? 'Firefox'
+          : /Chrome\/|CriOS\//.test(ua)
+            ? 'Chrome'
+            : /Safari\//.test(ua) && /Version\//.test(ua)
+              ? 'Safari'
+              : /PostmanRuntime/.test(ua)
+                ? 'Postman'
+                : /curl\//.test(ua)
+                  ? 'curl'
+                  : /node|axios|undici/i.test(ua)
+                    ? 'API client'
+                    : null;
+  const os = /iPad/.test(ua)
+    ? 'iPadOS'
+    : /iPhone|iPod/.test(ua)
+      ? 'iOS'
+      : /Android/.test(ua)
+        ? 'Android'
+        : /Windows/.test(ua)
+          ? 'Windows'
+          : /CrOS/.test(ua)
+            ? 'ChromeOS'
+            : /Mac OS X|Macintosh/.test(ua)
+              ? 'macOS'
+              : /Linux/.test(ua)
+                ? 'Linux'
+                : null;
+  const kind =
+    /iPad|Tablet/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))
+      ? 'tablet'
+      : /Mobi|iPhone|Android/.test(ua)
+        ? 'mobile'
+        : 'desktop';
   const label = browser && os ? `${browser} on ${os}` : (browser ?? os ?? 'Unknown device');
   return { browser, os, kind, label };
 }
@@ -92,7 +111,9 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
     cell: ({ row }) => (
       <span className="block min-w-[150px]">
         <span className="block whitespace-nowrap">{fmtDateTime(row.original.createdAt)}</span>
-        <span className="block text-xs text-muted-foreground">{fmtRelative(row.original.createdAt)}</span>
+        <span className="block text-xs text-muted-foreground">
+          {fmtRelative(row.original.createdAt)}
+        </span>
       </span>
     ),
   },
@@ -103,7 +124,10 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
     meta: { label: 'Person' },
     cell: ({ row }) =>
       row.original.user ? (
-        <Link href={`/admin/users/${row.original.user.id}`} className="inline-flex hover:text-primary">
+        <Link
+          href={`/admin/users/${row.original.user.id}`}
+          className="inline-flex hover:text-primary"
+        >
           <PersonCell person={row.original.user} sub={row.original.user.email} />
         </Link>
       ) : (
@@ -141,7 +165,10 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
       const d = parseUserAgent(row.original.userAgent);
       const Icon = DEVICE_ICONS[d.kind];
       return (
-        <span className="flex items-center gap-1.5 whitespace-nowrap" title={row.original.userAgent ?? undefined}>
+        <span
+          className="flex items-center gap-1.5 whitespace-nowrap"
+          title={row.original.userAgent ?? undefined}
+        >
           <Icon className="size-3.5 text-muted-foreground" />
           {d.label}
         </span>
@@ -154,7 +181,10 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
     header: 'User agent',
     meta: { label: 'User agent', defaultHidden: true },
     cell: ({ row }) => (
-      <span className="block max-w-[320px] truncate font-mono text-[11px] text-muted-foreground" title={row.original.userAgent ?? undefined}>
+      <span
+        className="block max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
+        title={row.original.userAgent ?? undefined}
+      >
         {row.original.userAgent ?? '—'}
       </span>
     ),
