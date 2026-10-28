@@ -135,12 +135,13 @@ export function FilterControl({
           onChange={v => onChange(v)}
         />
       );
+    case 'geo':
     case 'text':
       return (
         <TextFilter
           key={value ?? ''}
           value={value}
-          placeholder={def.placeholder}
+          placeholder={def.type === 'text' ? def.placeholder : undefined}
           onChange={onChange}
         />
       );

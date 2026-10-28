@@ -282,15 +282,38 @@ export const clientFilters: FilterDef[] = [
     multi: true,
     group: 'Company',
   },
+
+  // ── location: country → state → city, all on the same client location
+  {
+    key: 'country',
+    label: 'Country',
+    type: 'geo',
+    level: 'country',
+    multi: true,
+    group: 'Location',
+    hint: 'Clients with an office in any of these countries.',
+  },
   {
     key: 'state',
     label: 'State',
-    type: 'text',
-    placeholder: 'e.g. Karnataka',
-    group: 'Company',
-    hint: 'Any active location in this state.',
+    type: 'geo',
+    level: 'state',
+    countryKey: 'country',
+    multi: true,
+    group: 'Location',
+    hint: 'Shows the states of the countries picked above (India if none).',
   },
-  { key: 'city', label: 'City', type: 'text', placeholder: 'e.g. Bengaluru', group: 'Company' },
+  {
+    key: 'city',
+    label: 'City',
+    type: 'geo',
+    level: 'city',
+    countryKey: 'country',
+    stateKey: 'state',
+    multi: true,
+    group: 'Location',
+    hint: 'Pick states first to list all their cities, or search. Country, state and city must match the same office.',
+  },
 
   // ── pipeline & data
   {

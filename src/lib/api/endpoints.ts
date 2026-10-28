@@ -374,3 +374,37 @@ export const alertsApi = {
     }>,
   resolve: (ids: string[]) => api.post<{ resolved: number }>('/system-alerts/resolve', { ids }),
 };
+
+// ── geo (country → state → city) ─────────────────────────────────────────────
+
+export interface GeoCountry {
+  code: string;
+  name: string;
+}
+export interface GeoState {
+  code: string;
+  name: string;
+  country: string;
+  countryCode: string;
+}
+export interface GeoCity {
+  name: string;
+  state: string;
+  country: string;
+}
+
+const csvParam = (v?: string[]) => (v?.length ? v.join(',') : undefined);
+
+export const geoApi = {
+  countries: () => api.get<GeoCountry[]>('/geo/countries'),
+  /** names or codes; none = India */
+  states: (countries?: string[], q?: string) =>
+    api.get<GeoState[]>('/geo/states', { country: csvParam(countries), q: q || undefined }),
+  cities: (p: { countries?: string[]; states?: string[]; q?: string; limit?: number }) =>
+    api.get<GeoCity[]>('/geo/cities', {
+      country: csvParam(p.countries),
+      state: csvParam(p.states),
+      q: p.q || undefined,
+      limit: p.limit,
+    }),
+};

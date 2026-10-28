@@ -8,13 +8,14 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   CalendarDays,
   Check,
   GitBranch,
   ListFilter,
+  MapPin,
   RotateCcw,
   Search,
   SlidersHorizontal,
@@ -36,6 +37,7 @@ import {
 } from '@/components/ui/sheet';
 import { Spinner } from '@/components/common/states';
 import { useLookups, useMasters, useUserOptions } from '@/hooks/queries';
+import { useGeoCities, useGeoCountries, useGeoStates } from '@/hooks/geo';
 import { fmtDate, fullName } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { FilterDef } from './types';
@@ -45,6 +47,7 @@ const GROUP_ICON: Record<string, LucideIcon> = {
   Ownership: Users,
   Company: Building2,
   'Pipeline & data': GitBranch,
+  Location: MapPin,
   Dates: CalendarDays,
 };
 
@@ -138,11 +141,14 @@ function CheckList({
         : options.filter(o => o.label.toLowerCase().includes(q.toLowerCase())),
     [options, q, onSearch]
   );
+  // what was ticked when the panel opened goes first (fixed, so rows don't jump while clicking)
+  const [pinned] = useState(() => new Set(split(value)));
   const byGroup = useMemo(() => {
     const m = new Map<string, Opt[]>();
-    for (const o of shown) m.set(o.group ?? '', [...(m.get(o.group ?? '') ?? []), o]);
+    const ordered = [...shown.filter(o => pinned.has(o.value)), ...shown.filter(o => !pinned.has(o.value))];
+    for (const o of ordered) m.set(o.group ?? '', [...(m.get(o.group ?? '') ?? []), o]);
     return [...m.entries()];
-  }, [shown]);
+  }, [shown, pinned]);
   const all = new Map(options.map(o => [o.value, o]));
   const emit = (ids: string[]) =>
     onChange(
@@ -342,18 +348,100 @@ function PeopleList({
   );
 }
 
+/**
+ * Country / state / city: each level lists only what fits the picked parents
+ * (other filters' draft values), grouped by its parent, and drops picks that no
+ * longer fit when a parent changes. Values are plain names.
+ */
+function GeoList({
+  def,
+  value,
+  draft,
+  onChange,
+}: {
+  def: Extract<FilterDef, { type: 'geo' }>;
+  value?: string;
+  draft: Record<string, string>;
+  onChange: Change;
+}) {
+  const countries = def.countryKey ? split(draft[def.countryKey]) : [];
+  const states = def.stateKey ? split(draft[def.stateKey]) : [];
+  const [search, setSearch] = useState('');
+  const [q] = useDebounce(search, 200);
+  const limit = states.length ? 500 : 150;
+
+  const c = useGeoCountries(def.level === 'country');
+  const st = useGeoStates(countries.length ? countries : undefined, def.level === 'state');
+  const ci = useGeoCities({ countries, states, q, limit }, def.level === 'city');
+
+  const options = useMemo<Opt[]>(() => {
+    if (def.level === 'country') return (c.data ?? []).map(x => ({ value: x.name, label: x.name }));
+    if (def.level === 'state')
+      return (st.data ?? []).map(x => ({
+        value: x.name,
+        label: x.name,
+        group: countries.length > 1 ? x.country : undefined,
+      }));
+    const found = (ci.data ?? []).map(x => ({ value: x.name, label: x.name, group: x.state }));
+    // picked cities outside the current search stay visible
+    const seen = new Set(found.map(o => o.value));
+    return [
+      ...split(value)
+        .filter(v => !seen.has(v))
+        .map(v => ({ value: v, label: v, group: 'Selected' })),
+      ...found,
+    ];
+  }, [def.level, c.data, st.data, ci.data, countries.length, value]);
+
+  // a parent changed: drop picks that don't belong to it any more
+  const fullList =
+    def.level === 'state' ? st.data : !q && ci.data && ci.data.length < limit ? ci.data : undefined;
+  const parentSet = def.level === 'state' ? countries.length > 0 : states.length > 0;
+  useEffect(() => {
+    if (def.level === 'country' || !parentSet || !fullList || !value) return;
+    const ok = new Set(fullList.map(x => x.name));
+    const cur = split(value);
+    const keep = cur.filter(v => ok.has(v));
+    if (keep.length !== cur.length) onChange(keep.join(',') || null);
+  }, [def.level, parentSet, fullList, value, onChange]);
+
+  return (
+    <CheckList
+      def={def}
+      options={options}
+      value={value}
+      loading={
+        def.level === 'country' ? c.isLoading : def.level === 'state' ? st.isLoading : ci.isFetching
+      }
+      onSearch={def.level === 'city' ? setSearch : undefined}
+      placeholder={
+        def.level === 'city'
+          ? states.length
+            ? `Search cities in ${states.length === 1 ? states[0] : `${states.length} states`}`
+            : 'Search cities (pick a state to see all of its cities)'
+          : `Search ${def.level === 'country' ? 'countries' : 'states'}`
+      }
+      onChange={v => onChange(v)}
+    />
+  );
+}
+
 function Control({
   def,
   value,
   stored,
+  draft,
   onChange,
 }: {
   def: FilterDef;
   value?: string;
   stored?: string;
+  draft: Record<string, string>;
   onChange: Change;
 }) {
   switch (def.type) {
+    case 'geo':
+      return <GeoList def={def} value={value} draft={draft} onChange={onChange} />;
     case 'select':
       return def.options.length <= 8 ? (
         <Pills def={def} options={def.options} value={value} onChange={onChange} />
@@ -435,7 +523,7 @@ function SelectedBar({
                 ? fmtDate(draft[f.key])
                 : f.type === 'lookup' || f.type === 'master'
                   ? `${vals.length} picked`
-                  : draft[f.key];
+                  : vals.join(', ');
         return (
           <span
             key={f.key}
@@ -570,6 +658,7 @@ export function FilterSheet({
                           def={def}
                           value={draft[def.key]}
                           stored={labels[def.key]}
+                          draft={draft}
                           onChange={set(def.key)}
                         />
                       </div>

@@ -45,6 +45,8 @@ export type FilterDef = FilterBase &
     | { type: 'master'; kind: MasterKind; multi?: boolean }
     | { type: 'user'; purpose?: 'assign' | 'filter'; multi?: boolean }
     | { type: 'client' }
+    /** country → state → city; a level lists only what fits the picked parents (by their filter keys) */
+    | { type: 'geo'; level: 'country' | 'state' | 'city'; multi?: boolean; countryKey?: string; stateKey?: string }
     | { type: 'date'; placeholder?: string }
     | { type: 'text'; placeholder?: string }
     | { type: 'boolean'; trueLabel?: string; falseLabel?: string }
