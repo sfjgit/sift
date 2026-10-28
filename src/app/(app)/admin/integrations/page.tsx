@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Cable, CheckCircle2, Copy, KeyRound, RefreshCw, XCircle } from 'lucide-react';
+import { Cable, CheckCircle2, Copy, KeyRound, Pencil, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -163,12 +163,69 @@ function ServicePanel({
     }
   );
 
+  // the address: CSR_PIPELINE_URL on this server wins; otherwise the saved one, editable here
+  const [editingUrl, setEditingUrl] = useState(false);
+  const [urlDraft, setUrlDraft] = useState(svc.savedBaseUrl ?? '');
+  const saveUrl = useAction(
+    (baseUrl: string) => integrationsApi.updateService(svc.id, { baseUrl: baseUrl || null }),
+    {
+      success: 'Address saved',
+      invalidate: [['integrations']],
+      onSuccess: () => {
+        setEditingUrl(false);
+        void health.refetch();
+      },
+    }
+  );
+  const address = editingUrl ? (
+    <span className="mt-1 flex items-center gap-2">
+      <Input
+        value={urlDraft}
+        onChange={ev => setUrlDraft(ev.target.value)}
+        onKeyDown={ev => ev.key === 'Enter' && saveUrl.mutate(urlDraft.trim())}
+        placeholder="https://…run.app"
+        className="h-8 max-w-md"
+        autoFocus
+      />
+      <Button
+        size="xs"
+        onClick={() => saveUrl.mutate(urlDraft.trim())}
+        disabled={saveUrl.isPending}
+      >
+        Save
+      </Button>
+      <Button size="xs" variant="ghost" onClick={() => setEditingUrl(false)}>
+        Cancel
+      </Button>
+    </span>
+  ) : (
+    <span className="flex flex-wrap items-center gap-x-2">
+      <span className="font-mono">{svc.baseUrl ?? 'No address set'}</span>
+      {svc.baseUrlFromEnv ? (
+        <span className="text-xs text-muted-foreground">
+          from {svc.baseUrlEnv} on the server (saved: {svc.savedBaseUrl ?? '—'})
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setUrlDraft(svc.savedBaseUrl ?? '');
+            setEditingUrl(true);
+          }}
+          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <Pencil className="size-3" /> Edit
+        </button>
+      )}
+    </span>
+  );
+
   const e = health.data?.engine;
   return (
     <div className="space-y-4">
       <Panel
         title={svc.name}
-        description={svc.baseUrl ?? 'No address set'}
+        description={address}
         actions={
           <>
             <Button

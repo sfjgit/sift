@@ -527,7 +527,11 @@ export interface IntegrationService {
   id: string;
   code: string;
   name: string;
+  /** what this server calls: its env (baseUrlEnv) wins over the saved address */
   baseUrl: string | null;
+  savedBaseUrl: string | null;
+  baseUrlEnv: string | null;
+  baseUrlFromEnv: boolean;
   outboundKeyEnv: string | null;
   outboundKeySet: boolean;
   inboundKeySet: boolean;
