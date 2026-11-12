@@ -18,7 +18,15 @@ import { isActive } from '@/app/(app)/pipeline-runs/_components/runFormat';
 
 const ROW = 'flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-accent/40';
 
-function RowLink({ id, onOpen, children }: { id: string; onOpen?: (id: string) => void; children: React.ReactNode }) {
+function RowLink({
+  id,
+  onOpen,
+  children,
+}: {
+  id: string;
+  onOpen?: (id: string) => void;
+  children: React.ReactNode;
+}) {
   return onOpen ? (
     <button type="button" onClick={() => onOpen(id)} className={ROW}>
       {children}
@@ -47,7 +55,13 @@ export function RunsList({
 
   if (q.isLoading) return <Skeleton className="h-40 w-full rounded-xl" />;
   if (!q.data?.data.length)
-    return <EmptyState icon={GitBranch} title="No pipeline runs yet" description="Enrichment runs for this record show up here." />;
+    return (
+      <EmptyState
+        icon={GitBranch}
+        title="No pipeline runs yet"
+        description="Enrichment runs for this record show up here."
+      />
+    );
 
   return (
     <ul className="divide-y rounded-xl border bg-card shadow-card">
@@ -62,7 +76,10 @@ export function RunsList({
             </span>
             {r.status === 'RUNNING' && r.progress !== null && (
               <span className="h-1.5 w-20 overflow-hidden rounded-full bg-info/15">
-                <span className="block h-full rounded-full bg-info" style={{ width: `${r.progress}%` }} />
+                <span
+                  className="block h-full rounded-full bg-info"
+                  style={{ width: `${r.progress}%` }}
+                />
               </span>
             )}
             <StepRunBadge status={r.status} />

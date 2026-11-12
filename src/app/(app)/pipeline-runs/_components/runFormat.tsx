@@ -36,14 +36,20 @@ export const fmtUsd = (v?: string | number | null) => {
   return Number.isFinite(n) ? usd.format(n) : '—';
 };
 
-export function RunStatus({ status, progress }: { status: StepRunStatus; progress?: number | null }) {
+export function RunStatus({
+  status,
+  progress,
+}: {
+  status: StepRunStatus;
+  progress?: number | null;
+}) {
   return (
     <span className="flex min-w-[110px] flex-col gap-1">
       <StepRunBadge status={status} />
       {status === 'RUNNING' && typeof progress === 'number' && (
         <span className="flex items-center gap-1.5">
           <Progress value={Math.max(0, Math.min(100, progress))} className="h-1 w-16" />
-          <span className="tabular text-[10px] text-muted-foreground">{Math.round(progress)}%</span>
+          <span className="tabular text-[11px] text-muted-foreground">{Math.round(progress)}%</span>
         </span>
       )}
     </span>

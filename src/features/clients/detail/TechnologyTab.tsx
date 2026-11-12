@@ -1,8 +1,8 @@
 // File: TechnologyTab.tsx
 // Path: src/features/clients/detail/TechnologyTab.tsx
 //
-// One card per TECH_CATEGORY lookup (Cloud, Cyber security, ERP…). Filled cards
-// show what the client uses / needs; empty ones invite you to add it.
+// One row per TECH_CATEGORY lookup (Cloud, Cyber security, ERP…): what the
+// client uses / needs; empty rows invite you to add it.
 
 'use client';
 
@@ -45,18 +45,10 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
     invalidate: [key],
   });
 
-  if (isLoading) {
-    return (
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 rounded-xl" />
-        ))}
-      </div>
-    );
-  }
+  if (isLoading) return <Skeleton className="h-48 w-full rounded-xl" />;
 
   const byCategory = new Map(client.technologies.map(t => [t.category.id, t]));
-  // also show filled categories whose lookup was deactivated
+  // every area in the list, plus any captured under an area no longer listed
   const cards = [
     ...categories.map(c => ({ id: c.id, label: c.label })),
     ...client.technologies
@@ -65,84 +57,102 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         What the client runs today and where they need help — {client.technologies.length} of{' '}
         {cards.length} areas captured.
       </p>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map(c => {
-          const t = byCategory.get(c.id);
-          return (
-            <article
-              key={c.id}
-              className={cn(
-                'group flex flex-col rounded-xl border p-4 transition-colors',
-                t ? 'bg-card shadow-card' : 'border-dashed bg-transparent'
-              )}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  <Cpu className={cn('size-4', t ? 'text-primary' : 'text-muted-foreground')} />{' '}
-                  {c.label}
-                </span>
-                {(canEdit || canRemove) && t && (
-                  <span className="flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                    {canEdit && (
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Edit ${c.label}`}
+      <div className="crm-box overflow-x-auto">
+        <table className="crm-sheet">
+          <thead>
+            <tr>
+              <th className="w-56">Area</th>
+              <th>What they use / need</th>
+              <th className="w-48">Added by</th>
+              <th className="w-36">Updated</th>
+              {(canEdit || canRemove) && <th className="w-20" />}
+            </tr>
+          </thead>
+          <tbody>
+            {cards.map(c => {
+              const t = byCategory.get(c.id);
+              return (
+                <tr key={c.id}>
+                  <td className="font-medium">
+                    <span className="flex items-center gap-2">
+                      <Cpu
+                        className={cn('size-3.5', t ? 'text-primary' : 'text-muted-foreground')}
+                      />
+                      {c.label}
+                    </span>
+                  </td>
+                  <td className="whitespace-pre-line">
+                    {t ? (
+                      t.details
+                    ) : canEdit ? (
+                      <button
+                        type="button"
                         onClick={() =>
-                          setEditing({ categoryId: c.id, label: c.label, details: t.details })
+                          setEditing({ categoryId: c.id, label: c.label, details: '' })
                         }
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                       >
-                        <Pencil />
-                      </Button>
+                        <Plus className="size-3.5" /> Add details
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground">Not captured</span>
                     )}
-                    {canRemove && (
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Remove ${c.label}`}
-                        onClick={async () => {
-                          if (
-                            await confirm({
-                              title: `Remove ${c.label}?`,
-                              destructive: true,
-                              confirmLabel: 'Remove',
-                            })
-                          )
-                            remove.mutate(t.id);
-                        }}
-                      >
-                        <Trash2 />
-                      </Button>
-                    )}
-                  </span>
-                )}
-              </div>
-              {t ? (
-                <>
-                  <p className="mt-2 flex-1 text-[13px] whitespace-pre-line">{t.details}</p>
-                  <p className="mt-3 text-[11px] text-muted-foreground">
-                    {t.addedBy ? fullName(t.addedBy) : 'Pipeline'} · {fmtRelative(t.updatedAt)}
-                  </p>
-                </>
-              ) : canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => setEditing({ categoryId: c.id, label: c.label, details: '' })}
-                  className="mt-3 inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline"
-                >
-                  <Plus className="size-3.5" /> Add details
-                </button>
-              ) : (
-                <p className="mt-2 text-xs text-muted-foreground">Not captured</p>
-              )}
-            </article>
-          );
-        })}
+                  </td>
+                  <td className="text-muted-foreground">
+                    {t ? (t.addedBy ? fullName(t.addedBy) : 'Pipeline') : '—'}
+                  </td>
+                  <td className="whitespace-nowrap text-muted-foreground">
+                    {t ? fmtRelative(t.updatedAt) : '—'}
+                  </td>
+                  {(canEdit || canRemove) && (
+                    <td className="px-1!">
+                      {t && (
+                        <span className="flex justify-end">
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={`Edit ${c.label}`}
+                              onClick={() =>
+                                setEditing({ categoryId: c.id, label: c.label, details: t.details })
+                              }
+                            >
+                              <Pencil />
+                            </Button>
+                          )}
+                          {canRemove && (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={`Remove ${c.label}`}
+                              onClick={async () => {
+                                if (
+                                  await confirm({
+                                    title: `Remove ${c.label}?`,
+                                    destructive: true,
+                                    confirmLabel: 'Remove',
+                                  })
+                                )
+                                  remove.mutate(t.id);
+                              }}
+                            >
+                              <Trash2 />
+                            </Button>
+                          )}
+                        </span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       <FormDialog

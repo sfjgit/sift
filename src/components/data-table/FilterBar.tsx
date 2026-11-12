@@ -264,7 +264,7 @@ export function FilterButton({
       <ListFilter />
       Filters
       {count > 0 && (
-        <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground">
+        <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[11px] leading-4 font-semibold text-primary-foreground">
           {count}
         </span>
       )}

@@ -31,7 +31,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Breadcrumbs } from '@/components/common/PageHeader';
 import { DetailList, Panel } from '@/components/common/Panel';
-import { ApprovalBadge, BandBadge, EmailStatusBadge, LookupBadge, Pill } from '@/components/common/badges';
+import {
+  ApprovalBadge,
+  BandBadge,
+  EmailStatusBadge,
+  LookupBadge,
+  Pill,
+} from '@/components/common/badges';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { ErrorState } from '@/components/common/states';
 import { useConfirm } from '@/components/common/ConfirmProvider';
@@ -50,7 +56,17 @@ import { cn } from '@/lib/utils';
 import type { ApiError } from '@/lib/api/client';
 import type { SpocDetail, SpocApprovalStatus } from '@/types/crm';
 
-function ContactRow({ icon: Icon, value, href, hidden }: { icon: typeof Mail; value: string | null; href?: string; hidden: boolean }) {
+function ContactRow({
+  icon: Icon,
+  value,
+  href,
+  hidden,
+}: {
+  icon: typeof Mail;
+  value: string | null;
+  href?: string;
+  hidden: boolean;
+}) {
   if (!value)
     return (
       <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
@@ -96,14 +112,23 @@ function ValidationPanel({ spoc }: { spoc: SpocDetail }) {
   const score = spoc.validationScore;
   const entries = Object.entries(checks).filter(([k]) => k !== 'suggestion');
   const icon = (v: unknown) => {
-    const val = typeof v === 'object' && v !== null && 'pass' in v ? (v as { pass: unknown }).pass : v;
-    if (val === true || val === 'pass' || val === 'PASS') return <CheckCircle2 className="size-4 text-success" />;
-    if (val === false || val === 'fail' || val === 'FAIL') return <XCircle className="size-4 text-destructive" />;
-    if (val === null || val === undefined) return <CircleDashed className="size-4 text-muted-foreground" />;
+    const val =
+      typeof v === 'object' && v !== null && 'pass' in v ? (v as { pass: unknown }).pass : v;
+    if (val === true || val === 'pass' || val === 'PASS')
+      return <CheckCircle2 className="size-4 text-success" />;
+    if (val === false || val === 'fail' || val === 'FAIL')
+      return <XCircle className="size-4 text-destructive" />;
+    if (val === null || val === undefined)
+      return <CircleDashed className="size-4 text-muted-foreground" />;
     return <MinusCircle className="size-4 text-warning" />;
   };
   return (
-    <Panel title="Data quality" description={spoc.validatedAt ? `Validated ${fmtRelative(spoc.validatedAt)}` : 'Not validated yet'}>
+    <Panel
+      title="Data quality"
+      description={
+        spoc.validatedAt ? `Validated ${fmtRelative(spoc.validatedAt)}` : 'Not validated yet'
+      }
+    >
       <div className="flex items-center gap-4">
         <div className="relative size-16 shrink-0">
           <svg viewBox="0 0 36 36" className="size-16 -rotate-90">
@@ -115,27 +140,38 @@ function ValidationPanel({ spoc }: { spoc: SpocDetail }) {
               fill="none"
               strokeWidth="3.5"
               strokeLinecap="round"
-              stroke={spoc.validationBand === 'READY' ? 'var(--success)' : spoc.validationBand === 'REVIEW' ? 'var(--warning)' : 'var(--destructive)'}
+              stroke={
+                spoc.validationBand === 'READY'
+                  ? 'var(--success)'
+                  : spoc.validationBand === 'REVIEW'
+                    ? 'var(--warning)'
+                    : 'var(--destructive)'
+              }
               strokeDasharray={`${((score ?? 0) / 100) * 97.4} 97.4`}
             />
           </svg>
-          <span className="absolute inset-0 flex items-center justify-center text-base font-semibold tabular">{score ?? '–'}</span>
+          <span className="absolute inset-0 flex items-center justify-center text-base font-semibold tabular">
+            {score ?? '–'}
+          </span>
         </div>
         <div className="space-y-1.5">
           <BandBadge band={spoc.validationBand} />
           <p className="text-xs text-muted-foreground">
-            Ready ≥ 75 with no failed check · Review needs a human look · Not usable shouldn’t be contacted.
+            Ready ≥ 75 with no failed check · Review needs a human look · Not usable shouldn’t be
+            contacted.
           </p>
         </div>
       </div>
       {entries.length > 0 && (
         <ul className="mt-4 space-y-2 border-t pt-4">
           {entries.map(([k, v]) => (
-            <li key={k} className="flex items-center gap-2 text-[13px]">
+            <li key={k} className="flex items-center gap-2 text-[14px]">
               {icon(v)}
               <span className="flex-1">{CHECK_LABELS[k] ?? titleCase(k.replace(/^v_/, ''))}</span>
               {typeof v === 'object' && v !== null && 'note' in v && (
-                <span className="truncate text-xs text-muted-foreground">{String((v as { note: unknown }).note)}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {String((v as { note: unknown }).note)}
+                </span>
               )}
             </li>
           ))}
@@ -157,7 +193,9 @@ function SpocPage() {
   const confirm = useConfirm();
   const { can } = usePermissions();
   const { data: spoc, isLoading, error, refetch } = spocHooks.useDetail(id);
-  const [editing, setEditing] = useState(() => !!new URLSearchParams(window.location.search).get('edit'));
+  const [editing, setEditing] = useState(
+    () => !!new URLSearchParams(window.location.search).get('edit')
+  );
   const [assigning, setAssigning] = useState(false);
   const [tab, setTab] = useState('activity');
 
@@ -168,7 +206,12 @@ function SpocPage() {
   });
 
   const decide = useAction((decision: SpocApprovalStatus) => spocsApi.decide([id], decision), {
-    success: (_r, d) => (d === 'APPROVED' ? 'Approved for outreach' : d === 'REJECTED' ? 'Rejected' : 'Back to pending'),
+    success: (_r, d) =>
+      d === 'APPROVED'
+        ? 'Approved for outreach'
+        : d === 'REJECTED'
+          ? 'Rejected'
+          : 'Back to pending',
     invalidate: [spocHooks.keys.all],
   });
   const deactivate = useAction(() => spocsApi.remove(id), {
@@ -204,7 +247,7 @@ function SpocPage() {
   const current = spoc.assignments?.find(a => !a.endedAt);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Breadcrumbs
         crumbs={[
           { label: 'SPOCs', href: '/spocs' },
@@ -229,7 +272,10 @@ function SpocPage() {
             <p className="text-sm text-muted-foreground">
               {spoc.designation ?? 'No designation'}
               {spoc.department && ` · ${spoc.department}`} at{' '}
-              <Link href={`/clients/${spoc.client.id}`} className="inline-flex items-center gap-1 font-medium text-foreground hover:text-primary">
+              <Link
+                href={`/clients/${spoc.client.id}`}
+                className="inline-flex items-center gap-1 font-medium text-foreground hover:text-primary"
+              >
                 <Building2 className="size-3.5" /> {spoc.client.name}
               </Link>
             </p>
@@ -245,12 +291,21 @@ function SpocPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {can('spocs.approve') && spoc.isActive && spoc.approvalStatus !== 'APPROVED' && (
-              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate('APPROVED')}>
+              <Button
+                size="sm"
+                disabled={decide.isPending}
+                onClick={() => decide.mutate('APPROVED')}
+              >
                 <BadgeCheck /> Approve
               </Button>
             )}
             {can('spocs.approve') && spoc.isActive && spoc.approvalStatus === 'PENDING' && (
-              <Button variant="outline" size="sm" disabled={decide.isPending} onClick={() => decide.mutate('REJECTED')}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={decide.isPending}
+                onClick={() => decide.mutate('REJECTED')}
+              >
                 <CircleSlash /> Reject
               </Button>
             )}
@@ -292,9 +347,24 @@ function SpocPage() {
         <div className="space-y-4">
           <Panel title="Contact">
             <div className="space-y-3">
-              <ContactRow icon={Mail} value={spoc.email} href={spoc.email ? `mailto:${spoc.email}` : undefined} hidden={contactHidden} />
-              <ContactRow icon={Phone} value={spoc.phone} href={spoc.phone ? `tel:${spoc.phone}` : undefined} hidden={contactHidden} />
-              <ContactRow icon={Linkedin} value={spoc.linkedinUrl ? 'LinkedIn profile' : null} href={spoc.linkedinUrl ?? undefined} hidden={false} />
+              <ContactRow
+                icon={Mail}
+                value={spoc.email}
+                href={spoc.email ? `mailto:${spoc.email}` : undefined}
+                hidden={contactHidden}
+              />
+              <ContactRow
+                icon={Phone}
+                value={spoc.phone}
+                href={spoc.phone ? `tel:${spoc.phone}` : undefined}
+                hidden={contactHidden}
+              />
+              <ContactRow
+                icon={Linkedin}
+                value={spoc.linkedinUrl ? 'LinkedIn profile' : null}
+                href={spoc.linkedinUrl ?? undefined}
+                hidden={false}
+              />
             </div>
           </Panel>
           <ValidationPanel spoc={spoc} />
@@ -311,17 +381,30 @@ function SpocPage() {
             {spoc.assignments && spoc.assignments.length > 1 && (
               <ol className="mt-4 space-y-3 border-t pt-4">
                 {spoc.assignments.map(a => (
-                  <li key={a.id} className="flex gap-2.5 text-[13px]">
-                    <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', a.endedAt ? 'bg-muted-foreground/40' : 'bg-primary')} />
+                  <li key={a.id} className="flex gap-2.5 text-[14px]">
+                    <span
+                      className={cn(
+                        'mt-1.5 size-2 shrink-0 rounded-full',
+                        a.endedAt ? 'bg-muted-foreground/40' : 'bg-primary'
+                      )}
+                    />
                     <div>
                       <p>
                         <span className="font-medium">{fullName(a.assignedTo)}</span>
-                        <span className="text-muted-foreground"> · by {fullName(a.assignedBy)}</span>
+                        <span className="text-muted-foreground">
+                          {' '}
+                          · by {fullName(a.assignedBy)}
+                        </span>
                       </p>
-                      <p className="text-xs text-muted-foreground" title={fmtDateTime(a.assignedAt)}>
+                      <p
+                        className="text-xs text-muted-foreground"
+                        title={fmtDateTime(a.assignedAt)}
+                      >
                         {fmtDate(a.assignedAt)} → {a.endedAt ? fmtDate(a.endedAt) : 'now'}
                       </p>
-                      {a.reason && <p className="mt-0.5 text-xs italic text-muted-foreground">“{a.reason}”</p>}
+                      {a.reason && (
+                        <p className="mt-0.5 text-xs italic text-muted-foreground">“{a.reason}”</p>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -339,34 +422,68 @@ function SpocPage() {
                 { label: 'Service line', value: spoc.serviceLine.name },
                 { label: 'Sales status', value: spoc.salesStatus?.label },
                 { label: 'Seniority', value: spoc.seniority },
-                { label: 'Total experience', value: spoc.totalExpYears && `${Number(spoc.totalExpYears)} yrs` },
-                { label: 'At this org', value: spoc.currentOrgExpYears && `${Number(spoc.currentOrgExpYears)} yrs` },
-                { label: 'Works at', value: spoc.location && `${spoc.location.name ? `${spoc.location.name}, ` : ''}${placeOf(spoc.location)}` },
+                {
+                  label: 'Total experience',
+                  value: spoc.totalExpYears && `${Number(spoc.totalExpYears)} yrs`,
+                },
+                {
+                  label: 'At this org',
+                  value: spoc.currentOrgExpYears && `${Number(spoc.currentOrgExpYears)} yrs`,
+                },
+                {
+                  label: 'Works at',
+                  value:
+                    spoc.location &&
+                    `${spoc.location.name ? `${spoc.location.name}, ` : ''}${placeOf(spoc.location)}`,
+                },
                 { label: 'Source', value: spoc.source?.label },
                 { label: 'Email source', value: spoc.emailSource?.label },
-                { label: 'Added by', value: `${fullName(spoc.addedBy)} · ${fmtDate(spoc.createdAt)}` },
+                {
+                  label: 'Added by',
+                  value: `${fullName(spoc.addedBy)} · ${fmtDate(spoc.createdAt)}`,
+                },
                 { label: 'Last updated', value: fmtRelative(spoc.updatedAt) },
-                { label: 'Notes', value: spoc.notes && <span className="whitespace-pre-line">{spoc.notes}</span>, wide: true },
+                {
+                  label: 'Notes',
+                  value: spoc.notes && <span className="whitespace-pre-line">{spoc.notes}</span>,
+                  wide: true,
+                },
               ]}
             />
           </Panel>
 
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList variant="line" className="h-auto gap-1 bg-transparent p-0">
-              <TabsTrigger value="activity" className="flex-none px-3">Activity</TabsTrigger>
+              <TabsTrigger value="activity" className="flex-none px-3">
+                Activity
+              </TabsTrigger>
               {can('outreach.read') && (
-                <TabsTrigger value="outreach" className="flex-none px-3">Outreach</TabsTrigger>
+                <TabsTrigger value="outreach" className="flex-none px-3">
+                  Outreach
+                </TabsTrigger>
               )}
-              {can('step_runs.read') && <TabsTrigger value="pipeline" className="flex-none px-3">Pipeline</TabsTrigger>}
+              {can('step_runs.read') && (
+                <TabsTrigger value="pipeline" className="flex-none px-3">
+                  Pipeline
+                </TabsTrigger>
+              )}
             </TabsList>
             <div className="pt-4">
               <TabsContent value="activity">
                 <Panel>
-                  <ActivityTimeline items={activity.data?.data} loading={activity.isLoading} emptyText="No activity on this SPOC yet" />
+                  <ActivityTimeline
+                    items={activity.data?.data}
+                    loading={activity.isLoading}
+                    emptyText="No activity on this SPOC yet"
+                  />
                 </Panel>
               </TabsContent>
-              <TabsContent value="outreach">{tab === 'outreach' && <OutreachList spocId={spoc.id} />}</TabsContent>
-              <TabsContent value="pipeline">{tab === 'pipeline' && <RunsList spocId={spoc.id} />}</TabsContent>
+              <TabsContent value="outreach">
+                {tab === 'outreach' && <OutreachList spocId={spoc.id} />}
+              </TabsContent>
+              <TabsContent value="pipeline">
+                {tab === 'pipeline' && <RunsList spocId={spoc.id} />}
+              </TabsContent>
             </div>
           </Tabs>
         </div>

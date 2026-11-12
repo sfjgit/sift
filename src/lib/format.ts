@@ -49,15 +49,13 @@ export const fmtNumber = (n?: number | string | null) =>
 export const fmtPercent = (part: number, whole: number) =>
   whole ? `${Math.round((part / whole) * 100)}%` : '0%';
 
-/** ₹ amounts in Indian units — 1.2 Cr, 45.3 L, 12,500 */
+/** ₹ amounts written out in full, Indian grouping — ₹94,88,74,991.91, ₹1,00,00,000 (no Cr / L) */
+const inr = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 export const fmtInr = (v?: number | string | null) => {
   if (v === null || v === undefined || v === '') return EMPTY;
   const n = Number(v);
   if (!Number.isFinite(n)) return EMPTY;
-  const abs = Math.abs(n);
-  if (abs >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
-  if (abs >= 1e5) return `₹${(n / 1e5).toFixed(1)} L`;
-  return `₹${nf.format(Math.round(n))}`;
+  return `${n < 0 ? '-' : ''}₹${inr.format(Math.abs(n))}`;
 };
 
 /** "NOT_USABLE" → "Not usable" */

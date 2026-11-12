@@ -9,7 +9,13 @@ import { ArrowLeftRight, Building2, ContactRound, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Segmented } from '@/components/ui/segmented';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { FilterControl } from '@/components/data-table/FilterBar';
 import { tourTarget } from '@/features/tour/tour.constants';
 import type { ReportEntity } from '@/types/reports';
@@ -17,16 +23,28 @@ import { DIMS, FILTERS, type ReportSpec } from './spec';
 
 const NONE = '__none_split';
 
-function Section({ title, children, ...rest }: { title: string; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+function Section({
+  title,
+  children,
+  ...rest
+}: { title: string; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <section className="space-y-3 border-b px-4 py-4 last:border-b-0" {...rest}>
-      <h3 className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{title}</h3>
+      <h3 className="text-[12px] font-semibold tracking-wider text-muted-foreground uppercase">
+        {title}
+      </h3>
       {children}
     </section>
   );
 }
 
-export function ReportBuilder({ spec, onChange }: { spec: ReportSpec; onChange: (s: ReportSpec) => void }) {
+export function ReportBuilder({
+  spec,
+  onChange,
+}: {
+  spec: ReportSpec;
+  onChange: (s: ReportSpec) => void;
+}) {
   const dims = DIMS[spec.entity];
   const set = (p: Partial<ReportSpec>) => onChange({ ...spec, ...p });
   const activeFilters = Object.keys(spec.filters).length;
@@ -60,7 +78,9 @@ export function ReportBuilder({ spec, onChange }: { spec: ReportSpec; onChange: 
           <Label className="text-xs text-muted-foreground">Rows — group by</Label>
           <Select
             value={spec.groupBy}
-            onValueChange={groupBy => set({ groupBy, splitBy: spec.splitBy === groupBy ? null : spec.splitBy })}
+            onValueChange={groupBy =>
+              set({ groupBy, splitBy: spec.splitBy === groupBy ? null : spec.splitBy })
+            }
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -82,7 +102,7 @@ export function ReportBuilder({ spec, onChange }: { spec: ReportSpec; onChange: 
                 type="button"
                 title="Swap rows and columns"
                 onClick={() => set({ groupBy: spec.splitBy!, splitBy: spec.groupBy })}
-                className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                className="inline-flex items-center gap-1 text-[12px] text-primary hover:underline"
               >
                 <ArrowLeftRight className="size-3" /> Swap
               </button>
@@ -93,7 +113,14 @@ export function ReportBuilder({ spec, onChange }: { spec: ReportSpec; onChange: 
             onValueChange={v =>
               set({
                 splitBy: v === NONE ? null : v,
-                viz: v === NONE ? (spec.viz === 'stacked' ? 'bar' : spec.viz) : spec.viz === 'bar' || spec.viz === 'donut' ? 'stacked' : spec.viz,
+                viz:
+                  v === NONE
+                    ? spec.viz === 'stacked'
+                      ? 'bar'
+                      : spec.viz
+                    : spec.viz === 'bar' || spec.viz === 'donut'
+                      ? 'stacked'
+                      : spec.viz,
               })
             }
           >
@@ -129,20 +156,33 @@ export function ReportBuilder({ spec, onChange }: { spec: ReportSpec; onChange: 
         </div>
       </Section>
 
-      <Section title={`Filters${activeFilters ? ` · ${activeFilters}` : ''}`} {...tourTarget('reports-filters')}>
+      <Section
+        title={`Filters${activeFilters ? ` · ${activeFilters}` : ''}`}
+        {...tourTarget('reports-filters')}
+      >
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">Created from</Label>
-            <Input type="date" className="h-7 text-xs" value={spec.from ?? ''} onChange={e => set({ from: e.target.value || null })} />
+            <Label className="text-[12px] text-muted-foreground">Created from</Label>
+            <Input
+              type="date"
+              className="h-7 text-xs"
+              value={spec.from ?? ''}
+              onChange={e => set({ from: e.target.value || null })}
+            />
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">to</Label>
-            <Input type="date" className="h-7 text-xs" value={spec.to ?? ''} onChange={e => set({ to: e.target.value || null })} />
+            <Label className="text-[12px] text-muted-foreground">to</Label>
+            <Input
+              type="date"
+              className="h-7 text-xs"
+              value={spec.to ?? ''}
+              onChange={e => set({ to: e.target.value || null })}
+            />
           </div>
         </div>
         {FILTERS[spec.entity].map(def => (
           <div key={def.key} className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">{def.label}</Label>
+            <Label className="text-[12px] text-muted-foreground">{def.label}</Label>
             <FilterControl
               def={def}
               value={spec.filters[def.key]}

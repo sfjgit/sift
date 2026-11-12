@@ -106,7 +106,7 @@ export function AssignClientsDialog({
               {people.map(p => (
                 <li
                   key={p.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border bg-surface py-0.5 pr-1 pl-0.5 text-[13px]"
+                  className="inline-flex items-center gap-1.5 rounded-full border bg-surface py-0.5 pr-1 pl-0.5 text-[14px]"
                 >
                   <UserAvatar person={p} size="xs" />
                   {fullName(p)}
@@ -143,7 +143,7 @@ export function AssignClientsDialog({
                 aria-checked={mode === m.value}
                 onClick={() => setMode(m.value)}
                 className={cn(
-                  'flex flex-col items-start gap-0.5 rounded-lg border bg-surface px-3 py-2 text-left text-[13px] font-medium transition-colors hover:border-primary/40',
+                  'flex flex-col items-start gap-0.5 rounded-lg border bg-surface px-3 py-2 text-left text-[14px] font-medium transition-colors hover:border-primary/40',
                   mode === m.value && 'border-primary bg-primary/5 ring-1 ring-primary/30'
                 )}
               >

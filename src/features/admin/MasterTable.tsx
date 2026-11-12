@@ -36,7 +36,10 @@ import { fmtDate } from '@/lib/format';
 import type { ApiError } from '@/lib/api/client';
 import type { MasterRow } from '@/types/org';
 
-export const MASTER_META: Record<MasterKind, { singular: string; plural: string; description: string; codeMax: number }> = {
+export const MASTER_META: Record<
+  MasterKind,
+  { singular: string; plural: string; description: string; codeMax: number }
+> = {
   'business-units': {
     singular: 'Business unit',
     plural: 'Business units',
@@ -64,12 +67,22 @@ export const MASTER_META: Record<MasterKind, { singular: string; plural: string;
 };
 
 const FILTERS: FilterDef[] = [
-  { key: 'isActive', label: 'Status', type: 'boolean', trueLabel: 'Active', falseLabel: 'Inactive' },
+  {
+    key: 'isActive',
+    label: 'Status',
+    type: 'boolean',
+    trueLabel: 'Active',
+    falseLabel: 'Inactive',
+  },
 ];
 
 const searchText = (r: MasterRow) => `${r.name} ${r.code ?? ''}`;
 const sortValue = (r: MasterRow, key: string) =>
-  key === 'users' ? r._count?.users ?? 0 : key === 'spocs' ? r._count?.clientSpocs ?? 0 : (r as unknown as Record<string, string>)[key];
+  key === 'users'
+    ? (r._count?.users ?? 0)
+    : key === 'spocs'
+      ? (r._count?.clientSpocs ?? 0)
+      : (r as unknown as Record<string, string>)[key];
 
 // ── create / edit dialog ─────────────────────────────────────────────────────
 
@@ -182,7 +195,10 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
     [confirm, toggleMutate, kind]
   );
 
-  const showSpocs = useMemo(() => (source.data ?? []).some(r => r._count?.clientSpocs !== undefined), [source.data]);
+  const showSpocs = useMemo(
+    () => (source.data ?? []).some(r => r._count?.clientSpocs !== undefined),
+    [source.data]
+  );
 
   const columns = useMemo<DataColumn<MasterRow>[]>(
     () => [
@@ -200,7 +216,9 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
         meta: { label: 'Code', sortKey: 'code' },
         cell: ({ row }) =>
           row.original.code ? (
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{row.original.code}</span>
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              {row.original.code}
+            </span>
           ) : (
             <span className="text-muted-foreground">—</span>
           ),
@@ -241,7 +259,9 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
         accessorFn: r => fmtDate(r.createdAt),
         header: 'Added',
         meta: { label: 'Added', sortKey: 'createdAt', defaultHidden: true },
-        cell: ({ row }) => <span className="text-muted-foreground">{fmtDate(row.original.createdAt)}</span>,
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">{fmtDate(row.original.createdAt)}</span>
+        ),
       },
       ...(canManage
         ? [
@@ -254,7 +274,11 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
                 <div data-no-row-click>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${row.original.name}`}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Actions for ${row.original.name}`}
+                      >
                         <MoreHorizontal />
                       </Button>
                     </DropdownMenuTrigger>
@@ -264,7 +288,10 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       {row.original.isActive ? (
-                        <DropdownMenuItem variant="destructive" onSelect={() => void askToggle(row.original)}>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() => void askToggle(row.original)}
+                        >
                           <PauseCircle /> Deactivate
                         </DropdownMenuItem>
                       ) : (
@@ -285,9 +312,6 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <p className="max-w-2xl text-[13px] text-muted-foreground">{meta.description}</p>
-      </div>
       <DataTable
         id={`org-${kind}`}
         table={table}
@@ -316,7 +340,12 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
           ),
         }}
       />
-      <MasterFormDialog kind={kind} row={dialog?.row ?? null} open={!!dialog} onOpenChange={o => !o && setDialog(null)} />
+      <MasterFormDialog
+        kind={kind}
+        row={dialog?.row ?? null}
+        open={!!dialog}
+        onOpenChange={o => !o && setDialog(null)}
+      />
     </div>
   );
 }

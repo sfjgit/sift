@@ -20,12 +20,17 @@ declare module '@tanstack/react-table' {
     /** Pin to the left edge while scrolling sideways */
     sticky?: boolean;
     width?: number;
+    /** Band above the headers (CASPA style); neighbouring columns of one group share it */
+    group?: string;
+    groupTone?: GroupTone;
     /** Plain value for CSV / Excel; defaults to the accessor value */
     exportValue?: (row: TData) => string | number | null | undefined;
   }
 }
 
 export type DataColumn<T> = ColumnDef<T, unknown>;
+
+export type GroupTone = 'blue' | 'green' | 'rose' | 'violet' | 'amber' | 'slate';
 
 /** shared by every filter: where it sits in the filter sheet and its one-line guide */
 interface FilterBase {

@@ -111,12 +111,15 @@ export const MODULES = {
     },
   },
   client_programs: {
-    label: 'CSR programs',
+    label: 'CSR programmes',
     group: 'CRM',
     order: 7,
-    description: 'Programs a client funds, per FY and sector.',
+    description: 'CSR projects a client funds per FY: sectors, where, how much, through which agency.',
     actions: {
       read: { label: 'View', scoped: false, requires: ['clients.read'] },
+      create: { label: 'Add', scoped: true, requires: ['client_programs.read'] },
+      update: { label: 'Edit / lock', scoped: true, requires: ['client_programs.read'] },
+      delete: { label: 'Delete', scoped: true, requires: ['client_programs.read'] },
     },
   },
   spocs: {
@@ -169,6 +172,21 @@ export const MODULES = {
     actions: {
       read: { label: 'View', scoped: false },
       export: { label: 'Export', scoped: false, requires: ['reports.read'], reserved: true },
+    },
+  },
+  ai_assistant: {
+    label: 'AI assistant',
+    group: 'Insights',
+    order: 22,
+    description:
+      'Read-only AI: Command mode opens pages for you, Canvas builds reports. It can never change data, for any role.',
+    actions: {
+      command_use: { label: 'Use command mode', scoped: false },
+      canvas_use: { label: 'Use AI Canvas (beta)', scoped: false, requires: ['reports.read'] },
+      canvas_export: { label: 'Export canvas (Excel / PDF / PPT)', scoped: false, requires: ['ai_assistant.canvas_use'] },
+      canvas_save_template: { label: 'Save canvas templates', scoped: false, requires: ['ai_assistant.canvas_use'] },
+      settings_manage: { label: 'Manage AI settings, quotas, budget', scoped: false },
+      usage_view: { label: 'View AI usage & cost', scoped: false },
     },
   },
   views: {

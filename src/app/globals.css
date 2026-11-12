@@ -1,6 +1,6 @@
 /* File: globals.css */
 /* Path: src/app/globals.css */
-/* SFJBS CRM design tokens — indigo/violet on neutral zinc, light + dark. */
+/* SFJBS CRM design tokens — blue on slate, light + dark. */
 
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -59,8 +59,8 @@
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
 
-  --shadow-card: 0 1px 2px 0 oklch(0.2 0.02 285 / 0.04), 0 1px 3px 0 oklch(0.2 0.02 285 / 0.04);
-  --shadow-float: 0 12px 32px -12px oklch(0.2 0.04 285 / 0.28), 0 2px 6px -2px oklch(0.2 0.04 285 / 0.08);
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.04);
+  --shadow-float: 0 12px 32px -12px rgb(15 23 42 / 0.22), 0 2px 6px -2px rgb(15 23 42 / 0.06);
 
   @keyframes wave {
     0%,
@@ -99,34 +99,35 @@
   }
 }
 
+/* light theme: slate neutrals + clean blue (Nov 2026, from the user's reference) */
 :root {
   --radius: 0.625rem;
 
-  --background: oklch(0.985 0.002 286);
-  --foreground: oklch(0.21 0.02 285);
-  --surface: oklch(0.975 0.004 286);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.02 285);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.02 285);
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --surface: #f1f5f9;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
 
-  --primary: oklch(0.52 0.235 279);
-  --primary-foreground: oklch(0.99 0.005 286);
-  --secondary: oklch(0.965 0.005 286);
-  --secondary-foreground: oklch(0.3 0.02 285);
-  --muted: oklch(0.965 0.005 286);
-  --muted-foreground: oklch(0.53 0.018 286);
-  --accent: oklch(0.955 0.024 283);
-  --accent-foreground: oklch(0.4 0.17 280);
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --accent: #eff6ff;
+  --accent-foreground: #2563eb;
 
-  --destructive: oklch(0.577 0.215 27);
-  --success: oklch(0.6 0.14 158);
-  --warning: oklch(0.72 0.15 65);
-  --info: oklch(0.6 0.15 240);
+  --destructive: #ef4444;
+  --success: #059669;
+  --warning: #d97706;
+  --info: #0284c7;
 
-  --border: oklch(0.922 0.005 286);
-  --input: oklch(0.9 0.007 286);
-  --ring: oklch(0.6 0.2 279);
+  --border: #e2e8f0;
+  --input: #d8e0ea;
+  --ring: #3b82f6;
 
   /* categorical chart slots — order validated for CVD (dataviz validator), violet = brand */
   --chart-1: #6250d6;
@@ -138,42 +139,42 @@
   --chart-7: #008300;
   --chart-8: #e34948;
 
-  --sidebar: oklch(0.978 0.004 286);
-  --sidebar-foreground: oklch(0.35 0.02 285);
-  --sidebar-primary: oklch(0.52 0.235 279);
-  --sidebar-primary-foreground: oklch(0.99 0.005 286);
-  --sidebar-accent: oklch(0.94 0.012 285);
-  --sidebar-accent-foreground: oklch(0.21 0.02 285);
-  --sidebar-border: oklch(0.925 0.005 286);
-  --sidebar-ring: oklch(0.6 0.2 279);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #334155;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eff6ff;
+  --sidebar-accent-foreground: #2563eb;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #3b82f6;
 }
 
 .dark {
-  --background: oklch(0.155 0.008 285);
-  --foreground: oklch(0.955 0.004 286);
-  --surface: oklch(0.175 0.009 285);
-  --card: oklch(0.19 0.01 285);
-  --card-foreground: oklch(0.955 0.004 286);
-  --popover: oklch(0.205 0.012 285);
-  --popover-foreground: oklch(0.955 0.004 286);
+  --background: #0b1220;
+  --foreground: #e2e8f0;
+  --surface: #0f172a;
+  --card: #111a2d;
+  --card-foreground: #e2e8f0;
+  --popover: #152036;
+  --popover-foreground: #e2e8f0;
 
-  --primary: oklch(0.68 0.18 280);
-  --primary-foreground: oklch(0.16 0.03 280);
-  --secondary: oklch(0.245 0.012 285);
-  --secondary-foreground: oklch(0.92 0.006 286);
-  --muted: oklch(0.235 0.011 285);
-  --muted-foreground: oklch(0.7 0.016 286);
-  --accent: oklch(0.27 0.05 281);
-  --accent-foreground: oklch(0.88 0.07 282);
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1e293b;
+  --secondary-foreground: #e2e8f0;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #172554;
+  --accent-foreground: #93c5fd;
 
-  --destructive: oklch(0.68 0.19 22);
-  --success: oklch(0.72 0.14 158);
-  --warning: oklch(0.8 0.14 70);
-  --info: oklch(0.72 0.13 240);
+  --destructive: #f87171;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #38bdf8;
 
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.68 0.18 280);
+  --border: rgb(148 163 184 / 0.16);
+  --input: rgb(148 163 184 / 0.24);
+  --ring: #3b82f6;
 
   --chart-1: #9085e9;
   --chart-2: #199e70;
@@ -184,14 +185,14 @@
   --chart-7: #008300;
   --chart-8: #e66767;
 
-  --sidebar: oklch(0.165 0.009 285);
-  --sidebar-foreground: oklch(0.8 0.01 286);
-  --sidebar-primary: oklch(0.68 0.18 280);
-  --sidebar-primary-foreground: oklch(0.16 0.03 280);
-  --sidebar-accent: oklch(0.235 0.014 285);
-  --sidebar-accent-foreground: oklch(0.96 0.004 286);
-  --sidebar-border: oklch(1 0 0 / 7%);
-  --sidebar-ring: oklch(0.68 0.18 280);
+  --sidebar: #0f172a;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #172554;
+  --sidebar-accent-foreground: #bfdbfe;
+  --sidebar-border: rgb(148 163 184 / 0.14);
+  --sidebar-ring: #3b82f6;
 }
 
 @layer base {
@@ -199,13 +200,18 @@
     @apply border-border outline-ring/50;
   }
 
+  /* 17px root (Nov 2026: "bigger letters, more visibility") — every rem-based
+     size and spacing grows with it */
   html {
     scrollbar-gutter: stable;
+    font-size: 106.25%;
   }
 
   body {
     @apply bg-background font-sans text-foreground;
     font-size: 0.875rem;
+    /* Plus Jakarta is a variable font: 450 reads fuller than 400 without looking bold */
+    font-weight: 450;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -244,17 +250,17 @@
   }
 
   .brand-gradient {
-    background-image: linear-gradient(135deg, oklch(0.55 0.24 279) 0%, oklch(0.56 0.23 305) 100%);
+    background-image: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
   }
 
   .text-brand-gradient {
-    background-image: linear-gradient(120deg, oklch(0.55 0.24 279) 0%, oklch(0.6 0.22 310) 100%);
+    background-image: linear-gradient(120deg, #1d4ed8 0%, #3b82f6 100%);
     background-clip: text;
     color: transparent;
   }
 
   .dark .text-brand-gradient {
-    background-image: linear-gradient(120deg, oklch(0.75 0.15 279) 0%, oklch(0.78 0.14 310) 100%);
+    background-image: linear-gradient(120deg, #60a5fa 0%, #93c5fd 100%);
   }
 }
 
@@ -278,4 +284,75 @@
 }
 .prose-lite strong {
   @apply font-semibold text-foreground;
+}
+
+/* the office map's hover card, in the app's own colours */
+.crm-map-popup .maplibregl-popup-content {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border-radius: 10px;
+  padding: 8px 10px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  border: 1px solid var(--border);
+}
+.crm-map-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--popover); }
+.crm-map-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--popover); }
+.crm-map-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--popover); }
+.crm-map-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--popover); }
+
+/* "sheet" tables on detail pages (Nov 2026 — the CSO likes tables): bordered
+   cells, tinted uppercase header, banded rows. Wrap in .crm-box for the frame. */
+.crm-box {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  overflow: hidden;
+}
+.crm-sheet {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13.5px;
+}
+.crm-sheet th {
+  background: color-mix(in oklch, var(--card), var(--primary) 7%);
+  color: color-mix(in oklch, var(--muted-foreground), var(--primary) 25%);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+.crm-sheet td {
+  padding: 8px 12px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+.crm-sheet tr > :last-child {
+  border-right: 0;
+}
+.crm-sheet tbody tr:last-child td {
+  border-bottom: 0;
+}
+.crm-sheet tbody tr:nth-child(even) td {
+  background: color-mix(in oklch, var(--card), var(--primary) 2.5%);
+}
+.crm-sheet tbody tr:hover td {
+  background: color-mix(in oklch, var(--card), var(--primary) 6%);
+}
+.crm-sheet tfoot td {
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  background: color-mix(in oklch, var(--card), var(--primary) 5%);
+  font-weight: 600;
+}
+.crm-sheet .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

@@ -221,7 +221,7 @@ function ReportsPage() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Reports"
         description="Answer any pipeline question — pick a template or build your own, then drill into the records."
@@ -341,7 +341,7 @@ function ReportsPage() {
               <t.icon className="size-4" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{t.title}</span>
+              <span className="block truncate text-[14px] font-medium">{t.title}</span>
               <span className="line-clamp-2 text-xs text-muted-foreground">{t.description}</span>
             </span>
           </button>

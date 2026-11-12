@@ -37,7 +37,7 @@ function OrgPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Org structure"
         description="The building blocks of your organisation. Used on user profiles, SPOCs and for scoped access."

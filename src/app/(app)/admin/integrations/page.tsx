@@ -40,6 +40,8 @@ const KEY_LABELS: Record<string, string> = {
   brightdata: 'Bright Data',
   bouncer: 'Bouncer',
   s3: 'File storage (S3)',
+  openai: 'OpenAI (address reading)',
+  google_geocode: 'Google Geocoding',
 };
 
 const Ok = ({
@@ -88,7 +90,7 @@ function StepRow({ step }: { step: IntegrationStep }) {
     <li className="flex flex-wrap items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{step.label}</p>
-        <p className="font-mono text-[11px] text-muted-foreground">{step.key}</p>
+        <p className="font-mono text-[12px] text-muted-foreground">{step.key}</p>
       </div>
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
         Clients per user
@@ -147,7 +149,7 @@ function ServicePanel({
     {
       onSuccess: (r, v) =>
         r.ok
-          ? toast.success(`${KEY_LABELS[v.provider]} key works`)
+          ? toast.success(`${KEY_LABELS[v.provider] ?? v.provider} key works`)
           : toast.error(r.detail ?? 'Key test failed'),
     }
   );
@@ -317,22 +319,25 @@ function ServicePanel({
         >
           {e ? (
             <ul className="divide-y">
-              {Object.entries(KEY_LABELS).map(([k, label]) => (
-                <li key={k} className="flex items-center justify-between gap-3 py-2 text-[13px]">
-                  <span>{label}</span>
-                  <span className="flex items-center gap-3">
-                    <Ok ok={e.keys[k]} yes="Set" no="Not set" />
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      disabled={!e.keys[k] || (test.isPending && test.variables?.provider === k)}
-                      onClick={() => test.mutate({ provider: k })}
-                    >
-                      {test.isPending && test.variables?.provider === k ? 'Testing…' : 'Test'}
-                    </Button>
-                  </span>
-                </li>
-              ))}
+              {/* each engine reports its own keys */}
+              {Object.keys(e.keys ?? {})
+                .map(k => [k, KEY_LABELS[k] ?? k] as const)
+                .map(([k, label]) => (
+                  <li key={k} className="flex items-center justify-between gap-3 py-2 text-[14px]">
+                    <span>{label}</span>
+                    <span className="flex items-center gap-3">
+                      <Ok ok={e.keys[k]} yes="Set" no="Not set" />
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={!e.keys[k] || (test.isPending && test.variables?.provider === k)}
+                        onClick={() => test.mutate({ provider: k })}
+                      >
+                        {test.isPending && test.variables?.provider === k ? 'Testing…' : 'Test'}
+                      </Button>
+                    </span>
+                  </li>
+                ))}
             </ul>
           ) : (
             <EmptyState compact icon={Cable} title="Pipeline not reachable" />
@@ -443,7 +448,7 @@ function ServicePanel({
 function IntegrationsPage() {
   const q = useQuery({ queryKey: ['integrations'], queryFn: integrationsApi.list });
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Integrations"
         description="The CSR pipeline does the research; the CRM keeps every result and decides what is saved."

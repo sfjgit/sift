@@ -30,12 +30,40 @@ export function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
   );
 }
 
+/** the page's name: bold brand colour with a gradient underline (hover = what the page is for) */
+export function PageTitle({
+  children,
+  hint,
+  className,
+}: {
+  children: ReactNode;
+  hint?: string;
+  className?: string;
+}) {
+  return (
+    <h1
+      title={hint}
+      className={cn(
+        'relative mr-2 shrink-0 pb-1 text-xl leading-tight font-bold tracking-tight text-primary',
+        'after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:rounded-full after:bg-gradient-to-r after:from-primary after:via-fuchsia-500 after:to-amber-400',
+        className
+      )}
+    >
+      {children}
+    </h1>
+  );
+}
+
+// Slim header for pages without a table: the coloured title, quick tabs and
+// actions in one row, no border; the description shows when hovering the title.
+// (Table pages put their title in the table's toolbar instead — no header row.)
 export function PageHeader({
   title,
   description,
   actions,
   crumbs,
   icon,
+  tabs,
   className,
   children,
 }: {
@@ -44,19 +72,21 @@ export function PageHeader({
   actions?: ReactNode;
   crumbs?: Crumb[];
   icon?: ReactNode;
+  /** quick tabs / segmented control shown in the title row (description then hides) */
+  tabs?: ReactNode;
   className?: string;
   children?: ReactNode;
 }) {
   return (
-    <header className={cn('flex flex-col gap-3', className)}>
+    <header className={cn('flex flex-col gap-2', className)}>
       {crumbs && crumbs.length > 0 && <Breadcrumbs crumbs={crumbs} />}
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {icon}
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold sm:text-[22px]">{title}</h1>
-            {description && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>}
-          </div>
+          <PageTitle hint={typeof description === 'string' ? description : undefined}>
+            {title}
+          </PageTitle>
+          {tabs}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>

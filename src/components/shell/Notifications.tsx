@@ -6,7 +6,16 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCheck, MessageSquareText, ShieldAlert, UserCheck, UserPlus, Workflow, XCircle } from 'lucide-react';
+import {
+  Bell,
+  CheckCheck,
+  MessageSquareText,
+  ShieldAlert,
+  UserCheck,
+  UserPlus,
+  Workflow,
+  XCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { EmptyState, Spinner } from '@/components/common/states';
@@ -43,7 +52,13 @@ const SEVERITY_CLS: Partial<Record<NotificationSeverity, string>> = {
   ERROR: 'bg-destructive/10 text-destructive',
 };
 
-export function NotificationItem({ n, onOpen }: { n: AppNotification; onOpen: (n: AppNotification) => void }) {
+export function NotificationItem({
+  n,
+  onOpen,
+}: {
+  n: AppNotification;
+  onOpen: (n: AppNotification) => void;
+}) {
   const meta = ICONS[n.type] ?? ICONS.NOTE_ADDED;
   const cls = (n.severity && SEVERITY_CLS[n.severity]) ?? meta.cls;
   return (
@@ -55,13 +70,19 @@ export function NotificationItem({ n, onOpen }: { n: AppNotification; onOpen: (n
         !n.isRead && 'bg-accent/40'
       )}
     >
-      <span className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg', cls)}>
+      <span
+        className={cn('mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg', cls)}
+      >
         <meta.icon className="size-3.5" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] leading-snug font-medium">{n.title}</span>
-        {n.body && <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{n.body}</span>}
-        <span className="mt-1 block text-[11px] text-muted-foreground">{fmtRelative(n.createdAt)}</span>
+        <span className="block text-[14px] leading-snug font-medium">{n.title}</span>
+        {n.body && (
+          <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{n.body}</span>
+        )}
+        <span className="mt-1 block text-[12px] text-muted-foreground">
+          {fmtRelative(n.createdAt)}
+        </span>
       </span>
       {!n.isRead && <span className="mt-2 size-2 shrink-0 rounded-full bg-primary" />}
     </button>
@@ -87,10 +108,16 @@ export function NotificationsPopover() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notifications" {...tourTarget('notifications')}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          aria-label="Notifications"
+          {...tourTarget('notifications')}
+        >
           <Bell />
           {unread > 0 && (
-            <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9.5px] leading-4 font-bold text-primary-foreground ring-2 ring-background">
+            <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10.5px] leading-4 font-bold text-primary-foreground ring-2 ring-background">
               {unread > 9 ? '9+' : unread}
             </span>
           )}
@@ -120,7 +147,12 @@ export function NotificationsPopover() {
           ) : data?.data.length ? (
             data.data.map(n => <NotificationItem key={n.id} n={n} onOpen={openOne} />)
           ) : (
-            <EmptyState compact icon={Bell} title="You’re all caught up" description="Assignments, notes, run results and alerts show up here." />
+            <EmptyState
+              compact
+              icon={Bell}
+              title="You’re all caught up"
+              description="Assignments, notes, run results and alerts show up here."
+            />
           )}
         </div>
         <div className="border-t p-1.5">

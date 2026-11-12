@@ -85,7 +85,12 @@ function ProfileTab() {
             { label: 'First name', value: user.firstName },
             { label: 'Last name', value: user.lastName },
             { label: 'Display name', value: user.displayName },
-            { label: 'Employee ID', value: user.employeeId && <span className="font-mono text-[13px]">{user.employeeId}</span> },
+            {
+              label: 'Employee ID',
+              value: user.employeeId && (
+                <span className="font-mono text-[14px]">{user.employeeId}</span>
+              ),
+            },
             { label: 'Email', value: user.email },
             { label: 'Role', value: user.role?.name },
             { label: 'Department', value: user.department?.name },
@@ -93,7 +98,7 @@ function ProfileTab() {
           ]}
         />
       </Panel>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 text-[13px] text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 text-[14px] text-muted-foreground">
         <span>Profile details are managed by your admins. Ask one if something here is wrong.</span>
         {can('users.read') && (
           <Button asChild variant="outline" size="sm">
@@ -148,7 +153,10 @@ function StrengthMeter({ password }: { password: string }) {
         {[1, 2, 3, 4].map(i => (
           <span
             key={i}
-            className={cn('h-1 flex-1 rounded-full transition-colors', i <= score ? STRENGTH[score].cls : 'bg-muted')}
+            className={cn(
+              'h-1 flex-1 rounded-full transition-colors',
+              i <= score ? STRENGTH[score].cls : 'bg-muted'
+            )}
           />
         ))}
       </div>
@@ -170,7 +178,9 @@ function SecurityTab() {
   const submit = form.handleSubmit(async v => {
     try {
       await authApi.changePassword(v.currentPassword, v.newPassword);
-      toast.success('Password changed', { description: 'Use the new password next time you sign in.' });
+      toast.success('Password changed', {
+        description: 'Use the new password next time you sign in.',
+      });
       form.reset();
     } catch (e) {
       const err = e as ApiError;
@@ -180,7 +190,11 @@ function SecurityTab() {
   });
 
   return (
-    <Panel title="Change password" description="You’ll stay signed in on this device." className="max-w-xl">
+    <Panel
+      title="Change password"
+      description="You’ll stay signed in on this device."
+      className="max-w-xl"
+    >
       <form onSubmit={submit} noValidate className="space-y-4">
         <TextField
           form={form}
@@ -226,7 +240,13 @@ function SecurityTab() {
 const THEMES = [
   { value: 'light', label: 'Light', icon: Sun, preview: 'bg-white', bar: 'bg-zinc-200' },
   { value: 'dark', label: 'Dark', icon: Moon, preview: 'bg-zinc-900', bar: 'bg-zinc-700' },
-  { value: 'system', label: 'System', icon: Monitor, preview: 'bg-gradient-to-r from-white from-50% to-zinc-900 to-50%', bar: 'bg-zinc-400' },
+  {
+    value: 'system',
+    label: 'System',
+    icon: Monitor,
+    preview: 'bg-gradient-to-r from-white from-50% to-zinc-900 to-50%',
+    bar: 'bg-zinc-400',
+  },
 ] as const;
 
 function PreferenceRow({
@@ -269,12 +289,14 @@ function PreferencesTab() {
     const welcome = ALL_TOURS.find(t => t.id === 'welcome');
     toast.success('Tours reset', {
       description: 'Each page’s tour plays again the next time you open it.',
-      action: welcome ? { label: 'Start now', onClick: () => launchTour(welcome, router) } : undefined,
+      action: welcome
+        ? { label: 'Start now', onClick: () => launchTour(welcome, router) }
+        : undefined,
     });
   };
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="grid items-start gap-3 xl:grid-cols-2">
       <Panel title="Appearance" description="Applies on this device.">
         <div role="radiogroup" aria-label="Theme" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {THEMES.map(t => {
@@ -319,7 +341,11 @@ function PreferencesTab() {
             title="Collapse sidebar"
             description="Icons only, for more room. You can also toggle it from the sidebar."
           >
-            <Switch checked={sidebarCollapsed} onCheckedChange={toggleSidebar} aria-label="Collapse sidebar" />
+            <Switch
+              checked={sidebarCollapsed}
+              onCheckedChange={toggleSidebar}
+              aria-label="Collapse sidebar"
+            />
           </PreferenceRow>
           <PreferenceRow
             icon={RotateCcw}
@@ -330,8 +356,16 @@ function PreferencesTab() {
               Replay all tours
             </Button>
           </PreferenceRow>
-          <PreferenceRow icon={Keyboard} title="Keyboard shortcuts" description="Move around without the mouse.">
-            <Button variant="outline" size="sm" onClick={() => useUi.getState().setShortcutsOpen(true)}>
+          <PreferenceRow
+            icon={Keyboard}
+            title="Keyboard shortcuts"
+            description="Move around without the mouse."
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => useUi.getState().setShortcutsOpen(true)}
+            >
               View shortcuts
             </Button>
           </PreferenceRow>
@@ -348,13 +382,20 @@ export default function SettingsPage() {
 
   const change = (next: string) => {
     setTab(next as Tab);
-    window.history.replaceState(window.history.state, '', `${window.location.pathname}?tab=${next}`);
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}?tab=${next}`
+    );
   };
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="Settings" description="Your account, password and how the CRM looks for you." />
-      <Tabs value={tab} onValueChange={change} className="gap-5">
+    <div className="space-y-3">
+      <PageHeader
+        title="Settings"
+        description="Your account, password and how the CRM looks for you."
+      />
+      <Tabs value={tab} onValueChange={change} className="gap-3">
         <TabsList>
           <TabsTrigger value="profile" className="px-3">
             <UserRound /> Profile

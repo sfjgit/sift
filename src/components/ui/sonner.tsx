@@ -14,7 +14,7 @@ export function Toaster(props: ToasterProps) {
       position="bottom-right"
       richColors
       closeButton
-      toastOptions={{ classNames: { toast: 'font-sans text-[13px]! rounded-lg!' } }}
+      toastOptions={{ classNames: { toast: 'font-sans text-[14px]! rounded-lg!' } }}
       style={
         {
           '--normal-bg': 'var(--popover)',

@@ -28,7 +28,6 @@ import {
 import { Kbd } from '@/components/ui/kbd';
 import { Segmented } from '@/components/ui/segmented';
 import { HelpButton } from '@/features/help/HelpSheet';
-import { PageHeader } from '@/components/common/PageHeader';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { DataTable, useTableState } from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
@@ -137,44 +136,35 @@ function SpocsPage() {
   const columns = useMemo(() => spocColumns({ actions: rowActions }), [rowActions]);
 
   return (
-    <div className="space-y-5">
-      <PageHeader
+    <div className="space-y-3">
+      <DataTable
         title="SPOCs"
-        description="Your contacts across every client — who owns them, how reachable they are, and where they stand."
+        titleHint="Your contacts across every client — who owns them, how reachable they are, and where they stand."
         actions={
           <>
             <HelpButton module="spocs" />
             {can('spocs.create') && (
-              <Button onClick={() => openSpocDialog({})} {...tourTarget('spocs-new')}>
+              <Button size="sm" onClick={() => openSpocDialog({})} {...tourTarget('spocs-new')}>
                 <Plus /> New SPOC
                 <Kbd className="ml-1 border-white/20 bg-white/15 text-primary-foreground">N</Kbd>
               </Button>
             )}
           </>
         }
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div {...tourTarget('spocs-quick')}>
-          <Segmented<Quick>
-            value={quick}
-            onChange={setQuick}
-            options={[
-              { value: 'all', label: 'All SPOCs', icon: Users },
-              { value: 'mine', label: 'My SPOCs', icon: UserRound },
-              { value: 'ready', label: 'Ready to contact', icon: Sparkles },
-              { value: 'inactive', label: 'Inactive', icon: ArchiveX },
-            ]}
-          />
-        </div>
-        {can('spocs.assign') && (
-          <p className="text-xs text-muted-foreground" {...tourTarget('spocs-select-hint')}>
-            Tip: tick rows to reassign many SPOCs at once.
-          </p>
-        )}
-      </div>
-
-      <DataTable
+        toolbar={
+          <div {...tourTarget('spocs-quick')}>
+            <Segmented<Quick>
+              value={quick}
+              onChange={setQuick}
+              options={[
+                { value: 'all', label: 'All SPOCs', icon: Users },
+                { value: 'mine', label: 'My SPOCs', icon: UserRound },
+                { value: 'ready', label: 'Ready to contact', icon: Sparkles },
+                { value: 'inactive', label: 'Inactive', icon: ArchiveX },
+              ]}
+            />
+          </div>
+        }
         id="spocs"
         table={table}
         query={query}

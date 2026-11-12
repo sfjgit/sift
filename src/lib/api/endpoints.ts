@@ -4,13 +4,36 @@
 // Every crm-core-service call in one place. Plain CRUD collections use
 // createResource; anything bespoke is a small typed function next to it.
 
-import { api } from './client';
+import { api, ApiError, http, toApiError } from './client';
+import type {
+  AiCanvasResult,
+  AiCanvasSpec,
+  AiCommandResult,
+  AiCommandTemplate,
+  AiMe,
+  AiMode,
+  AiQuotaPolicy,
+  AiReportTemplate,
+  AiSettings,
+  AiUsage,
+  AiUsageFilters,
+  AiUsageMode,
+  AiQuotaPeriod,
+} from '@/types/ai';
 import { createResource } from './resource';
 import type { ListParams } from '@/types/api';
 import type {
   BulkResult,
   ClientActivity,
+  ClientCorporateFinancial,
   ClientDetail,
+  ClientDocument,
+  ClientCsrFinancial,
+  ClientCsrProgram,
+  CsrAgency,
+  CsrProgramInput,
+  CorporateFinancialInput,
+  CsrFinancialInput,
   ClientInput,
   ClientListItem,
   ClientLocation,
@@ -61,6 +84,14 @@ import type {
   UserOption,
 } from '@/types/org';
 import type { Breakdown, Overview, Trend } from '@/types/reports';
+import type { ClientMapData } from '@/features/map/types';
+import type { ExportDetails, ExportPart } from '@/features/clients/exportSheets';
+import type {
+  TypedCheck,
+  WebsiteCheck,
+  WebsiteHistoryRow,
+  WebsiteSuggestion,
+} from '@/features/website/types';
 
 // ── auth ─────────────────────────────────────────────────────────────────────
 
@@ -116,6 +147,18 @@ export const clientsApi = {
     api.post<ClientLocation>(`/clients/${id}/locations`, body),
   updateLocation: (id: string, locationId: string, body: LocationInput) =>
     api.patch<ClientLocation>(`/clients/${id}/locations/${locationId}`, body),
+  /** replace the website (the old one stays in the history); runId = from the website check */
+  replaceWebsite: (id: string, body: { website: string; runId?: string; force?: boolean }) =>
+    api.post<{ website: string; rerun: string[] }>(`/clients/${id}/website`, body),
+  websiteHistory: (id: string) => api.get<WebsiteHistoryRow[]>(`/clients/${id}/website-history`),
+  /** an admin checks a typed website before saving it */
+  checkWebsite: (id: string, website: string) =>
+    api.post<TypedCheck>(`/clients/${id}/website/check`, { website }),
+  /** nested data for an export's extra sheets (offices, CSR by FY, reports, SPOCs) */
+  exportDetails: (ids: string[], parts: ExportPart[]) =>
+    api.post<ExportDetails>('/clients/export-details', { ids, parts }),
+  /** offices with coordinates of the clients you can see — the 3D office map */
+  map: (clientId?: string) => api.get<ClientMapData>('/clients/map', { clientId }),
   removeLocation: (id: string, locationId: string) =>
     api.delete(`/clients/${id}/locations/${locationId}`),
   saveTechnology: (id: string, categoryId: string, details: string) =>
@@ -128,6 +171,30 @@ export const clientsApi = {
       `/clients/${id}/documents/${documentId}/url`,
       download ? { download: '1' } : undefined
     ),
+  /** replaces the file already held for the same type + FY */
+  uploadDocument: (id: string, file: File, typeId: string, fy: string) => {
+    const form = new FormData();
+    form.append('typeId', typeId);
+    form.append('fy', fy);
+    form.append('file', file);
+    return api.upload<ClientDocument>(`/clients/${id}/documents`, form);
+  },
+  removeDocument: (id: string, documentId: string) =>
+    api.delete(`/clients/${id}/documents/${documentId}`),
+  saveCsrFinancial: (id: string, body: CsrFinancialInput) =>
+    api.put<ClientCsrFinancial>(`/clients/${id}/financials`, body),
+  removeCsrFinancial: (id: string, financialId: string) =>
+    api.delete(`/clients/${id}/financials/${financialId}`),
+  createCsrProgram: (id: string, body: CsrProgramInput) =>
+    api.post<ClientCsrProgram>(`/clients/${id}/csr-programs`, body),
+  updateCsrProgram: (id: string, programId: string, body: Partial<CsrProgramInput>) =>
+    api.patch<ClientCsrProgram>(`/clients/${id}/csr-programs/${programId}`, body),
+  removeCsrProgram: (id: string, programId: string) =>
+    api.delete(`/clients/${id}/csr-programs/${programId}`),
+  saveCorporateFinancial: (id: string, body: CorporateFinancialInput) =>
+    api.put<ClientCorporateFinancial>(`/clients/${id}/corporate-financials`, body),
+  removeCorporateFinancial: (id: string, financialId: string) =>
+    api.delete(`/clients/${id}/corporate-financials/${financialId}`),
 };
 
 // ── spocs ────────────────────────────────────────────────────────────────────
@@ -171,6 +238,23 @@ export const rolesApi = {
   >('roles', '/roles', { updateMethod: 'put' }),
   saveGrants: (roleId: string, grants: { permissionKey: string; scope?: string }[]) =>
     api.put<{ count: number }>(`/roles/${roleId}/permissions`, { grants }),
+};
+
+/** which table columns each role may not see (admin drag and drop) */
+export interface ColumnAccessRole {
+  id: string;
+  name: string;
+  isSystem: boolean;
+  users: number;
+}
+export const columnAccessApi = {
+  mine: (table: string) => api.get<{ hidden: string[] }>(`/column-access/${table}/mine`),
+  get: (table: string) =>
+    api.get<{ roles: ColumnAccessRole[]; hidden: Record<string, string[]> }>(
+      `/column-access/${table}`
+    ),
+  save: (table: string, roleId: string, hidden: string[]) =>
+    api.put<{ hidden: string[] }>(`/column-access/${table}/${roleId}`, { hidden }),
 };
 
 export const permissionsApi = {
@@ -395,6 +479,11 @@ export interface GeoCity {
 
 const csvParam = (v?: string[]) => (v?.length ? v.join(',') : undefined);
 
+export const csrAgenciesApi = {
+  list: (search?: string) =>
+    api.get<(CsrAgency & { _count: { programs: number } })[]>('/csr-agencies', { search }),
+};
+
 export const geoApi = {
   countries: () => api.get<GeoCountry[]>('/geo/countries'),
   /** names or codes; none = India */
@@ -407,4 +496,103 @@ export const geoApi = {
       q: p.q || undefined,
       limit: p.limit,
     }),
+};
+
+// a client's website that no longer opens: what the website check found for me
+export const websiteApi = {
+  mine: () => api.get<WebsiteSuggestion[]>('/website-suggestions/mine'),
+  one: (runId: string) => api.get<WebsiteCheck>(`/website-suggestions/${runId}`),
+  dismiss: (runId: string) => api.post<void>(`/website-suggestions/${runId}/dismiss`),
+  requestAdmin: (runId: string) =>
+    api.post<{ alreadyAsked: boolean }>(`/website-suggestions/${runId}/request-admin`),
+};
+
+// ── AI assistant (read-only command + canvas) ────────────────────────────────
+
+/** save a server-made file (xlsx / pptx) the browser received as a blob */
+const saveBlob = (blob: Blob, fallbackName: string, disposition?: string) => {
+  const name = /filename="?([^";]+)"?/.exec(disposition ?? '')?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+/** a refused file download carries its JSON error inside a Blob — read it out */
+const blobRequest = async <T,>(run: () => Promise<T>): Promise<T> => {
+  try {
+    return await run();
+  } catch (err) {
+    const data = (err as { response?: { status?: number; data?: unknown } }).response?.data;
+    if (data instanceof Blob) {
+      try {
+        const body = JSON.parse(await data.text()) as { message?: string; code?: string };
+        throw new ApiError((err as { response: { status: number } }).response.status, body.message ?? 'Export failed', body.code);
+      } catch (inner) {
+        if (inner instanceof ApiError) throw inner;
+      }
+    }
+    throw toApiError(err);
+  }
+};
+
+export const aiApi = {
+  me: () => api.get<AiMe>('/ai/me'),
+  setPreference: (mode: AiMode) =>
+    api.put<Pick<AiMe, 'enabled' | 'allowed' | 'active' | 'preference' | 'reason'>>('/ai/me/preference', { mode }),
+  command: (input: string) => api.post<AiCommandResult>('/ai/command', { input }),
+  /** free rule-based insights for a page (no AI call) */
+  insights: (page: 'clients' | 'spocs' | 'pipeline' | 'overview') =>
+    api.get<{ page: string; lines: string[] }>('/ai/insights', { page }),
+  /** the browser answered by itself (page by name, a repeat) — free, audited */
+  logLocal: (input: string, url: string | null, kind: 'page' | 'repeat' | 'control') =>
+    api.post('/ai/command/local', { input, url, kind }),
+
+  generate: (prompt: string) => api.post<AiCanvasResult>('/ai/canvas/generate', { prompt }),
+  run: (spec: AiCanvasSpec, templateId?: string) =>
+    api.post<AiCanvasResult>('/ai/canvas/run', { spec, ...(templateId && { templateId }) }),
+  templates: () => api.get<AiReportTemplate[]>('/ai/canvas/templates'),
+  saveTemplate: (body: { name: string; prompt?: string; spec: AiCanvasSpec; isShared?: boolean }) =>
+    api.post<AiReportTemplate>('/ai/canvas/templates', body),
+  deleteTemplate: (id: string) => api.delete(`/ai/canvas/templates/${id}`),
+  /** xlsx / pptx: downloads the file; pdf: checks + audits, returns the footer to print */
+  exportCanvas: async (spec: AiCanvasSpec, format: 'xlsx' | 'pptx' | 'pdf') => {
+    if (format === 'pdf') return api.post<{ footer: string }>('/ai/canvas/export', { spec, format });
+    const res = await blobRequest(() =>
+      http.post('/ai/canvas/export', { spec, format }, { responseType: 'blob', timeout: 120_000 })
+    );
+    saveBlob(res.data as Blob, `canvas.${format}`, res.headers['content-disposition'] as string | undefined);
+    return null;
+  },
+
+  settings: () => api.get<AiSettings>('/ai/settings'),
+  updateSettings: (body: Partial<Pick<AiSettings['setting'], 'commandEnabled' | 'canvasEnabled' | 'monthlyBudgetInr' | 'alertThresholds'>>) =>
+    api.put<AiSettings['setting']>('/ai/settings', body),
+  upsertQuotas: (policies: (Omit<AiQuotaPolicy, 'id' | 'isActive'> & { isActive?: boolean })[]) =>
+    api.put<AiQuotaPolicy[]>('/ai/settings/quotas', { policies }),
+  upsertOverride: (body: { userId: string; mode: AiUsageMode; period: AiQuotaPeriod; maxCount: number | null; reason?: string }) =>
+    api.post('/ai/settings/overrides', body),
+  deleteOverride: (id: string) => api.delete(`/ai/settings/overrides/${id}`),
+  addPricing: (body: {
+    provider: string;
+    model: string;
+    inputPerMTokUsd: number;
+    outputPerMTokUsd: number;
+    cacheReadPerMTokUsd: number;
+    cacheWritePerMTokUsd: number;
+    usdToInr: number;
+    effectiveFrom?: string;
+  }) => api.post('/ai/settings/pricing', body),
+  commandTemplates: () => api.get<AiCommandTemplate[]>('/ai/settings/templates'),
+  setCommandTemplate: (id: string, isActive: boolean) => api.patch(`/ai/settings/templates/${id}`, { isActive }),
+
+  usage: (filters: AiUsageFilters) => api.get<AiUsage>('/ai/usage', filters),
+  exportUsage: async (filters: AiUsageFilters) => {
+    const res = await blobRequest(() =>
+      http.get('/ai/usage/export', { params: filters, responseType: 'blob', timeout: 120_000 })
+    );
+    saveBlob(res.data as Blob, 'ai-usage.xlsx', res.headers['content-disposition'] as string | undefined);
+  },
 };

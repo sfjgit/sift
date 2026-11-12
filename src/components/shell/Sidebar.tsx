@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Pin, PinOff } from 'lucide-react';
 import { Logo } from '@/components/common/Logo';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { FOOTER_NAV, NAV_SECTIONS, type NavItem } from '@/config/navigation';
@@ -53,7 +53,7 @@ function NavLink({
       {...(item.tour ? tourTarget(item.tour) : {})}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-[13px] font-medium transition-colors',
+        'group relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-[14px] font-medium transition-colors',
         active
           ? 'bg-sidebar-accent text-sidebar-accent-foreground'
           : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground',
@@ -70,7 +70,7 @@ function NavLink({
       {!!badge && (
         <span
           className={cn(
-            'rounded-full bg-primary text-[10px] leading-4 font-semibold text-primary-foreground tabular',
+            'rounded-full bg-primary text-[11px] leading-4 font-semibold text-primary-foreground tabular',
             collapsed ? 'absolute top-0.5 right-1 size-2 p-0 text-[0px]' : 'ml-auto px-1.5'
           )}
         >
@@ -89,14 +89,56 @@ function NavLink({
   );
 }
 
+/** small pin/unpin toggle used by the auto-hiding sidebar and top bar */
+export function PinToggle({
+  pinned,
+  onToggle,
+  what,
+  side = 'bottom',
+  className,
+}: {
+  pinned: boolean;
+  onToggle: () => void;
+  what: 'sidebar' | 'top bar';
+  side?: 'top' | 'right' | 'bottom' | 'left';
+  className?: string;
+}) {
+  const label = `${pinned ? 'Unpin' : 'Pin'} ${what}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={label}
+          aria-pressed={pinned}
+          className={cn(
+            'flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+            pinned && 'text-primary',
+            className
+          )}
+        >
+          {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side={side}>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function SidebarContent({
   collapsed = false,
   onToggle,
   onNavigate,
+  pinned,
+  onPinToggle,
 }: {
   collapsed?: boolean;
   onToggle?: () => void;
   onNavigate?: () => void;
+  /** desktop auto-hide: pass both to show the pin toggle */
+  pinned?: boolean;
+  onPinToggle?: () => void;
 }) {
   const { sections, footer } = useVisibleNav();
   const unread = useUnreadCount().data?.meta.unread ?? 0;
@@ -115,7 +157,7 @@ export function SidebarContent({
         {sections.map(section => (
           <div key={section.label} className="space-y-0.5">
             {!collapsed ? (
-              <p className="px-2.5 pb-1 text-[10.5px] font-semibold tracking-wider text-muted-foreground/80 uppercase">
+              <p className="px-2.5 pb-1 text-[11.5px] font-semibold tracking-wider text-muted-foreground/80 uppercase">
                 {section.label}
               </p>
             ) : (
@@ -138,23 +180,36 @@ export function SidebarContent({
             badge={item.href === '/notifications' ? unread : undefined}
           />
         ))}
-        {onToggle && (
-          <button
-            type="button"
-            onClick={onToggle}
-            className={cn(
-              'mt-1 flex h-8 w-full items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground',
-              collapsed && 'justify-center px-0'
+        {(onToggle || onPinToggle) && (
+          <div className={cn('mt-1 flex items-center gap-1', collapsed && 'flex-col')}>
+            {onToggle && (
+              <button
+                type="button"
+                onClick={onToggle}
+                className={cn(
+                  'flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2.5 text-[14px] text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground',
+                  collapsed ? 'justify-center px-0' : 'flex-1'
+                )}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {collapsed ? (
+                  <PanelLeftOpen className="size-4" />
+                ) : (
+                  <PanelLeftClose className="size-4" />
+                )}
+                {!collapsed && 'Collapse'}
+              </button>
             )}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? (
-              <PanelLeftOpen className="size-4" />
-            ) : (
-              <PanelLeftClose className="size-4" />
+            {onPinToggle && (
+              <PinToggle
+                pinned={!!pinned}
+                onToggle={onPinToggle}
+                what="sidebar"
+                side="right"
+                className="hover:bg-sidebar-accent/60"
+              />
             )}
-            {!collapsed && 'Collapse'}
-          </button>
+          </div>
         )}
       </div>
     </div>

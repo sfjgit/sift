@@ -7,9 +7,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { History } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable, useTableState } from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { authLogColumns, authLogFilterKeys, authLogFilters } from '@/features/admin/authLogColumns';
@@ -24,7 +22,11 @@ const dayBound = (v: ListParams[string], end: boolean) =>
     : v;
 
 const toApiParams = (p: ListParams): ListParams => {
-  const out: ListParams = { ...p, startDate: dayBound(p.startDate, false), endDate: dayBound(p.endDate, true) };
+  const out: ListParams = {
+    ...p,
+    startDate: dayBound(p.startDate, false),
+    endDate: dayBound(p.endDate, true),
+  };
   delete out.search; // not supported by /auth-logs
   delete out.sortBy;
   return out;
@@ -40,12 +42,10 @@ function AuthLogsPage() {
   });
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Login history"
-        description="Every sign-in, sign-out, failed attempt and password change — newest first."
-      />
+    <div className="space-y-3">
       <DataTable
+        title="Login history"
+        titleHint="Every sign-in, sign-out, failed attempt and password change — newest first, in your timezone."
         id="auth_logs"
         table={table}
         query={query}
@@ -59,9 +59,6 @@ function AuthLogsPage() {
           description: 'Events appear here as soon as people start signing in.',
         }}
       />
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <History className="size-3.5" /> Times are shown in your browser’s timezone.
-      </p>
     </div>
   );
 }

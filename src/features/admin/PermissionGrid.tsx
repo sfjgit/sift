@@ -144,7 +144,7 @@ export function PermissionGrid({
     <div className="space-y-6">
       {GROUPS.map(group => (
         <div key={group} className="space-y-3">
-          <h2 className="px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+          <h2 className="px-1 text-[12px] font-semibold tracking-wider text-muted-foreground uppercase">
             {group}
           </h2>
           {MODULE_LIST.filter(m => m.group === group).map(m => {
@@ -238,22 +238,22 @@ export function PermissionGrid({
                           <span className="min-w-0">
                             <span
                               className={cn(
-                                'flex items-center gap-2 text-[13px] font-medium',
+                                'flex items-center gap-2 text-[14px] font-medium',
                                 !on && 'text-foreground/80'
                               )}
                             >
                               {a.label}
                               {a.reserved && (
-                                <Pill dot={false} className="h-4 px-1.5 text-[10px]">
+                                <Pill dot={false} className="h-4 px-1.5 text-[11px]">
                                   Not enforced yet
                                 </Pill>
                               )}
                             </span>
-                            <span className="block font-mono text-[11px] text-muted-foreground">
+                            <span className="block font-mono text-[12px] text-muted-foreground">
                               {a.key}
                             </span>
                             {a.requires?.length ? (
-                              <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <span className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
                                 <Link2 className="size-3" /> Needs{' '}
                                 {a.requires.map(labelOf).join(', ')}
                               </span>

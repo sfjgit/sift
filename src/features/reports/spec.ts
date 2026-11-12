@@ -66,6 +66,7 @@ export const DIMS: Record<ReportEntity, Dim[]> = {
     { key: 'status', label: 'Status', drill: 'status' },
     { key: 'industry', label: 'Industry', drill: 'industryId' },
     { key: 'category', label: 'Category', drill: 'categoryId' },
+    { key: 'employeeSize', label: 'Employee size', drill: 'employeeSizeId' },
     { key: 'state', label: 'State', drill: 'state' },
     { key: 'city', label: 'City', drill: 'city' },
     { key: 'createdBy', label: 'Added by' },

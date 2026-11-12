@@ -15,7 +15,10 @@ export function usePermissions() {
   const isSuperAdmin = !!user?.isSuperAdmin;
 
   /** can('spocs.assign') */
-  const can = useCallback((key: PermissionKey) => isSuperAdmin || !!map?.[key], [isSuperAdmin, map]);
+  const can = useCallback(
+    (key: PermissionKey) => isSuperAdmin || !!map?.[key],
+    [isSuperAdmin, map]
+  );
 
   const canAny = useCallback(
     (keys: PermissionKey[]) => isSuperAdmin || keys.some(k => !!map?.[k]),

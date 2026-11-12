@@ -1,24 +1,23 @@
 // File: ClientHeader.tsx
 // Path: src/features/clients/detail/ClientHeader.tsx
+//
+// The client page's header — CASPA-like and quiet: a star, the name, status and
+// one line of context, Back; on the right Run all steps and the actions.
 
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  ArrowLeft,
   BadgeCheck,
-  Building2,
-  CalendarDays,
   ChevronDown,
-  ContactRound,
   Globe,
-  Linkedin,
-  MapPin,
   MoreHorizontal,
   Pencil,
+  Star,
   Trash2,
   UserPlus,
-  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,9 +27,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CompanyMark } from '@/components/common/CompanyMark';
-import { UserAvatar } from '@/components/common/UserAvatar';
-import { AssignClientsDialog } from '@/features/clients/AssignClientsDialog';
 import { CLIENT_STATUS, ClientStatusBadge, Pill } from '@/components/common/badges';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -38,17 +34,26 @@ import { tourTarget } from '@/features/tour/tour.constants';
 import { useAction } from '@/hooks/useResource';
 import { clientHooks } from '@/hooks/queries';
 import { clientsApi } from '@/lib/api/endpoints';
-import { fmtDate, fullName, hostOf, placeOf } from '@/lib/format';
+import { fmtDate, hostOf, placeOf } from '@/lib/format';
 import { useUi } from '@/stores/ui';
+import { StepRunButtons } from './StepRunButtons';
 import type { ClientDetail, ClientStatus } from '@/types/crm';
 
-export function ClientHeader({ client, onEdit }: { client: ClientDetail; onEdit: () => void }) {
+export function ClientHeader({
+  client,
+  onEdit,
+  onRun,
+}: {
+  client: ClientDetail;
+  onEdit: () => void;
+  /** Run all steps was clicked */
+  onRun: (stepKey: string) => void;
+}) {
   const router = useRouter();
   const confirm = useConfirm();
   const { can } = usePermissions();
   const openSpocDialog = useUi(s => s.openSpocDialog);
   const primary = client.locations.find(l => l.isPrimary) ?? client.locations[0];
-  const [assigning, setAssigning] = useState(false);
 
   const setStatus = useAction((status: ClientStatus) => clientsApi.setStatus(client.id, status), {
     success: (_, s) => `Client marked ${CLIENT_STATUS[s].label.toLowerCase()}`,
@@ -61,183 +66,110 @@ export function ClientHeader({ client, onEdit }: { client: ClientDetail; onEdit:
   });
 
   return (
-    <div className="rounded-xl border bg-card shadow-card" {...tourTarget('client-header')}>
-      <div className="flex flex-wrap items-start gap-4 p-5">
-        <CompanyMark name={client.name} size="xl" />
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-semibold sm:text-2xl">{client.name}</h1>
-            {client.shortName && <Pill dot={false}>{client.shortName}</Pill>}
-            <ClientStatusBadge status={client.status} />
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[13px] text-muted-foreground">
-            {client.industry && <span>{client.industry.label}</span>}
-            {client.category && <span>{client.category.label}</span>}
-            {(client.businessUnit || client.serviceLines?.length > 0) && (
-              <span
-                className="inline-flex items-center gap-1"
-                title="Business unit · service lines"
-              >
-                <Building2 className="size-3.5" />
-                {[
-                  client.businessUnit?.name,
-                  ...(client.serviceLines ?? []).map(s => s.serviceLine.name),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </span>
-            )}
-            {primary && (
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="size-3.5" /> {placeOf(primary)}
-              </span>
-            )}
-            {client.website && (
-              <a
-                href={client.website}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 hover:text-primary"
-              >
-                <Globe className="size-3.5" /> {hostOf(client.website)}
-              </a>
-            )}
-            {client.linkedinUrl && (
-              <a
-                href={client.linkedinUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 hover:text-primary"
-              >
-                <Linkedin className="size-3.5" /> LinkedIn
-              </a>
-            )}
-            {client.cin && <span className="font-mono text-xs">CIN {client.cin}</span>}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-[13px]">
-            <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <Users className="size-3.5" /> Assigned to
-            </span>
-            {client.assignments.length ? (
-              client.assignments.map(a => (
-                <span
-                  key={a.user.id}
-                  className="inline-flex items-center gap-1.5 rounded-full border bg-surface py-0.5 pr-2 pl-0.5"
-                >
-                  <UserAvatar person={a.user} size="xs" />
-                  {fullName(a.user)}
-                </span>
-              ))
-            ) : (
-              <span className="text-muted-foreground">nobody yet</span>
-            )}
-            {can('clients.assign') && (
-              <Button variant="ghost" size="xs" onClick={() => setAssigning(true)}>
-                {client.assignments.length ? 'Change' : 'Assign'}
-              </Button>
-            )}
-          </div>
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-3" {...tourTarget('client-header')}>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Star className="size-6 shrink-0 fill-primary text-primary" />
+          <h1 className="text-[22px] font-bold tracking-tight text-primary">{client.name}</h1>
+          <ClientStatusBadge status={client.status} />
+          {client.shortName && <Pill dot={false}>{client.shortName}</Pill>}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {can('clients.approve') && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant={client.status === 'PENDING' ? 'default' : 'outline'}
-                  size="sm"
-                  {...tourTarget('client-status')}
-                >
-                  {client.status === 'PENDING' ? <BadgeCheck /> : null}
-                  {client.status === 'PENDING' ? 'Approve' : 'Status'}
-                  <ChevronDown className="opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuLabel>Change status</DropdownMenuLabel>
-                {(Object.keys(CLIENT_STATUS) as ClientStatus[])
-                  .filter(s => s !== client.status)
-                  .map(s => (
-                    <DropdownMenuItem key={s} onSelect={() => setStatus.mutate(s)}>
-                      <ClientStatusBadge status={s} />
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          {can('spocs.create') && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => openSpocDialog({ clientId: client.id, clientName: client.name })}
+        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-9 text-[13px] text-muted-foreground">
+          <span>
+            {[client.industry?.label, client.category?.label, primary && placeOf(primary)]
+              .filter(Boolean)
+              .join('  ·  ') || 'No profile details yet'}
+          </span>
+          {client.website && (
+            <a
+              href={client.website}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-primary hover:underline"
             >
-              <UserPlus /> Add SPOC
-            </Button>
+              <Globe className="size-3.5" /> {hostOf(client.website)}
+            </a>
           )}
-          {can('clients.update') && (
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              <Pencil /> Edit
-            </Button>
-          )}
-          {can('clients.delete') && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="More actions">
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={async () => {
-                    if (
-                      await confirm({
-                        title: `Delete ${client.name}?`,
-                        description:
-                          'It disappears from lists and reports. History is kept for audit.',
-                        destructive: true,
-                        confirmLabel: 'Delete client',
-                      })
-                    )
-                      remove.mutate(undefined);
-                  }}
-                >
-                  <Trash2 /> Delete client
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+          <span className="text-[12px]">Updated {fmtDate(client.updatedAt)}</span>
+        </p>
+        <Button asChild variant="outline" size="sm" className="mt-3 ml-9 bg-card">
+          <Link href="/clients">
+            <ArrowLeft /> Back
+          </Link>
+        </Button>
       </div>
-      {assigning && <AssignClientsDialog clients={[client]} open onOpenChange={setAssigning} />}
-      <dl className="grid grid-cols-2 divide-x border-t text-[13px] sm:grid-cols-4">
-        <Meta icon={ContactRound} label="Active SPOCs" value={String(client._count.spocs)} />
-        <Meta icon={MapPin} label="Locations" value={String(client.locations.length)} />
-        <Meta
-          icon={CalendarDays}
-          label="Added"
-          value={`${fmtDate(client.createdAt)} · ${fullName(client.createdBy)}`}
-        />
-        <Meta
-          icon={BadgeCheck}
-          label="Approved"
-          value={
-            client.approvedAt
-              ? `${fmtDate(client.approvedAt)} · ${fullName(client.approvedBy)}`
-              : 'Not yet'
-          }
-        />
-      </dl>
-    </div>
-  );
-}
-
-function Meta({ icon: Icon, label, value }: { icon: typeof MapPin; label: string; value: string }) {
-  return (
-    <div className="min-w-0 px-5 py-3 max-sm:[&:nth-child(3)]:border-l-0 max-sm:[&:nth-child(n+3)]:border-t">
-      <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5" /> {label}
-      </dt>
-      <dd className="mt-0.5 truncate font-medium">{value}</dd>
+      <div className="flex flex-wrap items-center gap-2">
+        <StepRunButtons clientId={client.id} keys={[]} withRunAll onRun={onRun} />
+        {can('clients.approve') && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={client.status === 'PENDING' ? 'default' : 'outline'}
+                size="sm"
+                className={client.status === 'PENDING' ? undefined : 'bg-card'}
+                {...tourTarget('client-status')}
+              >
+                {client.status === 'PENDING' ? <BadgeCheck /> : null}
+                {client.status === 'PENDING' ? 'Approve' : 'Status'}
+                <ChevronDown className="opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuLabel>Change status</DropdownMenuLabel>
+              {(Object.keys(CLIENT_STATUS) as ClientStatus[])
+                .filter(s => s !== client.status)
+                .map(s => (
+                  <DropdownMenuItem key={s} onSelect={() => setStatus.mutate(s)}>
+                    <ClientStatusBadge status={s} />
+                  </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {can('spocs.create') && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-card"
+            onClick={() => openSpocDialog({ clientId: client.id, clientName: client.name })}
+          >
+            <UserPlus /> Add SPOC
+          </Button>
+        )}
+        {can('clients.update') && (
+          <Button variant="outline" size="sm" className="bg-card" onClick={onEdit}>
+            <Pencil /> Edit
+          </Button>
+        )}
+        {can('clients.delete') && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="More actions">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={async () => {
+                  if (
+                    await confirm({
+                      title: `Delete ${client.name}?`,
+                      description:
+                        'It disappears from lists and reports. History is kept for audit.',
+                      destructive: true,
+                      confirmLabel: 'Delete client',
+                    })
+                  )
+                    remove.mutate(undefined);
+                }}
+              >
+                <Trash2 /> Delete client
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </div>
   );
 }

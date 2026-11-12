@@ -50,7 +50,7 @@ function OptionRow({
     <div className="flex items-start justify-between gap-4 rounded-lg border bg-surface px-3 py-2.5">
       <Label
         htmlFor={id}
-        className="flex min-w-0 flex-col items-start gap-0.5 text-[13px] font-medium"
+        className="flex min-w-0 flex-col items-start gap-0.5 text-[14px] font-medium"
       >
         <span className="inline-flex items-center gap-1.5">
           {label}
@@ -196,7 +196,7 @@ export function RunStepDialog({
         )}
         <SlotChips slots={step.slots} />
         {spocIds && spocIds.length > 0 && (
-          <p className="rounded-lg bg-muted/60 px-3 py-2 text-[13px]">
+          <p className="rounded-lg bg-muted/60 px-3 py-2 text-[14px]">
             Only the {spocIds.length} selected SPOC{spocIds.length === 1 ? '' : 's'}.
           </p>
         )}
@@ -211,7 +211,7 @@ export function RunStepDialog({
                 .filter(s => RUN_ALL_STEPS.includes(s.key))
                 .map(s => (
                   <li key={s.key}>
-                    <Label className="flex items-center gap-2 rounded-lg border bg-surface px-3 py-2 text-[13px] font-normal">
+                    <Label className="flex items-center gap-2 rounded-lg border bg-surface px-3 py-2 text-[14px] font-normal">
                       <Checkbox
                         checked={chain.includes(s.key)}
                         onCheckedChange={v =>
@@ -263,7 +263,7 @@ export function RunStepDialog({
               hint={clientBu ? "The client's business unit" : 'Blank = yours, if you have one'}
             >
               {clientBu ? (
-                <p className="flex h-9 items-center gap-1.5 rounded-lg border bg-muted/40 px-3 text-[13px]">
+                <p className="flex h-9 items-center gap-1.5 rounded-lg border bg-muted/40 px-3 text-[14px]">
                   <Building2 className="size-3.5 text-muted-foreground" />
                   {clientBu.name}
                 </p>
@@ -288,7 +288,7 @@ export function RunStepDialog({
               }
             >
               {slOptions.length === 1 ? (
-                <p className="flex h-9 items-center rounded-lg border bg-muted/40 px-3 text-[13px]">
+                <p className="flex h-9 items-center rounded-lg border bg-muted/40 px-3 text-[14px]">
                   {slOptions[0]!.label}
                 </p>
               ) : slOptions.length ? (

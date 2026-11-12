@@ -126,10 +126,10 @@ export const spocColumns = ({
     cell: ({ row }) => {
       const s = row.original;
       return (
-        <div className="flex min-w-[200px] items-center gap-2.5">
-          <UserAvatar person={s} size="md" />
-          <div className="min-w-0">
-            <span className="flex items-center gap-1.5">
+        <div className="flex min-w-[200px] items-center gap-2">
+          <UserAvatar person={s} />
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="flex shrink-0 items-center gap-1.5">
               <Link href={`/spocs/${s.id}`} className="truncate font-medium hover:text-primary">
                 {fullName(s)}
               </Link>
@@ -151,8 +151,8 @@ export const spocColumns = ({
                 </a>
               )}
             </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {s.designation ?? '—'}
+            <span className="truncate text-xs text-muted-foreground">
+              {s.designation ?? ''}
             </span>
           </div>
         </div>

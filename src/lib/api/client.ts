@@ -45,7 +45,11 @@ export const toApiError = (err: unknown): ApiError => {
       | { message?: string; code?: string; errors?: FieldError[] }
       | undefined;
     if (!err.response) {
-      return new ApiError(0, 'Can’t reach the server. Check your connection and try again.', 'NETWORK');
+      return new ApiError(
+        0,
+        'Can’t reach the server. Check your connection and try again.',
+        'NETWORK'
+      );
     }
     const fieldErrors = body?.errors ?? [];
     const message =
@@ -85,12 +89,19 @@ export const refreshSession = (): Promise<boolean> => {
 };
 
 // auth endpoints that must never trigger a refresh loop
-const NO_REFRESH = ['/auth/login', '/auth/refresh', '/auth/forgot-password', '/auth/reset-password'];
+const NO_REFRESH = [
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
 
 http.interceptors.response.use(
   res => res,
   async (error: AxiosError) => {
-    const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
+    const original = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
     const url = original?.url ?? '';
 
     if (
@@ -138,6 +149,14 @@ export const api = {
   },
   async patch<T>(url: string, body?: unknown): Promise<T> {
     const { data } = await http.patch<ApiEnvelope<T>>(url, body);
+    return data.data;
+  },
+  /** multipart upload — the browser sets the boundary (axios drops the JSON default) */
+  async upload<T>(url: string, form: FormData): Promise<T> {
+    const { data } = await http.post<ApiEnvelope<T>>(url, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120_000,
+    });
     return data.data;
   },
   async delete<T = void>(url: string, params?: object): Promise<T> {

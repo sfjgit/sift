@@ -10,7 +10,12 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { EyeOff, Pencil, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { Pill } from '@/components/common/badges';
 import { MarkdownLite } from '@/components/common/MarkdownLite';
@@ -62,17 +67,31 @@ export function FaqFeedback({ faq }: { faq: Faq }) {
   if (vote)
     return (
       <p className="text-xs text-muted-foreground">
-        {vote === 'up' ? 'Thanks — glad it helped.' : 'Thanks — we’ll use that to improve this answer.'}
+        {vote === 'up'
+          ? 'Thanks — glad it helped.'
+          : 'Thanks — we’ll use that to improve this answer.'}
       </p>
     );
 
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span>Was this helpful?</span>
-      <Button variant="ghost" size="icon-xs" aria-label="Yes, this was helpful" disabled={busy} onClick={() => send(true)}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Yes, this was helpful"
+        disabled={busy}
+        onClick={() => send(true)}
+      >
         <ThumbsUp />
       </Button>
-      <Button variant="ghost" size="icon-xs" aria-label="No, this wasn’t helpful" disabled={busy} onClick={() => send(false)}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="No, this wasn’t helpful"
+        disabled={busy}
+        onClick={() => send(false)}
+      >
         <ThumbsDown />
       </Button>
     </div>
@@ -108,9 +127,16 @@ export function FaqAccordion({
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-3">
-            <MarkdownLite text={f.answer} className="text-[13.5px] leading-relaxed text-foreground/85" />
+            <MarkdownLite
+              text={f.answer}
+              className="text-[14.5px] leading-relaxed text-foreground/85"
+            />
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              {f.isPublished ? <FaqFeedback faq={f} /> : <span className="text-xs">Not visible to users yet.</span>}
+              {f.isPublished ? (
+                <FaqFeedback faq={f} />
+              ) : (
+                <span className="text-xs">Not visible to users yet.</span>
+              )}
               {manage && (
                 <div className="flex items-center gap-1">
                   <span className="mr-2 text-xs text-muted-foreground tabular">
@@ -122,7 +148,12 @@ export function FaqAccordion({
                     </Button>
                   )}
                   {onDelete && (
-                    <Button variant="ghost" size="xs" className="text-destructive" onClick={() => onDelete(f)}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-destructive"
+                      onClick={() => onDelete(f)}
+                    >
                       <Trash2 /> Delete
                     </Button>
                   )}

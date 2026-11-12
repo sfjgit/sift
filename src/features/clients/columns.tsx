@@ -4,18 +4,28 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, FileText, Globe, Mail, Play, ReceiptIndianRupee, Users } from 'lucide-react';
+import { Eye, FileText, Globe, Linkedin, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { CompanyMark } from '@/components/common/CompanyMark';
 import { ClientStatusBadge, CLIENT_STATUS, Pill, StepRunBadge } from '@/components/common/badges';
-import { PersonCell, UserAvatar } from '@/components/common/UserAvatar';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import { isActive } from '@/app/(app)/pipeline-runs/_components/runFormat';
 import { STEP_META } from '@/features/pipeline/stepMeta';
+import { BranchesCount } from './BranchesDialog';
 import type { DataTab } from './ClientDataSheet';
-import type { DataColumn, FilterDef } from '@/components/data-table';
-import { fmtDate, fmtRelative, fullName, hostOf, placeOf } from '@/lib/format';
-import { cn } from '@/lib/utils';
-import type { ClientCoverage, ClientListItem } from '@/types/crm';
+import type { DataColumn, FilterDef, GroupTone } from '@/components/data-table';
+import { fmtDate, fmtInr, fmtNumber, fmtRelative, fullName, hostOf } from '@/lib/format';
+import type { LookupRef } from '@/types/api';
+import type { ClientCoverage, ClientEntityType, ClientListItem } from '@/types/crm';
+
+export const ENTITY_TYPE: Record<ClientEntityType, string> = {
+  COMPANY: 'Company',
+  GOVERNMENT: 'Government',
+  INSTITUTION: 'Institution',
+};
+
+const Dash = () => <span className="text-muted-foreground/70">—</span>;
+
+const primaryOf = (c: ClientListItem) => c.locations[0];
 
 /** What a client is missing before the pipeline (or outreach) can do its job. */
 export const clientGaps = (c: ClientListItem): string[] => {
@@ -30,50 +40,6 @@ export const clientGaps = (c: ClientListItem): string[] => {
   ].filter((g): g is string => !!g);
 };
 
-function Stat({
-  icon: Icon,
-  value,
-  label,
-  title,
-  onClick,
-}: {
-  icon: typeof FileText;
-  value: React.ReactNode;
-  label?: string;
-  title: string;
-  /** opens the client data sheet on this tab — never the client page */
-  onClick?: () => void;
-}) {
-  const zero = value === 0;
-  const body = (
-    <>
-      <Icon className="size-3.5" />
-      <span className={cn(!zero && 'font-medium text-foreground')}>{value}</span>
-      {label && <span className="text-muted-foreground">{label}</span>}
-    </>
-  );
-  const cls = cn(
-    'inline-flex items-center gap-1 whitespace-nowrap',
-    zero && 'text-muted-foreground/60'
-  );
-  if (!onClick)
-    return (
-      <span title={title} className={cls}>
-        {body}
-      </span>
-    );
-  return (
-    <button
-      type="button"
-      title={`${title} — click to view`}
-      onClick={onClick}
-      className={cn(cls, '-mx-1 rounded-md px-1 py-0.5 hover:bg-primary/10 hover:text-primary')}
-    >
-      {body}
-    </button>
-  );
-}
-
 // CASPA-style: one column per pipeline step — its latest run (anyone's) + Run
 export const STEP_COLUMNS = [
   { key: 'reports', short: 'Reports' },
@@ -83,9 +49,18 @@ export const STEP_COLUMNS = [
   { key: 'apollo', short: 'Apollo' },
   { key: 'validate', short: 'Validate' },
   { key: 'emails', short: 'Emails' },
+  { key: 'branches', short: 'Find offices' },
 ] as const;
 
 export type RunStepHandler = (c: ClientListItem, stepKey: string) => void;
+
+const ago = (iso: string) => {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (m < 60) return `${Math.max(m, 1)}m`;
+  if (m < 60 * 24) return `${Math.round(m / 60)}h`;
+  if (m < 60 * 24 * 30) return `${Math.round(m / 1440)}d`;
+  return fmtDate(iso);
+};
 
 function StepCell({
   c,
@@ -99,17 +74,17 @@ function StepCell({
   const r = c.coverage?.steps[stepKey];
   const running = !!r && isActive(r.status);
   return (
-    <div className="flex min-w-[132px] items-center justify-between gap-1.5" data-no-row-click>
+    <div className="flex min-w-[128px] items-center justify-between gap-1.5" data-no-row-click>
       {r ? (
         <Link
           href={`/clients/${c.id}?tab=pipeline&run=${r.id}`}
-          title={[r.note, `by ${fullName(r.requestedBy)}`].filter(Boolean).join(' — ')}
-          className="flex min-w-0 flex-col gap-0.5 hover:text-primary"
+          title={[r.note, `by ${fullName(r.requestedBy)}`, fmtRelative(r.createdAt)]
+            .filter(Boolean)
+            .join(' — ')}
+          className="flex min-w-0 items-center gap-1.5 hover:text-primary"
         >
           <StepRunBadge status={r.status} />
-          <span className="truncate text-[11px] text-muted-foreground">
-            {fmtRelative(r.createdAt)} · {r.requestedBy.firstName}
-          </span>
+          <span className="text-[12px] text-muted-foreground">{ago(r.createdAt)}</span>
         </Link>
       ) : (
         <span className="text-xs text-muted-foreground/70">Not run</span>
@@ -124,7 +99,8 @@ function StepCell({
       {onRun && !running && (
         <Button
           size="icon-xs"
-          variant="outline"
+          variant="ghost"
+          className="text-muted-foreground opacity-50 group-hover/row:opacity-100 hover:text-primary"
           aria-label={`Run step for ${c.name}`}
           title="Run this step"
           onClick={() => onRun(c, stepKey)}
@@ -159,51 +135,55 @@ function AssigneesCell({ c }: { c: ClientListItem }) {
 
 export type OpenDataHandler = (c: ClientListItem, tab: DataTab) => void;
 
-function CoverageCell({
-  c,
-  v,
-  onOpen,
-}: {
-  c: ClientListItem;
-  v: ClientCoverage;
-  onOpen?: OpenDataHandler;
-}) {
-  const open = (tab: DataTab) => (onOpen ? () => onOpen(c, tab) : undefined);
-  return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground" data-no-row-click>
-      <Stat
-        icon={FileText}
-        value={v.reports}
-        title={`${v.reports} report(s) downloaded`}
-        onClick={open('reports')}
-      />
-      <Stat
-        onClick={open('spocs')}
-        icon={Users}
-        value={v.spocs}
-        label={v.spocs ? `(${v.approvedSpocs}✓)` : undefined}
-        title={`${v.spocs} SPOC(s), ${v.approvedSpocs} approved for outreach`}
-      />
-      <Stat
-        onClick={open('figures')}
-        icon={ReceiptIndianRupee}
-        value={v.figureYears || v.programs}
-        title={`${v.figureYears} year(s) of CSR figures, ${v.programs} programme(s)`}
-      />
-      <Stat
-        onClick={open('emails')}
-        icon={Mail}
-        value={v.outreachPacks}
-        label={v.outreachPacks ? `(${v.outreachSent} sent)` : undefined}
-        title={`${v.outreachPacks} email pack(s), ${v.outreachSent} sent`}
-      />
-    </div>
-  );
+/** one count from the list's coverage summary; a non-zero count opens the data sheet */
+function countColumn(
+  id: string,
+  header: string,
+  label: string,
+  get: (v: ClientCoverage) => number,
+  tab: DataTab,
+  onOpen?: OpenDataHandler
+): DataColumn<ClientListItem> {
+  return {
+    id,
+    accessorFn: c => (c.coverage ? get(c.coverage) : ''),
+    header,
+    meta: { label, align: 'right' },
+    cell: ({ row }) => {
+      const v = row.original.coverage;
+      if (!v) return null;
+      const n = get(v);
+      return onOpen && n ? (
+        <button
+          type="button"
+          data-no-row-click
+          onClick={() => onOpen(row.original, tab)}
+          className="font-medium text-primary hover:underline"
+        >
+          {n}
+        </button>
+      ) : (
+        <span className="text-muted-foreground">{n}</span>
+      );
+    },
+  };
 }
 
 const STEP_OPTIONS = STEP_COLUMNS.map(s => ({ value: s.key, label: s.short }));
 
 export const clientFilters: FilterDef[] = [
+  {
+    key: 'status',
+    label: 'Status',
+    type: 'select',
+    group: 'Ownership',
+    options: [
+      { value: 'PENDING', label: 'Pending approval' },
+      { value: 'ACTIVE', label: 'Active' },
+      { value: 'INACTIVE', label: 'Inactive' },
+    ],
+    hint: 'Pending approval, active or inactive clients.',
+  },
   // ── ownership
   {
     key: 'assignedTo',
@@ -267,6 +247,14 @@ export const clientFilters: FilterDef[] = [
 
   // ── company
   {
+    key: 'entityType',
+    label: 'Organisation type',
+    type: 'select',
+    multi: true,
+    group: 'Company',
+    options: Object.entries(ENTITY_TYPE).map(([value, label]) => ({ value, label })),
+  },
+  {
     key: 'industryId',
     label: 'Industry',
     type: 'lookup',
@@ -281,6 +269,37 @@ export const clientFilters: FilterDef[] = [
     lookupType: 'CLIENT_CATEGORY',
     multi: true,
     group: 'Company',
+  },
+  {
+    key: 'csrSpentMinCr',
+    label: 'CSR spent from (₹ cr)',
+    type: 'text',
+    placeholder: 'e.g. 5',
+    group: 'Company',
+    hint: 'Latest year’s CSR spent, at least this many crore.',
+  },
+  {
+    key: 'csrSpentMaxCr',
+    label: 'CSR spent up to (₹ cr)',
+    type: 'text',
+    placeholder: 'e.g. 50',
+    group: 'Company',
+  },
+  {
+    key: 'employeeSizeId',
+    label: 'Employee size',
+    type: 'lookup',
+    lookupType: 'EMPLOYEE_SIZE',
+    multi: true,
+    group: 'Company',
+  },
+  {
+    key: 'hasBranches',
+    label: 'Branch offices',
+    type: 'boolean',
+    trueLabel: 'Has branches',
+    falseLabel: 'No branches',
+    group: 'Location',
   },
 
   // ── location: country → state → city, all on the same client location
@@ -313,6 +332,47 @@ export const clientFilters: FilterDef[] = [
     multi: true,
     group: 'Location',
     hint: 'Pick states first to list all their cities, or search. Country, state and city must match the same office.',
+  },
+  // ── CSR programmes (one programme must match everything picked here)
+  {
+    key: 'programSectorId',
+    label: 'Programme sector',
+    type: 'lookup',
+    lookupType: 'PROGRAM_SECTOR',
+    multi: true,
+    group: 'CSR programmes',
+    hint: 'Schedule VII area the client funds.',
+  },
+  {
+    key: 'programState',
+    label: 'Programme state',
+    type: 'geo',
+    level: 'state',
+    multi: true,
+    group: 'CSR programmes',
+    hint: 'Where the client spends its CSR money.',
+  },
+  {
+    key: 'programDistrict',
+    label: 'Programme district',
+    type: 'text',
+    placeholder: 'e.g. Mysuru',
+    group: 'CSR programmes',
+  },
+  {
+    key: 'programAgency',
+    label: 'Implementing agency',
+    type: 'text',
+    placeholder: 'NGO name or CSR-1 number',
+    group: 'CSR programmes',
+  },
+  {
+    key: 'district',
+    label: 'District',
+    type: 'text',
+    placeholder: 'e.g. Pune',
+    group: 'Location',
+    hint: 'Exact district name (any case).',
   },
 
   // ── pipeline & data
@@ -391,14 +451,174 @@ export const clientFilters: FilterDef[] = [
   { key: 'lastRunTo', label: 'Pipeline run until', type: 'date', group: 'Dates' },
 ];
 
-/** status lives in the tabs above the table, but is still a URL / view filter */
-export const clientFilterKeys = ['status', ...clientFilters.map(f => f.key)];
+export const clientFilterKeys = clientFilters.map(f => f.key);
 
-export const clientColumns = (
-  actions?: (c: ClientListItem) => React.ReactNode,
-  onRunStep?: (stepKey: string) => RunStepHandler | undefined,
-  onOpenData?: OpenDataHandler
-): DataColumn<ClientListItem>[] => [
+// ── default columns ──────────────────────────────────────────────────────────
+// Everyone starts with the same columns in this order (the sales team's list,
+// 11 Nov 2026, then the run buttons); each user then adds / hides / moves columns from the column
+// chips, and that layout is kept per user. No CSR / B2B switch.
+
+/** bump with every change to the defaults below — everyone's columns reset once */
+export const CLIENT_LAYOUT_VERSION = 3;
+
+export const CLIENT_DEFAULT_COLUMNS = [
+  'name',
+  'category',
+  'csrSpent',
+  'industry',
+  'website',
+  'linkedin',
+  'pincode',
+  'address',
+  'branches',
+  // the 5 attachments
+  'doc_BRSR',
+  'doc_CSR_REPORT',
+  'doc_IMPACT_REPORT',
+  'doc_ANNUAL_REPORT',
+  'doc_CSR_ACTION_PLAN',
+  'programs',
+  'paidUpCapital',
+  'authorisedCapital',
+  // run buttons are off by default: the ▶ beside select-all brings in QUICK_RUN_COLUMNS
+];
+
+/** the ▶ quick button, next to the name: Amrutha's "Run all", the CSR reports step
+ *  and Vinutha's office finder */
+export const QUICK_RUN_COLUMNS = ['step_run_all', 'step_reports', 'step_branches'];
+
+/** the attachment columns, named the way the sales team knows them */
+export const DOC_HEADER: Record<string, string> = {
+  BRSR: 'BRS Attachment',
+  CSR_REPORT: 'CSR Report Attachment',
+  IMPACT_REPORT: 'Impact Assessment Report',
+  ANNUAL_REPORT: 'Annual Report Attachment',
+  CSR_ACTION_PLAN: 'CSR Annual Action Plan',
+};
+
+// the coloured bands over the headers (CASPA style)
+const GROUPS: { label: string; tone: GroupTone; test: (id: string) => boolean }[] = [
+  {
+    label: 'Client',
+    tone: 'blue',
+    test: id =>
+      [
+        'name',
+        'category',
+        'csrSpent',
+        'industry',
+        'shortName',
+        'entityType',
+        'status',
+        'cin',
+        'businessUnit',
+        'serviceLines',
+        'assignees',
+      ].includes(id),
+  },
+  {
+    label: 'Demographics',
+    tone: 'green',
+    test: id =>
+      [
+        'website',
+        'linkedin',
+        'pincode',
+        'address',
+        'city',
+        'district',
+        'state',
+        'country',
+        'branches',
+        'employeeSize',
+        'employeeCount',
+      ].includes(id),
+  },
+  { label: 'Attachments', tone: 'violet', test: id => id.startsWith('doc_') || id === 'reports' },
+  {
+    label: 'CSR financials',
+    tone: 'rose',
+    test: id =>
+      [
+        'programs',
+        'figureYears',
+        'paidUpCapital',
+        'authorisedCapital',
+        'csrFy',
+        'csrObligation',
+        'csrBudget',
+        'csrUnspent',
+        'revenue',
+        'netProfit',
+        'netWorth',
+      ].includes(id),
+  },
+  {
+    label: 'Pipeline & engagement',
+    tone: 'amber',
+    test: id =>
+      id.startsWith('step_') ||
+      [
+        'spocs',
+        'approvedSpocs',
+        'emailPacks',
+        'emailsSent',
+        'missing',
+        'lastRun',
+        'lastRunStatus',
+        'lastRunAt',
+      ].includes(id),
+  },
+  { label: 'Technology', tone: 'slate', test: id => id.startsWith('tech_') },
+  { label: 'Record', tone: 'slate', test: () => true },
+];
+
+/** columns hidden unless in the default list (locked ones always show), with their band */
+export const withDefaultColumns = (
+  cols: DataColumn<ClientListItem>[]
+): DataColumn<ClientListItem>[] =>
+  cols.map(c => {
+    const id = c.id ?? '';
+    if (id === '__actions') return c;
+    const g = GROUPS.find(x => x.test(id))!;
+    return {
+      ...c,
+      meta: {
+        ...c.meta,
+        group: g.label,
+        groupTone: g.tone,
+        ...(!c.meta?.locked && { defaultHidden: !CLIENT_DEFAULT_COLUMNS.includes(id) }),
+      },
+    };
+  });
+
+// ── cells ────────────────────────────────────────────────────────────────────
+
+const money = (v?: string | null) =>
+  v ? <span className="tabular whitespace-nowrap">{fmtInr(v)}</span> : <Dash />;
+const text = (v?: string | number | null) =>
+  v === null || v === undefined || v === '' ? <Dash /> : <span className="truncate">{v}</span>;
+const latestCsr = (c: ClientListItem) => c.csrFinancials?.[0];
+const latestCorp = (c: ClientListItem) => c.corporateFinancials?.[0];
+const num = (v?: string | null) => (v ? Number(v) : null);
+
+export interface ClientColumnContext {
+  actions?: (c: ClientListItem) => React.ReactNode;
+  onRunStep?: (stepKey: string) => RunStepHandler | undefined;
+  onOpenData?: OpenDataHandler;
+  /** TECH_CATEGORY rows — one column each */
+  techCategories?: LookupRef[];
+  /** DOCUMENT_TYPE rows — one column each */
+  documentTypes?: LookupRef[];
+}
+
+export const clientColumns = ({
+  actions,
+  onRunStep,
+  onOpenData,
+  techCategories = [],
+  documentTypes = [],
+}: ClientColumnContext): DataColumn<ClientListItem>[] => [
   {
     id: 'name',
     accessorKey: 'name',
@@ -407,34 +627,31 @@ export const clientColumns = (
     cell: ({ row }) => {
       const c = row.original;
       return (
-        <div className="flex min-w-[220px] items-center gap-2.5">
-          <CompanyMark name={c.name} />
-          <div className="min-w-0">
-            <Link
-              href={`/clients/${c.id}`}
-              className="block truncate font-medium hover:text-primary"
-            >
-              {c.name}
-            </Link>
-            <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-              {c.shortName && <span>{c.shortName}</span>}
-              {c.shortName && c.website && <span>·</span>}
-              {c.website && (
-                <a
-                  href={c.website}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-primary"
-                >
-                  <Globe className="size-3" />
-                  {hostOf(c.website)}
-                </a>
-              )}
-            </span>
-          </div>
+        <div className="flex w-[280px] items-center gap-2">
+          <Link
+            href={`/clients/${c.id}`}
+            title={[c.name, c.shortName].filter(Boolean).join(' · ')}
+            className="min-w-0 truncate font-medium hover:text-primary"
+          >
+            {c.name}
+          </Link>
         </div>
       );
     },
+  },
+  {
+    id: 'shortName',
+    accessorKey: 'shortName',
+    header: 'Short name',
+    meta: { label: 'Short name' },
+    cell: ({ row }) => text(row.original.shortName),
+  },
+  {
+    id: 'entityType',
+    accessorFn: c => ENTITY_TYPE[c.entityType],
+    header: 'Type',
+    meta: { label: 'Organisation type' },
+    cell: ({ row }) => ENTITY_TYPE[row.original.entityType],
   },
   {
     id: 'status',
@@ -448,16 +665,352 @@ export const clientColumns = (
     accessorFn: c => c.industry?.label ?? '',
     header: 'Industry',
     meta: { label: 'Industry' },
-    cell: ({ row }) =>
-      row.original.industry?.label ?? <span className="text-muted-foreground">—</span>,
+    cell: ({ row }) => text(row.original.industry?.label),
   },
   {
     id: 'category',
     accessorFn: c => c.category?.label ?? '',
     header: 'Category',
-    meta: { label: 'Category' },
+    meta: { label: 'Client category' },
+    cell: ({ row }) => text(row.original.category?.label),
+  },
+
+  {
+    id: 'csrSpent',
+    accessorFn: c => num(c.csrSpentRs) ?? '',
+    header: 'CSR spent',
+    meta: { label: 'CSR spent (₹)', sortKey: 'csrSpentRs', align: 'right' },
     cell: ({ row }) =>
-      row.original.category?.label ?? <span className="text-muted-foreground">—</span>,
+      row.original.csrSpentRs ? (
+        <span className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+          {row.original.csrFy && (
+            <span className="rounded-full bg-violet-100 px-1.5 py-px text-[11px] font-semibold text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+              {row.original.csrFy}
+            </span>
+          )}
+          <span className="font-semibold text-success tabular">
+            {fmtInr(row.original.csrSpentRs)}
+          </span>
+        </span>
+      ) : (
+        <Dash />
+      ),
+  },
+  {
+    id: 'csrFy',
+    accessorKey: 'csrFy',
+    header: 'CSR FY',
+    meta: { label: 'CSR spent — FY' },
+    cell: ({ row }) => text(row.original.csrFy),
+  },
+  {
+    id: 'csrObligation',
+    accessorFn: c => num(latestCsr(c)?.obligationRs) ?? '',
+    header: 'CSR obligation',
+    meta: { label: 'CSR obligation (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCsr(row.original)?.obligationRs),
+  },
+  {
+    id: 'csrBudget',
+    accessorFn: c => num(latestCsr(c)?.budgetRs) ?? '',
+    header: 'CSR budget',
+    meta: { label: 'CSR budget (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCsr(row.original)?.budgetRs),
+  },
+  {
+    id: 'csrUnspent',
+    accessorFn: c => num(latestCsr(c)?.unspentRs) ?? '',
+    header: 'CSR unspent',
+    meta: { label: 'CSR unspent (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCsr(row.original)?.unspentRs),
+  },
+  {
+    id: 'revenue',
+    accessorFn: c => num(latestCorp(c)?.revenueRs) ?? '',
+    header: 'Revenue',
+    meta: { label: 'Revenue (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCorp(row.original)?.revenueRs),
+  },
+  {
+    id: 'netProfit',
+    accessorFn: c => num(latestCorp(c)?.netProfitRs) ?? '',
+    header: 'Net profit',
+    meta: { label: 'Net profit (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCorp(row.original)?.netProfitRs),
+  },
+  {
+    id: 'netWorth',
+    accessorFn: c => num(latestCorp(c)?.netWorthRs) ?? '',
+    header: 'Net worth',
+    meta: { label: 'Net worth (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCorp(row.original)?.netWorthRs),
+  },
+  {
+    id: 'paidUpCapital',
+    accessorFn: c => num(latestCorp(c)?.paidUpCapitalRs) ?? '',
+    header: 'Paid-up capital',
+    meta: { label: 'Paid-up capital (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCorp(row.original)?.paidUpCapitalRs),
+  },
+  {
+    id: 'authorisedCapital',
+    accessorFn: c => num(latestCorp(c)?.authorisedCapitalRs) ?? '',
+    header: 'Authorised capital',
+    meta: { label: 'Authorised capital (latest FY)', align: 'right' },
+    cell: ({ row }) => money(latestCorp(row.original)?.authorisedCapitalRs),
+  },
+  {
+    id: 'cin',
+    accessorKey: 'cin',
+    header: 'CIN',
+    meta: { label: 'CIN' },
+    cell: ({ row }) =>
+      row.original.cin ? (
+        <span className="font-mono text-[13px]">{row.original.cin}</span>
+      ) : (
+        <Dash />
+      ),
+  },
+  {
+    id: 'address',
+    accessorFn: c => primaryOf(c)?.addressLine ?? '',
+    header: 'Address',
+    meta: { label: 'Head office address' },
+    cell: ({ row }) => text(primaryOf(row.original)?.addressLine),
+  },
+  {
+    id: 'city',
+    accessorFn: c => primaryOf(c)?.city ?? '',
+    header: 'City',
+    meta: { label: 'City' },
+    cell: ({ row }) => text(primaryOf(row.original)?.city),
+  },
+  {
+    id: 'district',
+    accessorFn: c => primaryOf(c)?.district ?? '',
+    header: 'District',
+    meta: { label: 'District' },
+    cell: ({ row }) => text(primaryOf(row.original)?.district),
+  },
+  {
+    id: 'state',
+    accessorFn: c => primaryOf(c)?.state ?? '',
+    header: 'State',
+    meta: { label: 'State' },
+    cell: ({ row }) => text(primaryOf(row.original)?.state),
+  },
+  {
+    id: 'country',
+    accessorFn: c => primaryOf(c)?.country ?? '',
+    header: 'Country',
+    meta: { label: 'Country' },
+    cell: ({ row }) => text(primaryOf(row.original)?.country),
+  },
+  {
+    id: 'pincode',
+    accessorFn: c => primaryOf(c)?.pincode ?? '',
+    header: 'PIN',
+    meta: { label: 'PIN code' },
+    cell: ({ row }) => text(primaryOf(row.original)?.pincode),
+  },
+  {
+    id: 'employeeSize',
+    accessorFn: c => c.employeeSize?.label ?? '',
+    header: 'Employee size',
+    meta: { label: 'Employee size', sortKey: 'employeeCount' },
+    cell: ({ row }) => text(row.original.employeeSize?.label),
+  },
+  {
+    id: 'employeeCount',
+    accessorFn: c => c.employeeCount ?? '',
+    header: 'Employees',
+    meta: { label: 'Employees (count)', align: 'right' },
+    cell: ({ row }) =>
+      row.original.employeeCount === null ? <Dash /> : fmtNumber(row.original.employeeCount),
+  },
+  {
+    id: 'website',
+    accessorKey: 'website',
+    header: 'Website',
+    meta: { label: 'Website' },
+    cell: ({ row }) => {
+      const w = row.original.coverage?.website;
+      return (
+        <div className="flex max-w-60 flex-col gap-0.5">
+          {row.original.website ? (
+            <a
+              href={row.original.website}
+              target="_blank"
+              rel="noreferrer"
+              data-no-row-click
+              className="inline-flex items-center gap-1 text-primary hover:underline"
+            >
+              <Globe className="size-3.5 shrink-0" />
+              <span className="truncate">{hostOf(row.original.website)}</span>
+            </a>
+          ) : (
+            <Dash />
+          )}
+          {/* the website check: waiting for an admin, or who changed the website lately */}
+          {w?.waiting ? (
+            <span
+              className="text-[11px] font-medium text-warning"
+              title={`Asked by ${w.waiting.by}`}
+            >
+              Waiting for admin · {fmtRelative(w.waiting.since)}
+            </span>
+          ) : w?.changed ? (
+            <span
+              className="text-[11px] text-success"
+              title="The website was changed — run the steps again if needed"
+            >
+              Updated{w.changed.by ? ` by ${w.changed.by}` : ''} · {fmtRelative(w.changed.at)}
+            </span>
+          ) : null}
+        </div>
+      );
+    },
+  },
+  {
+    id: 'linkedin',
+    accessorKey: 'linkedinUrl',
+    header: 'LinkedIn',
+    meta: { label: 'LinkedIn', align: 'center' },
+    cell: ({ row }) =>
+      row.original.linkedinUrl ? (
+        <a
+          href={row.original.linkedinUrl}
+          target="_blank"
+          rel="noreferrer"
+          data-no-row-click
+          aria-label={`LinkedIn page of ${row.original.name}`}
+          className="inline-flex text-[#0a66c2] hover:opacity-80"
+        >
+          <Linkedin className="size-4" />
+        </a>
+      ) : (
+        <Dash />
+      ),
+  },
+  {
+    id: 'branches',
+    accessorFn: c => c._count.branches,
+    header: 'Branch offices',
+    meta: { label: 'Branch offices', align: 'right' },
+    // the count opens the offices as a table; finding them is its own column (Find offices)
+    cell: ({ row }) => (
+      <BranchesCount
+        clientId={row.original.id}
+        clientName={row.original.name}
+        count={row.original._count.branches}
+      />
+    ),
+  },
+  {
+    id: 'reports',
+    accessorFn: c => c.coverage?.reports ?? 0,
+    header: 'Reports',
+    meta: { label: 'Reports / attachments (all)', align: 'right' },
+    cell: ({ row }) => {
+      const n = row.original.coverage?.reports ?? 0;
+      return onOpenData && n ? (
+        <button
+          type="button"
+          data-no-row-click
+          onClick={() => onOpenData(row.original, 'reports')}
+          className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+        >
+          <FileText className="size-3.5" />
+          {n}
+        </button>
+      ) : (
+        <span className="text-muted-foreground">{n}</span>
+      );
+    },
+  },
+  // one column per document type: the years held
+  ...documentTypes.map(
+    (t): DataColumn<ClientListItem> => ({
+      id: `doc_${t.code}`,
+      accessorFn: c =>
+        (c.documents ?? [])
+          .filter(d => d.type.id === t.id)
+          .map(d => d.fy)
+          .join(', '),
+      header: DOC_HEADER[t.code] ?? t.label,
+      meta: { label: `Attachment: ${DOC_HEADER[t.code] ?? t.label}` },
+      cell: ({ row }) => {
+        const years = (row.original.documents ?? []).filter(d => d.type.id === t.id).map(d => d.fy);
+        if (!years.length) return <Dash />;
+        return (
+          <button
+            type="button"
+            data-no-row-click
+            title={years.join(', ')}
+            onClick={() => onOpenData?.(row.original, 'reports')}
+            className="inline-flex max-w-44 items-center gap-1 text-success hover:underline"
+          >
+            <FileText className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {years[0]}
+              {years.length > 1 && ` +${years.length - 1}`}
+            </span>
+          </button>
+        );
+      },
+    })
+  ),
+  // one column per technology area (CASPA's cloud / erp / crm … columns)
+  ...techCategories.map(
+    (t): DataColumn<ClientListItem> => ({
+      id: `tech_${t.code}`,
+      accessorFn: c => c.technologies?.find(x => x.category.id === t.id)?.details ?? '',
+      header: t.label,
+      meta: { label: `Technology: ${t.label}` },
+      cell: ({ row }) => {
+        const d = row.original.technologies?.find(x => x.category.id === t.id)?.details;
+        return d ? (
+          <span className="block max-w-56 truncate" title={d}>
+            {d}
+          </span>
+        ) : (
+          <Dash />
+        );
+      },
+    })
+  ),
+  {
+    id: 'businessUnit',
+    accessorFn: c => c.businessUnit?.name ?? '',
+    header: 'BU',
+    meta: { label: 'Business unit' },
+    cell: ({ row }) =>
+      row.original.businessUnit ? (
+        <span className="whitespace-nowrap" title={row.original.businessUnit.name}>
+          {row.original.businessUnit.name}
+        </span>
+      ) : (
+        <Dash />
+      ),
+  },
+  {
+    id: 'serviceLines',
+    accessorFn: c => c.serviceLines.map(s => s.serviceLine.name).join(', '),
+    header: 'Service lines',
+    meta: { label: 'Service lines' },
+    cell: ({ row }) => {
+      const sls = row.original.serviceLines;
+      if (!sls.length) return <Dash />;
+      return (
+        <div className="flex items-center gap-1 whitespace-nowrap">
+          {sls.map(s => (
+            <span key={s.serviceLine.id} className="rounded bg-muted px-1.5 text-[13px]">
+              {s.serviceLine.code ?? s.serviceLine.name}
+            </span>
+          ))}
+        </div>
+      );
+    },
   },
   {
     id: 'assignees',
@@ -466,7 +1019,18 @@ export const clientColumns = (
     meta: { label: 'Assigned to' },
     cell: ({ row }) => <AssigneesCell c={row.original} />,
   },
-  ...STEP_COLUMNS.map(
+  {
+    id: 'spocs',
+    accessorFn: c => c._count.spocs,
+    header: 'SPOCs',
+    meta: { label: 'SPOCs', align: 'right' },
+    cell: ({ row }) => (
+      <span className={row.original._count.spocs ? 'font-medium' : 'text-muted-foreground'}>
+        {row.original._count.spocs}
+      </span>
+    ),
+  },
+  ...[{ key: 'run_all', short: 'Run all' }, ...STEP_COLUMNS].map(
     ({ key, short }): DataColumn<ClientListItem> => ({
       id: `step_${key}`,
       accessorFn: c => {
@@ -486,19 +1050,39 @@ export const clientColumns = (
       cell: ({ row }) => <StepCell c={row.original} stepKey={key} onRun={onRunStep?.(key)} />,
     })
   ),
-  {
-    id: 'coverage',
-    accessorFn: c =>
-      c.coverage
-        ? `${c.coverage.reports} reports · ${c.coverage.spocs} SPOCs (${c.coverage.approvedSpocs} approved) · ${c.coverage.figureYears} years of figures · ${c.coverage.outreachPacks} email packs (${c.coverage.outreachSent} sent)`
-        : '',
-    header: 'Have',
-    meta: { label: 'Have (reports · SPOCs · figures · emails)' },
-    cell: ({ row }) =>
-      row.original.coverage ? (
-        <CoverageCell c={row.original} v={row.original.coverage} onOpen={onOpenData} />
-      ) : null,
-  },
+  countColumn(
+    'approvedSpocs',
+    'Approved SPOCs',
+    'SPOCs approved for outreach',
+    v => v.approvedSpocs,
+    'spocs',
+    onOpenData
+  ),
+  countColumn(
+    'figureYears',
+    'CSR years',
+    'Years of CSR figures',
+    v => v.figureYears,
+    'figures',
+    onOpenData
+  ),
+  countColumn('programs', 'Programmes', 'CSR / skilling programmes', v => v.programs, 'figures', onOpenData),
+  countColumn(
+    'emailPacks',
+    'Email packs',
+    'Outreach email packs',
+    v => v.outreachPacks,
+    'emails',
+    onOpenData
+  ),
+  countColumn(
+    'emailsSent',
+    'Emails sent',
+    'Outreach emails sent',
+    v => v.outreachSent,
+    'emails',
+    onOpenData
+  ),
   {
     id: 'missing',
     accessorFn: c => clientGaps(c).join(', '),
@@ -509,104 +1093,75 @@ export const clientColumns = (
       if (!row.original.coverage) return null;
       if (!gaps.length) return <Pill tone="success">Complete</Pill>;
       return (
-        <div className="flex min-w-[150px] max-w-[220px] flex-wrap gap-1">
-          {gaps.map(g => (
-            <Pill key={g} tone="warning" dot={false}>
-              {g}
-            </Pill>
-          ))}
-        </div>
+        <span className="flex items-center gap-1" title={gaps.join(', ')}>
+          <Pill tone="warning" dot={false}>
+            {gaps[0]}
+          </Pill>
+          {gaps.length > 1 && (
+            <span className="text-[12px] font-medium text-warning">+{gaps.length - 1}</span>
+          )}
+        </span>
       );
     },
   },
   {
     id: 'lastRun',
-    accessorFn: c =>
-      c.coverage?.lastRun
-        ? `${c.coverage.lastRun.step.label}: ${c.coverage.lastRun.status}`
-        : 'Never run',
+    accessorFn: c => c.coverage?.lastRun?.step.label ?? '',
     header: 'Last run',
-    meta: { label: 'Last pipeline run', defaultHidden: true },
+    meta: { label: 'Last pipeline run (step)' },
     cell: ({ row }) => {
       const r = row.original.coverage?.lastRun;
       if (!row.original.coverage) return null;
-      if (!r) return <span className="text-xs text-muted-foreground">Never run</span>;
+      if (!r) return <span className="text-muted-foreground">Never run</span>;
       return (
         <Link
           href={`/clients/${row.original.id}?tab=pipeline&run=${r.id}`}
-          className="flex min-w-[160px] flex-col gap-0.5 hover:text-primary"
+          className="whitespace-nowrap hover:text-primary"
           data-no-row-click
         >
-          <span className="flex items-center gap-1.5">
-            <StepRunBadge status={r.status} />
-            <span className="text-xs text-muted-foreground">{fmtRelative(r.createdAt)}</span>
-          </span>
-          <span className="truncate text-xs">{r.step.label}</span>
+          {r.step.label}
         </Link>
       );
     },
   },
   {
-    id: 'ownership',
-    accessorFn: c =>
-      [c.businessUnit?.name, ...c.serviceLines.map(s => s.serviceLine.name)]
-        .filter(Boolean)
-        .join(' · '),
-    header: 'BU / Service lines',
-    meta: { label: 'BU / Service lines' },
+    id: 'lastRunStatus',
+    accessorFn: c => c.coverage?.lastRun?.status ?? '',
+    header: 'Run status',
+    meta: { label: 'Last run status' },
     cell: ({ row }) => {
-      const c = row.original;
-      if (!c.businessUnit && !c.serviceLines.length)
-        return <span className="text-muted-foreground">—</span>;
-      return (
-        <div className="flex flex-wrap items-center gap-1 whitespace-nowrap text-xs">
-          {c.businessUnit && (
-            <span className="font-medium">{c.businessUnit.code ?? c.businessUnit.name}</span>
-          )}
-          {c.serviceLines.map(s => (
-            <span
-              key={s.serviceLine.id}
-              className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground"
-            >
-              {s.serviceLine.code ?? s.serviceLine.name}
-            </span>
-          ))}
-        </div>
-      );
+      const r = row.original.coverage?.lastRun;
+      return r ? <StepRunBadge status={r.status} /> : <Dash />;
     },
   },
   {
-    id: 'location',
-    accessorFn: c => placeOf(c.locations[0]),
-    header: 'Location',
-    meta: { label: 'Location' },
-    cell: ({ row }) => (
-      <span className="whitespace-nowrap">{placeOf(row.original.locations[0])}</span>
-    ),
-  },
-  {
-    id: 'spocs',
-    accessorFn: c => c._count.spocs,
-    header: 'SPOCs',
-    meta: { label: 'SPOCs', align: 'right' },
-    cell: ({ row }) => (
-      <span className={row.original._count.spocs ? 'font-medium' : 'text-muted-foreground'}>
-        {row.original._count.spocs}
-      </span>
-    ),
+    id: 'lastRunAt',
+    accessorFn: c => (c.coverage?.lastRun ? fmtDate(c.coverage.lastRun.createdAt) : ''),
+    header: 'Run on',
+    meta: { label: 'Last run on' },
+    cell: ({ row }) => {
+      const r = row.original.coverage?.lastRun;
+      return r ? (
+        <span className="whitespace-nowrap text-muted-foreground" title={fmtDate(r.createdAt)}>
+          {fmtRelative(r.createdAt)}
+        </span>
+      ) : (
+        <Dash />
+      );
+    },
   },
   {
     id: 'createdBy',
     accessorFn: c => fullName(c.createdBy),
     header: 'Added by',
     meta: { label: 'Added by' },
-    cell: ({ row }) => <PersonCell person={row.original.createdBy} />,
+    cell: ({ row }) => fullName(row.original.createdBy),
   },
   {
     id: 'createdAt',
     accessorFn: c => fmtDate(c.createdAt),
     header: 'Added',
-    meta: { label: 'Added', sortKey: 'createdAt' },
+    meta: { label: 'Added on', sortKey: 'createdAt' },
     cell: ({ row }) => (
       <span className="whitespace-nowrap text-muted-foreground">
         {fmtDate(row.original.createdAt)}
@@ -614,29 +1169,34 @@ export const clientColumns = (
     ),
   },
   {
+    id: 'approvedAt',
+    accessorFn: c => (c.approvedAt ? fmtDate(c.approvedAt) : ''),
+    header: 'Approved on',
+    meta: { label: 'Approved on' },
+    cell: ({ row }) =>
+      row.original.approvedAt ? (
+        <span className="whitespace-nowrap">{fmtDate(row.original.approvedAt)}</span>
+      ) : (
+        <Dash />
+      ),
+  },
+  {
+    id: 'approvedBy',
+    accessorFn: c => (c.approvedBy ? fullName(c.approvedBy) : ''),
+    header: 'Approved by',
+    meta: { label: 'Approved by' },
+    cell: ({ row }) => (row.original.approvedBy ? fullName(row.original.approvedBy) : <Dash />),
+  },
+  {
     id: 'updatedAt',
     accessorFn: c => fmtDate(c.updatedAt),
     header: 'Last updated',
-    meta: { label: 'Last updated', sortKey: 'updatedAt', defaultHidden: true },
+    meta: { label: 'Last updated', sortKey: 'updatedAt' },
     cell: ({ row }) => (
       <span className="whitespace-nowrap text-muted-foreground">
         {fmtRelative(row.original.updatedAt)}
       </span>
     ),
-  },
-  {
-    id: 'cin',
-    accessorKey: 'cin',
-    header: 'CIN',
-    meta: { label: 'CIN', defaultHidden: true },
-    cell: ({ row }) => <span className="font-mono text-xs">{row.original.cin ?? '—'}</span>,
-  },
-  {
-    id: 'website',
-    accessorKey: 'website',
-    header: 'Website',
-    meta: { label: 'Website', defaultHidden: true },
-    cell: ({ row }) => hostOf(row.original.website) ?? '—',
   },
   ...(actions
     ? [

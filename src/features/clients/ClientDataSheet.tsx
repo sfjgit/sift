@@ -87,7 +87,7 @@ function Reports({ clientId }: { clientId: string }) {
         <li key={d.id} className="flex items-center gap-3 px-3 py-2.5">
           <FileText className="size-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium">{d.type.label}</p>
+            <p className="truncate text-[14px] font-medium">{d.type.label}</p>
             <p className="truncate text-xs text-muted-foreground">
               FY {d.fy} · {d.fileName ?? 'file'}
             </p>
@@ -137,7 +137,7 @@ function Spocs({ clientId }: { clientId: string }) {
       {rows.map(s => (
         <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium">{fullName(s)}</p>
+            <p className="truncate text-[14px] font-medium">{fullName(s)}</p>
             <p className="truncate text-xs text-muted-foreground">
               {[s.designation, s.email].filter(Boolean).join(' · ') || '—'}
             </p>
@@ -155,8 +155,8 @@ function Figures({ clientId }: { clientId: string }) {
   const q = clientHooks.useDetail(clientId);
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  const fin = q.data?.financials ?? [];
-  const progs = q.data?.programs ?? [];
+  const fin = q.data?.csrFinancials ?? [];
+  const progs = q.data?.csrPrograms ?? [];
   if (!can('client_financials.read') && !can('client_programs.read'))
     return <EmptyState icon={ReceiptIndianRupee} title="You can’t view CSR figures" />;
   if (!fin.length && !progs.length)
@@ -171,7 +171,7 @@ function Figures({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       {fin.length > 0 && (
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-[13px]">
+          <table className="w-full text-[14px]">
             <thead className="bg-surface text-xs text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">FY</th>
@@ -202,11 +202,18 @@ function Figures({ clientId }: { clientId: string }) {
           </p>
           <ul className="divide-y rounded-lg border">
             {progs.slice(0, 30).map(p => (
-              <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-[13px]">
+              <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-[14px]">
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">FY {p.fy}</span>
-                {p.budgetRs && (
-                  <span className="shrink-0 text-xs tabular">{fmtInr(p.budgetRs)}</span>
+                {p.sectors[0] && (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {p.sectors[0].sector.label.split(/[,&]/)[0]}
+                  </span>
+                )}
+                {(p.spentRs ?? p.budgetRs) && (
+                  <span className="shrink-0 text-xs tabular">
+                    {fmtInr(p.spentRs ?? p.budgetRs)}
+                  </span>
                 )}
               </li>
             ))}
@@ -238,7 +245,7 @@ function Emails({ clientId }: { clientId: string }) {
       {packs.map(p => (
         <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium">{fullName(p.spoc)}</p>
+            <p className="truncate text-[14px] font-medium">{fullName(p.spoc)}</p>
             <p className="truncate text-xs text-muted-foreground">
               {p.messages.filter(m => m.sentAt).length} of {p.messages.length} sent · written{' '}
               {fmtDate(p.createdAt)}

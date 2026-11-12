@@ -10,7 +10,15 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, ExternalLink, Info, RefreshCw, ShieldAlert, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  Info,
+  RefreshCw,
+  ShieldAlert,
+  XCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,9 +36,22 @@ import type { NotificationSeverity, SystemAlert } from '@/types/org';
 
 type Status = 'open' | 'resolved';
 
-const SEVERITY: Record<NotificationSeverity, { label: string; tone: Tone; icon: typeof Info; cls: string }> = {
-  ERROR: { label: 'Error', tone: 'danger', icon: XCircle, cls: 'bg-destructive/10 text-destructive' },
-  WARNING: { label: 'Warning', tone: 'warning', icon: AlertTriangle, cls: 'bg-warning/15 text-warning' },
+const SEVERITY: Record<
+  NotificationSeverity,
+  { label: string; tone: Tone; icon: typeof Info; cls: string }
+> = {
+  ERROR: {
+    label: 'Error',
+    tone: 'danger',
+    icon: XCircle,
+    cls: 'bg-destructive/10 text-destructive',
+  },
+  WARNING: {
+    label: 'Warning',
+    tone: 'warning',
+    icon: AlertTriangle,
+    cls: 'bg-warning/15 text-warning',
+  },
   INFO: { label: 'Info', tone: 'info', icon: Info, cls: 'bg-info/12 text-info' },
   SUCCESS: { label: 'OK', tone: 'success', icon: CheckCircle2, cls: 'bg-success/12 text-success' },
 };
@@ -41,31 +62,47 @@ const SOURCE: Record<SystemAlert['source'], string> = {
   api: 'CRM server',
 };
 
-function AlertRow({ a, canResolve, onResolve, busy }: { a: SystemAlert; canResolve: boolean; onResolve: () => void; busy: boolean }) {
+function AlertRow({
+  a,
+  canResolve,
+  onResolve,
+  busy,
+}: {
+  a: SystemAlert;
+  canResolve: boolean;
+  onResolve: () => void;
+  busy: boolean;
+}) {
   const s = SEVERITY[a.severity];
   return (
     <li className="flex flex-wrap items-start gap-3 px-4 py-3.5">
-      <span className={cn('mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg', s.cls)}>
+      <span
+        className={cn('mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg', s.cls)}
+      >
         <s.icon className="size-4" />
       </span>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-medium">{a.title}</span>
+          <span className="text-[14.5px] font-medium">{a.title}</span>
           <Pill tone={s.tone}>{s.label}</Pill>
           {a.count > 1 && (
-            <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground" title="Times this happened">
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
+              title="Times this happened"
+            >
               ×{fmtNumber(a.count)}
             </span>
           )}
         </div>
-        {a.body && <p className="text-[13px] break-words text-muted-foreground">{a.body}</p>}
+        {a.body && <p className="text-[14px] break-words text-muted-foreground">{a.body}</p>}
         <p className="text-xs text-muted-foreground">
           {SOURCE[a.source]} · first {fmtRelative(a.firstSeenAt)} · last{' '}
           <span title={fmtDateTime(a.lastSeenAt)}>{fmtRelative(a.lastSeenAt)}</span>
           {a.resolvedAt && (
             <>
               {' '}
-              · resolved {fmtRelative(a.resolvedAt)} by {a.resolvedBy ? fullName(a.resolvedBy) : 'the system'}
+              · resolved {fmtRelative(a.resolvedAt)} by{' '}
+              {a.resolvedBy ? fullName(a.resolvedBy) : 'the system'}
             </>
           )}
         </p>
@@ -110,7 +147,7 @@ function AlertsPage() {
   const pages = q.data?.meta.pages ?? 1;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="System alerts"
         description="Problems the CRM noticed on its own — pipeline engine down, runs failing, server errors. Repeats are counted on one row; alerts clear themselves when the problem goes away."
@@ -137,7 +174,13 @@ function AlertsPage() {
         {status === 'open' && openTotal > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {(['ERROR', 'WARNING', 'INFO'] as const).map(
-              s => !!open[s] && <Pill key={s} tone={SEVERITY[s].tone}>{`${open[s]} ${SEVERITY[s].label.toLowerCase()}`}</Pill>
+              s =>
+                !!open[s] && (
+                  <Pill
+                    key={s}
+                    tone={SEVERITY[s].tone}
+                  >{`${open[s]} ${SEVERITY[s].label.toLowerCase()}`}</Pill>
+                )
             )}
             {canResolve && (
               <Button
@@ -166,7 +209,9 @@ function AlertsPage() {
           <EmptyState
             icon={status === 'open' ? CheckCircle2 : ShieldAlert}
             title={status === 'open' ? 'Nothing needs attention' : 'No resolved alerts yet'}
-            description={status === 'open' ? 'The pipeline engine, runs and server are all quiet.' : undefined}
+            description={
+              status === 'open' ? 'The pipeline engine, runs and server are all quiet.' : undefined
+            }
           />
         ) : (
           <ul className="divide-y">
@@ -185,13 +230,23 @@ function AlertsPage() {
 
       {pages > 1 && (
         <div className="flex items-center justify-end gap-2 text-sm">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+          >
             Previous
           </Button>
           <span className="text-muted-foreground">
             Page {page} of {pages}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => setPage(p => p + 1)}
+          >
             Next
           </Button>
         </div>

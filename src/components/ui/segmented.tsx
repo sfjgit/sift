@@ -44,7 +44,7 @@ export function Segmented<T extends string>({
           aria-label={o.title ?? o.label}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-md px-2.5 font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm',
-            size === 'sm' ? 'h-7 text-xs' : 'h-6 text-[11px]'
+            size === 'sm' ? 'h-7 text-xs' : 'h-6 text-[12px]'
           )}
         >
           {o.icon && <o.icon className="size-3.5" />}

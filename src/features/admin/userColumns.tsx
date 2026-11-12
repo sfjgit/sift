@@ -59,10 +59,10 @@ export const userColumns = (
     cell: ({ row }) => {
       const u = row.original;
       return (
-        <div className="flex min-w-[220px] items-center gap-2.5">
-          <UserAvatar person={u} size="md" />
-          <div className="min-w-0">
-            <span className="flex items-center gap-1.5">
+        <div className="flex min-w-[220px] items-center gap-2">
+          <UserAvatar person={u} />
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="flex shrink-0 items-center gap-1.5">
               <Link
                 href={`/admin/users/${u.id}`}
                 className="truncate font-medium hover:text-primary"
@@ -75,7 +75,7 @@ export const userColumns = (
                 </Pill>
               )}
             </span>
-            <span className="block truncate text-xs text-muted-foreground">{u.email}</span>
+            <span className="truncate text-xs text-muted-foreground">{u.email}</span>
           </div>
         </div>
       );

@@ -35,8 +35,8 @@ export function Logo({ className, compact = false }: { className?: string; compa
       <LogoMark className="size-7" />
       {!compact && (
         <span className="flex flex-col leading-none">
-          <span className="text-[15px] font-bold tracking-tight">SFJBS</span>
-          <span className="text-[10.5px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+          <span className="text-[16px] font-bold tracking-tight">SFJBS</span>
+          <span className="text-[11.5px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
             CRM
           </span>
         </span>

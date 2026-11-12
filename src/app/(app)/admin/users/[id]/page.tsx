@@ -8,7 +8,15 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ContactRound, LogIn, MoreHorizontal, Pencil, UserRoundX, Users, UsersRound } from 'lucide-react';
+import {
+  ContactRound,
+  LogIn,
+  MoreHorizontal,
+  Pencil,
+  UserRoundX,
+  Users,
+  UsersRound,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -35,7 +43,9 @@ function PeopleList({ people, empty }: { people: UserPerson[]; empty: string }) 
             className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted"
           >
             <PersonCell person={p} />
-            {p.employeeId && <span className="font-mono text-xs text-muted-foreground">{p.employeeId}</span>}
+            {p.employeeId && (
+              <span className="font-mono text-xs text-muted-foreground">{p.employeeId}</span>
+            )}
           </Link>
         </li>
       ))}
@@ -54,7 +64,7 @@ function PersonLink({ person }: { person: UserPerson | null }) {
 
 function DetailSkeleton() {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="flex items-center gap-4">
         <Skeleton className="size-14 rounded-full" />
         <div className="space-y-2">
@@ -103,7 +113,7 @@ function UserDetailPage() {
   const sls = user.serviceLines ?? [];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         crumbs={[{ label: 'Users', href: '/admin/users' }, { label: fullName(user) }]}
         icon={<UserAvatar person={user} size="xl" />}
@@ -188,10 +198,26 @@ function UserDetailPage() {
                 { label: 'Display name', value: user.displayName, hidden: !user.displayName },
                 {
                   label: 'Employee ID',
-                  value: user.employeeId && <span className="font-mono text-[13px]">{user.employeeId}</span>,
+                  value: user.employeeId && (
+                    <span className="font-mono text-[14px]">{user.employeeId}</span>
+                  ),
                 },
-                { label: 'Email', value: <a href={`mailto:${user.email}`} className="hover:text-primary">{user.email}</a> },
-                { label: 'Phone', value: user.phone && <a href={`tel:${user.phone}`} className="hover:text-primary">{user.phone}</a> },
+                {
+                  label: 'Email',
+                  value: (
+                    <a href={`mailto:${user.email}`} className="hover:text-primary">
+                      {user.email}
+                    </a>
+                  ),
+                },
+                {
+                  label: 'Phone',
+                  value: user.phone && (
+                    <a href={`tel:${user.phone}`} className="hover:text-primary">
+                      {user.phone}
+                    </a>
+                  ),
+                },
                 { label: 'Working location', value: user.workingLocation },
                 { label: 'Timezone', value: user.timezone },
                 { label: 'Date of joining', value: user.dateOfJoin && fmtDate(user.dateOfJoin) },
@@ -251,7 +277,10 @@ function UserDetailPage() {
               columns={1}
               items={[
                 { label: 'Added', value: fmtDateTime(user.createdAt) },
-                { label: 'Added by', value: user.createdBy && <PersonLink person={user.createdBy} /> },
+                {
+                  label: 'Added by',
+                  value: user.createdBy && <PersonLink person={user.createdBy} />,
+                },
                 { label: 'Last updated', value: fmtDateTime(user.updatedAt) },
               ]}
             />

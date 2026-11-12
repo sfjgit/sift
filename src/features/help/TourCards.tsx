@@ -30,18 +30,22 @@ export function TourCards() {
               <p className="flex items-center gap-2 text-sm font-semibold">
                 {t.title}
                 {done && (
-                  <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-success">
+                  <span className="inline-flex items-center gap-0.5 text-[12px] font-medium text-success">
                     <Check className="size-3" /> Seen
                   </span>
                 )}
               </p>
-              <p className="mt-1 text-[13px] text-muted-foreground">{t.description}</p>
+              <p className="mt-1 text-[14px] text-muted-foreground">{t.description}</p>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 {t.steps.length} steps · {t.route.replace('/[id]', ' › any record')}
               </span>
-              <Button size="sm" variant={done ? 'outline' : 'default'} onClick={() => launchTour(t, router)}>
+              <Button
+                size="sm"
+                variant={done ? 'outline' : 'default'}
+                onClick={() => launchTour(t, router)}
+              >
                 <Play /> {done ? 'Replay' : 'Start tour'}
               </Button>
             </div>
