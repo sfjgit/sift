@@ -5,13 +5,13 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
 import {
   CheckCircle2,
   Eye,
   MoreHorizontal,
   Pencil,
   PauseCircle,
+  Play,
   Plus,
   Trash2,
   UserPlus,
@@ -25,9 +25,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useLookups } from '@/hooks/queries';
 import { Kbd } from '@/components/ui/kbd';
 import { HelpButton } from '@/features/help/HelpSheet';
-import { PageHeader } from '@/components/common/PageHeader';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { DataTable, useTableState } from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
@@ -39,16 +39,22 @@ import {
   clientColumns,
   clientFilterKeys,
   clientFilters,
+  CLIENT_DEFAULT_COLUMNS,
+  CLIENT_LAYOUT_VERSION,
+  QUICK_RUN_COLUMNS,
+  withDefaultColumns,
   type RunStepHandler,
 } from '@/features/clients/columns';
+import { clientExportSheets } from '@/features/clients/exportSheets';
+import { BusinessViewSelect } from '@/features/clients/BusinessViewSelect';
+import { useHiddenColumns } from '@/features/columnAccess/useHiddenColumns';
 import { AssignClientsDialog } from '@/features/clients/AssignClientsDialog';
 import { ClientDataSheet, type DataTab } from '@/features/clients/ClientDataSheet';
 import { RunStepLauncher, type RunTarget } from '@/features/pipeline/RunStepLauncher';
-import { StatusTabs } from '@/features/clients/StatusTabs';
 import { clientHooks } from '@/hooks/queries';
 import { useAction } from '@/hooks/useResource';
 import { useHotkey } from '@/hooks/useHotkey';
-import { clientsApi, reportsApi } from '@/lib/api/endpoints';
+import { clientsApi } from '@/lib/api/endpoints';
 import { fetchAllPages } from '@/lib/api/resource';
 import { useUi } from '@/stores/ui';
 import type { ClientListItem, ClientStatus } from '@/types/crm';
@@ -59,7 +65,9 @@ function ClientsPage() {
   const { can } = usePermissions();
   const { openClientDialog, openSpocDialog } = useUi();
   const table = useTableState('clients', clientFilterKeys, {
-    sort: { id: 'createdAt', desc: true },
+    // last updated first: a run starting or ending counts, so the client just run is on top
+    sort: { id: 'updatedAt', desc: true },
+    layoutVersion: CLIENT_LAYOUT_VERSION,
   });
   const query = clientHooks.useList(table.params);
   const [assigning, setAssigning] = useState<{ rows: ClientListItem[]; clear?: () => void } | null>(
@@ -67,15 +75,10 @@ function ClientsPage() {
   );
   const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
   const [dataSheet, setDataSheet] = useState<{ client: ClientListItem; tab: DataTab } | null>(null);
+  const techCategories = useLookups('TECH_CATEGORY').data;
+  const documentTypes = useLookups('DOCUMENT_TYPE').data;
   useTour(clientsTour, { ready: !query.isLoading });
   useHotkey('n', () => openClientDialog(true), can('clients.create'));
-
-  const counts = useQuery({
-    queryKey: ['reports', 'overview', 'client-counts'],
-    queryFn: () => reportsApi.overview(),
-    staleTime: 60_000,
-    enabled: can('reports.read'),
-  });
 
   const remove = useAction((id: string) => clientsApi.remove(id), {
     success: 'Client deleted',
@@ -158,47 +161,67 @@ function ClientsPage() {
     [can]
   );
 
+  // every column (admins arrange access from these) → minus the ones my role may not see
+  const allColumns = useMemo(
+    () =>
+      withDefaultColumns(
+        clientColumns({
+          actions: rowActions,
+          onRunStep: runHandler,
+          onOpenData: (client, tab) => setDataSheet({ client, tab }),
+          techCategories,
+          documentTypes,
+        })
+      ),
+    [rowActions, runHandler, techCategories, documentTypes]
+  );
+  const { hidden: roleHidden } = useHiddenColumns('clients');
   const columns = useMemo(
-    () => clientColumns(rowActions, runHandler, (client, tab) => setDataSheet({ client, tab })),
-    [rowActions, runHandler]
+    () => allColumns.filter(c => !roleHidden.includes(c.id ?? '')),
+    [allColumns, roleHidden]
   );
   const canBulk = can('clients.approve') || can('clients.assign');
 
   return (
-    <div className="space-y-5">
-      <PageHeader
+    <div className="space-y-3">
+      {/* one row: title · status tabs · actions — the sheet gets the height */}
+      <DataTable
+        id="clients"
         title="Clients"
-        description="Every company you work with — who works it, what each pipeline step has done, and what is missing."
+        titleAddon={<BusinessViewSelect />}
+        titleHint="Every organisation you work with — its profile, CSR figures, offices, reports and who works it. Status (pending / active / inactive) is in Filters."
         actions={
           <>
             <HelpButton module="clients" />
             {can('clients.create') && (
-              <Button onClick={() => openClientDialog(true)} {...tourTarget('clients-new')}>
+              <Button
+                size="sm"
+                onClick={() => openClientDialog(true)}
+                {...tourTarget('clients-new')}
+              >
                 <Plus /> New client
                 <Kbd className="ml-1 border-white/20 bg-white/15 text-primary-foreground">N</Kbd>
               </Button>
             )}
           </>
         }
-      />
-
-      <StatusTabs
-        value={(table.state.filters.status as ClientStatus | undefined) ?? null}
-        onChange={s => table.actions.setFilter('status', s)}
-        counts={counts.data?.clients?.byStatus}
-        total={counts.data?.clients?.total}
-      />
-
-      <DataTable
-        id="clients"
+        filterPanel={{ title: 'Filter clients by' }}
+        defaultColumnOrder={CLIENT_DEFAULT_COLUMNS}
+        quickToggle={{
+          ids: QUICK_RUN_COLUMNS,
+          label: 'run buttons (Run all, Reports, Find offices)',
+          icon: Play,
+        }}
+        columnAccess={{ table: 'clients', columns: allColumns }}
         table={table}
         query={query}
         columns={columns}
         filters={clientFilters}
-        searchPlaceholder="Search name, short name or CIN…"
+        searchPlaceholder="Search name or CIN…"
         rowHref={c => `/clients/${c.id}`}
         fetchAll={p => fetchAllPages(clientsApi.list, p)}
         exportName="clients"
+        exportSheets={clientExportSheets}
         empty={{
           title: 'No clients yet',
           description: 'Add your first client to start tracking SPOCs, locations and activity.',

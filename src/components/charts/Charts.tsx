@@ -37,10 +37,16 @@ export const OTHER_KEY = '__other';
 export const NONE_KEY = '__none';
 
 export const seriesColor = (i: number, key?: string) =>
-  key === OTHER_KEY || key === NONE_KEY || i >= MAX_SERIES ? 'var(--muted-foreground)' : `var(--chart-${i + 1})`;
+  key === OTHER_KEY || key === NONE_KEY || i >= MAX_SERIES
+    ? 'var(--muted-foreground)'
+    : `var(--chart-${i + 1})`;
 
 const compact = (n: number) =>
-  Math.abs(n) >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e3 ? `${+(n / 1e3).toFixed(1)}K` : String(n);
+  Math.abs(n) >= 1e6
+    ? `${+(n / 1e6).toFixed(1)}M`
+    : Math.abs(n) >= 1e3
+      ? `${+(n / 1e3).toFixed(1)}K`
+      : String(n);
 
 const AXIS = { fontSize: 11, fill: 'var(--muted-foreground)' };
 const GRID = 'var(--border)';
@@ -59,7 +65,12 @@ const colorOf = (s: Series, i: number) => s.color ?? seriesColor(i, s.key);
 export function Legend({ series, className }: { series: Series[]; className?: string }) {
   if (series.length < 2) return null;
   return (
-    <ul className={cn('flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground', className)}>
+    <ul
+      className={cn(
+        'flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground',
+        className
+      )}
+    >
       {series.map((s, i) => (
         <li key={s.key} className="flex items-center gap-1.5">
           <span className="size-2.5 rounded-[3px]" style={{ background: colorOf(s, i) }} />
@@ -94,7 +105,9 @@ function ChartTooltip({
   showTotal?: boolean;
 }) {
   if (!active || !payload?.length) return null;
-  const title = labelFormatter ? labelFormatter(String(label ?? '')) : String(label ?? payload[0]?.payload?.label ?? '');
+  const title = labelFormatter
+    ? labelFormatter(String(label ?? ''))
+    : String(label ?? payload[0]?.payload?.label ?? '');
   const rows = payload.filter(p => Number(p.value) > 0 || payload.length === 1);
   const total = payload.reduce((s, p) => s + Number(p.value || 0), 0);
   return (
@@ -107,14 +120,17 @@ function ChartTooltip({
             <li key={String(p.dataKey)} className="flex items-center gap-2">
               <span className="size-2 rounded-[2px]" style={{ background: p.color }} />
               <span className="flex-1 text-muted-foreground">{s?.label ?? p.name}</span>
-              <span className="font-medium text-popover-foreground tabular">{fmtNumber(Number(p.value))}</span>
+              <span className="font-medium text-popover-foreground tabular">
+                {fmtNumber(Number(p.value))}
+              </span>
             </li>
           );
         })}
       </ul>
       {showTotal && rows.length > 1 && (
         <p className="mt-1.5 flex justify-between border-t pt-1.5 text-muted-foreground">
-          Total <span className="font-medium text-popover-foreground tabular">{fmtNumber(total)}</span>
+          Total{' '}
+          <span className="font-medium text-popover-foreground tabular">{fmtNumber(total)}</span>
         </p>
       )}
     </div>
@@ -143,16 +159,33 @@ export function HBarChart({
   data: CategoryDatum[];
   series: Series[];
   onSelect?: (rowKey: string, seriesKey?: string) => void;
-  height?: number;
+  /** 'fill': take the parent's height (it must have one), never squeezing rows */
+  height?: number | 'fill';
   labelWidth?: number;
 }) {
   const stacked = series.length > 1;
-  const h = height ?? Math.max(160, data.length * 34 + 24);
+  const natural = Math.max(160, data.length * 34 + 24);
   return (
-    <ResponsiveContainer width="100%" height={h}>
-      <BarChart data={data} layout="vertical" margin={{ top: 4, right: stacked ? 12 : 44, bottom: 4, left: 4 }} barCategoryGap={8}>
+    <ResponsiveContainer
+      width="100%"
+      height={height === 'fill' ? '100%' : (height ?? natural)}
+      minHeight={height === 'fill' ? Math.max(120, data.length * 24 + 32) : undefined}
+    >
+      <BarChart
+        data={data}
+        layout="vertical"
+        margin={{ top: 4, right: stacked ? 12 : 44, bottom: 4, left: 4 }}
+        barCategoryGap={8}
+      >
         <CartesianGrid horizontal={false} stroke={GRID} />
-        <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={compact} allowDecimals={false} />
+        <XAxis
+          type="number"
+          tick={AXIS}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={compact}
+          allowDecimals={false}
+        />
         <YAxis
           type="category"
           dataKey="label"
@@ -179,7 +212,9 @@ export function HBarChart({
             strokeWidth={stacked ? 2 : 0}
             radius={!stacked || i === series.length - 1 ? [0, 4, 4, 0] : 0}
             cursor={onSelect ? 'pointer' : undefined}
-            onClick={(d: { payload?: CategoryDatum }) => d.payload && onSelect?.(d.payload.key, stacked ? s.key : undefined)}
+            onClick={(d: { payload?: CategoryDatum }) =>
+              d.payload && onSelect?.(d.payload.key, stacked ? s.key : undefined)
+            }
             isAnimationActive={false}
           >
             {!stacked && (
@@ -218,10 +253,28 @@ export function ColumnChart({
   const stacked = series.length > 1;
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }} barCategoryGap="22%">
+      <BarChart
+        data={data}
+        margin={{ top: 8, right: 8, bottom: 0, left: -12 }}
+        barCategoryGap="22%"
+      >
         <CartesianGrid vertical={false} stroke={GRID} />
-        <XAxis dataKey={xKey} tick={AXIS} axisLine={false} tickLine={false} tickFormatter={xFormatter} minTickGap={12} />
-        <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={compact} allowDecimals={false} width={44} />
+        <XAxis
+          dataKey={xKey}
+          tick={AXIS}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={xFormatter}
+          minTickGap={12}
+        />
+        <YAxis
+          tick={AXIS}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={compact}
+          allowDecimals={false}
+          width={44}
+        />
         <Tooltip
           cursor={{ fill: 'var(--accent)', opacity: 0.5 }}
           content={<ChartTooltip series={series} showTotal={stacked} labelFormatter={xFormatter} />}
@@ -271,18 +324,43 @@ export function TrendChart({
   series: Series[];
   xFormatter?: (v: string) => string;
   variant?: 'area' | 'line';
-  height?: number;
+  /** 'fill': take the parent's height (it must have one) */
+  height?: number | 'fill';
 }) {
   const Chart = variant === 'area' ? AreaChart : LineChart;
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    <ResponsiveContainer
+      width="100%"
+      height={height === 'fill' ? '100%' : height}
+      minHeight={height === 'fill' ? 160 : undefined}
+    >
       <Chart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
         <CartesianGrid vertical={false} stroke={GRID} />
-        <XAxis dataKey="bucket" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={xFormatter} minTickGap={24} />
-        <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={compact} allowDecimals={false} width={44} />
+        <XAxis
+          dataKey="bucket"
+          tick={AXIS}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={xFormatter}
+          minTickGap={24}
+        />
+        <YAxis
+          tick={AXIS}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={compact}
+          allowDecimals={false}
+          width={44}
+        />
         <Tooltip
           cursor={{ stroke: 'var(--muted-foreground)', strokeWidth: 1, strokeOpacity: 0.5 }}
-          content={<ChartTooltip series={series} labelFormatter={xFormatter} showTotal={series.length > 1} />}
+          content={
+            <ChartTooltip
+              series={series}
+              labelFormatter={xFormatter}
+              showTotal={series.length > 1}
+            />
+          }
         />
         {series.map((s, i) =>
           variant === 'area' ? (

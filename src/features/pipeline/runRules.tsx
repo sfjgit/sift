@@ -48,7 +48,7 @@ export function SlotChips({ slots, className }: { slots: RunSlot[]; className?: 
           key={s.ruleId}
           title={`Resets ${fmtDate(s.resetsAt)}`}
           className={cn(
-            'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px]',
+            'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px]',
             s.left <= 0 ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'
           )}
         >

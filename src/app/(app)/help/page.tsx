@@ -10,7 +10,18 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useDebounce } from 'use-debounce';
-import { ArrowRight, BookOpen, Keyboard, LifeBuoy, MessageCircleQuestion, Plus, Search, Sparkles, Workflow, X } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpen,
+  Keyboard,
+  LifeBuoy,
+  MessageCircleQuestion,
+  Plus,
+  Search,
+  Sparkles,
+  Workflow,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
@@ -28,7 +39,15 @@ import { cn } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import type { Faq } from '@/types/org';
 
-function SectionTitle({ icon: Icon, title, description }: { icon: typeof BookOpen; title: string; description?: string }) {
+function SectionTitle({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: typeof BookOpen;
+  title: string;
+  description?: string;
+}) {
   return (
     <div className="mb-3 flex items-start gap-2.5">
       <span className="mt-0.5 flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -36,7 +55,7 @@ function SectionTitle({ icon: Icon, title, description }: { icon: typeof BookOpe
       </span>
       <div>
         <h2 className="text-base font-semibold">{title}</h2>
-        {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
+        {description && <p className="text-[14px] text-muted-foreground">{description}</p>}
       </div>
     </div>
   );
@@ -70,7 +89,10 @@ export default function HelpPage() {
     placeholderData: keepPreviousData,
   });
 
-  const remove = useAction((id: string) => faqsApi.remove(id), { success: 'FAQ deleted', invalidate: [['faqs']] });
+  const remove = useAction((id: string) => faqsApi.remove(id), {
+    success: 'FAQ deleted',
+    invalidate: [['faqs']],
+  });
 
   const grouped = useMemo(() => {
     const map = new Map<string, Faq[]>();
@@ -112,7 +134,9 @@ export default function HelpPage() {
           <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
             <LifeBuoy className="size-3.5 text-primary" /> Help center
           </span>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">How can we help?</h1>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+            How can we help?
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Answers to common questions, guided tours and shortcuts for getting around the CRM.
           </p>
@@ -123,7 +147,7 @@ export default function HelpPage() {
               onChange={e => setSearch(e.target.value)}
               placeholder="Search questions and answers…"
               aria-label="Search help"
-              className="h-11 rounded-xl bg-background pr-10 pl-10 text-[15px] shadow-card"
+              className="h-11 rounded-xl bg-background pr-10 pl-10 text-[16px] shadow-card"
             />
             {search && (
               <button
@@ -147,9 +171,12 @@ export default function HelpPage() {
           <Workflow className="size-5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold group-hover:text-primary">How the pipeline works</span>
-          <span className="block text-[13px] text-muted-foreground">
-            The journey from a client to a reply, what happens after you click Run, each step, and where to see every result.
+          <span className="block text-sm font-semibold group-hover:text-primary">
+            How the pipeline works
+          </span>
+          <span className="block text-[14px] text-muted-foreground">
+            The journey from a client to a reply, what happens after you click Run, each step, and
+            where to see every result.
           </span>
         </span>
         <ArrowRight className="size-4 text-muted-foreground group-hover:text-primary" />
@@ -161,7 +188,7 @@ export default function HelpPage() {
           <SectionTitle icon={MessageCircleQuestion} title="Frequently asked questions" />
           {canManage && (
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-[13px]">
+              <label className="flex items-center gap-2 text-[14px]">
                 <Switch checked={manage} onCheckedChange={setManage} aria-label="Manage FAQs" />
                 Manage FAQs
               </label>
@@ -177,10 +204,17 @@ export default function HelpPage() {
         {/* category chips */}
         <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label="Filter by category">
           {categories.isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-7 w-24 rounded-full" />)
+            Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-7 w-24 rounded-full" />
+            ))
           ) : (
             <>
-              <CategoryChip active={!category} onClick={() => setCategory(null)} label="All" count={totalPublished} />
+              <CategoryChip
+                active={!category}
+                onClick={() => setCategory(null)}
+                label="All"
+                count={totalPublished}
+              />
               {(categories.data ?? []).map(c => (
                 <CategoryChip
                   key={c.category}
@@ -194,7 +228,12 @@ export default function HelpPage() {
           )}
         </div>
 
-        <div className={cn('rounded-xl border bg-card shadow-card', faqs.isFetching && !faqs.isLoading && 'opacity-80')}>
+        <div
+          className={cn(
+            'rounded-xl border bg-card shadow-card',
+            faqs.isFetching && !faqs.isLoading && 'opacity-80'
+          )}
+        >
           {faqs.isLoading ? (
             <div className="space-y-4 p-5">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -266,8 +305,12 @@ export default function HelpPage() {
       {/* shortcuts + still stuck */}
       <section className="grid gap-4 md:grid-cols-2">
         <div className="flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-card">
-          <SectionTitle icon={Keyboard} title="Keyboard shortcuts" description="Get around without reaching for the mouse." />
-          <ul className="space-y-2 text-[13px]">
+          <SectionTitle
+            icon={Keyboard}
+            title="Keyboard shortcuts"
+            description="Get around without reaching for the mouse."
+          />
+          <ul className="space-y-2 text-[14px]">
             <li className="flex items-center justify-between">
               Search anything <Kbd>⌘ K</Kbd>
             </li>
@@ -278,7 +321,12 @@ export default function HelpPage() {
               Show all shortcuts <Kbd>?</Kbd>
             </li>
           </ul>
-          <Button variant="outline" size="sm" className="mt-auto self-start" onClick={() => useUi.getState().setShortcutsOpen(true)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-auto self-start"
+            onClick={() => useUi.getState().setShortcutsOpen(true)}
+          >
             <Keyboard /> View all shortcuts
           </Button>
         </div>
@@ -288,8 +336,9 @@ export default function HelpPage() {
             title="Still stuck?"
             description="Your CRM admins can grant access, fix data and reset passwords."
           />
-          <p className="text-[13px] text-muted-foreground">
-            When you reach out, include the page link and what you expected to happen — it gets you an answer much faster.
+          <p className="text-[14px] text-muted-foreground">
+            When you reach out, include the page link and what you expected to happen — it gets you
+            an answer much faster.
           </p>
           <div className="mt-auto flex flex-wrap gap-2">
             {can('users.read') && (
@@ -333,11 +382,17 @@ function CategoryChip({
       onClick={onClick}
       className={cn(
         'inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
-        active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card text-foreground/80 hover:border-primary/40 hover:text-foreground'
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'bg-card text-foreground/80 hover:border-primary/40 hover:text-foreground'
       )}
     >
       {label}
-      <span className={cn('tabular', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{count}</span>
+      <span
+        className={cn('tabular', active ? 'text-primary-foreground/80' : 'text-muted-foreground')}
+      >
+        {count}
+      </span>
     </button>
   );
 }

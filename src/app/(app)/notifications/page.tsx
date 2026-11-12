@@ -34,14 +34,24 @@ export default function NotificationsPage() {
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: [...notificationKeys.all, 'page', tab, page],
-    queryFn: () => notificationsApi.list({ page, limit: LIMIT, isRead: tab === 'unread' ? false : undefined }),
+    queryFn: () =>
+      notificationsApi.list({ page, limit: LIMIT, isRead: tab === 'unread' ? false : undefined }),
     placeholderData: keepPreviousData,
   });
 
   const invalidate = [notificationKeys.all];
-  const markAll = useAction(() => notificationsApi.markAllRead(), { success: 'All caught up', invalidate });
-  const clearRead = useAction(() => notificationsApi.clearRead(), { success: 'Read notifications cleared', invalidate });
-  const remove = useAction((id: string) => notificationsApi.remove(id), { success: 'Notification removed', invalidate });
+  const markAll = useAction(() => notificationsApi.markAllRead(), {
+    success: 'All caught up',
+    invalidate,
+  });
+  const clearRead = useAction(() => notificationsApi.clearRead(), {
+    success: 'Read notifications cleared',
+    invalidate,
+  });
+  const remove = useAction((id: string) => notificationsApi.remove(id), {
+    success: 'Notification removed',
+    invalidate,
+  });
 
   const unread = data?.meta.unread ?? 0;
   const total = data?.meta.total ?? 0;
@@ -65,13 +75,18 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Notifications"
         description="Assignments, notes on your records and pipeline results."
         actions={
           <>
-            <Button variant="outline" size="sm" disabled={!unread || markAll.isPending} onClick={() => markAll.mutate(undefined)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!unread || markAll.isPending}
+              onClick={() => markAll.mutate(undefined)}
+            >
               <CheckCheck /> Mark all read
             </Button>
             <Button
@@ -81,7 +96,8 @@ export default function NotificationsPage() {
               onClick={async () => {
                 const ok = await confirm({
                   title: 'Clear read notifications?',
-                  description: 'Every notification you’ve already read is deleted. Unread ones stay.',
+                  description:
+                    'Every notification you’ve already read is deleted. Unread ones stay.',
                   destructive: true,
                   confirmLabel: 'Clear read',
                 });
@@ -102,7 +118,7 @@ export default function NotificationsPage() {
           <TabsTrigger value="unread" className="px-3">
             Unread
             {unread > 0 && (
-              <span className="ml-1 rounded-full bg-primary px-1.5 text-[10px] leading-4 font-semibold text-primary-foreground">
+              <span className="ml-1 rounded-full bg-primary px-1.5 text-[11px] leading-4 font-semibold text-primary-foreground">
                 {unread}
               </span>
             )}

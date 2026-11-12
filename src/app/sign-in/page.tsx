@@ -13,7 +13,16 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AlertCircle, ArrowLeft, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, MailCheck } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  MailCheck,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,7 +40,9 @@ const REMEMBER_KEY = 'crm:last-email';
 
 /** only same-origin relative paths — never //evil.com or https://… */
 const safeNext = (raw: string | null) =>
-  raw && raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/sign-in') ? raw : '/dashboard';
+  raw && raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/sign-in')
+    ? raw
+    : '/dashboard';
 
 const readRememberedEmail = () => {
   try {
@@ -48,7 +59,9 @@ export default function SignInPage() {
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const token = params.get('token');
   const next = safeNext(params.get('next'));
-  const notice = params.get('expired') ? 'Your session expired. Sign in again to pick up where you left off.' : null;
+  const notice = params.get('expired')
+    ? 'Your session expired. Sign in again to pick up where you left off.'
+    : null;
   const remembered = useBrowserValue(readRememberedEmail, '');
   // null = follow the URL (reset link → reset form); set once the user moves on
   const [modeOverride, setMode] = useState<Mode | null>(null);
@@ -102,8 +115,8 @@ export default function SignInPage() {
                 title="Check your inbox"
                 body={
                   <>
-                    If an account exists for <strong className="text-foreground">{email}</strong>, we’ve sent a reset
-                    link. It expires in 15 minutes.
+                    If an account exists for <strong className="text-foreground">{email}</strong>,
+                    we’ve sent a reset link. It expires in 15 minutes.
                   </>
                 }
                 action={
@@ -177,7 +190,9 @@ function BrandPanel() {
           ))}
         </ul>
       </div>
-      <p className="relative mt-10 text-xs text-white/60">© {new Date().getFullYear()} SFJBS · Internal use only</p>
+      <p className="relative mt-10 text-xs text-white/60">
+        © {new Date().getFullYear()} SFJBS · Internal use only
+      </p>
     </div>
   );
 }
@@ -210,7 +225,10 @@ function Message({
 function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-[13px] text-destructive">
+    <div
+      role="alert"
+      className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-[14px] text-destructive"
+    >
       <AlertCircle className="mt-0.5 size-4 shrink-0" /> {message}
     </div>
   );
@@ -314,7 +332,9 @@ function SignInForm({
       </div>
 
       {notice && !error && (
-        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-[13px]">{notice}</div>
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-[14px]">
+          {notice}
+        </div>
       )}
       <FormError message={error} />
 
@@ -353,7 +373,7 @@ function SignInForm({
           />
           {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
         </div>
-        <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <label className="flex items-center gap-2 text-[14px] text-muted-foreground">
           <Checkbox
             checked={form.watch('remember')}
             onCheckedChange={v => form.setValue('remember', !!v)}
@@ -381,7 +401,9 @@ function ForgotForm({
 }) {
   const [error, setError] = useState<string | null>(null);
   const form = useForm<{ email: string }>({
-    resolver: zodResolver(z.object({ email: z.string().trim().toLowerCase().email('Enter a valid email') })),
+    resolver: zodResolver(
+      z.object({ email: z.string().trim().toLowerCase().email('Enter a valid email') })
+    ),
     defaultValues: { email: defaultEmail },
   });
   const { errors, isSubmitting } = form.formState;
@@ -398,7 +420,11 @@ function ForgotForm({
 
   return (
     <form onSubmit={submit} noValidate className="space-y-6">
-      <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="size-3.5" /> Back to sign in
       </button>
       <div className="space-y-2">
@@ -406,7 +432,9 @@ function ForgotForm({
           <KeyRound className="size-5" />
         </span>
         <h1 className="text-2xl font-semibold">Reset your password</h1>
-        <p className="text-sm text-muted-foreground">Enter your work email and we’ll send you a reset link.</p>
+        <p className="text-sm text-muted-foreground">
+          Enter your work email and we’ll send you a reset link.
+        </p>
       </div>
       <FormError message={error} />
       <div className="space-y-1.5">
@@ -442,10 +470,23 @@ const resetSchema = z
   .refine(v => v.password === v.confirm, { path: ['confirm'], message: 'Passwords don’t match' });
 
 const strength = (p: string) =>
-  [p.length >= 8, p.length >= 12, /[A-Z]/.test(p) && /[a-z]/.test(p), /\d/.test(p), /[^A-Za-z0-9]/.test(p)].filter(Boolean)
-    .length;
+  [
+    p.length >= 8,
+    p.length >= 12,
+    /[A-Z]/.test(p) && /[a-z]/.test(p),
+    /\d/.test(p),
+    /[^A-Za-z0-9]/.test(p),
+  ].filter(Boolean).length;
 
-function ResetForm({ token, onDone, onBack }: { token: string; onDone: () => void; onBack: () => void }) {
+function ResetForm({
+  token,
+  onDone,
+  onBack,
+}: {
+  token: string;
+  onDone: () => void;
+  onBack: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
   const form = useForm<z.infer<typeof resetSchema>>({
     resolver: zodResolver(resetSchema),
@@ -462,7 +503,11 @@ function ResetForm({ token, onDone, onBack }: { token: string; onDone: () => voi
       onDone();
     } catch (e) {
       const err = e as ApiError;
-      setError(err.code === 'INVALID_TOKEN' ? 'This link has expired or was already used. Request a new one.' : err.message);
+      setError(
+        err.code === 'INVALID_TOKEN'
+          ? 'This link has expired or was already used. Request a new one.'
+          : err.message
+      );
     }
   });
 
@@ -473,25 +518,38 @@ function ResetForm({ token, onDone, onBack }: { token: string; onDone: () => voi
           <KeyRound className="size-5" />
         </span>
         <h1 className="text-2xl font-semibold">Set a new password</h1>
-        <p className="text-sm text-muted-foreground">Use at least 8 characters with a letter and a number.</p>
+        <p className="text-sm text-muted-foreground">
+          Use at least 8 characters with a letter and a number.
+        </p>
       </div>
       <FormError message={error} />
       {error && (
-        <button type="button" onClick={onBack} className="text-xs font-medium text-primary hover:underline">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-xs font-medium text-primary hover:underline"
+        >
           Request a new link
         </button>
       )}
       <div className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="new-password">New password</Label>
-          <PasswordInput id="new-password" autoComplete="new-password" autoFocus invalid={!!errors.password} {...form.register('password')} />
+          <PasswordInput
+            id="new-password"
+            autoComplete="new-password"
+            autoFocus
+            invalid={!!errors.password}
+            {...form.register('password')}
+          />
           <div className="flex gap-1 pt-1" aria-hidden>
             {[0, 1, 2, 3, 4].map(i => (
               <span
                 key={i}
                 className={cn(
                   'h-1 flex-1 rounded-full bg-muted transition-colors',
-                  i < score && (score <= 2 ? 'bg-destructive' : score <= 3 ? 'bg-warning' : 'bg-success')
+                  i < score &&
+                    (score <= 2 ? 'bg-destructive' : score <= 3 ? 'bg-warning' : 'bg-success')
                 )}
               />
             ))}
@@ -500,7 +558,12 @@ function ResetForm({ token, onDone, onBack }: { token: string; onDone: () => voi
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="confirm-password">Confirm password</Label>
-          <PasswordInput id="confirm-password" autoComplete="new-password" invalid={!!errors.confirm} {...form.register('confirm')} />
+          <PasswordInput
+            id="confirm-password"
+            autoComplete="new-password"
+            invalid={!!errors.confirm}
+            {...form.register('confirm')}
+          />
           {errors.confirm && <p className="text-xs text-destructive">{errors.confirm.message}</p>}
         </div>
       </div>

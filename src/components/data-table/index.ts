@@ -3,4 +3,4 @@
 
 export { DataTable, type DataTableProps } from './DataTable';
 export { useTableState, type TableController } from './useTableState';
-export type { DataColumn, FilterDef, TableViewConfig } from './types';
+export type { DataColumn, FilterDef, GroupTone, TableViewConfig } from './types';

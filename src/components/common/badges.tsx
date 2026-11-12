@@ -6,17 +6,24 @@
 
 import { cn } from '@/lib/utils';
 import { titleCase } from '@/lib/format';
-import type { ClientStatus, EmailStatus, OutreachStatus, SpocApprovalStatus, StepRunStatus, ValidationBand } from '@/types/crm';
+import type {
+  ClientStatus,
+  EmailStatus,
+  OutreachStatus,
+  SpocApprovalStatus,
+  StepRunStatus,
+  ValidationBand,
+} from '@/types/crm';
 
 export type Tone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'violet';
 
 const TONES: Record<Tone, string> = {
-  neutral: 'bg-muted text-muted-foreground ring-border',
-  primary: 'bg-primary/10 text-primary ring-primary/20',
-  success: 'bg-success/12 text-success ring-success/25',
-  warning: 'bg-warning/15 text-[oklch(0.5_0.13_60)] dark:text-warning ring-warning/30',
-  danger: 'bg-destructive/10 text-destructive ring-destructive/20',
-  info: 'bg-info/12 text-info ring-info/25',
+  neutral: 'bg-muted text-secondary-foreground ring-border',
+  primary: 'bg-primary/12 text-primary ring-primary/30',
+  success: 'bg-success/15 text-[oklch(0.42_0.14_158)] dark:text-success ring-success/35',
+  warning: 'bg-warning/20 text-[oklch(0.45_0.15_58)] dark:text-warning ring-warning/40',
+  danger: 'bg-destructive/12 text-[oklch(0.48_0.21_27)] dark:text-destructive ring-destructive/30',
+  info: 'bg-info/15 text-[oklch(0.45_0.17_245)] dark:text-info ring-info/35',
   violet: 'bg-chart-1/12 text-chart-1 ring-chart-1/25',
 };
 
@@ -44,7 +51,7 @@ export function Pill({
   return (
     <span
       className={cn(
-        'inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full px-2 text-[11px] font-medium whitespace-nowrap ring-1 ring-inset',
+        'inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full px-2 text-[12px] font-medium whitespace-nowrap ring-1 ring-inset',
         TONES[tone],
         className
       )}
@@ -118,9 +125,13 @@ export const StepRunBadge = ({ status }: { status: StepRunStatus }) => (
   <Pill tone={STEP_STATUS[status]?.tone}>{STEP_STATUS[status]?.label ?? titleCase(status)}</Pill>
 );
 
-export const ActiveBadge = ({ active, labels = ['Active', 'Inactive'] }: { active: boolean; labels?: [string, string] }) => (
-  <Pill tone={active ? 'success' : 'neutral'}>{active ? labels[0] : labels[1]}</Pill>
-);
+export const ActiveBadge = ({
+  active,
+  labels = ['Active', 'Inactive'],
+}: {
+  active: boolean;
+  labels?: [string, string];
+}) => <Pill tone={active ? 'success' : 'neutral'}>{active ? labels[0] : labels[1]}</Pill>;
 
 /** Lookup values (sales status, source...) — tone from lookup.meta.tone if admins set one */
 const LOOKUP_TONES: Tone[] = ['primary', 'info', 'violet', 'success', 'warning'];
@@ -137,14 +148,23 @@ export function LookupBadge({
   return <Pill tone={meta?.tone ?? LOOKUP_TONES[h % LOOKUP_TONES.length]}>{lookup.label}</Pill>;
 }
 
-export const OUTREACH_STATUS: Record<OutreachStatus, { label: string; tone: Tone; hint: string }> = {
-  DRAFT: { label: 'Draft', tone: 'neutral', hint: 'Written by the pipeline — read and review it first' },
-  REVIEWED: { label: 'Reviewed', tone: 'info', hint: 'Checked by a person — ready to send from Outlook' },
-  SENT: { label: 'Sent', tone: 'primary', hint: 'At least one mail sent — waiting for a reply' },
-  REPLIED: { label: 'Replied', tone: 'success', hint: 'The SPOC replied' },
-  NO_REPLY: { label: 'No reply', tone: 'warning', hint: 'Sequence finished without a reply' },
-  BOUNCED: { label: 'Bounced', tone: 'danger', hint: 'The mail did not reach the SPOC' },
-};
+export const OUTREACH_STATUS: Record<OutreachStatus, { label: string; tone: Tone; hint: string }> =
+  {
+    DRAFT: {
+      label: 'Draft',
+      tone: 'neutral',
+      hint: 'Written by the pipeline — read and review it first',
+    },
+    REVIEWED: {
+      label: 'Reviewed',
+      tone: 'info',
+      hint: 'Checked by a person — ready to send from Outlook',
+    },
+    SENT: { label: 'Sent', tone: 'primary', hint: 'At least one mail sent — waiting for a reply' },
+    REPLIED: { label: 'Replied', tone: 'success', hint: 'The SPOC replied' },
+    NO_REPLY: { label: 'No reply', tone: 'warning', hint: 'Sequence finished without a reply' },
+    BOUNCED: { label: 'Bounced', tone: 'danger', hint: 'The mail did not reach the SPOC' },
+  };
 
 export const OutreachStatusBadge = ({ status }: { status: OutreachStatus }) => (
   <Pill tone={OUTREACH_STATUS[status]?.tone}>{OUTREACH_STATUS[status]?.label ?? status}</Pill>

@@ -40,7 +40,7 @@ export function Field({
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       {label && (
-        <Label htmlFor={htmlFor} className="text-[13px] font-medium">
+        <Label htmlFor={htmlFor} className="text-[14px] font-medium">
           {label}
           {required && <span className="text-destructive">*</span>}
         </Label>
@@ -65,7 +65,9 @@ interface BaseProps<T extends FieldValues> {
 }
 
 const errorOf = <T extends FieldValues>(form: AnyForm<T>, name: Path<T>) => {
-  const err = name.split('.').reduce<unknown>((acc, k) => (acc as Record<string, unknown>)?.[k], form.formState.errors);
+  const err = name
+    .split('.')
+    .reduce<unknown>((acc, k) => (acc as Record<string, unknown>)?.[k], form.formState.errors);
   return (err as { message?: string } | undefined)?.message;
 };
 
@@ -80,7 +82,14 @@ export function TextField<T extends FieldValues>({
 }: BaseProps<T> & Omit<React.ComponentProps<'input'>, 'name' | 'form'>) {
   const error = errorOf(form, name);
   return (
-    <Field label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      hint={hint}
+      error={error}
+      className={className}
+    >
       <Input id={name} aria-invalid={!!error || undefined} {...input} {...form.register(name)} />
     </Field>
   );
@@ -97,7 +106,14 @@ export function TextAreaField<T extends FieldValues>({
 }: BaseProps<T> & Omit<React.ComponentProps<'textarea'>, 'name' | 'form'>) {
   const error = errorOf(form, name);
   return (
-    <Field label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      hint={hint}
+      error={error}
+      className={className}
+    >
       <Textarea id={name} aria-invalid={!!error || undefined} {...input} {...form.register(name)} />
     </Field>
   );
@@ -121,12 +137,26 @@ export function PickerField<T extends FieldValues>({
 }: BaseProps<T> & { render: (p: PickerRenderProps) => ReactNode }) {
   const error = errorOf(form, name);
   return (
-    <Field label={label} htmlFor={name} required={required} hint={hint} error={error} className={className}>
+    <Field
+      label={label}
+      htmlFor={name}
+      required={required}
+      hint={hint}
+      error={error}
+      className={className}
+    >
       <Controller
         control={form.control}
         name={name}
         render={({ field }) => (
-          <>{render({ value: field.value ?? null, onChange: field.onChange, invalid: !!error, id: name })}</>
+          <>
+            {render({
+              value: field.value ?? null,
+              onChange: field.onChange,
+              invalid: !!error,
+              id: name,
+            })}
+          </>
         )}
       />
     </Field>
@@ -145,7 +175,9 @@ export function SwitchField<T extends FieldValues>({
       control={form.control}
       name={name}
       render={({ field }) => (
-        <label className={cn('flex items-center justify-between gap-4 rounded-lg border p-3', className)}>
+        <label
+          className={cn('flex items-center justify-between gap-4 rounded-lg border p-3', className)}
+        >
           <span>
             <span className="block text-sm font-medium">{label}</span>
             {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}

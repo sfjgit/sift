@@ -106,7 +106,7 @@ function StepCard({
           </div>
         )}
         {step.done && last?.id === step.done.runId && step.done.byMe && step.rerunBlocked && (
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
+          <p className="mt-1.5 text-[12px] text-muted-foreground">
             Can run again from {fmtDate(step.rerunBlocked.until)}
           </p>
         )}
@@ -174,8 +174,15 @@ export function PipelinePanel({ clientId, clientName }: { clientId: string; clie
 
   const { counts, steps, canRerun } = q.data;
   const runAll = steps.find(s => s.key === 'run_all');
-  const cards = steps.filter(s => s.key !== 'run_all');
-  const offline = steps.some(s => s.service.lastHealthOk === false);
+  // the website check runs by itself when a website does not open — no card
+  const cards = steps.filter(s => s.key !== 'run_all' && s.key !== 'website');
+  const offline = [
+    ...new Set(
+      steps
+        .filter(s => s.service.lastHealthOk === false)
+        .map(s => s.service.name ?? 'The CSR pipeline')
+    ),
+  ];
   const anyRunning = steps.some(s => s.lastRun && isActive(s.lastRun.status));
   const canRun = can('step_runs.run');
   const canRunEmails = canRun && can('outreach.generate');
@@ -202,13 +209,13 @@ export function PipelinePanel({ clientId, clientName }: { clientId: string; clie
   ];
 
   return (
-    <div className="space-y-5">
-      {offline && (
-        <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5 text-[13px]">
+    <div className="space-y-3">
+      {offline.length > 0 && (
+        <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning/8 px-3 py-2.5 text-[14px]">
           <WifiOff className="mt-0.5 size-4 shrink-0 text-warning" />
           <p>
-            The CSR pipeline did not answer its last health check. Runs are queued and sent as soon
-            as it is back.
+            {offline.join(' and ')} did not answer its last health check. Runs are queued and sent
+            as soon as it is back.
           </p>
         </div>
       )}
@@ -217,7 +224,7 @@ export function PipelinePanel({ clientId, clientName }: { clientId: string; clie
         <dl className="flex flex-wrap gap-2">
           {stats.map(s => (
             <div key={s.label} className="rounded-lg border bg-card px-3 py-1.5 shadow-card">
-              <dt className="text-[11px] text-muted-foreground">{s.label}</dt>
+              <dt className="text-[12px] text-muted-foreground">{s.label}</dt>
               <dd className="text-sm font-semibold tabular">{fmtNumber(s.value)}</dd>
             </div>
           ))}

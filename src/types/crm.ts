@@ -7,6 +7,9 @@ import type { LookupRef, NamedRef, Person } from './api';
 
 export type ClientStatus = 'PENDING' | 'ACTIVE' | 'INACTIVE';
 
+/** what kind of organisation a client is */
+export type ClientEntityType = 'COMPANY' | 'GOVERNMENT' | 'INSTITUTION';
+
 /** BU / service line as embedded in a client */
 export interface OrgRef {
   id: string;
@@ -29,6 +32,7 @@ export type ClientActivityType =
   | 'DOCUMENT_ADDED'
   | 'FINANCIALS_UPDATED'
   | 'PROGRAMS_ADDED'
+  | 'PROGRAMS_UPDATED'
   | 'OUTREACH_GENERATED'
   | 'STEP_RUN_STARTED'
   | 'STEP_RUN_FINISHED'
@@ -42,11 +46,19 @@ export type ClientActivityType =
 
 export interface ClientListItem {
   id: string;
+  entityType: ClientEntityType;
   name: string;
   shortName: string | null;
   cin: string | null;
   website: string | null;
+  linkedinUrl: string | null;
   status: ClientStatus;
+  /** exact head count if known, and its band (EMPLOYEE_SIZE) */
+  employeeCount: number | null;
+  employeeSize: LookupRef | null;
+  /** newest FY with a CSR spent figure, and that figure (₹, decimal string) */
+  csrFy: string | null;
+  csrSpentRs: string | null;
   createdAt: string;
   updatedAt: string;
   industry: LookupRef | null;
@@ -54,10 +66,35 @@ export interface ClientListItem {
   businessUnit: OrgRef | null;
   serviceLines: { serviceLine: OrgRef }[];
   createdBy: Person;
-  locations: { id: string; city: string | null; state: string | null; country: string | null }[];
-  _count: { spocs: number };
+  /** the primary location only */
+  locations: {
+    id: string;
+    addressLine: string | null;
+    city: string | null;
+    district: string | null;
+    state: string | null;
+    country: string | null;
+    pincode: string | null;
+  }[];
+  /** spocs = the ones this user may see; branches = active offices other than the head office */
+  _count: { spocs: number; branches: number };
   /** people who work this client (set by super admin / clients.assign) */
   assignments: { assignedAt: string; user: Person }[];
+  approvedAt: string | null;
+  approvedBy: Person | null;
+  /** list rows: one per technology area (detail has the full rows) */
+  technologies?: { details: string; category: LookupRef }[];
+  /** list rows: latest FY only; absent without client_financials.read */
+  csrFinancials?: Pick<
+    ClientCsrFinancial,
+    'fy' | 'obligationRs' | 'budgetRs' | 'spentRs' | 'unspentRs'
+  >[];
+  corporateFinancials?: Pick<
+    ClientCorporateFinancial,
+    'fy' | 'revenueRs' | 'netProfitRs' | 'netWorthRs' | 'paidUpCapitalRs' | 'authorisedCapitalRs'
+  >[];
+  /** list rows: absent without client_documents.read */
+  documents?: { id: string; fy: string; type: LookupRef }[];
   /** list rows only: what the CRM holds and the last pipeline run */
   coverage?: ClientCoverage;
 }
@@ -88,8 +125,19 @@ export interface ClientCoverage {
   programs: number;
   outreachPacks: number;
   outreachSent: number;
-  lastRun: { id: string; status: StepRunStatus; note: string | null; createdAt: string; step: { key: string; label: string } } | null;
+  lastRun: {
+    id: string;
+    status: StepRunStatus;
+    note: string | null;
+    createdAt: string;
+    step: { key: string; label: string };
+  } | null;
   steps: Partial<Record<string, ClientStepCell>>;
+  /** a website request waiting for an admin, or who changed the website in the last 14 days */
+  website?: {
+    waiting?: { since: string; by: string };
+    changed?: { at: string; by: string | null };
+  } | null;
 }
 
 export interface ClientLocation {
@@ -137,19 +185,75 @@ export interface ClientDocument {
   type: LookupRef;
 }
 
-export interface ClientProgram {
+export type CsrImplementationMode = 'DIRECT' | 'AGENCY';
+
+export interface CsrAgency {
+  id: string;
+  name: string;
+  registrationNo: string | null;
+  website: string | null;
+}
+
+export interface CsrProgramLocation {
+  id: string;
+  state: string;
+  district: string | null;
+  city: string | null;
+  latitude: string | null;
+  longitude: string | null;
+}
+
+/** one project from the annual CSR report's project table */
+export interface ClientCsrProgram {
   id: string;
   fy: string;
   name: string;
+  sectorText: string | null;
+  sectors: { sector: { id: string; code: string; label: string } }[];
+  isOngoing: boolean | null;
+  duration: string | null;
+  isLocalArea: boolean | null;
+  locations: CsrProgramLocation[];
+  locationNote: string | null;
   budgetRs: string | null;
-  locations: string | null;
+  spentRs: string | null;
+  unspentTransferredRs: string | null;
+  mode: CsrImplementationMode | null;
+  agency: CsrAgency | null;
   beneficiaries: string | null;
-  implementor: string | null;
   sourceUrl: string | null;
-  sector: LookupRef | null;
+  isLocked: boolean;
+  updatedAt: string;
 }
 
-export interface ClientFinancial {
+export interface CsrProgramInput {
+  fy: string;
+  name: string;
+  sectorIds: string[];
+  isOngoing: boolean | null;
+  duration: string | null;
+  isLocalArea: boolean | null;
+  locations: {
+    state: string;
+    district: string | null;
+    city: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }[];
+  locationNote: string | null;
+  budgetRs: number | null;
+  spentRs: number | null;
+  unspentTransferredRs: number | null;
+  mode: CsrImplementationMode | null;
+  agencyId?: string | null;
+  agencyName?: string | null;
+  agencyRegistrationNo?: string | null;
+  beneficiaries: string | null;
+  sourceUrl: string | null;
+  isLocked?: boolean;
+}
+
+export interface ClientCsrFinancial {
   id: string;
   fy: string;
   obligationRs: string | null;
@@ -162,8 +266,20 @@ export interface ClientFinancial {
   updatedAt: string;
 }
 
+export interface ClientCorporateFinancial {
+  id: string;
+  fy: string;
+  revenueRs: string | null;
+  netProfitRs: string | null;
+  paidUpCapitalRs: string | null;
+  authorisedCapitalRs: string | null;
+  netWorthRs: string | null;
+  source: string | null;
+  isLocked: boolean;
+  updatedAt: string;
+}
+
 export interface ClientDetail extends Omit<ClientListItem, 'locations'> {
-  linkedinUrl: string | null;
   approvedAt: string | null;
   approvedBy: Person | null;
   locations: ClientLocation[];
@@ -172,12 +288,14 @@ export interface ClientDetail extends Omit<ClientListItem, 'locations'> {
   /** Present only with client_documents.read */
   documents?: ClientDocument[];
   /** Present only with client_programs.read */
-  programs?: ClientProgram[];
+  csrPrograms?: ClientCsrProgram[];
   /** Present only with client_financials.read */
-  financials?: ClientFinancial[];
+  csrFinancials?: ClientCsrFinancial[];
+  corporateFinancials?: ClientCorporateFinancial[];
 }
 
 export interface ClientInput {
+  entityType?: ClientEntityType;
   name: string;
   shortName?: string | null;
   cin?: string | null;
@@ -185,6 +303,9 @@ export interface ClientInput {
   linkedinUrl?: string | null;
   industryId?: string | null;
   categoryId?: string | null;
+  employeeCount?: number | null;
+  /** null with a count = picked from the count */
+  employeeSizeId?: string | null;
   businessUnitId?: string | null;
   /** replaces the client's whole set */
   serviceLineIds?: string[];
@@ -453,12 +574,25 @@ export interface StepOverview {
   steps: StepOverviewRow[];
 }
 
-export type StepOverviewRow = Pick<PipelineStep, 'id' | 'key' | 'label' | 'uiOrder' | 'userClientLimit'> & {
+export type StepOverviewRow = Pick<
+  PipelineStep,
+  'id' | 'key' | 'label' | 'uiOrder' | 'userClientLimit'
+> & {
   rerunAfterDays: number | null;
-  service: { isActive: boolean; lastHealthOk: boolean | null };
-  lastRun: Pick<StepRun, 'id' | 'status' | 'progress' | 'note' | 'errorMessage' | 'createdAt' | 'finishedAt'> | null;
+  service: { code?: string; name?: string; isActive: boolean; lastHealthOk: boolean | null };
+  lastRun: Pick<
+    StepRun,
+    'id' | 'status' | 'progress' | 'note' | 'errorMessage' | 'createdAt' | 'finishedAt'
+  > | null;
   /** last finished run that counts for this user (anyone's for client-level steps) */
-  done: { runId: string; at: string; by: string; byMe: boolean; note: string | null; until: string } | null;
+  done: {
+    runId: string;
+    at: string;
+    by: string;
+    byMe: boolean;
+    note: string | null;
+    until: string;
+  } | null;
   /** done recently with nothing new since — a re-run needs an admin */
   rerunBlocked: { message: string; until: string } | null;
   slots: RunSlot[];
@@ -504,7 +638,15 @@ export interface RunQuotaInput {
 
 /** viewData written by the CRM when it saved a run's results */
 export interface RunViewData {
-  conflicts?: { spocId: string; name: string; field: string; current?: string; proposed: unknown; source?: string | null; reason?: string }[];
+  conflicts?: {
+    spocId: string;
+    name: string;
+    field: string;
+    current?: string;
+    proposed: unknown;
+    source?: string | null;
+    reason?: string;
+  }[];
   skipped?: { kind: string; name?: string; reason: string; [k: string]: unknown }[];
   flaggedFigures?: { fy: string; reviewReason?: string; [k: string]: unknown }[];
 }
@@ -560,4 +702,25 @@ export interface EngineHealth {
     crmMode: boolean;
     version: string;
   } | null;
+}
+
+/** one FY of CSR figures, ₹ */
+export interface CsrFinancialInput {
+  fy: string;
+  obligationRs?: number | null;
+  budgetRs?: number | null;
+  spentRs?: number | null;
+  unspentRs?: number | null;
+  evidence?: string | null;
+}
+
+/** one FY of company figures, ₹ */
+export interface CorporateFinancialInput {
+  fy: string;
+  revenueRs?: number | null;
+  netProfitRs?: number | null;
+  paidUpCapitalRs?: number | null;
+  authorisedCapitalRs?: number | null;
+  netWorthRs?: number | null;
+  source?: string | null;
 }

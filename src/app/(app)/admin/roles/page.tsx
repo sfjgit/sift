@@ -102,7 +102,7 @@ function RoleCard({
           </DropdownMenu>
         )}
       </div>
-      <p className="line-clamp-2 min-h-10 text-[13px] text-muted-foreground">
+      <p className="line-clamp-2 min-h-10 text-[14px] text-muted-foreground">
         {role.description || 'No description'}
       </p>
       <div className="flex items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
@@ -151,7 +151,7 @@ function RolesPage() {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Roles & access"
         description="A role is a set of permissions. Each user has exactly one; scoped permissions decide whose records they see."

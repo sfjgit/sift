@@ -7,9 +7,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Mail } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { EmptyState, ErrorState } from '@/components/common/states';
+import { ErrorState } from '@/components/common/states';
+import { InlineEmpty } from '@/components/common/SubSection';
 import { OutreachPackCard } from '@/features/outreach/OutreachPackCard';
 import { outreachApi } from '@/lib/api/endpoints';
 
@@ -23,11 +23,10 @@ export function OutreachList({ clientId, spocId }: { clientId?: string; spocId?:
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   if (!q.data?.data.length)
     return (
-      <EmptyState
-        icon={Mail}
-        title="No outreach written yet"
-        description="Run “Write outreach emails” for approved SPOCs. Drafts appear here to review, send from Outlook and track."
-      />
+      <InlineEmpty>
+        No outreach written yet. Run “Emails” for approved SPOCs — drafts appear here to review,
+        send from Outlook and track.
+      </InlineEmpty>
     );
 
   return (

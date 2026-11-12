@@ -4,7 +4,12 @@
 import { cn } from '@/lib/utils';
 import { fullName, initials } from '@/lib/format';
 
-type Named = { id?: string; firstName?: string | null; lastName?: string | null; displayName?: string | null };
+type Named = {
+  id?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+};
 
 // Deterministic hue per person so the same user always gets the same colour
 const HUES = [279, 182, 72, 12, 236, 310, 135, 30, 200, 340];
@@ -15,8 +20,8 @@ const hueFor = (seed: string) => {
 };
 
 const SIZES = {
-  xs: 'size-5 text-[9px]',
-  sm: 'size-6 text-[10px]',
+  xs: 'size-5 text-[10px]',
+  sm: 'size-6 text-[11px]',
   md: 'size-8 text-xs',
   lg: 'size-10 text-sm',
   xl: 'size-14 text-lg',
@@ -54,18 +59,25 @@ export function PersonCell({
   person,
   sub,
   size = 'sm',
+  inline = false,
 }: {
   person?: Named | null;
   sub?: React.ReactNode;
   size?: keyof typeof SIZES;
+  /** sub text beside the name (one line, for sheet rows) instead of under it */
+  inline?: boolean;
 }) {
   if (!person) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="flex min-w-0 items-center gap-2">
       <UserAvatar person={person} size={size} />
-      <span className="min-w-0">
-        <span className="block truncate">{fullName(person)}</span>
-        {sub && <span className="block truncate text-xs text-muted-foreground">{sub}</span>}
+      <span className={cn('min-w-0', inline && 'flex items-baseline gap-2')}>
+        <span className={cn('truncate', inline ? 'shrink-0' : 'block')}>{fullName(person)}</span>
+        {sub && (
+          <span className={cn('truncate text-xs text-muted-foreground', !inline && 'block')}>
+            {sub}
+          </span>
+        )}
       </span>
     </span>
   );

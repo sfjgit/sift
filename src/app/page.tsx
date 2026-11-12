@@ -6,6 +6,7 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useBrowserValue } from '@/hooks/useBrowserValue';
 import {
   ArrowRight,
@@ -20,6 +21,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/common/Logo';
 import { hasSessionCookie } from '@/features/auth/impersonation';
+
+// three.js — browser only, loaded after the page
+const HeroGlobe = dynamic(() => import('@/features/landing/HeroGlobe'), { ssr: false });
 
 const FEATURES = [
   {
@@ -56,7 +60,9 @@ const FEATURES = [
 
 export default function LandingPage() {
   const signedIn = useBrowserValue(hasSessionCookie, false);
-  const cta = signedIn ? { href: '/dashboard', label: 'Open workspace' } : { href: '/sign-in', label: 'Sign in' };
+  const cta = signedIn
+    ? { href: '/dashboard', label: 'Open workspace' }
+    : { href: '/sign-in', label: 'Sign in' };
 
   return (
     <div className="relative min-h-svh overflow-hidden bg-background">
@@ -73,17 +79,22 @@ export default function LandingPage() {
       </header>
 
       <main className="relative z-10">
-        <section className="mx-auto max-w-4xl px-6 pt-16 pb-14 text-center sm:pt-24">
+        <section className="relative mx-auto max-w-4xl px-6 pt-16 pb-14 text-center sm:pt-24">
+          {/* 3D globe behind the headline, fading out at the edges */}
+          <div className="pointer-events-none absolute inset-x-[-25%] top-[22%] -z-10 h-[130%] animate-fade-up opacity-60 [animation-delay:200ms] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_70%)]">
+            <HeroGlobe />
+          </div>
           <span className="inline-flex animate-fade-up items-center gap-1.5 rounded-full border bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-card backdrop-blur">
             <Sparkles className="size-3.5 text-primary" /> Sales & marketing workspace for SFJBS
           </span>
           <h1 className="mt-6 animate-fade-up text-4xl leading-[1.08] font-bold tracking-tight [animation-delay:60ms] sm:text-6xl">
             Every client, contact and
-            <br className="hidden sm:block" /> conversation — <span className="text-brand-gradient">in one place.</span>
+            <br className="hidden sm:block" /> conversation —{' '}
+            <span className="text-brand-gradient">in one place.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl animate-fade-up text-base text-muted-foreground [animation-delay:120ms] sm:text-lg">
-            Track clients from first contact to active account, keep SPOC data clean, and answer any pipeline question
-            with reports you build in seconds.
+            Track clients from first contact to active account, keep SPOC data clean, and answer any
+            pipeline question with reports you build in seconds.
           </p>
           <div className="mt-8 flex animate-fade-up flex-wrap items-center justify-center gap-3 [animation-delay:180ms]">
             <Button asChild size="lg" className="h-10 px-5 text-sm shadow-float">
@@ -101,7 +112,9 @@ export default function LandingPage() {
 
         <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-24">
           <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight">Built for how the team actually sells</h2>
+            <h2 className="text-3xl font-bold tracking-tight">
+              Built for how the team actually sells
+            </h2>
             <p className="mt-3 text-muted-foreground">
               No spreadsheets to reconcile, no guessing who owns a contact.
             </p>
@@ -148,8 +161,13 @@ function ProductPreview() {
           <div className="grid grid-cols-[150px_1fr] gap-0 max-sm:grid-cols-1">
             <div className="space-y-2 border-r bg-sidebar p-3 max-sm:hidden">
               {[70, 55, 62, 48, 58].map((w, i) => (
-                <div key={i} className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${i === 1 ? 'bg-sidebar-accent' : ''}`}>
-                  <span className={`size-3 rounded ${i === 1 ? 'bg-primary' : 'bg-muted-foreground/25'}`} />
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 rounded-md px-2 py-1.5 ${i === 1 ? 'bg-sidebar-accent' : ''}`}
+                >
+                  <span
+                    className={`size-3 rounded ${i === 1 ? 'bg-primary' : 'bg-muted-foreground/25'}`}
+                  />
                   <span className="h-2 rounded bg-muted-foreground/20" style={{ width: `${w}%` }} />
                 </div>
               ))}
@@ -161,7 +179,10 @@ function ProductPreview() {
                     <span className="block h-2 w-14 rounded bg-muted-foreground/20" />
                     <span className="mt-2.5 block h-4 w-10 rounded bg-foreground/80" />
                     <span className="mt-3 block h-1.5 rounded-full bg-muted">
-                      <span className={`block h-full rounded-full ${c}`} style={{ width: `${45 + i * 12}%` }} />
+                      <span
+                        className={`block h-full rounded-full ${c}`}
+                        style={{ width: `${45 + i * 12}%` }}
+                      />
                     </span>
                   </div>
                 ))}

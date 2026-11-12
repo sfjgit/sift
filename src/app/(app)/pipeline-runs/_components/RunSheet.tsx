@@ -7,6 +7,8 @@
 
 'use client';
 
+import { useEffect } from 'react';
+import { useUi } from '@/stores/ui';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, Coins, Lightbulb, SearchX, Square } from 'lucide-react';
@@ -14,11 +16,23 @@ import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { useAction } from '@/hooks/useResource';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { DetailList } from '@/components/common/Panel';
-import { ApprovalBadge, BandBadge, Pill, STEP_STATUS, StepRunBadge } from '@/components/common/badges';
+import {
+  ApprovalBadge,
+  BandBadge,
+  Pill,
+  STEP_STATUS,
+  StepRunBadge,
+} from '@/components/common/badges';
 import { PersonCell } from '@/components/common/UserAvatar';
 import { EmptyState, ErrorState } from '@/components/common/states';
 import { ApiError } from '@/lib/api/client';
@@ -31,7 +45,9 @@ import { fmtDuration, fmtUsd, humanizeKey, isActive } from './runFormat';
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        {title}
+      </h3>
       {children}
     </section>
   );
@@ -51,7 +67,10 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const OpenLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
-  <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+  <Link
+    href={href}
+    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+  >
     {children} <ArrowRight className="size-3" />
   </Link>
 );
@@ -60,7 +79,8 @@ const OpenLink = ({ href, children }: { href: string; children: React.ReactNode 
 function Produced({ p }: { p: RunProduced }) {
   const added = p.spocs.filter(s => s.change === 'added');
   const scored = p.spocs.some(s => s.fields.includes('score'));
-  const empty = !p.spocs.length && !p.documents.length && !p.outreach.length && !p.programs && !p.financials;
+  const empty =
+    !p.spocs.length && !p.documents.length && !p.outreach.length && !p.programs && !p.financials;
   if (empty) return null;
   const tab = (t: string) => `/clients/${p.clientId}?tab=${t}`;
 
@@ -70,30 +90,45 @@ function Produced({ p }: { p: RunProduced }) {
         {p.spocs.length > 0 && (
           <div className="rounded-lg border">
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-              <span className="text-[13px] font-medium">
+              <span className="text-[14px] font-medium">
                 {scored ? `${p.spocs.length} SPOC(s) scored` : `${p.spocs.length} SPOC(s)`}
                 {added.length > 0 && ` · ${added.length} new, waiting for approval`}
               </span>
-              {added.length > 0 ? <OpenLink href="/approvals">Approvals</OpenLink> : <OpenLink href={tab('spocs')}>SPOCs tab</OpenLink>}
+              {added.length > 0 ? (
+                <OpenLink href="/approvals">Approvals</OpenLink>
+              ) : (
+                <OpenLink href={tab('spocs')}>SPOCs</OpenLink>
+              )}
             </div>
             <ul className="divide-y">
               {p.spocs.map(s => (
-                <li key={`${s.id}-${s.change}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-[13px]">
+                <li
+                  key={`${s.id}-${s.change}`}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-[14px]"
+                >
                   <Link href={`/spocs/${s.id}`} className="min-w-0 font-medium hover:text-primary">
                     {fullName(s)}
                   </Link>
-                  {s.designation && <span className="truncate text-xs text-muted-foreground">{s.designation}</span>}
+                  {s.designation && (
+                    <span className="truncate text-xs text-muted-foreground">{s.designation}</span>
+                  )}
                   <span className="ml-auto flex flex-wrap items-center gap-1.5">
                     {s.change === 'added' ? (
                       <ApprovalBadge status={s.approvalStatus} />
                     ) : (
                       s.fields.filter(f => f !== 'score').length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          added {s.fields.filter(f => f !== 'score').map(f => FIELD_LABELS[f] ?? humanizeKey(f)).join(', ')}
+                          added{' '}
+                          {s.fields
+                            .filter(f => f !== 'score')
+                            .map(f => FIELD_LABELS[f] ?? humanizeKey(f))
+                            .join(', ')}
                         </span>
                       )
                     )}
-                    {(scored || s.validationScore !== null) && <BandBadge band={s.validationBand} score={s.validationScore} />}
+                    {(scored || s.validationScore !== null) && (
+                      <BandBadge band={s.validationBand} score={s.validationScore} />
+                    )}
                   </span>
                 </li>
               ))}
@@ -104,17 +139,23 @@ function Produced({ p }: { p: RunProduced }) {
         {p.outreach.length > 0 && (
           <div className="rounded-lg border">
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-              <span className="text-[13px] font-medium">{p.outreach.length} email pack(s) written</span>
+              <span className="text-[14px] font-medium">
+                {p.outreach.length} email pack(s) written
+              </span>
               <OpenLink href={tab('outreach')}>Read them</OpenLink>
             </div>
             <ul className="divide-y">
               {p.outreach.map(o => (
-                <li key={o.id} className="space-y-0.5 px-3 py-2 text-[13px]">
+                <li key={o.id} className="space-y-0.5 px-3 py-2 text-[14px]">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">{fullName(o.spoc)}</span>
                     <span className="text-xs text-muted-foreground">{o.messages} emails</span>
                   </div>
-                  {o.firstSubject && <p className="truncate text-xs text-muted-foreground">First: {o.firstSubject}</p>}
+                  {o.firstSubject && (
+                    <p className="truncate text-xs text-muted-foreground">
+                      First: {o.firstSubject}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -124,7 +165,7 @@ function Produced({ p }: { p: RunProduced }) {
         {(p.documents.length > 0 || p.programs > 0 || p.financials > 0) && (
           <div className="rounded-lg border">
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-              <span className="text-[13px] font-medium">
+              <span className="text-[14px] font-medium">
                 {[
                   p.documents.length && `${p.documents.length} report(s)`,
                   p.financials && `${p.financials} year(s) of figures`,
@@ -133,12 +174,15 @@ function Produced({ p }: { p: RunProduced }) {
                   .filter(Boolean)
                   .join(' · ')}
               </span>
-              <OpenLink href={tab('csr')}>CSR tab</OpenLink>
+              <OpenLink href={tab('csr')}>Financials &amp; reports</OpenLink>
             </div>
             {p.documents.length > 0 && (
               <ul className="divide-y">
                 {p.documents.map(d => (
-                  <li key={d.id} className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]">
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between gap-2 px-3 py-2 text-[14px]"
+                  >
                     <span className="font-medium">{d.type}</span>
                     <span className="text-xs text-muted-foreground">FY {d.fy}</span>
                   </li>
@@ -166,21 +210,26 @@ const renderValue = (v: unknown) => {
 
 // { spocs: { created: 2, updated: 1 }, engine: { "Needs review": 2 } } → one row per group, chips inside
 function ResultSummary({ value }: { value: unknown }) {
-  if (value === null || value === undefined) return <p className="text-sm text-muted-foreground">No result recorded.</p>;
+  if (value === null || value === undefined)
+    return <p className="text-sm text-muted-foreground">No result recorded.</p>;
   if (!isPlainObject(value) || !Object.keys(value).length) {
     return (
-      <pre className="max-h-80 overflow-auto rounded-lg border bg-surface p-3 font-mono text-[11px] leading-relaxed">
+      <pre className="max-h-80 overflow-auto rounded-lg border bg-surface p-3 font-mono text-[12px] leading-relaxed">
         {JSON.stringify(value, null, 2)}
       </pre>
     );
   }
   const scalars = Object.entries(value).filter(([, v]) => !isPlainObject(v));
-  const groups = Object.entries(value).filter(([, v]) => isPlainObject(v) && Object.keys(v).length) as [string, Record<string, unknown>][];
+  const groups = Object.entries(value).filter(
+    ([, v]) => isPlainObject(v) && Object.keys(v).length
+  ) as [string, Record<string, unknown>][];
   return (
     <div className="space-y-2">
       {scalars.length > 0 && (
         <div className="rounded-lg border bg-surface p-3">
-          <DetailList items={scalars.map(([k, v]) => ({ label: humanizeKey(k), value: renderValue(v) }))} />
+          <DetailList
+            items={scalars.map(([k, v]) => ({ label: humanizeKey(k), value: renderValue(v) }))}
+          />
         </div>
       )}
       {groups.map(([group, v]) => (
@@ -190,7 +239,10 @@ function ResultSummary({ value }: { value: unknown }) {
           </p>
           <ul className="flex flex-wrap gap-1.5">
             {Object.entries(v).map(([k, x]) => (
-              <li key={k} className="inline-flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-xs ring-1 ring-border">
+              <li
+                key={k}
+                className="inline-flex items-center gap-1.5 rounded-md bg-card px-2 py-1 text-xs ring-1 ring-border"
+              >
                 <span className="text-muted-foreground">{humanizeKey(k)}</span>
                 <span className="font-medium tabular">{renderValue(x) ?? '—'}</span>
               </li>
@@ -214,8 +266,9 @@ function ReviewItems({ value }: { value: unknown }) {
       <div className="space-y-2">
         {conflicts.length > 0 && (
           <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
-            <p className="mb-2 text-[13px] font-medium">
-              {conflicts.length} value{conflicts.length === 1 ? '' : 's'} differ from the CRM — the CRM value was kept
+            <p className="mb-2 text-[14px] font-medium">
+              {conflicts.length} value{conflicts.length === 1 ? '' : 's'} differ from the CRM — the
+              CRM value was kept
             </p>
             <ul className="space-y-1.5 text-xs">
               {conflicts.slice(0, 50).map((c, i) => (
@@ -226,7 +279,9 @@ function ReviewItems({ value }: { value: unknown }) {
                   <span className="text-muted-foreground">{humanizeKey(c.field)}:</span>
                   {c.current && <span className="line-through opacity-70">{c.current}</span>}
                   <span>→ {String(c.proposed)}</span>
-                  {(c.source || c.reason) && <span className="text-muted-foreground">({c.reason ?? c.source})</span>}
+                  {(c.source || c.reason) && (
+                    <span className="text-muted-foreground">({c.reason ?? c.source})</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -234,12 +289,16 @@ function ReviewItems({ value }: { value: unknown }) {
         )}
         {flagged.length > 0 && (
           <div className="rounded-lg border bg-surface p-3 text-xs">
-            <p className="mb-1.5 text-[13px] font-medium">{flagged.length} CSR figure year(s) flagged, not saved</p>
+            <p className="mb-1.5 text-[14px] font-medium">
+              {flagged.length} CSR figure year(s) flagged, not saved
+            </p>
             <ul className="space-y-1">
               {flagged.map((f, i) => (
                 <li key={i}>
                   <span className="font-medium">{f.fy}</span>
-                  {f.reviewReason && <span className="text-muted-foreground"> — {f.reviewReason}</span>}
+                  {f.reviewReason && (
+                    <span className="text-muted-foreground"> — {f.reviewReason}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -247,7 +306,7 @@ function ReviewItems({ value }: { value: unknown }) {
         )}
         {skipped.length > 0 && (
           <div className="rounded-lg border bg-surface p-3 text-xs">
-            <p className="mb-1.5 text-[13px] font-medium">{skipped.length} row(s) skipped</p>
+            <p className="mb-1.5 text-[14px] font-medium">{skipped.length} row(s) skipped</p>
             <ul className="space-y-1">
               {skipped.slice(0, 50).map((x, i) => (
                 <li key={i}>
@@ -273,27 +332,33 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>In progress</span>
-            {typeof run.progress === 'number' && <span className="tabular">{Math.round(run.progress)}%</span>}
+            {typeof run.progress === 'number' && (
+              <span className="tabular">{Math.round(run.progress)}%</span>
+            )}
           </div>
           <Progress value={run.progress ?? 0} className="h-1.5" />
         </div>
       )}
 
-      {run.note && <p className="rounded-lg bg-muted/60 px-3 py-2 text-[13px]">{run.note}</p>}
+      {run.note && <p className="rounded-lg bg-muted/60 px-3 py-2 text-[14px]">{run.note}</p>}
 
       {(failed || run.errorMessage) && (
         <div className="space-y-2">
-          <div className="flex gap-2.5 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-[13px]">
+          <div className="flex gap-2.5 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-[14px]">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
             <div className="min-w-0">
               <p className="font-medium text-destructive">
                 {run.errorMessage || STEP_STATUS[run.status]?.label || 'Something went wrong'}
               </p>
-              {run.errorCode && <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{run.errorCode}</p>}
+              {run.errorCode && (
+                <p className="mt-0.5 font-mono text-[12px] text-muted-foreground">
+                  {run.errorCode}
+                </p>
+              )}
             </div>
           </div>
           {run.howToContinue && (
-            <div className="flex gap-2.5 rounded-lg border border-info/25 bg-info/8 px-3 py-2.5 text-[13px]">
+            <div className="flex gap-2.5 rounded-lg border border-info/25 bg-info/8 px-3 py-2.5 text-[14px]">
               <Lightbulb className="mt-0.5 size-4 shrink-0 text-info" />
               <div>
                 <p className="font-medium">How to continue</p>
@@ -307,7 +372,14 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
       <Section title="Details">
         <DetailList
           items={[
-            { label: 'Client', value: <Link href={`/clients/${run.client.id}`} className="font-medium hover:text-primary">{run.client.name}</Link> },
+            {
+              label: 'Client',
+              value: (
+                <Link href={`/clients/${run.client.id}`} className="font-medium hover:text-primary">
+                  {run.client.name}
+                </Link>
+              ),
+            },
             {
               label: 'SPOC',
               value: run.spoc && (
@@ -320,7 +392,10 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
             { label: 'Queued', value: fmtDateTime(run.createdAt) },
             { label: 'Started', value: run.startedAt && fmtDateTime(run.startedAt) },
             { label: 'Finished', value: run.finishedAt && fmtDateTime(run.finishedAt) },
-            { label: 'Duration', value: run.startedAt && fmtDuration(run.startedAt, run.finishedAt) },
+            {
+              label: 'Duration',
+              value: run.startedAt && fmtDuration(run.startedAt, run.finishedAt),
+            },
             { label: 'Cost', value: run.costUsd !== null && fmtUsd(run.costUsd) },
           ]}
         />
@@ -338,7 +413,10 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
         <Section title="Credits used">
           <ul className="flex flex-wrap gap-2">
             {credits.map(([k, v]) => (
-              <li key={k} className="inline-flex items-center gap-1.5 rounded-lg border bg-surface px-2.5 py-1 text-xs">
+              <li
+                key={k}
+                className="inline-flex items-center gap-1.5 rounded-lg border bg-surface px-2.5 py-1 text-xs"
+              >
                 <Coins className="size-3.5 text-warning" />
                 <span className="text-muted-foreground">{humanizeKey(k)}</span>
                 <span className="tabular font-medium">{fmtNumber(v)}</span>
@@ -356,11 +434,13 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
                 <button
                   type="button"
                   onClick={() => onOpenRun(c.id)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] transition-colors hover:bg-muted"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[14px] transition-colors hover:bg-muted"
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{c.step?.label ?? 'Step'}</span>
-                    <span className="block text-xs text-muted-foreground">{fmtRelative(c.createdAt)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {fmtRelative(c.createdAt)}
+                    </span>
                   </span>
                   <span className="flex items-center gap-2">
                     <StepRunBadge status={c.status} />
@@ -383,21 +463,31 @@ function RunBody({ run, onOpenRun }: { run: StepRunDetail; onOpenRun: (id: strin
                   <span
                     className={cn(
                       'absolute top-1 -left-[25px] size-2.5 rounded-full ring-4 ring-popover',
-                      tone === 'success' ? 'bg-success'
-                      : tone === 'danger' ? 'bg-destructive'
-                      : tone === 'info' ? 'bg-info'
-                      : tone === 'warning' ? 'bg-warning'
-                      : i === run.events.length - 1 ? 'bg-primary' : 'bg-muted-foreground/40'
+                      tone === 'success'
+                        ? 'bg-success'
+                        : tone === 'danger'
+                          ? 'bg-destructive'
+                          : tone === 'info'
+                            ? 'bg-info'
+                            : tone === 'warning'
+                              ? 'bg-warning'
+                              : i === run.events.length - 1
+                                ? 'bg-primary'
+                                : 'bg-muted-foreground/40'
                     )}
                   />
-                  <p className="text-[13px]">{e.message}</p>
+                  <p className="text-[14px]">{e.message}</p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     <span title={fmtDateTime(e.createdAt)}>{fmtDateTime(e.createdAt)}</span>
                     {e.toStatus && e.fromStatus !== e.toStatus && (
                       <>
                         <span>·</span>
-                        {e.fromStatus && <span>{STEP_STATUS[e.fromStatus]?.label ?? e.fromStatus} →</span>}
-                        <span className="font-medium text-foreground/80">{STEP_STATUS[e.toStatus]?.label ?? e.toStatus}</span>
+                        {e.fromStatus && (
+                          <span>{STEP_STATUS[e.fromStatus]?.label ?? e.fromStatus} →</span>
+                        )}
+                        <span className="font-medium text-foreground/80">
+                          {STEP_STATUS[e.toStatus]?.label ?? e.toStatus}
+                        </span>
                       </>
                     )}
                   </p>
@@ -422,7 +512,12 @@ export function RunSheet({
   onOpenChange: (open: boolean) => void;
   onOpenRun: (id: string) => void;
 }) {
-  const { data: run, isLoading, error, refetch } = useQuery({
+  const {
+    data: run,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['step-runs', 'detail', runId],
     queryFn: () => pipelineApi.run(runId!),
     enabled: !!runId,
@@ -430,10 +525,23 @@ export function RunSheet({
   });
   const { can } = usePermissions();
   const confirm = useConfirm();
-  const stop = useAction(pipelineApi.stop, { success: 'Stop requested', invalidate: [['step-runs']] });
+  const openWebsiteFix = useUi(u => u.openWebsiteFix);
+  const stop = useAction(pipelineApi.stop, {
+    success: 'Stop requested',
+    invalidate: [['step-runs']],
+  });
+
+  // a website check is shown as its own dialog (what to do next), never as this sheet
+  const websiteCheck = run?.step?.key === 'website';
+  useEffect(() => {
+    if (websiteCheck && run) {
+      openWebsiteFix(run.id);
+      onOpenChange(false);
+    }
+  }, [websiteCheck, run, openWebsiteFix, onOpenChange]);
 
   return (
-    <Sheet open={!!runId} onOpenChange={onOpenChange}>
+    <Sheet open={!!runId && !websiteCheck} onOpenChange={onOpenChange}>
       <SheetContent className="w-full gap-0 overflow-y-auto data-[side=right]:sm:max-w-xl">
         <SheetHeader className="sticky top-0 z-10 border-b bg-popover/95 px-5 py-4 backdrop-blur">
           {isLoading || !run ? (
@@ -450,7 +558,9 @@ export function RunSheet({
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2 pr-8">
-                <SheetTitle className="text-base font-semibold">{run.step?.label ?? 'Pipeline run'}</SheetTitle>
+                <SheetTitle className="text-base font-semibold">
+                  {run.step?.label ?? 'Pipeline run'}
+                </SheetTitle>
                 <StepRunBadge status={run.status} />
                 <Pill tone="neutral" dot={false}>
                   {run.step?.target === 'SPOC' ? 'SPOC step' : 'Client step'}
@@ -462,7 +572,13 @@ export function RunSheet({
                     className="ml-auto"
                     disabled={stop.isPending}
                     onClick={async () => {
-                      if (await confirm({ title: 'Stop this run?', description: 'What it has already found is kept.', confirmLabel: 'Stop' }))
+                      if (
+                        await confirm({
+                          title: 'Stop this run?',
+                          description: 'What it has already found is kept.',
+                          confirmLabel: 'Stop',
+                        })
+                      )
                         stop.mutate(run.id);
                     }}
                   >

@@ -6,6 +6,7 @@
 // country clears a state that isn't in it; a new state clears the city. City
 // can also keep a typed name the list doesn't have. Values stay plain names;
 // the backend normalises them on save ("BANGALORE." → "Bengaluru").
+// Latitude / longitude are typed as text and sent as numbers — both or neither.
 
 'use client';
 
@@ -17,6 +18,42 @@ import { FormGrid } from '@/components/forms/FormDialog';
 import { Field, TextField, type AnyForm } from '@/components/forms/fields';
 import { Combobox } from '@/components/pickers/Combobox';
 import { useGeoCities, useGeoCountries, useGeoStates } from '@/hooks/geo';
+
+export const coordText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .refine(
+      v => !v || (/^-?\d{1,3}(\.\d+)?$/.test(v) && Math.abs(Number(v)) <= max),
+      `A number between -${max} and ${max}`
+    );
+
+/** a point needs both halves */
+export const coordsPaired = (
+  v: { latitude?: string | undefined; longitude?: string | undefined },
+  ctx: z.RefinementCtx
+) => {
+  if (!!v.latitude?.trim() !== !!v.longitude?.trim())
+    ctx.addIssue({
+      code: 'custom',
+      path: [v.latitude?.trim() ? 'longitude' : 'latitude'],
+      message: 'Give latitude and longitude together',
+    });
+};
+
+/** form text → numbers for the API ('' → null) */
+export const withCoords = <
+  T extends { latitude?: string | undefined; longitude?: string | undefined },
+>(
+  v: T
+) => ({
+  ...v,
+  latitude: v.latitude?.trim() ? Number(v.latitude) : null,
+  longitude: v.longitude?.trim() ? Number(v.longitude) : null,
+});
+
+export const mapsUrl = (lat: string | number, lng: string | number) =>
+  `https://www.google.com/maps?q=${lat},${lng}`;
 
 export const locationSchema = z.object({
   typeId: z.string().nullable(),
@@ -31,6 +68,8 @@ export const locationSchema = z.object({
     .trim()
     .max(10)
     .refine(v => !v || /^[0-9A-Za-z -]{3,10}$/.test(v), 'Invalid PIN code'),
+  latitude: coordText(90),
+  longitude: coordText(180),
   isPrimary: z.boolean(),
   dmEvidence: z.string().trim().max(2000),
 });
@@ -50,6 +89,8 @@ export function LocationFields<T extends FieldValues>({
   const country = (useWatch({ control: form.control, name: p('country') }) as string) || '';
   const state = (useWatch({ control: form.control, name: p('state') }) as string) || '';
   const city = (useWatch({ control: form.control, name: p('city') }) as string) || '';
+  const lat = (useWatch({ control: form.control, name: p('latitude') }) as string) || '';
+  const lng = (useWatch({ control: form.control, name: p('longitude') }) as string) || '';
   const set = (k: string, v: string) =>
     form.setValue(p(k), v as never, { shouldDirty: true, shouldValidate: true });
 
@@ -167,9 +208,44 @@ export function LocationFields<T extends FieldValues>({
         </Field>
       </FormGrid>
       {!compact && (
-        <FormGrid>
+        <FormGrid cols={3}>
           <TextField form={form} name={p('district')} label="District" />
           <TextField form={form} name={p('pincode')} label="PIN code" inputMode="numeric" />
+          <div />
+        </FormGrid>
+      )}
+      {!compact && (
+        <FormGrid cols={3}>
+          <TextField
+            form={form}
+            name={p('latitude')}
+            label="Latitude"
+            placeholder="12.971599"
+            inputMode="decimal"
+          />
+          <TextField
+            form={form}
+            name={p('longitude')}
+            label="Longitude"
+            placeholder="77.594566"
+            inputMode="decimal"
+          />
+          <Field label="Map">
+            {lat && lng ? (
+              <a
+                href={mapsUrl(lat, lng)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-8 items-center text-sm text-primary hover:underline"
+              >
+                Open in Google Maps
+              </a>
+            ) : (
+              <span className="flex h-8 items-center text-xs text-muted-foreground">
+                Both coordinates, or leave both empty
+              </span>
+            )}
+          </Field>
         </FormGrid>
       )}
     </div>

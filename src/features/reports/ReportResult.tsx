@@ -39,8 +39,20 @@ function shape(b: Breakdown, spec: ReportSpec): Shaped {
   const folded = statusColors ? [] : keys.slice(MAX_SERIES - 1);
   const series: Series[] = spec.splitBy
     ? [
-        ...keep.map((k, i) => ({ key: k.key, label: k.label, color: statusColors?.[k.key] ?? seriesColor(i, k.key) })),
-        ...(folded.length ? [{ key: OTHER_KEY, label: `Other (${folded.length})`, color: 'var(--muted-foreground)' }] : []),
+        ...keep.map((k, i) => ({
+          key: k.key,
+          label: k.label,
+          color: statusColors?.[k.key] ?? seriesColor(i, k.key),
+        })),
+        ...(folded.length
+          ? [
+              {
+                key: OTHER_KEY,
+                label: `Other (${folded.length})`,
+                color: 'var(--muted-foreground)',
+              },
+            ]
+          : []),
       ]
     : [{ key: 'total', label: spec.entity === 'spocs' ? 'SPOCs' : 'Clients' }];
 
@@ -79,14 +91,22 @@ export function ReportResult({
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
-            <span className="text-2xl font-semibold text-foreground tabular">{fmtNumber(sum)}</span> created in this period
+            <span className="text-2xl font-semibold text-foreground tabular">{fmtNumber(sum)}</span>{' '}
+            created in this period
           </p>
           <Legend series={series} />
         </div>
-        <TrendChart data={data} series={series} xFormatter={bucketLabel(trend.interval)} variant={keys.length ? 'line' : 'area'} height={320} />
+        <TrendChart
+          data={data}
+          series={series}
+          xFormatter={bucketLabel(trend.interval)}
+          variant={keys.length ? 'line' : 'area'}
+          height={320}
+        />
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Info className="size-3.5" /> Trends show the top {Math.max(keys.length, 1)} {dimLabel(spec.entity, spec.groupBy).toLowerCase()} values;
-          filters other than the date range don’t apply to trends.
+          <Info className="size-3.5" /> Trends show the top {Math.max(keys.length, 1)}{' '}
+          {dimLabel(spec.entity, spec.groupBy).toLowerCase()} values; filters other than the date
+          range don’t apply to trends.
         </p>
       </div>
     );
@@ -99,16 +119,20 @@ export function ReportResult({
     key: r.key,
     label: r.label,
     ...Object.fromEntries(
-      Object.entries(r.cells).map(([k, v]) => [k, pct ? (r.total ? Math.round((v / r.total) * 1000) / 10 : 0) : v])
+      Object.entries(r.cells).map(([k, v]) => [
+        k,
+        pct ? (r.total ? Math.round((v / r.total) * 1000) / 10 : 0) : v,
+      ])
     ),
   }));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           <span className="text-2xl font-semibold text-foreground tabular">{fmtNumber(total)}</span>{' '}
-          {spec.entity === 'spocs' ? 'SPOCs' : 'clients'} · {rows.length} {dimLabel(spec.entity, spec.groupBy).toLowerCase()}{' '}
+          {spec.entity === 'spocs' ? 'SPOCs' : 'clients'} · {rows.length}{' '}
+          {dimLabel(spec.entity, spec.groupBy).toLowerCase()}{' '}
           {rows.length === 1 ? 'value' : 'values'}
         </p>
         {spec.viz !== 'donut' && <Legend series={series} />}
@@ -142,20 +166,32 @@ export function ReportResult({
           <DonutChart
             height={240}
             centerLabel={spec.entity === 'spocs' ? 'SPOCs' : 'clients'}
-            data={rows.slice(0, MAX_SERIES).map((r, i) => ({ key: r.key, label: r.label, value: r.total, color: seriesColor(i, r.key) }))}
+            data={rows
+              .slice(0, MAX_SERIES)
+              .map((r, i) => ({
+                key: r.key,
+                label: r.label,
+                value: r.total,
+                color: seriesColor(i, r.key),
+              }))}
             onSelect={k => onDrill(k, rows.find(r => r.key === k)?.label ?? k)}
           />
           <ul className="space-y-2">
             {rows.slice(0, MAX_SERIES).map((r, i) => (
-              <li key={r.key} className="flex items-center gap-2 text-[13px]">
-                <span className="size-2.5 rounded-[3px]" style={{ background: seriesColor(i, r.key) }} />
+              <li key={r.key} className="flex items-center gap-2 text-[14px]">
+                <span
+                  className="size-2.5 rounded-[3px]"
+                  style={{ background: seriesColor(i, r.key) }}
+                />
                 <span className="flex-1 truncate">{r.label}</span>
                 <span className="text-muted-foreground tabular">{fmtPercent(r.total, total)}</span>
                 <span className="w-12 text-right font-medium tabular">{fmtNumber(r.total)}</span>
               </li>
             ))}
             {rows.length > MAX_SERIES && (
-              <li className="text-xs text-muted-foreground">+ {rows.length - MAX_SERIES} more in the table below</li>
+              <li className="text-xs text-muted-foreground">
+                + {rows.length - MAX_SERIES} more in the table below
+              </li>
             )}
           </ul>
         </div>
@@ -202,7 +238,11 @@ function PivotTable({
         >
           {/* single-hue magnitude wash behind split cells */}
           {s && split && v > 0 && (
-            <span className="absolute inset-0.5 rounded bg-primary" style={{ opacity: 0.04 + (v / max) * 0.18 }} aria-hidden />
+            <span
+              className="absolute inset-0.5 rounded bg-primary"
+              style={{ opacity: 0.04 + (v / max) * 0.18 }}
+              aria-hidden
+            />
           )}
           <span className="relative">{display}</span>
         </button>
@@ -212,13 +252,18 @@ function PivotTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full border-separate border-spacing-0 text-[13px]">
+      <table className="w-full border-separate border-spacing-0 text-[14px]">
         <thead className="bg-surface text-xs text-muted-foreground">
           <tr>
-            <th className="sticky left-0 border-b bg-surface px-3 py-2 text-left font-medium">{dimLabel(spec.entity, spec.groupBy)}</th>
+            <th className="sticky left-0 border-b bg-surface px-3 py-2 text-left font-medium">
+              {dimLabel(spec.entity, spec.groupBy)}
+            </th>
             {split &&
               series.map(s => (
-                <th key={s.key} className="border-b px-3 py-2 text-right font-medium whitespace-nowrap">
+                <th
+                  key={s.key}
+                  className="border-b px-3 py-2 text-right font-medium whitespace-nowrap"
+                >
                   <span className="inline-flex items-center gap-1.5">
                     <span className="size-2 rounded-[2px]" style={{ background: s.color }} />
                     {s.label}
@@ -232,17 +277,26 @@ function PivotTable({
         <tbody>
           {rows.map(r => (
             <tr key={r.key} className="hover:bg-accent/30">
-              <td className="sticky left-0 max-w-64 truncate border-b bg-card px-3 py-2 font-medium">{r.label}</td>
+              <td className="sticky left-0 max-w-64 truncate border-b bg-card px-3 py-2 font-medium">
+                {r.label}
+              </td>
               {split && series.map(s => cell(r, s))}
               {cell(r)}
-              <td className="border-b px-3 py-2 text-right text-muted-foreground tabular">{fmtPercent(r.total, total)}</td>
+              <td className="border-b px-3 py-2 text-right text-muted-foreground tabular">
+                {fmtPercent(r.total, total)}
+              </td>
             </tr>
           ))}
         </tbody>
         <tfoot className="bg-surface font-medium">
           <tr>
             <td className="sticky left-0 bg-surface px-3 py-2">
-              Total{rows.length && shownTotal < total ? <span className="ml-1 text-xs font-normal text-muted-foreground">(top {rows.length})</span> : null}
+              Total
+              {rows.length && shownTotal < total ? (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  (top {rows.length})
+                </span>
+              ) : null}
             </td>
             {split &&
               colTotals.map((v, i) => (
@@ -251,7 +305,9 @@ function PivotTable({
                 </td>
               ))}
             <td className="px-3 py-2 text-right tabular">{fmtNumber(shownTotal)}</td>
-            <td className="px-3 py-2 text-right text-muted-foreground tabular">{fmtPercent(shownTotal, total)}</td>
+            <td className="px-3 py-2 text-right text-muted-foreground tabular">
+              {fmtPercent(shownTotal, total)}
+            </td>
           </tr>
         </tfoot>
       </table>

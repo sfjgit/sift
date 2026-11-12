@@ -98,7 +98,7 @@ function Pills({
             aria-pressed={on}
             onClick={() => onChange(toggled(def, value, o.value))}
             className={cn(
-              'inline-flex h-8 items-center gap-1 rounded-full border px-3 text-[13px] transition-colors',
+              'inline-flex h-8 items-center gap-1 rounded-full border px-3 text-[14px] transition-colors',
               on
                 ? 'border-primary bg-primary/10 font-medium text-primary'
                 : 'bg-card hover:border-primary/40'
@@ -145,7 +145,10 @@ function CheckList({
   const [pinned] = useState(() => new Set(split(value)));
   const byGroup = useMemo(() => {
     const m = new Map<string, Opt[]>();
-    const ordered = [...shown.filter(o => pinned.has(o.value)), ...shown.filter(o => !pinned.has(o.value))];
+    const ordered = [
+      ...shown.filter(o => pinned.has(o.value)),
+      ...shown.filter(o => !pinned.has(o.value)),
+    ];
     for (const o of ordered) m.set(o.group ?? '', [...(m.get(o.group ?? '') ?? []), o]);
     return [...m.entries()];
   }, [shown, pinned]);
@@ -167,7 +170,7 @@ function CheckList({
             onSearch?.(e.target.value);
           }}
           placeholder={placeholder}
-          className="h-9 w-full bg-transparent pr-2 pl-8 text-[13px] outline-none placeholder:text-muted-foreground"
+          className="h-9 w-full bg-transparent pr-2 pl-8 text-[14px] outline-none placeholder:text-muted-foreground"
         />
       </div>
       <div className="max-h-48 overflow-y-auto">
@@ -181,14 +184,14 @@ function CheckList({
           byGroup.map(([g, opts]) => (
             <div key={g || '_'}>
               {g && (
-                <p className="sticky top-0 bg-surface px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                <p className="sticky top-0 bg-surface px-3 py-1 text-[12px] font-medium text-muted-foreground">
                   {g}
                 </p>
               )}
               {opts.map(o => (
                 <label
                   key={o.value}
-                  className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[13px] hover:bg-accent/50"
+                  className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 text-[14px] hover:bg-accent/50"
                 >
                   {multiOf(def) ? (
                     <Checkbox
@@ -426,7 +429,8 @@ function GeoList({
   );
 }
 
-function Control({
+/** one filter's input — shared by the filter sheet and the side panel */
+export function Control({
   def,
   value,
   stored,
@@ -505,7 +509,7 @@ function SelectedBar({
 }) {
   const active = filters.filter(f => draft[f.key]);
   return (
-    <div className="flex flex-wrap items-center gap-1.5 border-b bg-surface px-6 py-2.5 text-[13px]">
+    <div className="flex flex-wrap items-center gap-1.5 border-b bg-surface px-6 py-2.5 text-[14px]">
       <span className="mr-1 font-medium">Selected</span>
       {!active.length && (
         <span className="text-muted-foreground">
@@ -635,9 +639,9 @@ export function FilterSheet({
                     <span className="grid size-8 place-items-center rounded-lg bg-muted">
                       <Icon className="size-4" />
                     </span>
-                    <h3 className="text-[15px] font-semibold">{group}</h3>
+                    <h3 className="text-[16px] font-semibold">{group}</h3>
                     {defs.some(d => draft[d.key]) && (
-                      <span className="ml-auto rounded-full bg-primary/10 px-2 text-[11px] font-medium text-primary">
+                      <span className="ml-auto rounded-full bg-primary/10 px-2 text-[12px] font-medium text-primary">
                         {defs.filter(d => draft[d.key]).length} on
                       </span>
                     )}
@@ -652,7 +656,7 @@ export function FilterSheet({
                             '-m-2 rounded-lg bg-primary/5 p-2 ring-1 ring-primary/30'
                         )}
                       >
-                        <p className="text-[13px] font-medium">{def.label}</p>
+                        <p className="text-[14px] font-medium">{def.label}</p>
                         {def.hint && <p className="text-xs text-muted-foreground">{def.hint}</p>}
                         <Control
                           def={def}

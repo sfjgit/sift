@@ -40,6 +40,9 @@ import type { SavedView } from '@/types/org';
 import type { TableViewConfig } from './types';
 import type { TableController } from './useTableState';
 
+/** fired by the column bar: detail = table id */
+export const SAVE_TEMPLATE_EVENT = 'crm:save-template';
+
 export const viewKeys = (module: string) => ['views', module] as const;
 
 export function ViewsMenu({ module, controller }: { module: string; controller: TableController }) {
@@ -68,6 +71,13 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
       /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [views, controller]);
+
+  // the column bar's "Save as template" opens the same dialog
+  useEffect(() => {
+    const onSave = (e: Event) => (e as CustomEvent<string>).detail === module && setDialog(true);
+    window.addEventListener(SAVE_TEMPLATE_EVENT, onSave);
+    return () => window.removeEventListener(SAVE_TEMPLATE_EVENT, onSave);
+  }, [module]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: viewKeys(module) });
   const active = views.find(v => v.id === activeId);
@@ -102,7 +112,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
   const remove = async (v: SavedView<TableViewConfig>) => {
     if (
       !(await confirm({
-        title: `Delete view “${v.name}”?`,
+        title: `Delete template “${v.name}”?`,
         destructive: true,
         confirmLabel: 'Delete',
       }))
@@ -111,7 +121,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
     try {
       await viewsApi.remove(v.id);
       if (activeId === v.id) setActiveId(null);
-      toast.success('View deleted');
+      toast.success('Template deleted');
       refresh();
     } catch (e) {
       toast.error((e as ApiError).message);
@@ -124,20 +134,20 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="max-w-52" {...tourTarget('table-views')}>
             <Bookmark />
-            <span className="truncate">{active?.name ?? 'Views'}</span>
+            <span className="truncate">{active?.name ?? 'Templates'}</span>
             <ChevronDown className="opacity-60" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuContent align="start" className="w-72 bg-popover text-popover-foreground">
           {mine.length > 0 && <DropdownMenuLabel>My views</DropdownMenuLabel>}
           {mine.map(v => (
             <DropdownMenuItem key={v.id} onSelect={() => apply(v)} className="group">
               <Check className={v.id === activeId ? 'opacity-100' : 'opacity-0'} />
-              <span className="flex-1 truncate">{v.name}</span>
+              <span className="flex-1 truncate font-medium text-foreground">{v.name}</span>
               {v.isShared && <Globe2 className="size-3.5 text-muted-foreground" />}
               <button
                 type="button"
-                title={v.isDefault ? 'Default view' : 'Make default'}
+                title={v.isDefault ? 'Opens by default' : 'Open this by default'}
                 onClick={e => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -155,7 +165,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
               </button>
               <button
                 type="button"
-                title="Delete view"
+                title="Delete template"
                 onClick={e => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -174,7 +184,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
               {shared.map(v => (
                 <DropdownMenuItem key={v.id} onSelect={() => apply(v)}>
                   <Check className={v.id === activeId ? 'opacity-100' : 'opacity-0'} />
-                  <span className="flex-1 truncate">{v.name}</span>
+                  <span className="flex-1 truncate font-medium text-foreground">{v.name}</span>
                   <span className="truncate text-xs text-muted-foreground">{v.user.firstName}</span>
                 </DropdownMenuItem>
               ))}
@@ -182,7 +192,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
           )}
           {views.length === 0 && (
             <p className="px-2 py-3 text-xs text-muted-foreground">
-              Save filters, sort and columns as a view to get back to them in one click.
+              Save your columns, their order, filters and sort as a template — get back to it in one click.
             </p>
           )}
           <DropdownMenuSeparator />
@@ -192,7 +202,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onSelect={() => setDialog(true)}>
-            <Plus /> Save current as new view
+            <Plus /> Save current as template
           </DropdownMenuItem>
           {activeId && (
             <DropdownMenuItem
@@ -201,7 +211,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
                 controller.actions.clearFilters();
               }}
             >
-              Clear view
+              Clear template
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -219,7 +229,7 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
             config: controller.captureView(),
           });
           setActiveId(v.id);
-          toast.success(`View “${name}” saved`);
+          toast.success(`Template “${name}” saved`);
           refresh();
         }}
       />
@@ -262,7 +272,7 @@ function SaveViewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Save view</DialogTitle>
+          <DialogTitle>Save as template</DialogTitle>
           <DialogDescription>
             Saves the current search, filters, sort, columns and density.
           </DialogDescription>
@@ -289,7 +299,7 @@ function SaveViewDialog({
             <span>
               <span className="block text-sm font-medium">Open by default</span>
               <span className="block text-xs text-muted-foreground">
-                Load this view every time you open the page.
+                Open this template every time you open the page.
               </span>
             </span>
             <Switch checked={isDefault} onCheckedChange={setDefault} />
@@ -310,7 +320,7 @@ function SaveViewDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!name.trim() || busy}>
-              Save view
+              Save template
             </Button>
           </DialogFooter>
         </form>

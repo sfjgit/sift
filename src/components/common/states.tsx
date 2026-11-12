@@ -39,7 +39,9 @@ export function EmptyState({
       </div>
       <div className="space-y-1">
         <p className="text-sm font-semibold">{title}</p>
-        {description && <p className="mx-auto max-w-sm text-[13px] text-muted-foreground">{description}</p>}
+        {description && (
+          <p className="mx-auto max-w-sm text-[14px] text-muted-foreground">{description}</p>
+        )}
       </div>
       {action && <div className="mt-1">{action}</div>}
     </div>
@@ -65,7 +67,7 @@ export function ErrorState({
       </div>
       <div className="space-y-1">
         <p className="text-sm font-semibold">{title}</p>
-        {message && <p className="max-w-sm text-[13px] text-muted-foreground">{message}</p>}
+        {message && <p className="max-w-sm text-[14px] text-muted-foreground">{message}</p>}
       </div>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>

@@ -101,7 +101,7 @@ function Node({
         <span className={cn('grid size-7 shrink-0 place-items-center rounded-md', w.chip)}>
           <Icon className="size-4" />
         </span>
-        <span className="text-[13px] leading-tight font-semibold">{title}</span>
+        <span className="text-[14px] leading-tight font-semibold">{title}</span>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">{line}</p>
     </div>
@@ -369,14 +369,14 @@ function BehindTheScenes() {
             <div className="pb-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', LANES[s.lane].cls)}
+                  className={cn('rounded px-1.5 py-0.5 text-[12px] font-medium', LANES[s.lane].cls)}
                 >
                   {LANES[s.lane].label}
                 </span>
-                <span className="text-[13px] font-semibold">{s.title}</span>
+                <span className="text-[14px] font-semibold">{s.title}</span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">{s.detail}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
                 Where you see it: <span className="font-medium text-foreground">{s.see}</span>
               </p>
             </div>
@@ -391,7 +391,7 @@ function BehindTheScenes() {
               <n.icon className="size-4" />
             </span>
             <div>
-              <p className="text-[13px] font-semibold">{n.title}</p>
+              <p className="text-[14px] font-semibold">{n.title}</p>
               <p className="text-xs text-muted-foreground">{n.line}</p>
             </div>
           </div>
@@ -495,7 +495,7 @@ function Steps() {
               <s.icon className="size-4.5" />
             </span>
             <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Step {s.n}</p>
+              <p className="text-[12px] font-medium text-muted-foreground">Step {s.n}</p>
               <p className="text-sm leading-tight font-semibold">{s.title}</p>
             </div>
           </div>
@@ -517,7 +517,7 @@ function Steps() {
               <dd className="font-medium">{s.see}</dd>
             </div>
           </dl>
-          <p className="mt-auto pt-3 text-[11px] text-muted-foreground">
+          <p className="mt-auto pt-3 text-[12px] text-muted-foreground">
             Card says: <span className="text-foreground">{s.example}</span>
           </p>
         </div>
@@ -581,7 +581,7 @@ function Statuses() {
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[11px] text-muted-foreground">
+        <p className="mt-3 text-[12px] text-muted-foreground">
           An email can be edited until it is marked sent; then its text is locked, so the CRM shows
           exactly what went out.
         </p>
@@ -652,12 +652,12 @@ function Situations() {
         <div key={c.title} className="rounded-xl border bg-card p-4 shadow-card">
           <div className="flex items-center gap-2">
             <c.icon className="size-4 text-primary" />
-            <p className="text-[13px] leading-tight font-semibold">{c.title}</p>
+            <p className="text-[14px] leading-tight font-semibold">{c.title}</p>
           </div>
           <ol className="mt-3 space-y-1.5">
             {c.steps.map((s, i) => (
               <li key={s} className="flex gap-2 text-xs">
-                <span className="grid size-4 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold">
+                <span className="grid size-4 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-semibold">
                   {i + 1}
                 </span>
                 <span className="text-muted-foreground">{s}</span>
@@ -720,7 +720,7 @@ function Rules() {
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
               <r.icon className="size-4" />
             </span>
-            <p className="text-[13px] leading-tight font-semibold">{r.title}</p>
+            <p className="text-[14px] leading-tight font-semibold">{r.title}</p>
           </div>
           <ul className="mt-3 space-y-1.5">
             {r.points.map(pt => (
@@ -790,7 +790,7 @@ function WhereToLook() {
             <p.icon className="size-4.5" />
           </span>
           <div>
-            <p className="text-[13px] font-semibold group-hover:text-primary">{p.title}</p>
+            <p className="text-[14px] font-semibold group-hover:text-primary">{p.title}</p>
             <p className="text-xs text-muted-foreground">{p.line}</p>
           </div>
         </Link>

@@ -2,7 +2,8 @@
 // Path: src/components/shell/CommandPalette.tsx
 //
 // ⌘K / Ctrl+K: live search across clients, SPOCs and people (scoped by the
-// backend), page navigation and quick actions.
+// backend), page navigation and quick actions. Opens pre-filled when the AI
+// command bar decides a request is really a search (ui.commandSeed).
 
 'use client';
 
@@ -42,6 +43,8 @@ export function CommandPalette() {
   const { can } = usePermissions();
   const { resolvedTheme, setTheme } = useTheme();
   const { commandOpen: open, setCommandOpen: setOpen, openClientDialog, openSpocDialog, setShortcutsOpen } = useUi();
+  const commandSeed = useUi(s => s.commandSeed);
+  const [seedApplied, setSeedApplied] = useState('');
   const { sections, footer } = useVisibleNav();
   const [q, setQ] = useState('');
   const [debounced] = useDebounce(q.trim(), 200);
@@ -56,6 +59,18 @@ export function CommandPalette() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [setOpen]);
+
+  // the AI command bar handed over a search: start with it, then forget it
+  // (adjusting state during render — no effect needed)
+  if (open && commandSeed && commandSeed !== seedApplied) {
+    setSeedApplied(commandSeed);
+    setQ(commandSeed);
+  }
+  // closing forgets the seed so the next ⌘K starts empty
+  if (!open && seedApplied) setSeedApplied('');
+  useEffect(() => {
+    if (!open && useUi.getState().commandSeed) useUi.getState().setCommandSeed('');
+  }, [open]);
 
   const { data, isFetching } = useQuery({
     queryKey: ['search', debounced],

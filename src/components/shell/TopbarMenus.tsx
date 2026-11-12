@@ -39,7 +39,13 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Kbd } from '@/components/ui/kbd';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -136,7 +142,9 @@ export function UserMenu() {
           aria-label="Account menu"
         >
           <UserAvatar person={user} size="md" />
-          <span className="hidden max-w-28 truncate text-[13px] font-medium lg:block">{user.firstName}</span>
+          <span className="hidden max-w-28 truncate text-[14px] font-medium lg:block">
+            {user.firstName}
+          </span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -145,8 +153,9 @@ export function UserMenu() {
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{fullName(user)}</p>
             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-            <p className="mt-0.5 truncate text-[11px] text-primary">
+            <p className="mt-0.5 truncate text-[12px] text-primary">
               {user.isSuperAdmin ? 'Super admin' : user.role.name}
+              {user.tenant && <span className="text-muted-foreground"> · {user.tenant.name}</span>}
             </p>
           </div>
         </div>
@@ -191,6 +200,7 @@ export function UserMenu() {
 
 const SHORTCUTS: [string[], string][] = [
   [['⌘', 'K'], 'Search everything / command palette'],
+  [['⌘', 'J'], 'Ask AI (when the assistant is on)'],
   [['/'], 'Focus the table search'],
   [['G', 'D'], 'Go to dashboard'],
   [['G', 'C'], 'Go to clients'],
@@ -224,7 +234,13 @@ export function ShortcutsLayer() {
         return;
       }
       if (Date.now() - pendingG < 900) {
-        const map: Record<string, string> = { d: '/dashboard', c: '/clients', s: '/spocs', r: '/reports', h: '/help' };
+        const map: Record<string, string> = {
+          d: '/dashboard',
+          c: '/clients',
+          s: '/spocs',
+          r: '/reports',
+          h: '/help',
+        };
         if (map[k]) {
           e.preventDefault();
           router.push(map[k]);

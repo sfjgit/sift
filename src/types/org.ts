@@ -21,7 +21,23 @@ export interface SessionUser {
   role: NamedRef;
   department: NamedRef | null;
   designation: NamedRef | null;
+  /** the company this user belongs to */
+  tenant: TenantRef;
+  /** pick the user's standard client columns (CSR, B2B…) */
+  businessUnits: { businessUnit: { id: string; name: string; code: string | null } }[];
+  serviceLines: { serviceLine: { id: string; name: string; code: string | null } }[];
   permissions: PermissionMap;
+}
+
+export type TenantStatus = 'ACTIVE' | 'SUSPENDED';
+export type TenantPlan = 'TRIAL' | 'STANDARD' | 'ENTERPRISE';
+
+export interface TenantRef {
+  id: string;
+  slug: string;
+  name: string;
+  status: TenantStatus;
+  plan: TenantPlan;
 }
 
 export interface UserPerson extends Person {
@@ -129,6 +145,7 @@ export interface MasterRow {
 export type LookupType =
   | 'INDUSTRY'
   | 'CLIENT_CATEGORY'
+  | 'EMPLOYEE_SIZE'
   | 'LOCATION_TYPE'
   | 'TECH_CATEGORY'
   | 'DOCUMENT_TYPE'
@@ -220,7 +237,13 @@ export interface Faq {
 }
 
 export interface SearchResults {
-  clients: { id: string; name: string; shortName: string | null; status: string; city: string | null }[];
+  clients: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    status: string;
+    city: string | null;
+  }[];
   spocs: {
     id: string;
     firstName: string;
@@ -229,7 +252,13 @@ export interface SearchResults {
     email: string | null;
     client: NamedRef;
   }[];
-  users: { id: string; firstName: string; lastName: string; email: string; designation: { name: string } | null }[];
+  users: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    designation: { name: string } | null;
+  }[];
 }
 
 // ── system alerts ────────────────────────────────────────────────────────────

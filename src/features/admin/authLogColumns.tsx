@@ -109,9 +109,9 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
     header: 'When',
     meta: { label: 'When', locked: true },
     cell: ({ row }) => (
-      <span className="block min-w-[150px]">
-        <span className="block whitespace-nowrap">{fmtDateTime(row.original.createdAt)}</span>
-        <span className="block text-xs text-muted-foreground">
+      <span className="flex min-w-[150px] items-baseline gap-2">
+        <span className="whitespace-nowrap">{fmtDateTime(row.original.createdAt)}</span>
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
           {fmtRelative(row.original.createdAt)}
         </span>
       </span>
@@ -128,7 +128,7 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
           href={`/admin/users/${row.original.user.id}`}
           className="inline-flex hover:text-primary"
         >
-          <PersonCell person={row.original.user} sub={row.original.user.email} />
+          <PersonCell person={row.original.user} sub={row.original.user.email} inline />
         </Link>
       ) : (
         <span className="text-muted-foreground">—</span>
@@ -182,7 +182,7 @@ export const authLogColumns: DataColumn<AuthLog>[] = [
     meta: { label: 'User agent', defaultHidden: true },
     cell: ({ row }) => (
       <span
-        className="block max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
+        className="block max-w-[320px] truncate font-mono text-[12px] text-muted-foreground"
         title={row.original.userAgent ?? undefined}
       >
         {row.original.userAgent ?? '—'}

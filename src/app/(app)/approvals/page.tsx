@@ -10,7 +10,6 @@ import { useMemo } from 'react';
 import { BadgeCheck, CircleSlash, Clock, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
-import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable, useTableState } from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -31,11 +30,15 @@ function ApprovalsPage() {
   });
   const query = spocHooks.useList(table.params);
   const columns = useMemo(() => spocColumns().filter(c => !HIDDEN_COLUMNS.has(c.id as string)), []);
-  const status = (table.state.filters.approvalStatus as SpocApprovalStatus | undefined) ?? 'PENDING';
+  const status =
+    (table.state.filters.approvalStatus as SpocApprovalStatus | undefined) ?? 'PENDING';
 
   const decide = useAction(
     ({ rows, decision }: { rows: Spoc[]; decision: SpocApprovalStatus; clear: () => void }) =>
-      spocsApi.decide(rows.map(r => r.id), decision),
+      spocsApi.decide(
+        rows.map(r => r.id),
+        decision
+      ),
     {
       success: r => `${r.updated} SPOC${r.updated === 1 ? '' : 's'} updated`,
       invalidate: [spocHooks.keys.all],
@@ -44,28 +47,21 @@ function ApprovalsPage() {
   );
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Approvals"
-        description="People the pipeline found or scored. Approve the ones worth contacting — only approved SPOCs get outreach emails."
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Segmented<SpocApprovalStatus>
-          value={status}
-          onChange={v => table.actions.setFilter('approvalStatus', v)}
-          options={[
-            { value: 'PENDING', label: 'To approve', icon: Clock },
-            { value: 'APPROVED', label: 'Approved', icon: BadgeCheck },
-            { value: 'REJECTED', label: 'Rejected', icon: CircleSlash },
-          ]}
-        />
-        {can('spocs.approve') && status === 'PENDING' && (
-          <p className="text-xs text-muted-foreground">Tip: filter Quality → Ready, tick all, approve.</p>
-        )}
-      </div>
-
+    <div className="space-y-3">
       <DataTable
+        title="Approvals"
+        titleHint="People the pipeline found or scored. Approve the ones worth contacting — only approved SPOCs get outreach emails."
+        toolbar={
+          <Segmented<SpocApprovalStatus>
+            value={status}
+            onChange={v => table.actions.setFilter('approvalStatus', v)}
+            options={[
+              { value: 'PENDING', label: 'To approve', icon: Clock },
+              { value: 'APPROVED', label: 'Approved', icon: BadgeCheck },
+              { value: 'REJECTED', label: 'Rejected', icon: CircleSlash },
+            ]}
+          />
+        }
         id="approvals"
         table={table}
         query={query}
@@ -76,24 +72,39 @@ function ApprovalsPage() {
         exportName={`spocs-${status.toLowerCase()}`}
         empty={{
           title: status === 'PENDING' ? 'Nothing waiting for approval' : 'No SPOCs here yet',
-          description: status === 'PENDING' ? 'SPOCs found by pipeline runs appear here.' : undefined,
+          description:
+            status === 'PENDING' ? 'SPOCs found by pipeline runs appear here.' : undefined,
         }}
         bulkActions={
           can('spocs.approve')
             ? (rows, clear) => (
                 <>
                   {status !== 'APPROVED' && (
-                    <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate({ rows, decision: 'APPROVED', clear })}>
+                    <Button
+                      size="sm"
+                      disabled={decide.isPending}
+                      onClick={() => decide.mutate({ rows, decision: 'APPROVED', clear })}
+                    >
                       <BadgeCheck /> Approve
                     </Button>
                   )}
                   {status !== 'REJECTED' && (
-                    <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ rows, decision: 'REJECTED', clear })}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={decide.isPending}
+                      onClick={() => decide.mutate({ rows, decision: 'REJECTED', clear })}
+                    >
                       <CircleSlash /> Reject
                     </Button>
                   )}
                   {status !== 'PENDING' && (
-                    <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ rows, decision: 'PENDING', clear })}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={decide.isPending}
+                      onClick={() => decide.mutate({ rows, decision: 'PENDING', clear })}
+                    >
                       <Undo2 /> Back to pending
                     </Button>
                   )}

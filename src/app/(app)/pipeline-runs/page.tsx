@@ -12,7 +12,6 @@ import Link from 'next/link';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { PageHeader } from '@/components/common/PageHeader';
 import { STEP_STATUS } from '@/components/common/badges';
 import { PersonCell } from '@/components/common/UserAvatar';
 import { DataTable, useTableState, type DataColumn, type FilterDef } from '@/components/data-table';
@@ -44,9 +43,9 @@ const columns: DataColumn<StepRun>[] = [
     header: 'Step',
     meta: { label: 'Step', locked: true },
     cell: ({ row }) => (
-      <span className="block min-w-[160px]">
-        <span className="block font-medium">{row.original.step?.label ?? '—'}</span>
-        <span className="block text-xs text-muted-foreground">
+      <span className="flex min-w-[160px] items-baseline gap-2">
+        <span className="font-medium">{row.original.step?.label ?? '—'}</span>
+        <span className="truncate text-xs text-muted-foreground">
           {row.original.step?.target === 'SPOC' ? 'SPOC step' : 'Client step'}
           {row.original._count?.childRuns ? ` · ${row.original._count.childRuns} child runs` : ''}
         </span>
@@ -255,15 +254,12 @@ function PipelineRunsPage() {
   );
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Pipeline runs"
-        description="Enrichment and validation jobs for your clients and SPOCs — status, results, cost and what to do when one fails."
-      >
-        <StepsStrip steps={steps.data} isLoading={steps.isLoading} />
-      </PageHeader>
+    <div className="space-y-3">
+      <StepsStrip steps={steps.data} isLoading={steps.isLoading} />
 
       <DataTable
+        title="Pipeline runs"
+        titleHint="Enrichment and validation jobs for your clients and SPOCs — status, results, cost and what to do when one fails."
         id="step_runs"
         table={table}
         query={query}

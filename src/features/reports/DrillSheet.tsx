@@ -10,9 +10,22 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { DataTable, useTableState } from '@/components/data-table';
-import { clientColumns } from '@/features/clients/columns';
+import { useHiddenColumns } from '@/features/columnAccess/useHiddenColumns';
+import {
+  CLIENT_DEFAULT_COLUMNS,
+  CLIENT_LAYOUT_VERSION,
+  clientColumns,
+  withDefaultColumns,
+} from '@/features/clients/columns';
+import { clientExportSheets } from '@/features/clients/exportSheets';
 import { spocColumns } from '@/features/spocs/columns';
 import { clientHooks, spocHooks } from '@/hooks/queries';
 import type { ReportEntity } from '@/types/reports';
@@ -26,23 +39,67 @@ export interface DrillTarget {
 }
 
 function SpocDrill({ filters }: { filters: Record<string, string> }) {
-  const table = useTableState('drill-spocs', Object.keys(filters), { syncUrl: false, filters, sort: { id: 'createdAt', desc: true } });
+  const table = useTableState('drill-spocs', Object.keys(filters), {
+    syncUrl: false,
+    filters,
+    sort: { id: 'createdAt', desc: true },
+  });
   const query = spocHooks.useList(table.params);
   const columns = useMemo(() => spocColumns(), []);
-  return <DataTable id="drill-spocs" embedded savedViews={false} table={table} query={query} columns={columns} rowHref={s => `/spocs/${s.id}`} />;
+  return (
+    <DataTable
+      id="drill-spocs"
+      embedded
+      savedViews={false}
+      table={table}
+      query={query}
+      columns={columns}
+      rowHref={s => `/spocs/${s.id}`}
+    />
+  );
 }
 
 function ClientDrill({ filters }: { filters: Record<string, string> }) {
-  const table = useTableState('drill-clients', Object.keys(filters), { syncUrl: false, filters, sort: { id: 'createdAt', desc: true } });
+  const table = useTableState('drill-clients', Object.keys(filters), {
+    syncUrl: false,
+    filters,
+    sort: { id: 'createdAt', desc: true },
+    layoutVersion: CLIENT_LAYOUT_VERSION,
+  });
   const query = clientHooks.useList(table.params);
-  const columns = useMemo(() => clientColumns(), []);
-  return <DataTable id="drill-clients" embedded savedViews={false} table={table} query={query} columns={columns} rowHref={c => `/clients/${c.id}`} />;
+  const { hidden } = useHiddenColumns('clients');
+  const columns = useMemo(
+    () => withDefaultColumns(clientColumns({})).filter(c => !hidden.includes(c.id ?? '')),
+    [hidden]
+  );
+  return (
+    <DataTable
+      id="drill-clients"
+      embedded
+      savedViews={false}
+      table={table}
+      query={query}
+      columns={columns}
+      defaultColumnOrder={CLIENT_DEFAULT_COLUMNS}
+      exportSheets={clientExportSheets}
+      rowHref={c => `/clients/${c.id}`}
+    />
+  );
 }
 
-export function DrillSheet({ target, onClose }: { target: DrillTarget | null; onClose: () => void }) {
+export function DrillSheet({
+  target,
+  onClose,
+}: {
+  target: DrillTarget | null;
+  onClose: () => void;
+}) {
   return (
     <Sheet open={!!target} onOpenChange={o => !o && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-4xl data-[side=right]:sm:max-w-4xl">
+      <SheetContent
+        side="right"
+        className="w-full gap-0 p-0 sm:max-w-4xl data-[side=right]:sm:max-w-4xl"
+      >
         {target && (
           <>
             <SheetHeader className="border-b px-5 py-4 pr-12">

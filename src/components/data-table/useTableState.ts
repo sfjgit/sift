@@ -3,7 +3,8 @@
 //
 // Table state in one place:
 //   • page / search / sort / filters → URL query (shareable links, back button)
-//   • columns / density / page size  → localStorage per table (personal prefs)
+//   • columns / density / page size  → per user + per table (stores/tablePrefs:
+//     this browser + a server copy, so the layout follows the user)
 //   • saved views apply / capture the whole thing
 // The URL is written with history.replaceState so typing in search doesn't
 // spam history or re-render the route.
@@ -12,9 +13,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ListParams } from '@/types/api';
+import { useAuth } from '@/features/auth/AuthProvider';
+import {
+  fetchServerPrefs,
+  legacyPrefs,
+  prefsKey,
+  pushServerPrefs,
+  useTablePrefs,
+  type TablePrefs,
+} from '@/stores/tablePrefs';
 import type { Density, SortState, TableState, TableViewConfig } from './types';
 
-const PREF_KEY = (id: string) => `crm:table:${id}`;
 const PAGE_SIZES = [10, 25, 50, 100] as const;
 export { PAGE_SIZES };
 
@@ -25,19 +34,20 @@ interface Defaults {
   density?: Density;
   /** false for tables embedded in another page (detail tabs) — keeps the URL clean */
   syncUrl?: boolean;
+  /** bump when the default columns change: everyone's saved columns reset once */
+  layoutVersion?: number;
 }
 
-const readPrefs = (id: string): Partial<TableState> => {
-  try {
-    return JSON.parse(localStorage.getItem(PREF_KEY(id)) ?? '{}');
-  } catch {
-    return {};
-  }
-};
+/** a saved layout's columns only count when arranged against the current defaults */
+const columnsCurrent = (p: Partial<TablePrefs> | null | undefined, version?: number) =>
+  !version || (p?.layoutVersion ?? 0) >= version;
 
-const readUrl = (filterKeys: string[]) => {
+/** a page opened by the AI assistant on the SAME route re-applies its URL */
+export const APPLY_URL_EVENT = 'crm:apply-url';
+
+const readUrl = (filterKeys: string[], search?: string) => {
   if (typeof window === 'undefined') return null;
-  const sp = new URLSearchParams(window.location.search);
+  const sp = new URLSearchParams(search ?? window.location.search);
   if (![...sp.keys()].length) return null;
   const filters: Record<string, string> = {};
   for (const k of filterKeys) {
@@ -56,18 +66,24 @@ const readUrl = (filterKeys: string[]) => {
 export function useTableState(id: string, filterKeys: string[], defaults: Defaults = {}) {
   const filterKeysRef = useRef(filterKeys);
   const defaultsRef = useRef(defaults);
+  const { user } = useAuth();
+  const key = prefsKey(user?.id, id);
 
   const [state, setState] = useState<TableState>(() => {
-    const prefs = typeof window === 'undefined' ? {} : readPrefs(id);
+    const prefs: Partial<TablePrefs> =
+      typeof window === 'undefined'
+        ? {}
+        : (useTablePrefs.getState().prefs[key] ?? legacyPrefs(id));
     const url = defaults.syncUrl === false ? null : readUrl(filterKeys);
+    const cols = columnsCurrent(prefs, defaults.layoutVersion);
     return {
       page: url?.page ?? 1,
       search: url?.search ?? '',
       sort: url?.sort ?? defaults.sort ?? null,
       filters: url?.filters ?? defaults.filters ?? {},
       filterLabels: {},
-      columnVisibility: prefs.columnVisibility ?? {},
-      columnOrder: prefs.columnOrder ?? [],
+      columnVisibility: (cols && prefs.columnVisibility) || {},
+      columnOrder: (cols && prefs.columnOrder) || [],
       density: prefs.density ?? defaults.density ?? 'comfortable',
       limit: prefs.limit ?? defaults.limit ?? 25,
     };
@@ -76,22 +92,84 @@ export function useTableState(id: string, filterKeys: string[], defaults: Defaul
   /** true when the page opened with filters in the URL — skip auto default view */
   const [fromUrl] = useState(() => defaults.syncUrl !== false && readUrl(filterKeys) !== null);
 
-  // persist personal prefs
+  // persist personal prefs: this browser now, the server a moment later
+  const touched = useRef(false); // the user changed something this visit
+  const lastSaved = useRef<string | null>(null); // what is already stored (no re-save)
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        PREF_KEY(id),
-        JSON.stringify({
-          columnVisibility: state.columnVisibility,
-          columnOrder: state.columnOrder,
-          density: state.density,
-          limit: state.limit,
-        })
-      );
-    } catch {
-      /* storage full / private mode — prefs just won't stick */
+    const p = {
+      columnVisibility: state.columnVisibility,
+      columnOrder: state.columnOrder,
+      density: state.density,
+      limit: state.limit,
+      ...(defaultsRef.current.layoutVersion && {
+        layoutVersion: defaultsRef.current.layoutVersion,
+      }),
+    };
+    const json = JSON.stringify(p);
+    if (lastSaved.current === null || lastSaved.current === json) {
+      lastSaved.current = json; // what we just loaded — nothing to save
+      return;
     }
-  }, [id, state.columnVisibility, state.columnOrder, state.density, state.limit]);
+    lastSaved.current = json;
+    touched.current = true;
+    const at = Date.now();
+    useTablePrefs.getState().save(key, p, at);
+    const t = setTimeout(() => void pushServerPrefs(id, { ...p, updatedAt: at }), 1500);
+    return () => clearTimeout(t);
+  }, [id, key, state.columnVisibility, state.columnOrder, state.density, state.limit]);
+
+  // the server copy wins when it is newer (arranged on another machine)
+  useEffect(() => {
+    if (!user) return;
+    let gone = false;
+    void fetchServerPrefs(id).then(server => {
+      if (gone || !server || touched.current) return;
+      const local = useTablePrefs.getState().prefs[key];
+      if (local && local.updatedAt >= server.updatedAt) return;
+      // arranged against older defaults: its columns don't come back
+      if (!columnsCurrent(server, defaultsRef.current.layoutVersion)) return;
+      useTablePrefs.getState().save(key, server, server.updatedAt);
+      lastSaved.current = JSON.stringify({
+        columnVisibility: server.columnVisibility,
+        columnOrder: server.columnOrder,
+        density: server.density,
+        limit: server.limit,
+        ...(server.layoutVersion && { layoutVersion: server.layoutVersion }),
+      }); // applying it is not a new change
+      setState(s => ({
+        ...s,
+        columnVisibility: server.columnVisibility ?? s.columnVisibility,
+        columnOrder: server.columnOrder ?? s.columnOrder,
+        density: server.density ?? s.density,
+        limit: server.limit ?? s.limit,
+      }));
+    });
+    return () => {
+      gone = true;
+    };
+  }, [id, key, user]);
+
+  // the AI command bar opened this same page with new filters — take them over
+  useEffect(() => {
+    if (defaults.syncUrl === false) return;
+    const onApply = (e: Event) => {
+      const href = (e as CustomEvent<string>).detail;
+      if (typeof href !== 'string') return;
+      const target = new URL(href, window.location.origin);
+      if (target.pathname !== window.location.pathname) return;
+      const url = readUrl(filterKeysRef.current, target.search);
+      setState(s => ({
+        ...s,
+        page: url?.page ?? 1,
+        search: url?.search ?? '',
+        sort: url?.sort ?? defaultsRef.current.sort ?? null,
+        filters: url?.filters ?? {},
+        filterLabels: {},
+      }));
+    };
+    window.addEventListener(APPLY_URL_EVENT, onApply);
+    return () => window.removeEventListener(APPLY_URL_EVENT, onApply);
+  }, [defaults.syncUrl]);
 
   // mirror query state into the URL
   const syncUrl = defaults.syncUrl !== false;

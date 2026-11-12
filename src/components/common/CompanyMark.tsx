@@ -5,7 +5,15 @@ import { cn } from '@/lib/utils';
 
 const HUES = [279, 182, 236, 310, 135, 72, 12, 200];
 
-export function CompanyMark({ name, className, size = 'md' }: { name: string; className?: string; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+export function CompanyMark({
+  name,
+  className,
+  size = 'md',
+}: {
+  name: string;
+  className?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+}) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const hue = HUES[h % HUES.length];
@@ -22,7 +30,7 @@ export function CompanyMark({ name, className, size = 'md' }: { name: string; cl
       aria-hidden
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-lg font-semibold',
-        size === 'sm' && 'size-6 text-[10px]',
+        size === 'sm' && 'size-6 text-[11px]',
         size === 'md' && 'size-8 text-xs',
         size === 'lg' && 'size-11 text-sm',
         size === 'xl' && 'size-14 rounded-xl text-lg',

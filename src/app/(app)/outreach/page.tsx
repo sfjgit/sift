@@ -41,7 +41,7 @@ function OutreachPage() {
   const pages = query.data?.meta.pages ?? 1;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Outreach"
         description="Every email pack the pipeline wrote. Review it, send each mail from your Outlook, mark it sent here, then record the reply — so nothing goes out unchecked or gets forgotten."

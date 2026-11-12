@@ -10,7 +10,9 @@ import {
   FileSearch,
   IndianRupee,
   Linkedin,
+  Globe,
   Mail,
+  MapPinned,
   Rocket,
   ScanSearch,
   UserSearch,
@@ -37,16 +39,32 @@ export interface StepMeta {
 }
 
 export const STEP_META: Record<string, StepMeta> = {
+  website: {
+    icon: Globe,
+    description:
+      'Runs by itself when a client’s website does not open: checks it again and looks for the current one.',
+    createsSpocs: false,
+    options: [],
+  },
+  branches: {
+    icon: MapPinned,
+    description:
+      'Reads the client’s own website for its head office and branch addresses and saves them to Locations. Offices it already has are skipped.',
+    createsSpocs: false,
+    options: [],
+  },
   run_all: {
     icon: Rocket,
-    description: 'Runs the steps below one after another. Stops before approval — a person decides who gets outreach.',
+    description:
+      'Runs the steps below one after another. Stops before approval — a person decides who gets outreach.',
     createsSpocs: true,
     options: [],
     dryRun: true,
   },
   reports: {
     icon: FileSearch,
-    description: 'Finds and downloads the annual report, BRSR and CSR reports from the client’s website.',
+    description:
+      'Finds and downloads the annual report, BRSR and CSR reports from the client’s website.',
     createsSpocs: false,
     options: [],
   },
@@ -59,42 +77,72 @@ export const STEP_META: Record<string, StepMeta> = {
   },
   figures: {
     icon: IndianRupee,
-    description: 'Reads CSR obligation, spend and unspent figures plus funded programs from the reports.',
+    description:
+      'Reads CSR obligation, spend and unspent figures plus funded programs from the reports.',
     createsSpocs: false,
     needs: 'reports',
     dryRun: true,
-    options: [{ key: 'use_claude', label: 'Read PDFs with Claude', hint: 'Needed when no Programs Excel exists', default: true, paid: true }],
+    options: [
+      {
+        key: 'use_claude',
+        label: 'Read PDFs with Claude',
+        hint: 'Needed when no Programs Excel exists',
+        default: true,
+        paid: true,
+      },
+    ],
   },
   enrich: {
     icon: Linkedin,
-    description: 'Looks up each SPOC’s LinkedIn profile and a work email from public sources. Slow and capped per day.',
+    description:
+      'Looks up each SPOC’s LinkedIn profile and a work email from public sources. Slow and capped per day.',
     createsSpocs: true,
     needs: 'spocs',
-    options: [{ key: 'allow_brightdata', label: 'Use Bright Data when the free search finds nothing', default: false, paid: true }],
+    options: [
+      {
+        key: 'allow_brightdata',
+        label: 'Use Bright Data when the free search finds nothing',
+        default: false,
+        paid: true,
+      },
+    ],
   },
   apollo: {
     icon: UserSearch,
-    description: 'Gets verified emails and phones from Apollo, and can find new CSR / ESG decision-makers.',
+    description:
+      'Gets verified emails and phones from Apollo, and can find new CSR / ESG decision-makers.',
     createsSpocs: true,
     dryRun: true,
     options: [
-      { key: 'find_new', label: 'Find new decision-makers instead of enriching current SPOCs', default: false, paid: true },
+      {
+        key: 'find_new',
+        label: 'Find new decision-makers instead of enriching current SPOCs',
+        default: false,
+        paid: true,
+      },
     ],
   },
   validate: {
     icon: BadgeCheck,
-    description: 'Checks each SPOC (name, designation, email, LinkedIn, phone) and gives a 0–100 score with a band.',
+    description:
+      'Checks each SPOC (name, designation, email, LinkedIn, phone) and gives a 0–100 score with a band.',
     createsSpocs: false,
     needs: 'spocs',
     options: [
-      { key: 'use_claude', label: 'Let Claude judge unclear designations', default: true, paid: true },
+      {
+        key: 'use_claude',
+        label: 'Let Claude judge unclear designations',
+        default: true,
+        paid: true,
+      },
       { key: 'use_bouncer', label: 'Verify emails with Bouncer', default: true, paid: true },
       { key: 'check_email_domains', label: 'Check email domains (DNS)', default: true },
     ],
   },
   emails: {
     icon: Mail,
-    description: 'Writes a first email and five follow-ups per approved SPOC, using only figures the CRM holds.',
+    description:
+      'Writes a first email and five follow-ups per approved SPOC, using only figures the CRM holds.',
     createsSpocs: false,
     needs: 'approved',
     dryRun: true,

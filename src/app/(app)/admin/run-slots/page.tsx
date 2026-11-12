@@ -66,7 +66,7 @@ function Segmented<T extends string>({
           aria-checked={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'rounded-md px-2.5 py-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground',
+            'rounded-md px-2.5 py-1 text-[14px] text-muted-foreground transition-colors hover:text-foreground',
             value === o.value && 'bg-card font-medium text-foreground shadow-card'
           )}
         >
@@ -129,7 +129,7 @@ function AddRule({ steps }: { steps: { id: string; label: string }[] }) {
           ) : who === 'user' ? (
             <UserPicker value={userId} onChange={setUserId} placeholder="Search a person" />
           ) : (
-            <p className="flex h-8 items-center text-[13px] text-muted-foreground">
+            <p className="flex h-8 items-center text-[14px] text-muted-foreground">
               Every user except super admins
             </p>
           )}
@@ -145,7 +145,10 @@ function AddRule({ steps }: { steps: { id: string; label: string }[] }) {
           <Segmented
             value={period}
             onChange={setPeriod}
-            options={PERIODS.map(p => ({ value: p.value, label: p.label.replace('Per d', 'D').replace('Per w', 'W').replace('Per m', 'M') }))}
+            options={PERIODS.map(p => ({
+              value: p.value,
+              label: p.label.replace('Per d', 'D').replace('Per w', 'W').replace('Per m', 'M'),
+            }))}
           />
         </Field>
         <Field label="Runs">
@@ -190,7 +193,7 @@ function RuleRow({ r }: { r: RunQuota }) {
   return (
     <li className={cn('flex flex-wrap items-center gap-3 px-4 py-3', !r.isActive && 'opacity-60')}>
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="flex flex-wrap items-center gap-2 text-[13.5px] font-medium">
+        <p className="flex flex-wrap items-center gap-2 text-[14.5px] font-medium">
           {r.user ? fullName(r.user) : r.role ? r.role.name : 'Everyone'}
           <Pill dot={false} tone={r.user ? 'info' : r.role ? 'neutral' : 'success'}>
             {r.user ? 'Person' : r.role ? 'Role' : 'Everyone'}
@@ -240,13 +243,13 @@ function RunSlotsPage() {
   const stepList = (steps.data ?? []).map(s => ({ id: s.id, label: s.label }));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <PageHeader
         title="Run slots"
         description="How many pipeline runs people may start — per day, week or month."
       />
 
-      <div className="flex gap-2.5 rounded-xl border bg-card px-4 py-3 text-[13px] shadow-card">
+      <div className="flex gap-2.5 rounded-xl border bg-card px-4 py-3 text-[14px] shadow-card">
         <Info className="mt-0.5 size-4 shrink-0 text-info" />
         <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
           <li>

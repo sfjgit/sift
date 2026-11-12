@@ -7,6 +7,7 @@
 
 'use client';
 
+import { usePermissions } from '@/features/auth/usePermissions';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
@@ -23,13 +24,21 @@ import {
   blankToNull,
 } from '@/components/forms/fields';
 import { LookupPicker, MasterPicker } from '@/components/pickers/pickers';
+import { Segmented } from '@/components/ui/segmented';
 import { MasterMultiPicker } from '@/components/pickers/MultiCombobox';
 import { clientsApi } from '@/lib/api/endpoints';
 import { clientHooks } from '@/hooks/queries';
 import { useUi } from '@/stores/ui';
 import type { ApiError } from '@/lib/api/client';
-import type { ClientDetail } from '@/types/crm';
-import { LocationFields, locationSchema, type LocationValues } from './LocationFields';
+import type { ClientDetail, ClientEntityType } from '@/types/crm';
+import { ENTITY_TYPE } from './columns';
+import {
+  LocationFields,
+  coordsPaired,
+  locationSchema,
+  withCoords,
+  type LocationValues,
+} from './LocationFields';
 
 // accept "acme.com" — backend wants a full URL
 const url = z
@@ -38,7 +47,16 @@ const url = z
   .transform(v => (v && !/^https?:\/\//i.test(v) ? `https://${v}` : v))
   .refine(v => !v || /^https?:\/\/[^\s.]+\.[^\s]+$/i.test(v), 'Enter a valid URL');
 
+// "1,200" → 1200; blank → null
+const headCount = z
+  .string()
+  .trim()
+  .transform(v => v.replace(/[,\s]/g, ''))
+  .refine(v => !v || /^\d{1,8}$/.test(v), 'Whole number of employees')
+  .transform(v => (v ? Number(v) : null));
+
 const schema = z.object({
+  entityType: z.enum(['COMPANY', 'GOVERNMENT', 'INSTITUTION']),
   name: z.string().trim().min(1, 'Client name is required').max(200),
   shortName: z.string().trim().max(100),
   cin: z
@@ -50,15 +68,18 @@ const schema = z.object({
   linkedinUrl: url,
   industryId: z.string().nullable(),
   categoryId: z.string().nullable(),
+  employeeCount: headCount,
+  employeeSizeId: z.string().nullable(),
   businessUnitId: z.string().nullable(),
   serviceLineIds: z.array(z.string()),
-  hq: locationSchema.partial(),
+  hq: locationSchema.partial().superRefine(coordsPaired),
 });
 
 type Values = z.input<typeof schema>;
 type Output = z.output<typeof schema>;
 
 const toDefaults = (c?: ClientDetail | null): Values => ({
+  entityType: c?.entityType ?? 'COMPANY',
   name: c?.name ?? '',
   shortName: c?.shortName ?? '',
   cin: c?.cin ?? '',
@@ -66,9 +87,11 @@ const toDefaults = (c?: ClientDetail | null): Values => ({
   linkedinUrl: c?.linkedinUrl ?? '',
   industryId: c?.industry?.id ?? null,
   categoryId: c?.category?.id ?? null,
+  employeeCount: typeof c?.employeeCount === 'number' ? String(c.employeeCount) : '',
+  employeeSizeId: c?.employeeSize?.id ?? null,
   businessUnitId: c?.businessUnit?.id ?? null,
   serviceLineIds: c?.serviceLines?.map(s => s.serviceLine.id) ?? [],
-  hq: { city: '', state: '', country: 'India' } as Partial<LocationValues>,
+  hq: { city: '', district: '', state: '', country: 'India' } as Partial<LocationValues>,
 });
 
 export function ClientFormDialog({
@@ -85,6 +108,7 @@ export function ClientFormDialog({
   const storeOpen = useUi(s => s.clientDialog);
   const openClientDialog = useUi(s => s.openClientDialog);
   const isEdit = !!client;
+  const { isSuperAdmin } = usePermissions();
   const open = openProp ?? (!isEdit && storeOpen);
   const onOpenChange = onOpenChangeProp ?? openClientDialog;
 
@@ -112,7 +136,7 @@ export function ClientFormDialog({
       const created = await clientsApi.create({ ...body, name: v.name });
       if (hq?.city || hq?.state) {
         await clientsApi
-          .addLocation(created.id, { ...blankToNull(hq), isPrimary: true })
+          .addLocation(created.id, { ...blankToNull(withCoords(hq)), isPrimary: true })
           .catch(() =>
             toast.warning(
               'Client created, but the location couldn’t be saved — add it from the profile.'
@@ -141,8 +165,26 @@ export function ClientFormDialog({
       onSubmit={submit}
       submitLabel={isEdit ? 'Save changes' : 'Create client'}
       busy={busy}
+      size="lg"
     >
-      <FormSection title="Company">
+      <FormSection title="Organisation">
+        <Field label="Type" htmlFor="entityType">
+          <Controller
+            control={form.control}
+            name="entityType"
+            render={({ field }) => (
+              <Segmented<ClientEntityType>
+                value={field.value}
+                onChange={field.onChange}
+                options={Object.entries(ENTITY_TYPE).map(([value, label]) => ({
+                  value: value as ClientEntityType,
+                  label,
+                }))}
+                className="self-start"
+              />
+            )}
+          />
+        </Field>
         <TextField
           form={form}
           name="name"
@@ -174,6 +216,24 @@ export function ClientFormDialog({
             label="Category"
             render={p => (
               <LookupPicker type="CLIENT_CATEGORY" placeholder="Select category" {...p} />
+            )}
+          />
+        </FormGrid>
+        <FormGrid>
+          <TextField
+            form={form}
+            name="employeeCount"
+            label="Employees"
+            placeholder="e.g. 1,200"
+            inputMode="numeric"
+          />
+          <PickerField
+            form={form}
+            name="employeeSizeId"
+            label="Employee size"
+            hint="Left blank, it is picked from the number of employees."
+            render={p => (
+              <LookupPicker type="EMPLOYEE_SIZE" placeholder="From the count" clearable {...p} />
             )}
           />
         </FormGrid>
@@ -215,6 +275,13 @@ export function ClientFormDialog({
             label="Website"
             placeholder="asmltd.com"
             inputMode="url"
+            // a typed website can't be trusted: once the client exists only an admin changes it
+            readOnly={isEdit && !isSuperAdmin}
+            hint={
+              isEdit && !isSuperAdmin
+                ? 'Only an admin changes it. If it does not open, run a step — the website check finds the current one.'
+                : undefined
+            }
           />
           <TextField
             form={form}
@@ -227,7 +294,7 @@ export function ClientFormDialog({
       </FormSection>
       {!isEdit && (
         <FormSection title="Head office (optional)">
-          <LocationFields form={form} prefix="hq" compact />
+          <LocationFields form={form} prefix="hq" />
         </FormSection>
       )}
     </FormDialog>

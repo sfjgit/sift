@@ -12,10 +12,22 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { MarkdownLite } from '@/components/common/MarkdownLite';
 import { FormDialog, FormGrid } from '@/components/forms/FormDialog';
-import { Field, SwitchField, TextAreaField, TextField, applyServerErrors } from '@/components/forms/fields';
+import {
+  Field,
+  SwitchField,
+  TextAreaField,
+  TextField,
+  applyServerErrors,
+} from '@/components/forms/fields';
 import { faqsApi } from '@/lib/api/endpoints';
 import type { ApiError } from '@/lib/api/client';
 import type { Faq } from '@/types/org';
@@ -61,7 +73,14 @@ export function FaqFormDialog({
   const qc = useQueryClient();
   const form = useForm<Values, unknown, z.output<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { question: '', answer: '', category: '', module: NONE, order: '0', isPublished: true },
+    defaultValues: {
+      question: '',
+      answer: '',
+      category: '',
+      module: NONE,
+      order: '0',
+      isPublished: true,
+    },
   });
   const answer = useWatch({ control: form.control, name: 'answer' });
 
@@ -82,7 +101,9 @@ export function FaqFormDialog({
     try {
       if (faq) await faqsApi.update(faq.id, body);
       else await faqsApi.create(body);
-      toast.success(faq ? 'FAQ updated' : body.isPublished ? 'FAQ published' : 'FAQ saved as draft');
+      toast.success(
+        faq ? 'FAQ updated' : body.isPublished ? 'FAQ published' : 'FAQ saved as draft'
+      );
       qc.invalidateQueries({ queryKey: ['faqs'] });
       onOpenChange(false);
     } catch (e) {
@@ -101,11 +122,25 @@ export function FaqFormDialog({
       submitLabel={faq ? 'Save' : 'Create FAQ'}
       busy={form.formState.isSubmitting}
     >
-      <TextField form={form} name="question" label="Question" required autoFocus placeholder="How do I…?" />
+      <TextField
+        form={form}
+        name="question"
+        label="Question"
+        required
+        autoFocus
+        placeholder="How do I…?"
+      />
       <div className="grid gap-3 lg:grid-cols-2">
-        <TextAreaField form={form} name="answer" label="Answer" required rows={10} className="[&_textarea]:font-mono [&_textarea]:text-[13px]" />
+        <TextAreaField
+          form={form}
+          name="answer"
+          label="Answer"
+          required
+          rows={10}
+          className="[&_textarea]:font-mono [&_textarea]:text-[14px]"
+        />
         <Field label="Preview">
-          <div className="min-h-[220px] overflow-y-auto rounded-lg border bg-surface px-3 py-2 text-[13.5px] leading-relaxed">
+          <div className="min-h-[220px] overflow-y-auto rounded-lg border bg-surface px-3 py-2 text-[14.5px] leading-relaxed">
             {answer?.trim() ? (
               <MarkdownLite text={answer} />
             ) : (
@@ -145,14 +180,25 @@ export function FaqFormDialog({
             )}
           />
         </Field>
-        <TextField form={form} name="order" label="Order" inputMode="numeric" hint="Lower comes first." />
+        <TextField
+          form={form}
+          name="order"
+          label="Order"
+          inputMode="numeric"
+          hint="Lower comes first."
+        />
       </FormGrid>
       <datalist id="faq-categories">
         {categories.map(c => (
           <option key={c} value={c} />
         ))}
       </datalist>
-      <SwitchField form={form} name="isPublished" label="Published" hint="Drafts are only visible to help admins." />
+      <SwitchField
+        form={form}
+        name="isPublished"
+        label="Published"
+        hint="Drafts are only visible to help admins."
+      />
     </FormDialog>
   );
 }

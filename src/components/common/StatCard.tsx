@@ -16,6 +16,7 @@ export function StatCard({
   href,
   loading,
   accent = 'primary',
+  compact = false,
   className,
   ...rest
 }: {
@@ -26,6 +27,8 @@ export function StatCard({
   href?: string;
   loading?: boolean;
   accent?: 'primary' | 'success' | 'warning' | 'info' | 'danger' | 'violet';
+  /** one tight block: icon · label over value, hint beside the value */
+  compact?: boolean;
   className?: string;
 } & Omit<React.HTMLAttributes<HTMLDivElement>, 'children'>) {
   const accents = {
@@ -37,7 +40,40 @@ export function StatCard({
     violet: 'text-chart-1 bg-chart-1/12',
   } as const;
 
-  const body = (
+  const body = compact ? (
+    <div
+      className={cn(
+        'group relative flex h-full items-center gap-3 rounded-lg border bg-card px-3 py-2.5 shadow-card transition-colors',
+        href && 'hover:border-primary/40',
+        className
+      )}
+      {...rest}
+    >
+      {Icon && (
+        <span
+          className={cn(
+            'flex size-9 shrink-0 items-center justify-center rounded-lg',
+            accents[accent]
+          )}
+        >
+          <Icon className="size-4" />
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-medium text-muted-foreground">{label}</div>
+        <div className="flex items-baseline gap-2">
+          {loading ? (
+            <Skeleton className="mt-1 h-6 w-14" />
+          ) : (
+            <span className="tabular text-[22px] leading-tight font-semibold tracking-tight">
+              {typeof value === 'number' ? fmtNumber(value) : (value ?? '—')}
+            </span>
+          )}
+          {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
+        </div>
+      </div>
+    </div>
+  ) : (
     <div
       className={cn(
         'group relative flex h-full flex-col gap-3 rounded-xl border bg-card p-4 shadow-card transition-all',
@@ -47,9 +83,11 @@ export function StatCard({
       {...rest}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-medium text-muted-foreground">{label}</span>
+        <span className="text-[14px] font-medium text-muted-foreground">{label}</span>
         {Icon && (
-          <span className={cn('flex size-8 items-center justify-center rounded-lg', accents[accent])}>
+          <span
+            className={cn('flex size-8 items-center justify-center rounded-lg', accents[accent])}
+          >
             <Icon className="size-4" />
           </span>
         )}
@@ -69,7 +107,10 @@ export function StatCard({
   );
 
   return href ? (
-    <Link href={href} className="block h-full outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
+    <Link
+      href={href}
+      className="block h-full outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+    >
       {body}
     </Link>
   ) : (

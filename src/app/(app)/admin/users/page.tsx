@@ -6,7 +6,6 @@
 import { useCallback, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { PageHeader } from '@/components/common/PageHeader';
 import { DataTable, useTableState } from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { userColumns, userFilterKeys, userFilters } from '@/features/admin/userColumns';
@@ -30,20 +29,17 @@ function UsersPage() {
   const columns = useMemo(() => userColumns(rowActions), [rowActions]);
 
   return (
-    <div className="space-y-5">
-      <PageHeader
+    <div className="space-y-3">
+      <DataTable
         title="Users"
-        description="Everyone with access to the CRM — their role, team and reporting line."
+        titleHint="Everyone with access to the CRM — their role, team and reporting line."
         actions={
           actions.canCreate && (
-            <Button onClick={actions.openCreate}>
+            <Button size="sm" onClick={actions.openCreate}>
               <Plus /> New user
             </Button>
           )
         }
-      />
-
-      <DataTable
         id="users"
         table={table}
         query={query}

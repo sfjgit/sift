@@ -37,16 +37,29 @@ const META: Record<ClientActivityType, { icon: LucideIcon; cls: string; verb: st
   SPOC_ADDED: { icon: UserPlus, cls: 'bg-primary/10 text-primary', verb: 'SPOC added' },
   SPOC_UPDATED: { icon: Pencil, cls: 'bg-muted text-muted-foreground', verb: 'SPOC updated' },
   SPOC_REASSIGNED: { icon: ArrowRightLeft, cls: 'bg-info/12 text-info', verb: 'Reassigned' },
-  NOTE_ADDED: { icon: MessageSquareText, cls: 'bg-warning/15 text-[oklch(0.55_0.14_60)] dark:text-warning', verb: 'Note' },
+  NOTE_ADDED: {
+    icon: MessageSquareText,
+    cls: 'bg-warning/15 text-[oklch(0.55_0.14_60)] dark:text-warning',
+    verb: 'Note',
+  },
   LOCATION_ADDED: { icon: MapPin, cls: 'bg-muted text-muted-foreground', verb: 'Location added' },
   TECHNOLOGY_UPDATED: { icon: Cpu, cls: 'bg-muted text-muted-foreground', verb: 'Technology' },
   DOCUMENT_ADDED: { icon: FileText, cls: 'bg-muted text-muted-foreground', verb: 'Document' },
   FINANCIALS_UPDATED: { icon: IndianRupee, cls: 'bg-success/12 text-success', verb: 'CSR figures' },
-  PROGRAMS_ADDED: { icon: Sprout, cls: 'bg-success/12 text-success', verb: 'Programs' },
+  PROGRAMS_ADDED: { icon: Sprout, cls: 'bg-success/12 text-success', verb: 'Programmes' },
+  PROGRAMS_UPDATED: { icon: Sprout, cls: 'bg-success/12 text-success', verb: 'Programmes' },
   OUTREACH_GENERATED: { icon: Mail, cls: 'bg-primary/10 text-primary', verb: 'Outreach' },
   STEP_RUN_STARTED: { icon: PlayCircle, cls: 'bg-info/12 text-info', verb: 'Pipeline started' },
-  STEP_RUN_FINISHED: { icon: CheckCircle2, cls: 'bg-success/12 text-success', verb: 'Pipeline finished' },
-  STEP_RUN_FAILED: { icon: XCircle, cls: 'bg-destructive/10 text-destructive', verb: 'Pipeline failed' },
+  STEP_RUN_FINISHED: {
+    icon: CheckCircle2,
+    cls: 'bg-success/12 text-success',
+    verb: 'Pipeline finished',
+  },
+  STEP_RUN_FAILED: {
+    icon: XCircle,
+    cls: 'bg-destructive/10 text-destructive',
+    verb: 'Pipeline failed',
+  },
   SPOC_APPROVED: { icon: BadgeCheck, cls: 'bg-success/12 text-success', verb: 'SPOC approved' },
   SPOC_REJECTED: { icon: XCircle, cls: 'bg-muted text-muted-foreground', verb: 'SPOC rejected' },
   OUTREACH_UPDATED: { icon: Mail, cls: 'bg-info/12 text-info', verb: 'Outreach' },
@@ -88,13 +101,28 @@ export function ActivityTimeline({
       {items.map((a, idx) => {
         const m = META[a.type] ?? META.CLIENT_UPDATED;
         return (
-          <li key={a.id} className={cn('relative flex gap-3', compact ? 'pb-3' : 'pb-5', 'last:pb-0')}>
-            {idx < items.length - 1 && <span className="absolute top-8 bottom-0 left-3.5 w-px bg-border" aria-hidden />}
-            <span className={cn('relative z-[1] flex size-7 shrink-0 items-center justify-center rounded-lg', m.cls)}>
+          <li
+            key={a.id}
+            className={cn('relative flex gap-3', compact ? 'pb-3' : 'pb-5', 'last:pb-0')}
+          >
+            {idx < items.length - 1 && (
+              <span className="absolute top-8 bottom-0 left-3.5 w-px bg-border" aria-hidden />
+            )}
+            <span
+              className={cn(
+                'relative z-[1] flex size-7 shrink-0 items-center justify-center rounded-lg',
+                m.cls
+              )}
+            >
               <m.icon className="size-3.5" />
             </span>
             <div className="min-w-0 flex-1 pt-0.5">
-              <p className={cn('text-[13px] leading-snug', a.type === 'NOTE_ADDED' && 'whitespace-pre-line')}>
+              <p
+                className={cn(
+                  'text-[14px] leading-snug',
+                  a.type === 'NOTE_ADDED' && 'whitespace-pre-line'
+                )}
+              >
                 {a.type !== 'NOTE_ADDED' && <span className="font-medium">{m.verb} · </span>}
                 {a.summary}
               </p>
@@ -103,7 +131,10 @@ export function ActivityTimeline({
                 {showClient && a.client && (
                   <>
                     <span>·</span>
-                    <Link href={`/clients/${a.client.id}`} className="font-medium text-foreground/80 hover:text-primary">
+                    <Link
+                      href={`/clients/${a.client.id}`}
+                      className="font-medium text-foreground/80 hover:text-primary"
+                    >
                       {a.client.name}
                     </Link>
                   </>

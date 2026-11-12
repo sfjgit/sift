@@ -65,7 +65,7 @@ export function NotesPanel({ clientId, notes }: { clientId: string; notes: Clien
               className="resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
             />
             <div className="flex items-center justify-between px-2.5 pb-2">
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-[12px] text-muted-foreground">
                 Active SPOC handlers get notified
               </span>
               <Button size="xs" onClick={submit} disabled={!text.trim() || add.isPending}>
@@ -112,7 +112,7 @@ export function NotesPanel({ clientId, notes }: { clientId: string; notes: Clien
                       )}
                     </span>
                   </div>
-                  <p className="mt-1 text-[13px] whitespace-pre-line">{n.content}</p>
+                  <p className="mt-1 text-[14px] whitespace-pre-line">{n.content}</p>
                 </div>
               </li>
             ))}

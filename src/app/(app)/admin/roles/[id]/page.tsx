@@ -38,7 +38,7 @@ import type { PermissionScope } from '@/config/permissions';
 
 function RoleSkeleton() {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="space-y-2">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-7 w-56" />
@@ -123,7 +123,7 @@ function RoleDetailPage() {
   const userCount = role._count?.users ?? role.users.length;
 
   return (
-    <div className="space-y-5 pb-20">
+    <div className="space-y-3 pb-20">
       <PageHeader
         crumbs={[{ label: 'Roles & access', href: '/admin/roles' }, { label: role.name }]}
         title={
