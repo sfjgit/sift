@@ -16,6 +16,8 @@ import type { DataColumn, FilterDef, GroupTone } from '@/components/data-table';
 import { fmtDate, fmtInr, fmtNumber, fmtRelative, fullName, hostOf } from '@/lib/format';
 import type { LookupRef } from '@/types/api';
 import type { ClientCoverage, ClientEntityType, ClientListItem } from '@/types/crm';
+import { ClientKeyStar, CsrEligibleToggle, ProjectTags } from '@/features/marks/SalesMarks';
+import { clientsApi } from '@/lib/api/endpoints';
 
 export const ENTITY_TYPE: Record<ClientEntityType, string> = {
   COMPANY: 'Company',
@@ -245,6 +247,40 @@ export const clientFilters: FilterDef[] = [
     group: 'Ownership',
   },
 
+  // ── sales marks
+  {
+    key: 'keyAccount',
+    label: 'Key account',
+    type: 'select',
+    group: 'Sales marks',
+    options: [
+      { value: 'me', label: 'My key accounts' },
+      { value: 'any', label: 'Anyone’s key account' },
+      { value: 'none', label: 'Nobody’s key account' },
+    ],
+    hint: 'Clients starred as a key account.',
+  },
+  {
+    key: 'csrEligible',
+    label: 'CSR eligible',
+    type: 'select',
+    group: 'Sales marks',
+    options: [
+      { value: 'yes', label: 'Yes' },
+      { value: 'no', label: 'No' },
+      { value: 'unset', label: 'Not marked' },
+    ],
+  },
+  {
+    key: 'projectId',
+    label: 'Project',
+    type: 'lookup',
+    lookupType: 'PROJECT',
+    multi: true,
+    group: 'Sales marks',
+    hint: 'Tagged with any of these projects.',
+  },
+
   // ── company
   {
     key: 'entityType',
@@ -463,8 +499,10 @@ export const CLIENT_LAYOUT_VERSION = 3;
 
 export const CLIENT_DEFAULT_COLUMNS = [
   'name',
+  'keyAccount',
   'category',
   'csrSpent',
+  'projects',
   'industry',
   'website',
   'linkedin',
@@ -504,6 +542,9 @@ const GROUPS: { label: string; tone: GroupTone; test: (id: string) => boolean }[
     test: id =>
       [
         'name',
+        'keyAccount',
+        'csrEligible',
+        'projects',
         'category',
         'csrSpent',
         'industry',
@@ -610,6 +651,10 @@ export interface ClientColumnContext {
   techCategories?: LookupRef[];
   /** DOCUMENT_TYPE rows — one column each */
   documentTypes?: LookupRef[];
+  /** clients.update — inline CSR eligible and projects */
+  canEdit?: boolean;
+  /** PROJECT ids → labels (exports) */
+  projectLabels?: (ids: string[]) => string[];
 }
 
 export const clientColumns = ({
@@ -618,6 +663,8 @@ export const clientColumns = ({
   onOpenData,
   techCategories = [],
   documentTypes = [],
+  canEdit = false,
+  projectLabels = ids => ids,
 }: ClientColumnContext): DataColumn<ClientListItem>[] => [
   {
     id: 'name',
@@ -638,6 +685,38 @@ export const clientColumns = ({
         </div>
       );
     },
+  },
+  {
+    id: 'keyAccount',
+    accessorFn: c => (c.keyAccounts ?? []).map(k => fullName(k.user)).join(', '),
+    header: 'Key account',
+    meta: { label: 'Key account', width: 90 },
+    cell: ({ row }) => <ClientKeyStar client={row.original} />,
+  },
+  {
+    id: 'csrEligible',
+    accessorFn: c => (c.csrEligible === null ? '' : c.csrEligible ? 'Yes' : 'No'),
+    header: 'CSR eligible',
+    meta: { label: 'CSR eligible' },
+    cell: ({ row }) => <CsrEligibleToggle client={row.original} canEdit={canEdit} />,
+  },
+  {
+    id: 'projects',
+    accessorFn: c => projectLabels(c.projectIds ?? []).join(', '),
+    header: 'Projects',
+    meta: { label: 'Projects' },
+    cell: ({ row }) => (
+      <ProjectTags
+        ids={row.original.projectIds ?? []}
+        canEdit={canEdit}
+        setBy={
+          row.original.projectSetBy
+            ? `${fullName(row.original.projectSetBy)} · ${fmtDate(row.original.projectSetAt)}`
+            : undefined
+        }
+        onSave={projectIds => clientsApi.update(row.original.id, { projectIds })}
+      />
+    ),
   },
   {
     id: 'shortName',

@@ -46,6 +46,7 @@ import {
   type RunStepHandler,
 } from '@/features/clients/columns';
 import { clientExportSheets } from '@/features/clients/exportSheets';
+import { useProjectLabels } from '@/features/marks/SalesMarks';
 import { BusinessViewSelect } from '@/features/clients/BusinessViewSelect';
 import { useHiddenColumns } from '@/features/columnAccess/useHiddenColumns';
 import { AssignClientsDialog } from '@/features/clients/AssignClientsDialog';
@@ -161,6 +162,9 @@ function ClientsPage() {
     [can]
   );
 
+  const canEditClients = can('clients.update');
+  const projectLabels = useProjectLabels();
+
   // every column (admins arrange access from these) → minus the ones my role may not see
   const allColumns = useMemo(
     () =>
@@ -171,9 +175,11 @@ function ClientsPage() {
           onOpenData: (client, tab) => setDataSheet({ client, tab }),
           techCategories,
           documentTypes,
+          canEdit: canEditClients,
+          projectLabels,
         })
       ),
-    [rowActions, runHandler, techCategories, documentTypes]
+    [rowActions, runHandler, techCategories, documentTypes, canEditClients, projectLabels]
   );
   const { hidden: roleHidden } = useHiddenColumns('clients');
   const columns = useMemo(

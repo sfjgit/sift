@@ -51,6 +51,12 @@ import type {
   Spoc,
   SpocDetail,
   SpocApprovalStatus,
+  SpocDataFlag,
+  SpocStats,
+  WorkTask,
+  WorkTaskInput,
+  WorkTaskStatus,
+  InteractionChannel,
   SpocInput,
   StartedRun,
   StartRunInput,
@@ -121,6 +127,8 @@ export const clientsApi = {
   bulkStatus: (clientIds: string[], status: ClientStatus) =>
     api.patch<BulkResult>('/clients/bulk-status', { clientIds, status }),
   assignments: (id: string) => api.get<ClientAssignment[]>(`/clients/${id}/assignments`),
+  toggleKeyAccount: (id: string) =>
+    api.post<{ starred: boolean; keyAccounts: ClientListItem['keyAccounts'] }>(`/clients/${id}/key-account`),
   setAssignments: (id: string, userIds: string[], note?: string) =>
     api.put<{ added: number; removed: number }>(`/clients/${id}/assignments`, { userIds, note }),
   bulkAssign: (
@@ -140,8 +148,25 @@ export const clientsApi = {
     ),
   activities: (id: string, params?: ListParams) =>
     api.page<ClientActivity>(`/clients/${id}/activities`, params),
-  addNote: (id: string, content: string) =>
-    api.post<ClientNote>(`/clients/${id}/notes`, { content }),
+  addNote: (id: string, content: string, spocId?: string | null) =>
+    api.post<ClientNote>(`/clients/${id}/notes`, { content, ...(spocId && { spocId }) }),
+  updateNote: (id: string, noteId: string, content: string) =>
+    api.patch<ClientNote>(`/clients/${id}/notes/${noteId}`, { content }),
+  /** tasks, calls to make and meetings (one list, told apart by kind) */
+  tasks: (id: string, params?: { spocId?: string; status?: string }) =>
+    api.get<WorkTask[]>(`/clients/${id}/tasks`, params),
+  createTask: (id: string, body: WorkTaskInput) => api.post<WorkTask>(`/clients/${id}/tasks`, body),
+  updateTask: (
+    id: string,
+    taskId: string,
+    body: Partial<Omit<WorkTaskInput, 'spocId' | 'kind'>> & { status?: WorkTaskStatus; closeNote?: string | null }
+  ) => api.patch<WorkTask>(`/clients/${id}/tasks/${taskId}`, body),
+  deleteTask: (id: string, taskId: string) => api.delete(`/clients/${id}/tasks/${taskId}`),
+  /** "I emailed / called / WhatsApped them" */
+  logInteraction: (
+    id: string,
+    body: { spocId?: string | null; channel: InteractionChannel; note?: string | null; connected?: boolean }
+  ) => api.post<{ id: string }>(`/clients/${id}/interactions`, body),
   deleteNote: (id: string, noteId: string) => api.delete(`/clients/${id}/notes/${noteId}`),
   addLocation: (id: string, body: LocationInput) =>
     api.post<ClientLocation>(`/clients/${id}/locations`, body),
@@ -205,6 +230,20 @@ export const spocsApi = {
     api.patch<Spoc>(`/spocs/${id}/assign`, { assignToId, reason }),
   bulkAssign: (spocIds: string[], assignToId: string, reason?: string) =>
     api.patch<BulkResult>('/spocs/bulk-assign', { spocIds, assignToId, reason }),
+  toggleKeyAccount: (id: string) => api.post<Spoc>(`/spocs/${id}/key-account`),
+  /** counts for the Stats panel — same filters as the list */
+  stats: (params?: ListParams) => api.get<SpocStats>('/spocs/stats', params),
+  /** set any of these fields on many SPOCs; projects add / remove / replace */
+  bulkUpdate: (
+    spocIds: string[],
+    set: {
+      salesStatusId?: string | null;
+      dataFlag?: SpocDataFlag | null;
+      erp?: string | null;
+      projectIds?: string[];
+      projectMode?: 'add' | 'remove' | 'replace';
+    }
+  ) => api.patch<BulkResult>('/spocs/bulk-update', { spocIds, ...set }),
   decide: (spocIds: string[], decision: SpocApprovalStatus, note?: string) =>
     api.post<{ updated: number; unchanged: number; notFound: number }>('/spocs/approval', {
       spocIds,

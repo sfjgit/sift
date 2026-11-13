@@ -99,6 +99,8 @@ export interface DataTableProps<T> {
   /** Rendered in the floating bar when rows are selected */
   bulkActions?: (rows: T[], clear: () => void) => ReactNode;
   toolbar?: ReactNode;
+  /** a panel between the toolbar and the grid (the SPOCs Stats panel); hidden in full screen */
+  banner?: ReactNode;
   /** the page's name, shown first in the toolbar (no separate header row) */
   title?: ReactNode;
   /** what the page is for — shown when hovering the title */
@@ -184,6 +186,7 @@ export function DataTable<T>({
   searchable = true,
   bulkActions,
   toolbar,
+  banner,
   title,
   titleHint,
   titleAddon,
@@ -685,6 +688,8 @@ export function DataTable<T>({
           {pageActions}
         </div>
       </div>
+
+      {!full && banner}
 
       {columnBar.open && (
         <div ref={barRef}>

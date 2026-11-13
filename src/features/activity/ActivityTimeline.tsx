@@ -10,6 +10,11 @@ import {
   ArrowRightLeft,
   BadgeCheck,
   Building2,
+  CalendarClock,
+  ListTodo,
+  MessageCircle,
+  Phone,
+  TrendingUp,
   Cpu,
   FileText,
   IndianRupee,
@@ -64,6 +69,31 @@ const META: Record<ClientActivityType, { icon: LucideIcon; cls: string; verb: st
   SPOC_REJECTED: { icon: XCircle, cls: 'bg-muted text-muted-foreground', verb: 'SPOC rejected' },
   OUTREACH_UPDATED: { icon: Mail, cls: 'bg-info/12 text-info', verb: 'Outreach' },
   CLIENT_ASSIGNED: { icon: ArrowRightLeft, cls: 'bg-info/12 text-info', verb: 'Assigned' },
+  NOTE_UPDATED: { icon: MessageSquareText, cls: 'bg-muted text-muted-foreground', verb: 'Comment edited' },
+  TASK_ADDED: { icon: ListTodo, cls: 'bg-primary/10 text-primary', verb: 'Added' },
+  TASK_UPDATED: { icon: ListTodo, cls: 'bg-muted text-muted-foreground', verb: 'Updated' },
+  TASK_CLOSED: { icon: CheckCircle2, cls: 'bg-success/12 text-success', verb: 'Done' },
+  SALES_STATUS_CHANGED: { icon: TrendingUp, cls: 'bg-primary/10 text-primary', verb: 'Status' },
+  INTERACTION_LOGGED: { icon: Phone, cls: 'bg-info/12 text-info', verb: 'Contact' },
+};
+
+/** the server's summary already says "Call: …", "Email sent: …" — no extra verb for these */
+const SELF_DESCRIBED = new Set<ClientActivityType>([
+  'NOTE_ADDED',
+  'TASK_ADDED',
+  'TASK_UPDATED',
+  'TASK_CLOSED',
+  'INTERACTION_LOGGED',
+]);
+
+/** calls, emails, WhatsApp and meetings get their own icon */
+const iconOf = (a: ClientActivity, fallback: LucideIcon): LucideIcon => {
+  const meta = a.meta ?? {};
+  if (a.type === 'INTERACTION_LOGGED')
+    return meta.channel === 'EMAIL' ? Mail : meta.channel === 'WHATSAPP' ? MessageCircle : Phone;
+  if (a.type === 'TASK_ADDED' || a.type === 'TASK_UPDATED')
+    return meta.kind === 'CALL' ? Phone : meta.kind === 'MEETING' ? CalendarClock : fallback;
+  return fallback;
 };
 
 export function ActivityTimeline({
@@ -71,8 +101,11 @@ export function ActivityTimeline({
   loading,
   showClient = false,
   compact = false,
+  hideSpoc = false,
   emptyText = 'No activity yet',
 }: {
+  /** on a SPOC's own page its name on every row is noise */
+  hideSpoc?: boolean;
   items?: ClientActivity[];
   loading?: boolean;
   showClient?: boolean;
@@ -100,6 +133,7 @@ export function ActivityTimeline({
     <ol className="relative">
       {items.map((a, idx) => {
         const m = META[a.type] ?? META.CLIENT_UPDATED;
+        const Icon = iconOf(a, m.icon);
         return (
           <li
             key={a.id}
@@ -114,7 +148,7 @@ export function ActivityTimeline({
                 m.cls
               )}
             >
-              <m.icon className="size-3.5" />
+              <Icon className="size-3.5" />
             </span>
             <div className="min-w-0 flex-1 pt-0.5">
               <p
@@ -123,7 +157,7 @@ export function ActivityTimeline({
                   a.type === 'NOTE_ADDED' && 'whitespace-pre-line'
                 )}
               >
-                {a.type !== 'NOTE_ADDED' && <span className="font-medium">{m.verb} · </span>}
+                {!SELF_DESCRIBED.has(a.type) && <span className="font-medium">{m.verb} · </span>}
                 {a.summary}
               </p>
               <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
@@ -139,7 +173,7 @@ export function ActivityTimeline({
                     </Link>
                   </>
                 )}
-                {a.spoc && (
+                {a.spoc && !hideSpoc && (
                   <>
                     <span>·</span>
                     <Link href={`/spocs/${a.spoc.id}`} className="hover:text-primary">

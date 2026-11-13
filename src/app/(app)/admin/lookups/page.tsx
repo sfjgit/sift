@@ -50,6 +50,11 @@ const FALLBACK_TYPES: LookupType[] = [
   'EMAIL_SOURCE',
   'SALES_STATUS',
   'PROGRAM_SECTOR',
+  'PROJECT',
+  'SPOC_ROLE',
+  'DECISION_AUTHORITY',
+  'ORG_TYPE',
+  'REVENUE_BAND',
 ];
 
 const TYPE_INFO: Partial<Record<LookupType, { label?: string; description: string }>> = {
@@ -81,6 +86,14 @@ const TYPE_INFO: Partial<Record<LookupType, { label?: string; description: strin
     label: 'Programme sector',
     description: 'Sectors of a client’s CSR programmes.',
   },
+  PROJECT: {
+    label: 'Projects',
+    description: 'Project tags on clients and SPOCs (NASSCOM, STPI, AWS-Restart…) — columns and filters.',
+  },
+  SPOC_ROLE: { label: 'SPOC role category', description: 'A SPOC’s part in the decision (Final Decision Maker, Influencer, Gatekeeper…).' },
+  DECISION_AUTHORITY: { label: 'Decision authority', description: 'What a SPOC can decide (Final Approval, Budget Owner…).' },
+  ORG_TYPE: { label: 'Organization type', description: 'Where the SPOC sits: Corporate, Corporate Foundation or Trust.' },
+  REVENUE_BAND: { label: 'SPOC revenue', description: 'Revenue bands a SPOC accounts for.' },
 };
 
 const lookupTypeLabel = (t: LookupType) => TYPE_INFO[t]?.label ?? titleCase(t);

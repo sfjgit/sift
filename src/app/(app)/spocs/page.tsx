@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRightLeft,
@@ -16,6 +16,8 @@ import {
   UserRound,
   Users,
   ArchiveX,
+  BarChart3,
+  ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,6 +39,9 @@ import { tourTarget } from '@/features/tour/tour.constants';
 import { useTour } from '@/features/tour/useTour';
 import { spocsTour } from '@/features/tour/tours/catalog';
 import { AssignDialog } from '@/features/spocs/AssignDialog';
+import { BulkSetDialog } from '@/features/spocs/BulkSetDialog';
+import { SpocStats } from '@/features/spocs/SpocStats';
+import { useProjectLabels } from '@/features/marks/SalesMarks';
 import { spocColumns, spocFilterKeys, spocFilters } from '@/features/spocs/columns';
 import { spocHooks } from '@/hooks/queries';
 import { useAction } from '@/hooks/useResource';
@@ -57,6 +62,26 @@ function SpocsPage() {
   const table = useTableState('spocs', spocFilterKeys, { sort: { id: 'createdAt', desc: true } });
   const query = spocHooks.useList(table.params);
   const [assigning, setAssigning] = useState<{ rows: Spoc[]; clear?: () => void } | null>(null);
+  const [setting, setSetting] = useState<{ rows: Spoc[]; clear?: () => void } | null>(null);
+  const projectLabels = useProjectLabels();
+  const STATS_KEY = 'crm:spocs-stats-open';
+  const [statsOpen, setStatsOpen] = useState(false);
+  useEffect(() => {
+    try {
+      setStatsOpen(localStorage.getItem(STATS_KEY) === '1');
+    } catch {}
+  }, []);
+  const toggleStats = () =>
+    setStatsOpen(o => {
+      try {
+        localStorage.setItem(STATS_KEY, o ? '0' : '1');
+      } catch {}
+      return !o;
+    });
+  const statsParams = useMemo(
+    () => ({ search: table.state.search || undefined, ...table.state.filters }),
+    [table.state.search, table.state.filters]
+  );
   useTour(spocsTour, { ready: !query.isLoading });
   useHotkey('n', () => openSpocDialog({}), can('spocs.create'));
 
@@ -133,16 +158,37 @@ function SpocsPage() {
     [can, confirm, deactivateSpoc, router]
   );
 
-  const columns = useMemo(() => spocColumns({ actions: rowActions }), [rowActions]);
+  const canEdit = can('spocs.update');
+  const columns = useMemo(
+    () => spocColumns({ actions: rowActions, canEdit, projectLabels }),
+    [rowActions, canEdit, projectLabels]
+  );
 
   return (
     <div className="space-y-3">
       <DataTable
+        banner={
+          statsOpen && (
+            <SpocStats
+              params={statsParams}
+              filters={table.state.filters as Record<string, string>}
+              setFilter={table.actions.setFilter}
+            />
+          )
+        }
         title="SPOCs"
         titleHint="Your contacts across every client — who owns them, how reachable they are, and where they stand."
         actions={
           <>
             <HelpButton module="spocs" />
+            <Button
+              size="sm"
+              variant={statsOpen ? 'secondary' : 'outline'}
+              onClick={toggleStats}
+              title="Counts for the SPOCs below — they follow your filters"
+            >
+              <BarChart3 /> Stats
+            </Button>
             {can('spocs.create') && (
               <Button size="sm" onClick={() => openSpocDialog({})} {...tourTarget('spocs-new')}>
                 <Plus /> New SPOC
@@ -184,11 +230,20 @@ function SpocsPage() {
           ),
         }}
         bulkActions={
-          can('spocs.assign')
+          can('spocs.assign') || canEdit
             ? (rows, clear) => (
-                <Button size="sm" onClick={() => setAssigning({ rows, clear })}>
-                  <ArrowRightLeft /> Reassign
-                </Button>
+                <>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" onClick={() => setSetting({ rows, clear })}>
+                      <ListChecks /> Update field
+                    </Button>
+                  )}
+                  {can('spocs.assign') && (
+                    <Button size="sm" onClick={() => setAssigning({ rows, clear })}>
+                      <ArrowRightLeft /> Reassign
+                    </Button>
+                  )}
+                </>
               )
             : undefined
         }
@@ -199,6 +254,13 @@ function SpocsPage() {
         open={!!assigning}
         onOpenChange={o => !o && setAssigning(null)}
         onDone={() => assigning?.clear?.()}
+      />
+
+      <BulkSetDialog
+        spocIds={setting?.rows.map(r => r.id) ?? []}
+        open={!!setting}
+        onOpenChange={o => !o && setSetting(null)}
+        onDone={() => setting?.clear?.()}
       />
     </div>
   );
