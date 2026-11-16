@@ -40,6 +40,7 @@ import { useAuth } from '@/features/auth/AuthProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { clientHooks, spocHooks } from '@/hooks/queries';
 import { clientsApi } from '@/lib/api/endpoints';
+import { SECTION_LABEL } from '@/features/clients/detail/SectionComments';
 import type { ApiError } from '@/lib/api/client';
 import { fmtDateTime, fmtRelative, fullName } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -142,6 +143,11 @@ const bucketOf = (a: ClientActivity): Bucket => {
       return 'other';
   }
 };
+
+/** written by the engine (pipeline runs, generated drafts, anything with no person) —
+ * hidden from the sales history unless asked for */
+const isEngine = (a: ClientActivity) =>
+  a.type.startsWith('STEP_RUN') || a.type === 'OUTREACH_GENERATED' || !a.actor;
 
 const BUCKETS: { key: Bucket; label: string }[] = [
   { key: 'comments', label: 'Comments' },
@@ -401,6 +407,9 @@ function CommentList({
                       · about {fullName(n.spoc)}
                     </Link>
                   )}
+                  {n.section && (
+                    <span className="text-muted-foreground"> · on {SECTION_LABEL[n.section]}</span>
+                  )}
                 </span>
                 <span className="flex items-center gap-1 text-muted-foreground">
                   <time title={fmtDateTime(n.createdAt)}>{fmtRelative(n.createdAt)}</time>
@@ -500,6 +509,7 @@ export function WorkPanel({
   const [filter, setFilter] = useState<'all' | Bucket>('all');
   const [showDone, setShowDone] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [showEngine, setShowEngine] = useState(false);
 
   const target = spocId ?? about ?? null;
 
@@ -576,7 +586,12 @@ export function WorkPanel({
   const open = tasks.filter(t => t.status !== 'DONE');
   const done = tasks.filter(t => t.status === 'DONE');
 
-  const items = useMemo(() => activityQ.data?.data ?? [], [activityQ.data]);
+  const all = useMemo(() => activityQ.data?.data ?? [], [activityQ.data]);
+  const engineCount = useMemo(() => all.filter(isEngine).length, [all]);
+  const items = useMemo(
+    () => (showEngine ? all : all.filter(a => !isEngine(a))),
+    [all, showEngine]
+  );
   const counts = useMemo(() => {
     const c: Partial<Record<Bucket, number>> = {};
     for (const a of items) c[bucketOf(a)] = (c[bucketOf(a)] ?? 0) + 1;
@@ -761,6 +776,16 @@ export function WorkPanel({
               {b.label} <span className="tabular opacity-70">{counts[b.key]}</span>
             </Chip>
           ))}
+          {engineCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowEngine(v => !v)}
+              className="ml-auto text-xs font-medium text-muted-foreground hover:text-primary"
+              title="Pipeline runs and other entries written by the engine"
+            >
+              {showEngine ? 'Hide engine activity' : `Show engine activity (${engineCount})`}
+            </button>
+          )}
         </div>
         {filter === 'comments' ? (
           <CommentList notes={notes} clientId={clientId} showSpoc={!spocId} onChanged={refresh} />

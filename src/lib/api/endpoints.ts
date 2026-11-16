@@ -38,6 +38,7 @@ import type {
   ClientCsrProgram,
   CsrAgency,
   CsrProgramInput,
+  NoteSection,
   CorporateFinancialInput,
   CsrFinancialInput,
   ClientInput,
@@ -159,8 +160,12 @@ export const clientsApi = {
     ),
   activities: (id: string, params?: ListParams) =>
     api.page<ClientActivity>(`/clients/${id}/activities`, params),
-  addNote: (id: string, content: string, spocId?: string | null) =>
-    api.post<ClientNote>(`/clients/${id}/notes`, { content, ...(spocId && { spocId }) }),
+  addNote: (id: string, content: string, spocId?: string | null, section?: NoteSection) =>
+    api.post<ClientNote>(`/clients/${id}/notes`, {
+      content,
+      ...(spocId && { spocId }),
+      ...(section && { section }),
+    }),
   updateNote: (id: string, noteId: string, content: string) =>
     api.patch<ClientNote>(`/clients/${id}/notes/${noteId}`, { content }),
   /** tasks, calls to make and meetings (one list, told apart by kind) */

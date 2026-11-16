@@ -209,6 +209,9 @@ function Rail({
 }
 
 function CopyBtn({ value }: { value: string }) {
+  // copying is for the super admin only
+  const { isSuperAdmin } = usePermissions();
+  if (!isSuperAdmin) return null;
   return (
     <button
       type="button"

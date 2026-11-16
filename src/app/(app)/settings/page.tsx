@@ -6,6 +6,7 @@
 
 'use client';
 
+import { AccentDots } from '@/features/theme/accent';
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -332,6 +333,9 @@ function PreferencesTab() {
             );
           })}
         </div>
+      </Panel>
+      <Panel title="Colour" description="Buttons, links and highlights. Applies on this device.">
+        <AccentDots />
       </Panel>
 
       <Panel title="Workspace">

@@ -99,6 +99,7 @@ import { aiApi } from '@/lib/api/endpoints';
 import { toApiError } from '@/lib/api/client';
 import { fmtDate, fmtNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { usePermissions } from '@/features/auth/usePermissions';
 import type {
   AiCanvasResult,
   AiCanvasSpec,
@@ -575,6 +576,8 @@ function Workspace({ me, variant, incoming }: { me: AiMe; variant: 'page' | 'doc
   const [sheetOpen, setSheetOpen] = useState(false);
   const [printFooter, setPrintFooter] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
+  // exports are for the super admin only
+  const { isSuperAdmin } = usePermissions();
   const [loadingThread, setLoadingThread] = useState(false);
   // the reports visited in this session, newest last — "go back" walks it
   const visited = useRef<string[]>([]);
@@ -1232,7 +1235,7 @@ function Workspace({ me, variant, incoming }: { me: AiMe; variant: 'page' | 'doc
             <Save /> Save as template
           </Button>
         )}
-        {exportBtn}
+        {isSuperAdmin && exportBtn}
       </div>
       {matched.length > 0 && (
         <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

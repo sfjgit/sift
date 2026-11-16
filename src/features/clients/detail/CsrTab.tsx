@@ -8,7 +8,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, ExternalLink, Lock, Pencil, Plus, Trash2, Unlock } from 'lucide-react';
+import {
+  Download,
+  ExternalLink,
+  FileSpreadsheet,
+  Lock,
+  Pencil,
+  Plus,
+  Trash2,
+  Unlock,
+} from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ImportSheetDialog, type SheetRow } from '@/components/common/ImportSheetDialog';
 import { Button } from '@/components/ui/button';
 import { InlineEmpty, SubSection } from '@/components/common/SubSection';
 import { Pill } from '@/components/common/badges';
@@ -16,9 +27,11 @@ import { useConfirm } from '@/components/common/ConfirmProvider';
 import { ColumnChart, Legend } from '@/components/charts/Charts';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { useAction } from '@/hooks/useResource';
-import { clientHooks } from '@/hooks/queries';
+import { clientHooks, useLookups } from '@/hooks/queries';
 import { clientsApi } from '@/lib/api/endpoints';
 import { fmtInr } from '@/lib/format';
+import { parseSdgs, sdgLabel } from '@/lib/sdg';
+import { FY_PATTERN } from '@/lib/fy';
 import { cn } from '@/lib/utils';
 import { downloadRecords } from '@/components/data-table/exporter';
 import type {
@@ -26,6 +39,7 @@ import type {
   ClientCsrFinancial,
   ClientCsrProgram,
   ClientDetail,
+  CsrProgramInput,
 } from '@/types/crm';
 import { CsrProgramDialog } from './CsrProgramDialog';
 import { DocumentsPanel } from './DocumentsPanel';
@@ -128,7 +142,7 @@ function FigureTable<T extends { id: string; fy: string; isLocked: boolean }>({
 const yesNo = (v: boolean | null, yes: string, no: string) => (v === null ? '—' : v ? yes : no);
 
 /** one row per programme — the report's project table, one value per column */
-function ProgramTable({
+export function ProgramTable({
   rows,
   onEdit,
   onUnlock,
@@ -143,6 +157,7 @@ function ProgramTable({
     'FY',
     'Programme',
     'Sectors',
+    'SDGs',
     'States',
     'Districts',
     'Allocated',
@@ -210,6 +225,22 @@ function ProgramTable({
                     </span>
                   ) : (
                     <span className="text-muted-foreground">{r.sectorText ?? '—'}</span>
+                  )}
+                </td>
+                <td
+                  className="max-w-48 truncate border-r border-b px-3"
+                  title={(r.sdgs ?? []).map(sdgLabel).join(', ')}
+                >
+                  {r.sdgs?.length ? (
+                    <span className="flex gap-1">
+                      {r.sdgs.map(n => (
+                        <Pill key={n} tone="info" dot={false}>
+                          SDG {n}
+                        </Pill>
+                      ))}
+                    </span>
+                  ) : (
+                    '—'
                   )}
                 </td>
                 <td
@@ -286,7 +317,7 @@ function ProgramTable({
         </tbody>
         <tfoot className="tabular">
           <tr className="bg-muted/60 font-semibold">
-            <td colSpan={5} className="h-9 border-r px-3 text-right">
+            <td colSpan={6} className="h-9 border-r px-3 text-right">
               Total
             </td>
             <td className="border-r px-3 text-right whitespace-nowrap">
@@ -310,12 +341,13 @@ const sumOf = (rows: ClientCsrProgram[], get: (r: ClientCsrProgram) => string | 
   String(rows.reduce((n, r) => n + Number(get(r) ?? 0), 0));
 
 /** the programmes as an Excel sheet — same columns as on screen */
-const exportPrograms = (clientName: string, rows: ClientCsrProgram[]) =>
+export const exportPrograms = (clientName: string, rows: ClientCsrProgram[]) =>
   downloadRecords(
     rows.map(r => ({
       FY: r.fy,
       Programme: r.name,
       Sectors: r.sectors.map(s => s.sector.label).join(', ') || r.sectorText || '',
+      SDGs: (r.sdgs ?? []).map(n => `SDG ${n} ${sdgLabel(n)}`).join(', '),
       States: [...new Set(r.locations.map(l => l.state))].join(', ') || r.locationNote || '',
       Districts: r.locations
         .map(l => l.district)
@@ -335,21 +367,113 @@ const exportPrograms = (clientName: string, rows: ClientCsrProgram[]) =>
     'xlsx'
   );
 
+// CASPA programme sheet: FY · Program Name · Development Sector · SDG Mapping ·
+// Execution Locations · Program Budget · No. of Beneficiaries · Implementor Name
+export const PROGRAM_COLUMNS = [
+  { key: 'fy', label: 'Financial year', required: true, example: '2024-2025', aliases: ['FY'] },
+  {
+    key: 'name',
+    label: 'Programme name',
+    required: true,
+    example: 'Project Shiksha',
+    aliases: ['Program Name', 'Programme', 'Program'],
+  },
+  {
+    key: 'sector',
+    label: 'Development sector',
+    example: 'Education',
+    aliases: ['Sector', 'Sectors'],
+  },
+  { key: 'sdgs', label: 'SDG mapping', example: '4, 8', aliases: ['SDG', 'SDGs'] },
+  {
+    key: 'locations',
+    label: 'Execution locations',
+    example: 'Pune, Maharashtra',
+    aliases: ['Locations', 'Location'],
+  },
+  {
+    key: 'budget',
+    label: 'Programme budget (₹)',
+    example: '25000000',
+    aliases: ['Program Budget', 'Budget', 'Allocated'],
+  },
+  {
+    key: 'beneficiaries',
+    label: 'No. of beneficiaries',
+    example: '1200',
+    aliases: ['Beneficiaries'],
+  },
+  {
+    key: 'implementor',
+    label: 'Implementor name',
+    example: 'Pratham Education Foundation',
+    aliases: ['Implementor', 'Agency', 'Implementing agency'],
+  },
+];
+
+const rupeesOf = (s: string) => {
+  const n = Number(s.replace(/[,₹\s]/g, ''));
+  return s && Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/** a sheet / form row → a new programme; the sector is matched to a Schedule VII activity when it can be */
+export function useProgramFromRow(clientId: string) {
+  const sectorLookups = useLookups('PROGRAM_SECTOR');
+  const programFromRow = (r: SheetRow) => {
+    if (!FY_PATTERN.test(r.fy ?? ''))
+      throw new Error(`“${r.fy}” is not a financial year like 2024-2025`);
+    const words = (r.sector ?? '')
+      .toLowerCase()
+      .split(/[,;/&]+/)
+      .map(w => w.trim())
+      .filter(Boolean);
+    const matched = (sectorLookups.data ?? []).filter(l =>
+      words.some(w => l.label.toLowerCase().includes(w) || w.includes(l.label.toLowerCase()))
+    );
+    return clientsApi.createCsrProgram(clientId, {
+      fy: r.fy!,
+      name: r.name!,
+      sectorIds: matched.map(l => l.id),
+      sectorText: matched.length ? null : r.sector || null,
+      sdgs: parseSdgs(r.sdgs ?? ''),
+      isOngoing: null,
+      duration: null,
+      isLocalArea: null,
+      locations: [],
+      locationNote: r.locations || null,
+      budgetRs: rupeesOf(r.budget ?? ''),
+      spentRs: null,
+      unspentTransferredRs: null,
+      mode: r.implementor ? 'AGENCY' : null,
+      ...(r.implementor && { agencyName: r.implementor }),
+      beneficiaries: r.beneficiaries || null,
+      sourceUrl: null,
+    } as CsrProgramInput);
+  };
+  return programFromRow;
+}
+
 export function CsrTab({
   client,
   withDocuments = true,
+  withPrograms = true,
 }: {
   client: ClientDetail;
   /** the client page shows reports in their own section */
   withDocuments?: boolean;
+  /** the client page shows programmes under "CSR skilling programmes" */
+  withPrograms?: boolean;
 }) {
-  const { can } = usePermissions();
+  const { can, isSuperAdmin } = usePermissions();
   const confirm = useConfirm();
   const canEdit = can('client_financials.update');
   const fin = client.csrFinancials ?? [];
   const corp = client.corporateFinancials ?? [];
   const programs = client.csrPrograms ?? [];
   const [programDialog, setProgramDialog] = useState<{ row: ClientCsrProgram | null } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const qc = useQueryClient();
+  const programFromRow = useProgramFromRow(client.id);
   const [csrDialog, setCsrDialog] = useState<{ row: ClientCsrFinancial | null } | null>(null);
   const [corpDialog, setCorpDialog] = useState<{ row: ClientCorporateFinancial | null } | null>(
     null
@@ -476,19 +600,24 @@ export function CsrTab({
 
       {withDocuments && <DocumentsPanel client={client} />}
 
-      {can('client_programs.read') && (
+      {withPrograms && can('client_programs.read') && (
         <SubSection
           title="CSR programmes"
           description={`${programs.length} programme${programs.length === 1 ? '' : 's'} · as in the annual CSR report · ₹`}
           actions={
             <>
-              {programs.length > 0 && (
+              {isSuperAdmin && programs.length > 0 && (
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => void exportPrograms(client.name, programs)}
                 >
                   <Download /> Export to Excel
+                </Button>
+              )}
+              {can('client_programs.create') && (
+                <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+                  <FileSpreadsheet /> Import from Excel
                 </Button>
               )}
               {can('client_programs.create') && (
@@ -524,6 +653,19 @@ export function CsrTab({
             />
           )}
         </SubSection>
+      )}
+
+      {importing && (
+        <ImportSheetDialog
+          open
+          onOpenChange={setImporting}
+          title="Import CSR programmes"
+          description={`Adds programmes to ${client.name} from an Excel or CSV file. Amounts in rupees.`}
+          templateName="csr-programmes-template"
+          columns={PROGRAM_COLUMNS}
+          addRow={programFromRow}
+          onDone={() => void qc.invalidateQueries({ queryKey: clientHooks.keys.all })}
+        />
       )}
 
       {programDialog && (

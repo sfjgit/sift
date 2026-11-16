@@ -6,6 +6,7 @@
 
 'use client';
 
+import { AccentDots } from '@/features/theme/accent';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -199,6 +200,10 @@ export function UserMenu() {
             <Monitor /> System
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuLabel>Colour</DropdownMenuLabel>
+        <div className="px-2 pb-2">
+          <AccentDots size="sm" />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

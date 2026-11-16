@@ -25,6 +25,8 @@ import { clientHooks, useLookups } from '@/hooks/queries';
 import { useGeoStates } from '@/hooks/geo';
 import { clientsApi, csrAgenciesApi } from '@/lib/api/endpoints';
 import { fromCroreText, lastClosedFy, toCroreText } from '@/lib/fy';
+import { SDGS } from '@/lib/sdg';
+import { cn } from '@/lib/utils';
 import type { ApiError } from '@/lib/api/client';
 import type { ClientCsrProgram, CsrProgramInput } from '@/types/crm';
 import { coordText, coordsPaired, withCoords } from '../LocationFields';
@@ -49,6 +51,7 @@ const schema = z.object({
   fy: fySchema,
   name: z.string().trim().min(1, 'Programme name is required').max(500),
   sectorIds: z.array(z.string()),
+  sdgs: z.array(z.number()),
   isOngoing: triState,
   duration: z.string().trim().max(100),
   isLocalArea: triState,
@@ -76,6 +79,7 @@ const defaults = (p?: ClientCsrProgram | null): Values => ({
   fy: p?.fy ?? lastClosedFy(),
   name: p?.name ?? '',
   sectorIds: p?.sectors.map(s => s.sector.id) ?? [],
+  sdgs: p?.sdgs ?? [],
   isOngoing: toTri(p?.isOngoing ?? null),
   duration: p?.duration ?? '',
   isLocalArea: toTri(p?.isLocalArea ?? null),
@@ -103,6 +107,7 @@ const toBody = (v: Values): CsrProgramInput => ({
   fy: v.fy,
   name: v.name,
   sectorIds: v.sectorIds,
+  sdgs: v.sdgs,
   isOngoing: fromTri(v.isOngoing),
   duration: v.duration || null,
   isLocalArea: fromTri(v.isLocalArea),
@@ -156,10 +161,20 @@ export function CsrProgramDialog({
   }, [open, program, form]);
 
   const places = useFieldArray({ control: form.control, name: 'locations' });
-  const [mode, sectorIds, agencyId, agencyName, isOngoing, isLocalArea, placeValues] = useWatch({
-    control: form.control,
-    name: ['mode', 'sectorIds', 'agencyId', 'agencyName', 'isOngoing', 'isLocalArea', 'locations'],
-  });
+  const [mode, sectorIds, agencyId, agencyName, isOngoing, isLocalArea, placeValues, sdgs] =
+    useWatch({
+      control: form.control,
+      name: [
+        'mode',
+        'sectorIds',
+        'agencyId',
+        'agencyName',
+        'isOngoing',
+        'isLocalArea',
+        'locations',
+        'sdgs',
+      ],
+    });
 
   const sectors = useLookups('PROGRAM_SECTOR');
   const states = useGeoStates(['India']);
@@ -250,6 +265,33 @@ export function CsrProgramDialog({
         {program?.sectorText && (
           <p className="text-xs text-muted-foreground">Source says: “{program.sectorText}”</p>
         )}
+      </Field>
+
+      <Field label="UN SDG mapping" hint="The Sustainable Development Goals this programme serves.">
+        <div className="flex flex-wrap gap-1.5">
+          {SDGS.map(g => {
+            const on = sdgs.includes(g.n);
+            return (
+              <button
+                key={g.n}
+                type="button"
+                title={g.label}
+                onClick={() =>
+                  set(
+                    'sdgs',
+                    on ? sdgs.filter(n => n !== g.n) : [...sdgs, g.n].sort((a, b) => a - b)
+                  )
+                }
+                className={cn(
+                  'rounded-full border px-2.5 py-0.5 text-[12.5px] transition-colors',
+                  on ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'
+                )}
+              >
+                {g.n} · {g.short}
+              </button>
+            );
+          })}
+        </div>
       </Field>
 
       <FormSection title="Money (₹ crore)">

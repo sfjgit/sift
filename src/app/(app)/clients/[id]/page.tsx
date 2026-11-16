@@ -17,12 +17,14 @@ import {
   Activity,
   CalendarClock,
   ChevronDown,
-  Cpu,
+  Briefcase,
   FileText,
   GitBranch,
+  GraduationCap,
   IndianRupee,
   Mail,
   MapPin,
+  Megaphone,
   ListTodo,
   MessageCircle,
   MessageSquareText,
@@ -46,9 +48,12 @@ import { ClientInfo } from '@/features/clients/detail/ClientInfo';
 import { CsrTab } from '@/features/clients/detail/CsrTab';
 import { DocumentsPanel } from '@/features/clients/detail/DocumentsPanel';
 import { LocationsTab } from '@/features/clients/detail/LocationsTab';
+import { MeetingsList } from '@/features/clients/detail/MeetingsList';
+import { SectionComments } from '@/features/clients/detail/SectionComments';
 import { OutreachList } from '@/features/clients/detail/OutreachList';
 import { PipelinePanel } from '@/features/pipeline/PipelinePanel';
-import { TechnologyTab } from '@/features/clients/detail/TechnologyTab';
+import { CsrSkilling } from '@/features/clients/detail/CsrSkilling';
+import { MarketingAssets, SalesAssets } from '@/features/clients/detail/AssetsSections';
 import { spocColumns, spocFilters } from '@/features/spocs/columns';
 import { tourTarget } from '@/features/tour/tour.constants';
 import { useTour } from '@/features/tour/useTour';
@@ -62,14 +67,19 @@ import { cn } from '@/lib/utils';
 import type { ApiError } from '@/lib/api/client';
 import type { ClientDetail } from '@/types/crm';
 
+// order: information first, then the sales activity, then the rest. Engine
+// activity (pipeline runs) is hidden until asked for.
 const SECTION_IDS = [
-  'activity',
   'info',
+  'activity',
   'branches',
+  'skilling',
   'csr',
   'reports',
   'spocs',
-  'technology',
+  'meetings',
+  'sales_assets',
+  'marketing_assets',
   'outreach',
   'pipeline',
 ] as const;
@@ -253,7 +263,11 @@ function ClientPage() {
   const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
   const [openIds, setOpenIds] = useOpenSections();
   useTour(clientDetailTour, { ready: !!client });
-  const openTasks = (useWorkTasks(client?.id).data ?? []).filter(t => t.status !== 'DONE').length;
+  const workTasks = useWorkTasks(client?.id).data ?? [];
+  // engine activity stays hidden unless asked for (or linked to with ?tab=pipeline)
+  const [showEngine, setShowEngine] = useState(() => sectionFromUrl() === 'pipeline');
+  const openTasks = workTasks.filter(t => t.status !== 'DONE').length;
+  const meetingCount = workTasks.filter(t => t.kind === 'MEETING').length;
   const [compose, setCompose] = useState<ComposeMode>('comment');
   // the client's SPOCs, so a comment / call / task can be tagged to one of them
   const canSeeSpocs = can('spocs.read');
@@ -272,17 +286,17 @@ function ClientPage() {
       client
         ? [
             {
+              id: 'info',
+              label: 'Client information',
+              icon: Star,
+              hint: 'Firmographics, financials and ownership',
+            },
+            {
               id: 'activity',
               label: 'Activity & tasks',
               icon: Activity,
               count: openTasks ? `${openTasks} open` : undefined,
               hint: 'Comments, calls, emails, WhatsApp, meetings and tasks',
-            },
-            {
-              id: 'info',
-              label: 'Client information',
-              icon: Star,
-              hint: 'Firmographics, financials and ownership',
             },
             {
               id: 'branches',
@@ -292,11 +306,19 @@ function ClientPage() {
               steps: ['branches'],
             },
             {
-              id: 'csr',
-              label: 'CSR figures & programmes',
-              icon: IndianRupee,
+              id: 'skilling',
+              label: 'CSR skilling programmes',
+              icon: GraduationCap,
               count: client.csrPrograms?.length,
+              hint: 'Attachments by year, programmes, add & import',
               steps: ['figures'],
+            },
+            {
+              id: 'csr',
+              label: 'CSR figures & financials',
+              icon: IndianRupee,
+              count: client.csrFinancials?.length,
+              hint: 'CSR spend per year and company financials',
             },
             {
               id: 'reports',
@@ -315,10 +337,23 @@ function ClientPage() {
               steps: ['report_spocs', 'enrich', 'apollo', 'validate'],
             },
             {
-              id: 'technology',
-              label: 'Technographics',
-              icon: Cpu,
-              count: client.technologies.length,
+              id: 'meetings',
+              label: 'Meetings',
+              icon: CalendarClock,
+              count: meetingCount || undefined,
+              hint: 'Every meeting, its SPOC and minutes',
+            },
+            {
+              id: 'sales_assets',
+              label: 'Sales assets',
+              icon: Briefcase,
+              hint: 'Pitch deck and sales brief',
+            },
+            {
+              id: 'marketing_assets',
+              label: 'Marketing assets',
+              icon: Megaphone,
+              hint: 'Email, LinkedIn and WhatsApp templates per SPOC',
             },
             {
               id: 'outreach',
@@ -329,13 +364,14 @@ function ClientPage() {
             },
             {
               id: 'pipeline',
-              label: 'Pipeline runs',
+              label: 'Engine activity',
               icon: GitBranch,
-              hidden: !can('step_runs.read'),
+              hint: 'Pipeline runs on this client',
+              hidden: !can('step_runs.read') || !showEngine,
             },
           ]
         : [],
-    [client, can, openTasks]
+    [client, can, openTasks, meetingCount, showEngine]
   );
 
   const toggle = useCallback(
@@ -400,13 +436,77 @@ function ClientPage() {
         onModeChange={setCompose}
       />
     ),
-    info: <ClientInfo client={client} />,
-    branches: <LocationsTab client={client} />,
-    csr: <CsrTab client={client} withDocuments={false} />,
-    reports: <DocumentsPanel client={client} />,
-    spocs: <ClientSpocs client={client} />,
-    technology: <TechnologyTab client={client} />,
-    outreach: <OutreachList clientId={client.id} />,
+    info: (
+      <>
+        <ClientInfo client={client} />
+        <SectionComments client={client} section="info" />
+      </>
+    ),
+    branches: (
+      <>
+        <LocationsTab client={client} />
+        <SectionComments client={client} section="branches" />
+      </>
+    ),
+    skilling: (
+      <>
+        <CsrSkilling client={client} />
+        <SectionComments client={client} section="skilling" />
+      </>
+    ),
+    csr: (
+      <>
+        <CsrTab client={client} withDocuments={false} withPrograms={false} />
+        <SectionComments client={client} section="csr" />
+      </>
+    ),
+    reports: (
+      <>
+        <DocumentsPanel client={client} />
+        <SectionComments client={client} section="reports" />
+      </>
+    ),
+    spocs: (
+      <>
+        <ClientSpocs client={client} />
+        <SectionComments client={client} section="spocs" />
+      </>
+    ),
+    meetings: (
+      <>
+        <MeetingsList
+          clientId={client.id}
+          clientName={client.name}
+          onBook={
+            can('client_notes.create')
+              ? () => {
+                  setCompose('meeting');
+                  jumpTo('activity');
+                }
+              : undefined
+          }
+        />
+        <SectionComments client={client} section="meetings" />
+      </>
+    ),
+    sales_assets: (
+      <>
+        <SalesAssets />
+        <SectionComments client={client} section="sales_assets" />
+      </>
+    ),
+    marketing_assets: (
+      <>
+        <MarketingAssets clientId={client.id} spocs={spocOptions} />
+        <SectionComments client={client} section="marketing_assets" />
+      </>
+    ),
+    outreach: (
+      <>
+        <OutreachList clientId={client.id} />
+        <SectionComments client={client} section="outreach" />
+      </>
+    ),
     pipeline: <PipelinePanel clientId={client.id} clientName={client.name} />,
   };
 
@@ -490,6 +590,22 @@ function ClientPage() {
               {body[d.id]}
             </Section>
           ))}
+          {can('step_runs.read') && (
+            <div className="flex justify-center pt-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => {
+                  const next = !showEngine;
+                  setShowEngine(next);
+                  if (next) jumpTo('pipeline');
+                }}
+              >
+                <GitBranch /> {showEngine ? 'Hide engine activity' : 'Show engine activity'}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

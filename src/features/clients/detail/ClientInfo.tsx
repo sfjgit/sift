@@ -13,7 +13,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { CLIENT_STATUS } from '@/components/common/badges';
 import { EnumPicker, LookupPicker, MasterPicker } from '@/components/pickers/pickers';
-import { FieldGrid, FieldRow, InlinePick, InlineText, Empty } from '@/components/record/InlineField';
+import {
+  FieldGrid,
+  FieldRow,
+  InlineBool,
+  InlinePick,
+  InlineText,
+  Empty,
+} from '@/components/record/InlineField';
 import { AssignClientsDialog } from '@/features/clients/AssignClientsDialog';
 import { ENTITY_TYPE } from '@/features/clients/columns';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -32,6 +39,37 @@ function Heading({ children, hint }: { children: ReactNode; hint?: string }) {
     </div>
   );
 }
+
+// CASPA "CSR spent category" — a band from the latest CSR spend (₹ crore)
+const CSR_BANDS: [number, string][] = [
+  [50, '0 Cr – 50 Cr'],
+  [100, '50 Cr – 100 Cr'],
+  [200, '100 Cr – 200 Cr'],
+  [500, '200 Cr – 500 Cr'],
+  [1000, '500 Cr – 1000 Cr'],
+  [Infinity, '> 1000 Cr'],
+];
+export const csrBand = (spentRs: string | null | undefined) => {
+  if (!spentRs) return null;
+  const cr = Number(spentRs) / 1e7;
+  return CSR_BANDS.find(([max]) => cr < max)?.[1] ?? null;
+};
+
+/** "1,20,000 students" → 120000; text with no number → 0 */
+const firstNumber = (s: string | null) => {
+  const m = s?.replace(/,/g, '').match(/\d+(\.\d+)?/);
+  return m ? Number(m[0]) : 0;
+};
+
+// fields the list row (what PATCH returns) doesn't carry — merged from the request
+const ICP_KEYS = [
+  'foundationName',
+  'foundationWebsite',
+  'isListed',
+  'subCategory',
+  'linkedinEmployees',
+  'marketCapRs',
+] as const;
 
 const Read = ({ label, value, wide }: { label: string; value: ReactNode; wide?: boolean }) => (
   <FieldRow label={label} wide={wide}>
@@ -53,13 +91,19 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
   /** save one field; the page shows it at once */
   const save = async (body: Partial<ClientInput>) => {
     const res = await clientsApi.update(client.id, body);
+    const icp = Object.fromEntries(
+      ICP_KEYS.filter(k => k in body).map(k => [
+        k,
+        k === 'marketCapRs' && body[k] != null ? String(body[k]) : body[k],
+      ])
+    );
     qc.setQueryData<ClientDetail>(clientHooks.keys.detail(client.id), old =>
-      old ? { ...old, ...res, locations: old.locations } : old
+      old ? { ...old, ...icp, ...res, locations: old.locations } : old
     );
     qc.invalidateQueries({ queryKey: clientHooks.keys.all });
   };
   const text = (field: keyof ClientInput) => (v: string | null) => save({ [field]: v });
-  const url = (field: 'website' | 'linkedinUrl') => (v: string | null) =>
+  const url = (field: 'website' | 'linkedinUrl' | 'foundationWebsite') => (v: string | null) =>
     save({ [field]: v && !/^https?:\/\//i.test(v) ? `https://${v}` : v });
   const link = (href: string, label: string) => (
     <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
@@ -84,7 +128,12 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
             return save({ name: v });
           }}
         />
-        <InlineText label="Short name" value={client.shortName} canEdit={canEdit} onSave={text('shortName')} />
+        <InlineText
+          label="Short name"
+          value={client.shortName}
+          canEdit={canEdit}
+          onSave={text('shortName')}
+        />
         <InlinePick
           label="Industry"
           value={client.industry?.id}
@@ -102,9 +151,17 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           render={p => <LookupPicker type="CLIENT_CATEGORY" {...p} />}
         />
         <InlineText
+          label="Sub category"
+          value={client.subCategory}
+          canEdit={canEdit}
+          onSave={text('subCategory')}
+        />
+        <InlineText
           label="CIN"
           value={client.cin}
-          display={client.cin ? <span className="font-mono text-[13px]">{client.cin}</span> : undefined}
+          display={
+            client.cin ? <span className="font-mono text-[13px]">{client.cin}</span> : undefined
+          }
           canEdit={canEdit}
           onSave={text('cin')}
         />
@@ -142,7 +199,8 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           canEdit={canEdit}
           onSave={v => {
             const n = v === null ? null : Number(v);
-            if (n !== null && (!Number.isInteger(n) || n < 0)) throw new Error('Enter a whole number');
+            if (n !== null && (!Number.isInteger(n) || n < 0))
+              throw new Error('Enter a whole number');
             // the size band follows the count
             return save({ employeeCount: n, employeeSizeId: null });
           }}
@@ -178,6 +236,50 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           canEdit={canEdit}
           onSave={url('linkedinUrl')}
         />
+        <InlineText
+          label="LinkedIn employees"
+          type="number"
+          value={client.linkedinEmployees}
+          display={
+            client.linkedinEmployees != null ? fmtNumber(client.linkedinEmployees) : undefined
+          }
+          canEdit={canEdit}
+          onSave={v => {
+            const n = v === null ? null : Number(v);
+            if (n !== null && (!Number.isInteger(n) || n < 0))
+              throw new Error('Enter a whole number');
+            return save({ linkedinEmployees: n });
+          }}
+        />
+        <InlineBool
+          label="Listed"
+          value={client.isListed}
+          canEdit={canEdit}
+          onSave={v => save({ isListed: v })}
+          yes="Listed"
+          no="Not listed"
+        />
+        <InlineText
+          label="Foundation name"
+          value={client.foundationName}
+          canEdit={canEdit}
+          onSave={text('foundationName')}
+        />
+        <InlineText
+          label="Foundation website"
+          type="url"
+          value={client.foundationWebsite}
+          display={
+            client.foundationWebsite
+              ? link(
+                  client.foundationWebsite,
+                  hostOf(client.foundationWebsite) ?? client.foundationWebsite
+                )
+              : undefined
+          }
+          canEdit={canEdit}
+          onSave={url('foundationWebsite')}
+        />
         <Read
           label="Service lines"
           value={(client.serviceLines ?? []).map(s => s.serviceLine.name).join(' · ')}
@@ -191,6 +293,22 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
         <Read label="District" value={primary?.district} />
         <Read label="City" value={primary?.city} />
         <Read label="Pincode" value={primary?.pincode} />
+        <Read label="Country" value={primary?.country} />
+        <Read
+          label="GPS"
+          value={
+            primary?.latitude && primary.longitude ? (
+              <a
+                href={`https://www.google.com/maps?q=${primary.latitude},${primary.longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[13px] text-primary hover:underline"
+              >
+                {Number(primary.latitude).toFixed(5)}, {Number(primary.longitude).toFixed(5)}
+              </a>
+            ) : undefined
+          }
+        />
         <Read label="Address" value={primary?.addressLine} wide />
       </FieldGrid>
 
@@ -233,18 +351,66 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
                 client.csrSpentRs && (
                   <span>
                     <b className="text-success">{fmtInr(client.csrSpentRs)}</b>
-                    {client.csrFy && <span className="ml-1.5 text-xs text-muted-foreground">FY {client.csrFy}</span>}
+                    {client.csrFy && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        FY {client.csrFy}
+                      </span>
+                    )}
                   </span>
                 )
               }
             />
-            <Read label={`CSR obligation${csr ? ` (FY ${csr.fy})` : ''}`} value={csr?.obligationRs && fmtInr(csr.obligationRs)} />
-            <Read label={`CSR budget${csr ? ` (FY ${csr.fy})` : ''}`} value={csr?.budgetRs && fmtInr(csr.budgetRs)} />
-            <Read label={`CSR unspent${csr ? ` (FY ${csr.fy})` : ''}`} value={csr?.unspentRs && fmtInr(csr.unspentRs)} />
-            <Read label={`Revenue${corp ? ` (FY ${corp.fy})` : ''}`} value={corp?.revenueRs && fmtInr(corp.revenueRs)} />
+            <Read label="CSR spent category" value={csrBand(client.csrSpentRs)} />
+            {client.csrPrograms && (
+              <Read
+                label="Beneficiaries (all programmes)"
+                value={
+                  client.csrPrograms.some(p => p.beneficiaries)
+                    ? fmtNumber(
+                        client.csrPrograms.reduce((n, p) => n + firstNumber(p.beneficiaries), 0)
+                      )
+                    : undefined
+                }
+              />
+            )}
+            <Read
+              label={`CSR obligation${csr ? ` (FY ${csr.fy})` : ''}`}
+              value={csr?.obligationRs && fmtInr(csr.obligationRs)}
+            />
+            <Read
+              label={`CSR budget${csr ? ` (FY ${csr.fy})` : ''}`}
+              value={csr?.budgetRs && fmtInr(csr.budgetRs)}
+            />
+            <Read
+              label={`CSR unspent${csr ? ` (FY ${csr.fy})` : ''}`}
+              value={csr?.unspentRs && fmtInr(csr.unspentRs)}
+            />
+            <Read
+              label={`Revenue${corp ? ` (FY ${corp.fy})` : ''}`}
+              value={corp?.revenueRs && fmtInr(corp.revenueRs)}
+            />
             <Read label="Net worth" value={corp?.netWorthRs && fmtInr(corp.netWorthRs)} />
-            <Read label="Paid-up capital" value={corp?.paidUpCapitalRs && fmtInr(corp.paidUpCapitalRs)} />
-            <Read label="Authorised capital" value={corp?.authorisedCapitalRs && fmtInr(corp.authorisedCapitalRs)} />
+            <InlineText
+              label="Market cap (₹)"
+              type="number"
+              value={client.marketCapRs}
+              display={client.marketCapRs ? fmtInr(client.marketCapRs) : undefined}
+              canEdit={canEdit}
+              onSave={v => {
+                const n = v === null ? null : Number(v);
+                if (n !== null && (!Number.isFinite(n) || n < 0))
+                  throw new Error('Enter an amount in rupees');
+                return save({ marketCapRs: n });
+              }}
+            />
+            <Read
+              label="Paid-up capital"
+              value={corp?.paidUpCapitalRs && fmtInr(corp.paidUpCapitalRs)}
+            />
+            <Read
+              label="Authorised capital"
+              value={corp?.authorisedCapitalRs && fmtInr(corp.authorisedCapitalRs)}
+            />
           </FieldGrid>
         </>
       )}
@@ -274,10 +440,17 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
             )}
           </span>
         </FieldRow>
-        <Read label="Added" value={`${fmtDate(client.createdAt)} · ${fullName(client.createdBy)}`} />
+        <Read
+          label="Added"
+          value={`${fmtDate(client.createdAt)} · ${fullName(client.createdBy)}`}
+        />
         <Read
           label="Approved"
-          value={client.approvedAt ? `${fmtDate(client.approvedAt)} · ${fullName(client.approvedBy)}` : 'Not yet'}
+          value={
+            client.approvedAt
+              ? `${fmtDate(client.approvedAt)} · ${fullName(client.approvedBy)}`
+              : 'Not yet'
+          }
         />
         <Read label="Last updated" value={fmtDate(client.updatedAt)} />
       </FieldGrid>

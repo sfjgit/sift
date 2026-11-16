@@ -99,7 +99,7 @@ function initialSpec(canSpocs: boolean): { spec: ReportSpec; templateId: string 
 function ReportsPage() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { can } = usePermissions();
+  const { can, isSuperAdmin } = usePermissions();
   const [initial] = useState(() => initialSpec(can('spocs.read')));
   const [spec, setSpec] = useState<ReportSpec>(initial.spec);
   const [active, setActive] = useState<SavedView<ReportSpec> | null>(null);
@@ -301,6 +301,7 @@ function ReportsPage() {
             <Button variant="outline" size="sm" onClick={copyLink}>
               <Link2 /> Copy link
             </Button>
+            {isSuperAdmin && (
             <Button
               variant="outline"
               size="sm"
@@ -309,6 +310,7 @@ function ReportsPage() {
             >
               <Download /> Export
             </Button>
+            )}
             <Button size="sm" onClick={() => void saveActive()}>
               <Save /> {active?.isOwner ? 'Save' : 'Save report'}
             </Button>

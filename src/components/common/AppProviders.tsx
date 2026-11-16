@@ -6,6 +6,7 @@
 import { useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from 'next-themes';
+import { AccentApplier } from '@/features/theme/accent';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/features/auth/AuthProvider';
@@ -29,6 +30,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <AccentApplier />
       <QueryClientProvider client={client}>
         <AuthProvider>
           <TooltipProvider delayDuration={250}>
