@@ -5,6 +5,9 @@
 // can't open; `anyPerm` shows it when any one of the keys is granted.
 
 import {
+  Ticket,
+  ArchiveRestore,
+  BookOpenCheck,
   Gauge,
   Globe2,
   BadgeCheck,
@@ -90,6 +93,20 @@ export const NAV_SECTIONS: NavSection[] = [
         anyPerm: ['clients.read', 'spocs.read'],
         tour: 'nav-reports',
         keywords: ['analytics', 'insights', 'charts'],
+      },
+      {
+        label: 'Org chart',
+        href: '/org',
+        icon: Network,
+        keywords: [
+          'org chart',
+          'team',
+          'hierarchy',
+          'reporting',
+          'who reports to',
+          'people',
+          'structure',
+        ],
       },
       {
         label: 'Approvals',
@@ -181,6 +198,13 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['audit', 'auth logs'],
       },
       {
+        label: 'Recycle bin',
+        href: '/admin/recycle-bin',
+        icon: ArchiveRestore,
+        perm: 'recycle_bin.read',
+        keywords: ['recycle', 'bin', 'trash', 'deleted', 'restore', 'undo', 'history', 'changes'],
+      },
+      {
         label: 'AI assistant',
         href: '/admin/ai',
         icon: WandSparkles,
@@ -206,6 +230,18 @@ export const FOOTER_NAV: NavItem[] = [
     icon: LifeBuoy,
     tour: 'nav-help',
     keywords: ['faq', 'tour', 'support'],
+  },
+  {
+    label: 'Support tickets',
+    href: '/support',
+    icon: Ticket,
+    keywords: ['bug', 'report', 'problem', 'issue', 'feature', 'idea', 'ticket', 'support'],
+  },
+  {
+    label: "What's built",
+    href: '/docs',
+    icon: BookOpenCheck,
+    keywords: ['docs', 'documentation', 'features', 'status', 'caspa', 'changelog', 'pending'],
   },
   {
     label: 'Settings',

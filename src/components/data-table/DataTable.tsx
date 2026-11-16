@@ -29,6 +29,10 @@ import {
 } from '@tanstack/react-table';
 import {
   ArrowDown,
+  Copy,
+  ExternalLink,
+  CheckSquare,
+  MousePointerClick,
   ArrowUp,
   ArrowUpDown,
   EyeOff,
@@ -55,6 +59,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -71,6 +83,7 @@ import { DragTh, HeaderDnd } from './HeaderDnd';
 import { PageTitle } from '@/components/common/PageHeader';
 import { Pagination, PagingControl, type PagingMode } from './Pagination';
 import { ViewsMenu } from './ViewsMenu';
+import { menuItems, type RowMenu } from './RowMenu';
 import type { DataColumn, FilterDef, GroupTone } from './types';
 import { GROUP_BAND } from './groupTones';
 import type { TableController } from './useTableState';
@@ -93,12 +106,18 @@ export interface DataTableProps<T> {
   getRowId?: (row: T) => string;
   rowHref?: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** the row's actions: the "⋯" button and the right-click menu share this list */
+  rowMenu?: RowMenu<T>;
+  /** the row's name at the top of the right-click menu */
+  rowLabel?: (row: T) => string;
   searchPlaceholder?: string;
   /** false when the endpoint has no free-text search */
   searchable?: boolean;
   /** Rendered in the floating bar when rows are selected */
   bulkActions?: (rows: T[], clear: () => void) => ReactNode;
   toolbar?: ReactNode;
+  /** a panel between the toolbar and the grid (the SPOCs Stats panel); hidden in full screen */
+  banner?: ReactNode;
   /** the page's name, shown first in the toolbar (no separate header row) */
   title?: ReactNode;
   /** what the page is for — shown when hovering the title */
@@ -180,10 +199,13 @@ export function DataTable<T>({
   getRowId = (r: T) => (r as { id: string }).id,
   rowHref,
   onRowClick,
+  rowMenu,
+  rowLabel,
   searchPlaceholder = 'Search…',
   searchable = true,
   bulkActions,
   toolbar,
+  banner,
   title,
   titleHint,
   titleAddon,
@@ -503,6 +525,32 @@ export function DataTable<T>({
     else router.push(href);
   };
 
+  // right-click: which row / cell was hit (set before the menu opens)
+  const [ctx, setCtx] = useState<{ row: T; rowId: string; colId: string; text: string } | null>(
+    null
+  );
+  const [tipSeen, setTipSeen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      return localStorage.getItem('crm:tip:right-click') === '1';
+    } catch {
+      return true;
+    }
+  });
+  const dismissTip = () => {
+    setTipSeen(true);
+    try {
+      localStorage.setItem('crm:tip:right-click', '1');
+    } catch {
+      /* not remembered */
+    }
+  };
+  const copy = (text: string, what: string) =>
+    navigator.clipboard
+      .writeText(text)
+      .then(() => toast.success(`${what} copied`))
+      .catch(() => toast.error('Could not copy'));
+
   const compact = state.density === 'compact';
   const sheet = variant === 'sheet';
   // sheet rows are h-10; how many blank rows reach the bottom of the grid
@@ -533,7 +581,10 @@ export function DataTable<T>({
   const quickOn = quickIds.length > 0 && quickIds.every(i => table.getColumn(i)?.getIsVisible());
   const toggleQuick = () => {
     if (quickOn) {
-      table.setColumnVisibility(v => ({ ...v, ...Object.fromEntries(quickIds.map(i => [i, false])) }));
+      table.setColumnVisibility(v => ({
+        ...v,
+        ...Object.fromEntries(quickIds.map(i => [i, false])),
+      }));
       return;
     }
     const order = table
@@ -686,6 +737,8 @@ export function DataTable<T>({
         </div>
       </div>
 
+      {!full && banner}
+
       {columnBar.open && (
         <div ref={barRef}>
           <ColumnBar
@@ -832,7 +885,13 @@ export function DataTable<T>({
                               id={h.column.id}
                               draggable={!fixedCols.has(h.column.id)}
                               style={{
-                                width: meta?.width ?? (h.column.id === '__select' ? (quickToggle ? 64 : 36) : undefined),
+                                width:
+                                  meta?.width ??
+                                  (h.column.id === '__select'
+                                    ? quickToggle
+                                      ? 64
+                                      : 36
+                                    : undefined),
                               }}
                               className={cn(
                                 'border-b text-left whitespace-nowrap',
@@ -915,95 +974,142 @@ export function DataTable<T>({
                       </tr>
                     ))}
                   </thead>
-                  <tbody>
-                    {query.isLoading &&
-                      Array.from({ length: Math.min(state.limit, 8) }).map((_, i) => (
-                        <tr key={`sk-${i}`}>
-                          {visibleCols.map(c => (
-                            <td
-                              key={c.id}
-                              className={cn('border-b px-3', sheet || compact ? 'h-10' : 'h-12')}
-                            >
-                              <Skeleton
-                                className={cn(
-                                  'h-3.5',
-                                  c.id === '__select' ? 'w-4' : i % 2 ? 'w-24' : 'w-32'
-                                )}
-                              />
-                            </td>
+                  <ContextMenu
+                    onOpenChange={o => {
+                      if (!o) return;
+                      if (!tipSeen) dismissTip();
+                    }}
+                  >
+                    <ContextMenuTrigger asChild disabled={query.isLoading}>
+                      <tbody>
+                        {query.isLoading &&
+                          Array.from({ length: Math.min(state.limit, 8) }).map((_, i) => (
+                            <tr key={`sk-${i}`}>
+                              {visibleCols.map(c => (
+                                <td
+                                  key={c.id}
+                                  className={cn(
+                                    'border-b px-3',
+                                    sheet || compact ? 'h-10' : 'h-12'
+                                  )}
+                                >
+                                  <Skeleton
+                                    className={cn(
+                                      'h-3.5',
+                                      c.id === '__select' ? 'w-4' : i % 2 ? 'w-24' : 'w-32'
+                                    )}
+                                  />
+                                </td>
+                              ))}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    {!query.isLoading &&
-                      table.getRowModel().rows.map((row, i) => (
-                        <tr
-                          key={row.id}
-                          onClick={e => open(row.original, e)}
-                          data-state={row.getIsSelected() ? 'selected' : undefined}
-                          {...(i === 0 ? tourTarget('table-row') : {})}
-                          className={cn(
-                            'group/row transition-colors',
-                            (rowHref || onRowClick) && 'cursor-pointer',
-                            sheet && i % 2 === 1 && BAND_BG,
-                            sheet ? HOVER_BG : 'hover:bg-accent/40',
-                            'data-[state=selected]:bg-accent/60'
-                          )}
-                        >
-                          {row.getVisibleCells().map(cell => {
-                            const meta = cell.column.columnDef.meta;
-                            const sticky = meta?.sticky || cell.column.id === firstDataCol;
-                            return (
-                              <td
-                                key={cell.id}
-                                className={cn(
-                                  'border-b align-middle group-last/row:border-b-0',
-                                  sheet
-                                    ? 'h-10 max-w-80 truncate border-r px-3 py-0 last:border-r-0'
-                                    : cn('px-3', compact ? 'h-9 py-1' : 'h-12 py-2'),
-                                  meta?.align === 'right' && 'text-right tabular',
-                                  meta?.align === 'center' && 'text-center',
-                                  cell.column.id === '__select' && cn(selW, 'px-0 pl-3'),
-                                  sticky &&
-                                    cn(
-                                      'sticky z-[1] font-medium',
-                                      sheet && i % 2 === 1 ? BAND_BG : 'bg-card',
+                        {!query.isLoading &&
+                          table.getRowModel().rows.map((row, i) => (
+                            <tr
+                              key={row.id}
+                              onClick={e => open(row.original, e)}
+                              onContextMenu={e => {
+                                const td = (e.target as HTMLElement).closest('td');
+                                setCtx({
+                                  row: row.original,
+                                  rowId: row.id,
+                                  colId: td?.dataset.col ?? '',
+                                  text: (td?.innerText ?? '').trim(),
+                                });
+                              }}
+                              data-state={row.getIsSelected() ? 'selected' : undefined}
+                              {...(i === 0 ? tourTarget('table-row') : {})}
+                              className={cn(
+                                'group/row transition-colors',
+                                (rowHref || onRowClick) && 'cursor-pointer',
+                                sheet && i % 2 === 1 && BAND_BG,
+                                sheet ? HOVER_BG : 'hover:bg-accent/40',
+                                'data-[state=selected]:bg-accent/60'
+                              )}
+                            >
+                              {row.getVisibleCells().map(cell => {
+                                const meta = cell.column.columnDef.meta;
+                                const sticky = meta?.sticky || cell.column.id === firstDataCol;
+                                return (
+                                  <td
+                                    key={cell.id}
+                                    data-col={cell.column.id}
+                                    className={cn(
+                                      'border-b align-middle group-last/row:border-b-0',
                                       sheet
-                                        ? STICKY_HOVER
-                                        : 'group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_40%)] group-data-[state=selected]/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_60%)]'
-                                    ),
-                                  cell.column.id === '__select'
-                                    ? 'left-0'
-                                    : sticky && (bulkActions ? afterSel : 'left-0')
-                                )}
-                              >
-                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    {/* scroll mode: reaching this row loads the next page */}
-                    {moreToLoad && !query.isLoading && (
-                      <tr ref={sentinelRef} aria-hidden>
-                        <td
-                          colSpan={visibleCols.length}
-                          className="h-10 border-b px-3 text-[13px] text-muted-foreground"
-                        >
-                          <span className="sticky left-3">
-                            {query.isFetching ? 'Loading more…' : 'Scroll for more'}
-                          </span>
-                        </td>
-                      </tr>
-                    )}
-                    {/* spreadsheet: empty grid rows fill the space under the data */}
-                    {Array.from({ length: moreToLoad ? 0 : fillerRows }).map((_, i) => (
-                      <tr key={`fill-${i}`} aria-hidden>
-                        {visibleCols.map(c => (
-                          <td key={c.id} className="h-10 border-r border-b last:border-r-0" />
+                                        ? 'h-10 max-w-80 truncate border-r px-3 py-0 last:border-r-0'
+                                        : cn('px-3', compact ? 'h-9 py-1' : 'h-12 py-2'),
+                                      meta?.align === 'right' && 'text-right tabular',
+                                      meta?.align === 'center' && 'text-center',
+                                      cell.column.id === '__select' && cn(selW, 'px-0 pl-3'),
+                                      sticky &&
+                                        cn(
+                                          'sticky z-[1] font-medium',
+                                          sheet && i % 2 === 1 ? BAND_BG : 'bg-card',
+                                          sheet
+                                            ? STICKY_HOVER
+                                            : 'group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_40%)] group-data-[state=selected]/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_60%)]'
+                                        ),
+                                      cell.column.id === '__select'
+                                        ? 'left-0'
+                                        : sticky && (bulkActions ? afterSel : 'left-0')
+                                    )}
+                                  >
+                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        {/* scroll mode: reaching this row loads the next page */}
+                        {moreToLoad && !query.isLoading && (
+                          <tr ref={sentinelRef} aria-hidden>
+                            <td
+                              colSpan={visibleCols.length}
+                              className="h-10 border-b px-3 text-[13px] text-muted-foreground"
+                            >
+                              <span className="sticky left-3">
+                                {query.isFetching ? 'Loading more…' : 'Scroll for more'}
+                              </span>
+                            </td>
+                          </tr>
+                        )}
+                        {/* spreadsheet: empty grid rows fill the space under the data */}
+                        {Array.from({ length: moreToLoad ? 0 : fillerRows }).map((_, i) => (
+                          <tr key={`fill-${i}`} aria-hidden>
+                            {visibleCols.map(c => (
+                              <td key={c.id} className="h-10 border-r border-b last:border-r-0" />
+                            ))}
+                          </tr>
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
+                      </tbody>
+                    </ContextMenuTrigger>
+                    {ctx && (
+                      <RowContextMenu
+                        ctx={ctx}
+                        label={rowLabel?.(ctx.row)}
+                        items={menuItems(rowMenu, ctx.row)}
+                        href={rowHref?.(ctx.row)}
+                        column={table.getColumn(ctx.colId) ?? undefined}
+                        selected={!!rowSelection[ctx.rowId]}
+                        onSelect={
+                          bulkActions ? () => table.getRow(ctx.rowId).toggleSelected() : undefined
+                        }
+                        copy={copy}
+                        rowText={() =>
+                          table
+                            .getRow(ctx.rowId)
+                            .getVisibleCells()
+                            .filter(c => !c.column.id.startsWith('__'))
+                            .map(c => {
+                              const v = c.getValue();
+                              return v == null ? '' : String(v);
+                            })
+                            .join('\t')
+                        }
+                      />
+                    )}
+                  </ContextMenu>
                 </table>
               </HeaderDnd>
             </div>
@@ -1040,6 +1146,22 @@ export function DataTable<T>({
               </div>
             )}
 
+            {!tipSeen && rows.length > 0 && (rowMenu || rowHref) && (
+              <div className="flex items-center gap-2 border-t bg-primary/5 py-1.5 pr-16 pl-20 text-[12.5px]">
+                <MousePointerClick className="size-3.5 text-primary" />
+                <span>
+                  Tip: <b>right-click any row</b> for its actions — no need to scroll to the last
+                  column.
+                </span>
+                <button
+                  type="button"
+                  onClick={dismissTip}
+                  className="ml-auto rounded px-1.5 text-primary hover:bg-primary/10"
+                >
+                  Got it
+                </button>
+              </div>
+            )}
             {/* full-screen list tables carry this in the toolbar (PagingControl) */}
             {!autoFooter && (
               <Pagination
@@ -1085,4 +1207,73 @@ export function DataTable<T>({
   );
 
   return full ? createPortal(body, document.body) : body;
+}
+
+/** the right-click menu of one row: the page's actions, then copy / open / select / hide */
+function RowContextMenu<T>({
+  ctx,
+  label,
+  items,
+  href,
+  column,
+  selected,
+  onSelect,
+  copy,
+  rowText,
+}: {
+  ctx: { colId: string; text: string };
+  label?: string;
+  items: ReturnType<typeof menuItems>;
+  href?: string;
+  column?: import('@tanstack/react-table').Column<T, unknown>;
+  selected: boolean;
+  onSelect?: () => void;
+  copy: (text: string, what: string) => void;
+  rowText: () => string;
+}) {
+  const colLabel = column?.columnDef.meta?.label ?? ctx.colId;
+  const isData = !!column && !ctx.colId.startsWith('__');
+  return (
+    <ContextMenuContent className="w-60">
+      {label && <ContextMenuLabel>{label}</ContextMenuLabel>}
+      {items.map(it => {
+        const Icon = it.icon;
+        return (
+          <span key={it.label} className="contents">
+            {it.separatorBefore && <ContextMenuSeparator />}
+            <ContextMenuItem
+              variant={it.destructive ? 'destructive' : 'default'}
+              onSelect={() => it.onSelect()}
+            >
+              {Icon && <Icon className={it.iconClass} />} {it.label}
+            </ContextMenuItem>
+          </span>
+        );
+      })}
+      {items.length > 0 && <ContextMenuSeparator />}
+      {href && (
+        <ContextMenuItem onSelect={() => window.open(href, '_blank')}>
+          <ExternalLink /> Open in new tab
+        </ContextMenuItem>
+      )}
+      {isData && ctx.text && (
+        <ContextMenuItem onSelect={() => copy(ctx.text, colLabel)}>
+          <Copy /> <span className="truncate">Copy {colLabel}</span>
+        </ContextMenuItem>
+      )}
+      <ContextMenuItem onSelect={() => copy(rowText(), 'Row')}>
+        <Copy /> Copy row
+      </ContextMenuItem>
+      {onSelect && (
+        <ContextMenuItem onSelect={onSelect}>
+          <CheckSquare /> {selected ? 'Unselect row' : 'Select row'}
+        </ContextMenuItem>
+      )}
+      {isData && column?.getCanHide() && !column.columnDef.meta?.locked && (
+        <ContextMenuItem onSelect={() => column.toggleVisibility(false)}>
+          <EyeOff /> Hide column “{colLabel}”
+        </ContextMenuItem>
+      )}
+    </ContextMenuContent>
+  );
 }

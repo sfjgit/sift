@@ -44,6 +44,8 @@ export interface ComboboxProps {
   className?: string;
   size?: 'sm' | 'default';
   id?: string;
+  /** open the list on mount (inline editors) */
+  defaultOpen?: boolean;
 }
 
 export function Combobox({
@@ -62,8 +64,9 @@ export function Combobox({
   className,
   size = 'default',
   id,
+  defaultOpen = false,
 }: ComboboxProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const current = options.find(o => o.value === value);
   const label = current?.label ?? (value ? selectedLabel : undefined);
 

@@ -12,6 +12,8 @@
 
 'use client';
 
+import type { ReactNode } from 'react';
+
 import { AlertTriangle, Inbox } from 'lucide-react';
 import {
   Bar,
@@ -28,6 +30,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Legend, seriesColor, MAX_SERIES, OTHER_KEY } from '@/components/charts/Charts';
+import { OrgChart } from '@/features/org/OrgChart';
 import { EMPTY, fmtDate, fmtInr, fmtNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { AiColumn, AiQueryResult, AiRenderedBlock, AiValueFormat, AiWidth } from '@/types/ai';
@@ -346,7 +349,7 @@ function PieBlock({ result, printable }: { result: SeriesResult; printable?: boo
 
 const NUMERIC = new Set<AiColumn['type']>(['number', 'money', 'percent']);
 
-function TableBlock({ result, printable }: { result: AiQueryResult; printable?: boolean }) {
+function TableBlock({ result, printable, compact }: { result: AiQueryResult; printable?: boolean; compact?: boolean }) {
   let columns: AiColumn[];
   let rows: Record<string, unknown>[];
   let total: number;
@@ -359,6 +362,23 @@ function TableBlock({ result, printable }: { result: AiQueryResult; printable?: 
     ];
     rows = result.points;
     total = rows.length;
+  } else if (result.kind === 'tree') {
+    // the org chart as a list
+    columns = [
+      { key: 'name', label: 'Person', type: 'text' },
+      { key: 'role', label: 'Role', type: 'text' },
+      { key: 'team', label: 'People below', type: 'number' },
+      { key: 'clients', label: 'Clients', type: 'number' },
+      { key: 'spocs', label: 'SPOCs', type: 'number' },
+    ];
+    rows = [];
+    const walk = (n: typeof result.root) => {
+      if (!n.virtual)
+        rows.push({ name: `${n.firstName} ${n.lastName ?? ''}`.trim(), role: n.role.name, team: n.teamSize, clients: n.stats.clients, spocs: n.stats.spocs });
+      n.children.forEach(walk);
+    };
+    walk(result.root);
+    total = rows.length;
   } else {
     columns = [{ key: 'value', label: 'Value', type: result.format }];
     rows = [{ value: result.value }];
@@ -368,7 +388,7 @@ function TableBlock({ result, printable }: { result: AiQueryResult; printable?: 
 
   return (
     <div className="space-y-1.5">
-      <div className={cn('overflow-auto rounded-lg border', !printable && 'max-h-80')}>
+      <div className={cn('overflow-auto rounded-lg border', !printable && (compact ? 'max-h-56' : 'max-h-80'))}>
         <table className="w-full text-[13px]">
           <thead className="sticky top-0 z-[1] bg-muted">
             <tr>
@@ -420,7 +440,7 @@ function NoData() {
   return (
     <div className="flex min-h-24 flex-col items-center justify-center gap-1.5 text-xs text-muted-foreground">
       <Inbox className="size-4" />
-      No data for this yet
+      Nothing matches these filters
     </div>
   );
 }
@@ -436,19 +456,28 @@ function BlockBody({ block, printable }: { block: AiRenderedBlock; printable?: b
     );
   }
   if (!r) return <NoData />;
+  // the org chart: only when one was asked for
+  if (r.kind === 'tree') return <OrgChart tree={r.root} height={printable ? 420 : 520} />;
   if (block.component === 'table') return <TableBlock result={r} printable={printable} />;
   if (r.kind === 'single') return <KpiBlock result={r} />;
   if (r.kind === 'rows') return <TableBlock result={r} printable={printable} />;
   if (!r.points.length || !r.series.length) return <NoData />;
-  if (block.component === 'line') return <LineBlock result={r} printable={printable} />;
-  if (block.component === 'pie') return <PieBlock result={r} printable={printable} />;
+  // a chart always carries its numbers underneath — to check them row by row
+  const withData = (chart: React.ReactNode) => (
+    <div className="space-y-3">
+      {chart}
+      <TableBlock result={r} printable={printable} compact />
+    </div>
+  );
+  if (block.component === 'line') return withData(<LineBlock result={r} printable={printable} />);
+  if (block.component === 'pie') return withData(<PieBlock result={r} printable={printable} />);
   if (block.component === 'kpi') {
     // a KPI over a series: show the sum of the first series
     const k = r.series[0].key;
     const sum = r.points.reduce((t, p) => t + (Number(p[k]) || 0), 0);
     return <KpiBlock result={{ kind: 'single', value: sum, format: r.format }} />;
   }
-  return <BarBlock result={r} printable={printable} />;
+  return withData(<BarBlock result={r} printable={printable} />);
 }
 
 // ── canvas ───────────────────────────────────────────────────────────────────
@@ -457,8 +486,11 @@ export function AiCanvas({
   blocks,
   printable = false,
   className,
+  tools,
 }: {
   blocks: AiRenderedBlock[];
+  /** per-block controls shown on hover (change chart, resize, move, remove) */
+  tools?: (block: AiRenderedBlock, index: number) => ReactNode;
   /** fixed 6-column layout, no scroll areas or hover chrome — for window.print() */
   printable?: boolean;
   className?: string;
@@ -486,10 +518,28 @@ export function AiCanvas({
             printable ? PRINT_SPAN[b.width] : SPAN[b.width]
           )}
         >
-          <h3 className="text-sm leading-snug font-semibold">{b.title}</h3>
+          <div className="group/blk flex items-start gap-2">
+            <h3 className="min-w-0 flex-1 text-sm leading-snug font-semibold">{b.title}</h3>
+            {tools && !printable && (
+              <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/blk:opacity-100 focus-within:opacity-100 [section:hover_&]:opacity-100">
+                {tools(b, blocks.indexOf(b))}
+              </div>
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <BlockBody block={b} printable={printable} />
           </div>
+          {b.query === 'free_sql' && !printable && (
+            <details className="text-[11px] text-muted-foreground">
+              <summary className="cursor-pointer select-none">
+                <span className="mr-1 rounded bg-violet-500/10 px-1.5 py-px font-medium text-violet-600">Custom query</span>
+                super admin · read-only · show query
+              </summary>
+              <pre className="mt-1.5 max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px] whitespace-pre-wrap text-foreground">
+                {String(b.params?.sql ?? '')}
+              </pre>
+            </details>
+          )}
         </section>
       ))}
     </div>

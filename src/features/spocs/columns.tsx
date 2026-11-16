@@ -17,7 +17,9 @@ import {
 import { PersonCell, UserAvatar } from '@/components/common/UserAvatar';
 import type { DataColumn, FilterDef } from '@/components/data-table';
 import { fmtDate, fmtRelative, fullName, placeOf } from '@/lib/format';
-import type { Spoc } from '@/types/crm';
+import { DATA_FLAG, DataFlagPills, ProjectTags, SpocKeyStar } from '@/features/marks/SalesMarks';
+import { spocsApi } from '@/lib/api/endpoints';
+import type { Spoc, SpocDataFlag } from '@/types/crm';
 
 export const spocFilters: FilterDef[] = [
   { key: 'clientId', label: 'Client', type: 'client' },
@@ -77,6 +79,33 @@ export const spocFilters: FilterDef[] = [
     trueLabel: 'Active',
     falseLabel: 'Inactive',
   },
+  // ── sales marks
+  {
+    key: 'keyAccount',
+    label: 'Key account',
+    type: 'select',
+    options: [
+      { value: 'me', label: 'My key accounts' },
+      { value: 'any', label: 'Anyone’s key account' },
+      { value: 'none', label: 'Not a key account' },
+    ],
+  },
+  {
+    key: 'dataFlag',
+    label: 'Data flag',
+    type: 'select',
+    multi: true,
+    options: [
+      { value: 'NONE', label: 'Not flagged' },
+      ...(Object.keys(DATA_FLAG) as SpocDataFlag[]).map(value => ({
+        value,
+        label: DATA_FLAG[value].label,
+      })),
+    ],
+    hint: '“Both wrong” SPOCs are hidden unless you pick it here.',
+  },
+  { key: 'projectId', label: 'Project', type: 'lookup', multi: true, lookupType: 'PROJECT' },
+  { key: 'erp', label: 'ERP', type: 'text', placeholder: 'SAP, Oracle…' },
 ];
 
 export const spocFilterKeys = spocFilters.map(f => f.key);
@@ -114,9 +143,15 @@ function Contact({
 export const spocColumns = ({
   showClient = true,
   actions,
+  canEdit = false,
+  projectLabels = ids => ids,
 }: {
   showClient?: boolean;
   actions?: (s: Spoc) => React.ReactNode;
+  /** spocs.update — inline star, data flag and projects */
+  canEdit?: boolean;
+  /** PROJECT ids → labels (exports) */
+  projectLabels?: (ids: string[]) => string[];
 } = {}): DataColumn<Spoc>[] => [
   {
     id: 'name',
@@ -158,6 +193,13 @@ export const spocColumns = ({
         </div>
       );
     },
+  },
+  {
+    id: 'keyAccount',
+    accessorFn: s => (s.keyAccountUser ? fullName(s.keyAccountUser) : ''),
+    header: 'Key account',
+    meta: { label: 'Key account', width: 90 },
+    cell: ({ row }) => <SpocKeyStar spoc={row.original} canEdit={canEdit} />,
   },
   ...(showClient
     ? [
@@ -247,6 +289,38 @@ export const spocColumns = ({
     header: 'Sales status',
     meta: { label: 'Sales status' },
     cell: ({ row }) => <LookupBadge lookup={row.original.salesStatus} />,
+  },
+  {
+    id: 'dataFlag',
+    accessorFn: s => (s.dataFlag ? DATA_FLAG[s.dataFlag].label : ''),
+    header: 'Data flag',
+    meta: { label: 'Data flag' },
+    cell: ({ row }) => <DataFlagPills spoc={row.original} canEdit={canEdit} />,
+  },
+  {
+    id: 'projects',
+    accessorFn: s => projectLabels(s.projectIds ?? []).join(', '),
+    header: 'Projects',
+    meta: { label: 'Projects' },
+    cell: ({ row }) => (
+      <ProjectTags
+        ids={row.original.projectIds ?? []}
+        canEdit={canEdit}
+        setBy={
+          row.original.projectSetBy
+            ? `${fullName(row.original.projectSetBy)} · ${fmtDate(row.original.projectSetAt)}`
+            : undefined
+        }
+        onSave={projectIds => spocsApi.update(row.original.id, { projectIds })}
+      />
+    ),
+  },
+  {
+    id: 'erp',
+    accessorKey: 'erp',
+    header: 'ERP',
+    meta: { label: 'ERP' },
+    cell: ({ row }) => row.original.erp ?? <span className="text-muted-foreground/50">—</span>,
   },
   {
     id: 'handler',

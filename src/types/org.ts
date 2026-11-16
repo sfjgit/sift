@@ -152,7 +152,12 @@ export type LookupType =
   | 'SPOC_SOURCE'
   | 'EMAIL_SOURCE'
   | 'SALES_STATUS'
-  | 'PROGRAM_SECTOR';
+  | 'PROGRAM_SECTOR'
+  | 'PROJECT'
+  | 'SPOC_ROLE'
+  | 'DECISION_AUTHORITY'
+  | 'ORG_TYPE'
+  | 'REVENUE_BAND';
 
 export interface Lookup {
   id: string;

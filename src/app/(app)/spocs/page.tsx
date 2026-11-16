@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowRightLeft,
   Eye,
-  MoreHorizontal,
   Pencil,
   Plus,
   Sparkles,
@@ -16,20 +15,21 @@ import {
   UserRound,
   Users,
   ArchiveX,
+  BarChart3,
+  ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Kbd } from '@/components/ui/kbd';
 import { Segmented } from '@/components/ui/segmented';
 import { HelpButton } from '@/features/help/HelpSheet';
 import { useConfirm } from '@/components/common/ConfirmProvider';
-import { DataTable, useTableState } from '@/components/data-table';
+import {
+  DataTable,
+  RowActionsButton,
+  menuItems,
+  useTableState,
+  type RowMenu,
+} from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -37,10 +37,14 @@ import { tourTarget } from '@/features/tour/tour.constants';
 import { useTour } from '@/features/tour/useTour';
 import { spocsTour } from '@/features/tour/tours/catalog';
 import { AssignDialog } from '@/features/spocs/AssignDialog';
+import { BulkSetDialog } from '@/features/spocs/BulkSetDialog';
+import { SpocStats } from '@/features/spocs/SpocStats';
+import { useProjectLabels } from '@/features/marks/SalesMarks';
 import { spocColumns, spocFilterKeys, spocFilters } from '@/features/spocs/columns';
 import { spocHooks } from '@/hooks/queries';
 import { useAction } from '@/hooks/useResource';
 import { useHotkey } from '@/hooks/useHotkey';
+import { usePageStats } from '@/hooks/usePageStats';
 import { spocsApi } from '@/lib/api/endpoints';
 import { fetchAllPages } from '@/lib/api/resource';
 import { useUi } from '@/stores/ui';
@@ -57,6 +61,13 @@ function SpocsPage() {
   const table = useTableState('spocs', spocFilterKeys, { sort: { id: 'createdAt', desc: true } });
   const query = spocHooks.useList(table.params);
   const [assigning, setAssigning] = useState<{ rows: Spoc[]; clear?: () => void } | null>(null);
+  const [setting, setSetting] = useState<{ rows: Spoc[]; clear?: () => void } | null>(null);
+  const projectLabels = useProjectLabels();
+  const [statsOpen, toggleStats] = usePageStats('spocs');
+  const statsParams = useMemo(
+    () => ({ search: table.state.search || undefined, ...table.state.filters }),
+    [table.state.search, table.state.filters]
+  );
   useTour(spocsTour, { ready: !query.isLoading });
   useHotkey('n', () => openSpocDialog({}), can('spocs.create'));
 
@@ -83,66 +94,86 @@ function SpocsPage() {
   });
   const deactivateSpoc = deactivate.mutate;
 
-  const rowActions = useCallback(
-    (s: Spoc) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label="Actions">
-            <MoreHorizontal />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onSelect={() => router.push(`/spocs/${s.id}`)}>
-            <Eye /> Open
-          </DropdownMenuItem>
-          {can('spocs.update') && (
-            <DropdownMenuItem onSelect={() => router.push(`/spocs/${s.id}?edit=1`)}>
-              <Pencil /> Edit
-            </DropdownMenuItem>
-          )}
-          {can('spocs.assign') && s.isActive && (
-            <DropdownMenuItem onSelect={() => setAssigning({ rows: [s] })}>
-              <ArrowRightLeft /> Reassign
-            </DropdownMenuItem>
-          )}
-          {can('spocs.delete') && s.isActive && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={async () => {
-                  if (
-                    await confirm({
-                      title: 'Deactivate this SPOC?',
-                      description:
-                        'They leave active lists and reports; history and assignments are kept.',
-                      destructive: true,
-                      confirmLabel: 'Deactivate',
-                    })
-                  )
-                    deactivateSpoc(s.id);
-                }}
-              >
-                <Trash2 /> Deactivate
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
+  // one list for the "⋯" button and the right-click menu
+  const rowMenu = useCallback<RowMenu<Spoc>>(
+    s => [
+      { label: 'Open', icon: Eye, onSelect: () => router.push(`/spocs/${s.id}`) },
+      can('spocs.update') && {
+        label: 'Edit',
+        icon: Pencil,
+        onSelect: () => router.push(`/spocs/${s.id}?edit=1`),
+      },
+      can('spocs.assign') &&
+        s.isActive && {
+          label: 'Reassign',
+          icon: ArrowRightLeft,
+          onSelect: () => setAssigning({ rows: [s] }),
+        },
+      can('spocs.delete') &&
+        s.isActive && {
+          label: 'Deactivate',
+          icon: Trash2,
+          destructive: true,
+          separatorBefore: true,
+          onSelect: async () => {
+            if (
+              await confirm({
+                title: 'Deactivate this SPOC?',
+                description:
+                  'They leave active lists and reports; history and assignments are kept.',
+                destructive: true,
+                confirmLabel: 'Deactivate',
+              })
+            )
+              deactivateSpoc(s.id);
+          },
+        },
+    ],
     [can, confirm, deactivateSpoc, router]
   );
+  const rowActions = useCallback(
+    (s: Spoc) => (
+      <RowActionsButton
+        items={menuItems(rowMenu, s)}
+        label={[s.firstName, s.lastName].filter(Boolean).join(' ')}
+      />
+    ),
+    [rowMenu]
+  );
 
-  const columns = useMemo(() => spocColumns({ actions: rowActions }), [rowActions]);
+  const canEdit = can('spocs.update');
+  const columns = useMemo(
+    () => spocColumns({ actions: rowActions, canEdit, projectLabels }),
+    [rowActions, canEdit, projectLabels]
+  );
 
   return (
     <div className="space-y-3">
       <DataTable
+        rowMenu={rowMenu}
+        rowLabel={s => [s.firstName, s.lastName].filter(Boolean).join(' ')}
+        banner={
+          statsOpen && (
+            <SpocStats
+              params={statsParams}
+              filters={table.state.filters as Record<string, string>}
+              setFilter={table.actions.setFilter}
+            />
+          )
+        }
         title="SPOCs"
         titleHint="Your contacts across every client — who owns them, how reachable they are, and where they stand."
         actions={
           <>
             <HelpButton module="spocs" />
+            <Button
+              size="sm"
+              variant={statsOpen ? 'secondary' : 'outline'}
+              onClick={toggleStats}
+              title="Counts for the SPOCs below — they follow your filters"
+            >
+              <BarChart3 /> Stats
+            </Button>
             {can('spocs.create') && (
               <Button size="sm" onClick={() => openSpocDialog({})} {...tourTarget('spocs-new')}>
                 <Plus /> New SPOC
@@ -184,11 +215,20 @@ function SpocsPage() {
           ),
         }}
         bulkActions={
-          can('spocs.assign')
+          can('spocs.assign') || canEdit
             ? (rows, clear) => (
-                <Button size="sm" onClick={() => setAssigning({ rows, clear })}>
-                  <ArrowRightLeft /> Reassign
-                </Button>
+                <>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" onClick={() => setSetting({ rows, clear })}>
+                      <ListChecks /> Update field
+                    </Button>
+                  )}
+                  {can('spocs.assign') && (
+                    <Button size="sm" onClick={() => setAssigning({ rows, clear })}>
+                      <ArrowRightLeft /> Reassign
+                    </Button>
+                  )}
+                </>
               )
             : undefined
         }
@@ -199,6 +239,13 @@ function SpocsPage() {
         open={!!assigning}
         onOpenChange={o => !o && setAssigning(null)}
         onDone={() => assigning?.clear?.()}
+      />
+
+      <BulkSetDialog
+        spocIds={setting?.rows.map(r => r.id) ?? []}
+        open={!!setting}
+        onOpenChange={o => !o && setSetting(null)}
+        onDone={() => setting?.clear?.()}
       />
     </div>
   );

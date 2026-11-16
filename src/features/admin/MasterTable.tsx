@@ -14,18 +14,19 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MoreHorizontal, Pencil, PauseCircle, PlayCircle, Plus } from 'lucide-react';
+import { Pencil, PauseCircle, PlayCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { ActiveBadge } from '@/components/common/badges';
 import { useConfirm } from '@/components/common/ConfirmProvider';
-import { DataTable, useTableState, type DataColumn, type FilterDef } from '@/components/data-table';
+import {
+  DataTable,
+  RowActionsButton,
+  menuItems,
+  useTableState,
+  type DataColumn,
+  type FilterDef,
+  type RowMenu,
+} from '@/components/data-table';
 import { useLocalQuery } from '@/components/data-table/useLocalQuery';
 import { FormDialog } from '@/components/forms/FormDialog';
 import { TextField, applyServerErrors } from '@/components/forms/fields';
@@ -195,6 +196,30 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
     [confirm, toggleMutate, kind]
   );
 
+  const rowMenu = useCallback<RowMenu<MasterRow>>(
+    r =>
+      canManage
+        ? [
+            { label: 'Edit', icon: Pencil, onSelect: () => setDialog({ row: r }) },
+            r.isActive
+              ? {
+                  label: 'Deactivate',
+                  icon: PauseCircle,
+                  destructive: true,
+                  separatorBefore: true,
+                  onSelect: () => void askToggle(r),
+                }
+              : {
+                  label: 'Activate',
+                  icon: PlayCircle,
+                  iconClass: 'text-success',
+                  separatorBefore: true,
+                  onSelect: () => void askToggle(r),
+                },
+          ]
+        : [],
+    [canManage, askToggle]
+  );
   const showSpocs = useMemo(
     () => (source.data ?? []).some(r => r._count?.clientSpocs !== undefined),
     [source.data]
@@ -271,48 +296,23 @@ export function MasterTable({ kind, canManage = true }: { kind: MasterKind; canM
               enableHiding: false,
               meta: { locked: true, label: 'Actions', width: 44 },
               cell: ({ row }) => (
-                <div data-no-row-click>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Actions for ${row.original.name}`}
-                      >
-                        <MoreHorizontal />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onSelect={() => setDialog({ row: row.original })}>
-                        <Pencil /> Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {row.original.isActive ? (
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onSelect={() => void askToggle(row.original)}
-                        >
-                          <PauseCircle /> Deactivate
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onSelect={() => void askToggle(row.original)}>
-                          <PlayCircle className="text-success" /> Activate
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                <RowActionsButton
+                  items={menuItems(rowMenu, row.original)}
+                  label={row.original.name}
+                />
               ),
             } satisfies DataColumn<MasterRow>,
           ]
         : []),
     ],
-    [showSpocs, canManage, askToggle]
+    [showSpocs, canManage, rowMenu]
   );
 
   return (
     <div className="space-y-3">
       <DataTable
+        rowMenu={rowMenu}
+        rowLabel={r => r.name}
         id={`org-${kind}`}
         table={table}
         query={query}

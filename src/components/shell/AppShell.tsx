@@ -35,6 +35,8 @@ import { useUi } from '@/stores/ui';
 import { CommandPalette } from './CommandPalette';
 import { VoiceAssistant } from '@/components/ai/VoiceAssistant';
 import { AiTopbarControl } from '@/components/ai/AiModeToggle';
+import { AiDock } from '@/components/ai/AiDock';
+import { SupportRoot } from '@/features/support/ReportProblem';
 import { NotificationsPopover } from './Notifications';
 import { PinToggle, SidebarContent } from './Sidebar';
 import { HelpMenu, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
@@ -126,14 +128,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const autoHide = useAutoHideDesktop();
   const sideFloat = autoHide && !sidebarPinned;
   const topFloat = autoHide && !topbarPinned;
-  const { ref: sideRef, shown: sideShown, setShown: setSideShown } = useEdgeReveal<HTMLElement>(
-    'left',
-    sideFloat
-  );
-  const { ref: topRef, shown: topShown, setShown: setTopShown } = useEdgeReveal<HTMLElement>(
-    'top',
-    topFloat
-  );
+  const {
+    ref: sideRef,
+    shown: sideShown,
+    setShown: setSideShown,
+  } = useEdgeReveal<HTMLElement>('left', sideFloat);
+  const {
+    ref: topRef,
+    shown: topShown,
+    setShown: setTopShown,
+  } = useEdgeReveal<HTMLElement>('top', topFloat);
 
   // pinning/unpinning reflows the page: let fitted tables re-measure
   useEffect(() => {
@@ -273,6 +277,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <CommandPalette />
       <VoiceAssistant />
+      <AiDock />
+      <SupportRoot />
       <ShortcutsLayer />
       <ClientFormDialog />
       <SpocFormDialog />

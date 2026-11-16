@@ -11,6 +11,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import {
+  Bug,
+  Lightbulb,
+  Ticket,
   Building2,
   CircleHelp,
   ContactRound,
@@ -53,6 +56,7 @@ import { usePermissions } from '@/features/auth/usePermissions';
 import { tourTarget } from '@/features/tour/tour.constants';
 import { useTourStore } from '@/features/tour/tourStore';
 import { getTourForPath } from '@/features/tour/tours';
+import { openReport } from '@/features/support/ReportProblem';
 import { fullName } from '@/lib/format';
 import { useUi } from '@/stores/ui';
 
@@ -111,6 +115,18 @@ export function HelpMenu() {
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => setShortcutsOpen(true)}>
           <Keyboard /> Keyboard shortcuts <DropdownMenuShortcut>?</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => void openReport('BUG')}>
+          <Bug /> Report a problem <DropdownMenuShortcut>Ctrl⇧B</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => void openReport('FEATURE')}>
+          <Lightbulb /> Suggest a feature
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/support">
+            <Ticket /> My tickets
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

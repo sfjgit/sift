@@ -7,7 +7,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Briefcase, Building, Layers, Network } from 'lucide-react';
+import { Briefcase, Building, GitFork, Layers, Network } from 'lucide-react';
+import { OrgView } from '@/features/org/OrgView';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/common/PageHeader';
 import { RequirePermission } from '@/features/auth/RequirePermission';
@@ -21,19 +22,20 @@ const TABS: { kind: MasterKind; icon: typeof Network }[] = [
   { kind: 'designations', icon: Briefcase },
 ];
 
-const initialTab = (): MasterKind => {
-  if (typeof window === 'undefined') return 'business-units';
+type Tab = MasterKind | 'tree';
+const initialTab = (): Tab => {
+  if (typeof window === 'undefined') return 'tree';
   const t = new URLSearchParams(window.location.search).get('tab');
-  return TABS.some(x => x.kind === t) ? (t as MasterKind) : 'business-units';
+  return t === 'tree' || TABS.some(x => x.kind === t) ? (t as Tab) : 'tree';
 };
 
 function OrgPage() {
-  const [tab, setTab] = useState<MasterKind>(initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   const change = (next: string) => {
     // drop the previous table's search / filters from the URL before the next one reads it
     window.history.replaceState(window.history.state, '', `${window.location.pathname}?tab=${next}`);
-    setTab(next as MasterKind);
+    setTab(next as Tab);
   };
 
   return (
@@ -44,12 +46,16 @@ function OrgPage() {
       />
       <Tabs value={tab} onValueChange={change} className="gap-4">
         <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+          <TabsTrigger value="tree" className="flex-none px-3">
+            <GitFork /> Reporting tree
+          </TabsTrigger>
           {TABS.map(t => (
             <TabsTrigger key={t.kind} value={t.kind} className="flex-none px-3">
               <t.icon /> {MASTER_META[t.kind].plural}
             </TabsTrigger>
           ))}
         </TabsList>
+        <TabsContent value="tree">{tab === 'tree' && <OrgView embedded />}</TabsContent>
         {TABS.map(t => (
           <TabsContent key={t.kind} value={t.kind}>
             <MasterTable kind={t.kind} />

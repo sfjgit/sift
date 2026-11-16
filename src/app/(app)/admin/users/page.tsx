@@ -4,15 +4,17 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DataTable, useTableState } from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { userColumns, userFilterKeys, userFilters } from '@/features/admin/userColumns';
-import { UserActionsMenu, useUserActions } from '@/features/admin/userActions';
+import { UserActionsMenu, userMenuItems, useUserActions } from '@/features/admin/userActions';
 import { userHooks, useRoles } from '@/hooks/queries';
 import { usersApi } from '@/lib/api/endpoints';
 import { fetchAllPages } from '@/lib/api/resource';
+import { fullName } from '@/lib/format';
 import type { UserListItem } from '@/types/org';
 
 function UsersPage() {
@@ -27,10 +29,17 @@ function UsersPage() {
     [actions]
   );
   const columns = useMemo(() => userColumns(rowActions), [rowActions]);
+  const router = useRouter();
+  const rowMenu = useCallback(
+    (u: UserListItem) => userMenuItems(u, actions, href => router.push(href)),
+    [actions, router]
+  );
 
   return (
     <div className="space-y-3">
       <DataTable
+        rowMenu={rowMenu}
+        rowLabel={u => fullName(u)}
         title="Users"
         titleHint="Everyone with access to the CRM — their role, team and reporting line."
         actions={

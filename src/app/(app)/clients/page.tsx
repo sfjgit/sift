@@ -8,7 +8,6 @@ import { useRouter } from 'next/navigation';
 import {
   CheckCircle2,
   Eye,
-  MoreHorizontal,
   Pencil,
   PauseCircle,
   Play,
@@ -16,20 +15,20 @@ import {
   Trash2,
   UserPlus,
   Users,
+  BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useLookups } from '@/hooks/queries';
 import { Kbd } from '@/components/ui/kbd';
 import { HelpButton } from '@/features/help/HelpSheet';
 import { useConfirm } from '@/components/common/ConfirmProvider';
-import { DataTable, useTableState } from '@/components/data-table';
+import {
+  DataTable,
+  RowActionsButton,
+  menuItems,
+  useTableState,
+  type RowMenu,
+} from '@/components/data-table';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { tourTarget } from '@/features/tour/tour.constants';
@@ -46,6 +45,7 @@ import {
   type RunStepHandler,
 } from '@/features/clients/columns';
 import { clientExportSheets } from '@/features/clients/exportSheets';
+import { useProjectLabels } from '@/features/marks/SalesMarks';
 import { BusinessViewSelect } from '@/features/clients/BusinessViewSelect';
 import { useHiddenColumns } from '@/features/columnAccess/useHiddenColumns';
 import { AssignClientsDialog } from '@/features/clients/AssignClientsDialog';
@@ -54,6 +54,8 @@ import { RunStepLauncher, type RunTarget } from '@/features/pipeline/RunStepLaun
 import { clientHooks } from '@/hooks/queries';
 import { useAction } from '@/hooks/useResource';
 import { useHotkey } from '@/hooks/useHotkey';
+import { usePageStats } from '@/hooks/usePageStats';
+import { ClientStats } from '@/features/clients/ClientStats';
 import { clientsApi } from '@/lib/api/endpoints';
 import { fetchAllPages } from '@/lib/api/resource';
 import { useUi } from '@/stores/ui';
@@ -69,6 +71,11 @@ function ClientsPage() {
     sort: { id: 'updatedAt', desc: true },
     layoutVersion: CLIENT_LAYOUT_VERSION,
   });
+  const [statsOpen, toggleStats] = usePageStats('clients');
+  const statsParams = useMemo(
+    () => ({ search: table.state.search || undefined, ...table.state.filters }),
+    [table.state.search, table.state.filters]
+  );
   const query = clientHooks.useList(table.params);
   const [assigning, setAssigning] = useState<{ rows: ClientListItem[]; clear?: () => void } | null>(
     null
@@ -95,61 +102,49 @@ function ClientsPage() {
     }
   );
 
-  const rowActions = useCallback(
-    (c: ClientListItem) => (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${c.name}`}>
-            <MoreHorizontal />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onSelect={() => router.push(`/clients/${c.id}`)}>
-            <Eye /> Open
-          </DropdownMenuItem>
-          {can('clients.update') && (
-            <DropdownMenuItem onSelect={() => router.push(`/clients/${c.id}?edit=1`)}>
-              <Pencil /> Edit
-            </DropdownMenuItem>
-          )}
-          {can('spocs.create') && (
-            <DropdownMenuItem
-              onSelect={() => openSpocDialog({ clientId: c.id, clientName: c.name })}
-            >
-              <UserPlus /> Add SPOC
-            </DropdownMenuItem>
-          )}
-          {can('clients.assign') && (
-            <DropdownMenuItem onSelect={() => setAssigning({ rows: [c] })}>
-              <Users /> Assign people
-            </DropdownMenuItem>
-          )}
-          {can('clients.delete') && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={async () => {
-                  if (
-                    await confirm({
-                      title: `Delete ${c.name}?`,
-                      description:
-                        'The client disappears from lists and reports. Its history is kept for audit.',
-                      destructive: true,
-                      confirmLabel: 'Delete client',
-                    })
-                  )
-                    removeClient(c.id);
-                }}
-              >
-                <Trash2 /> Delete
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
+  // one list for the "⋯" button and the right-click menu
+  const rowMenu = useCallback<RowMenu<ClientListItem>>(
+    c => [
+      { label: 'Open', icon: Eye, onSelect: () => router.push(`/clients/${c.id}`) },
+      can('clients.update') && {
+        label: 'Edit',
+        icon: Pencil,
+        onSelect: () => router.push(`/clients/${c.id}?edit=1`),
+      },
+      can('spocs.create') && {
+        label: 'Add SPOC',
+        icon: UserPlus,
+        onSelect: () => openSpocDialog({ clientId: c.id, clientName: c.name }),
+      },
+      can('clients.assign') && {
+        label: 'Assign people',
+        icon: Users,
+        onSelect: () => setAssigning({ rows: [c] }),
+      },
+      can('clients.delete') && {
+        label: 'Delete',
+        icon: Trash2,
+        destructive: true,
+        separatorBefore: true,
+        onSelect: async () => {
+          if (
+            await confirm({
+              title: `Delete ${c.name}?`,
+              description:
+                'The client disappears from lists and reports. Its history is kept for audit.',
+              destructive: true,
+              confirmLabel: 'Delete client',
+            })
+          )
+            removeClient(c.id);
+        },
+      },
+    ],
     [can, confirm, openSpocDialog, removeClient, router]
+  );
+  const rowActions = useCallback(
+    (c: ClientListItem) => <RowActionsButton items={menuItems(rowMenu, c)} label={c.name} />,
+    [rowMenu]
   );
 
   // Run buttons in the step columns; emails also need outreach.generate
@@ -161,6 +156,9 @@ function ClientsPage() {
     [can]
   );
 
+  const canEditClients = can('clients.update');
+  const projectLabels = useProjectLabels();
+
   // every column (admins arrange access from these) → minus the ones my role may not see
   const allColumns = useMemo(
     () =>
@@ -171,9 +169,11 @@ function ClientsPage() {
           onOpenData: (client, tab) => setDataSheet({ client, tab }),
           techCategories,
           documentTypes,
+          canEdit: canEditClients,
+          projectLabels,
         })
       ),
-    [rowActions, runHandler, techCategories, documentTypes]
+    [rowActions, runHandler, techCategories, documentTypes, canEditClients, projectLabels]
   );
   const { hidden: roleHidden } = useHiddenColumns('clients');
   const columns = useMemo(
@@ -187,12 +187,31 @@ function ClientsPage() {
       {/* one row: title · status tabs · actions — the sheet gets the height */}
       <DataTable
         id="clients"
+        rowMenu={rowMenu}
+        rowLabel={c => c.name}
         title="Clients"
         titleAddon={<BusinessViewSelect />}
+        banner={
+          statsOpen && (
+            <ClientStats
+              params={statsParams}
+              filters={table.state.filters as Record<string, string>}
+              setFilter={table.actions.setFilter}
+            />
+          )
+        }
         titleHint="Every organisation you work with — its profile, CSR figures, offices, reports and who works it. Status (pending / active / inactive) is in Filters."
         actions={
           <>
             <HelpButton module="clients" />
+            <Button
+              size="sm"
+              variant={statsOpen ? 'secondary' : 'outline'}
+              onClick={toggleStats}
+              title="Counts for the clients below — they follow your filters"
+            >
+              <BarChart3 /> Stats
+            </Button>
             {can('clients.create') && (
               <Button
                 size="sm"

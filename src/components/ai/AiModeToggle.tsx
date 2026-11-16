@@ -18,6 +18,7 @@ import { Segmented, type SegmentedOption } from '@/components/ui/segmented';
 import { aiApi } from '@/lib/api/endpoints';
 import type { ApiError } from '@/lib/api/client';
 import { useUi } from '@/stores/ui';
+import { openAiDock } from '@/features/ai/speech';
 import { AI_ME_KEY, invalidateAiMe, quotaLabel, READ_ONLY_NOTE, useAiMe } from '@/features/ai/useAi';
 import type { AiMe, AiMode } from '@/types/ai';
 
@@ -88,6 +89,18 @@ export function AiTopbarControl() {
         >
           <Sparkles className="text-primary" />
           <span className="hidden sm:inline">Ask AI</span>
+        </Button>
+      )}
+      {me.active.canvas && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="rounded-none"
+          onClick={() => openAiDock()}
+          title="Reports & follow-ups in a side panel — your conversation continues on every page"
+        >
+          <LayoutDashboard className="text-primary" />
+          <span className="hidden sm:inline">Canvas</span>
         </Button>
       )}
       <Popover>

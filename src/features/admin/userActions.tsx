@@ -11,7 +11,15 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Eye, KeyRound, LogIn, MoreHorizontal, Pencil, PauseCircle, PlayCircle } from 'lucide-react';
+import {
+  Eye,
+  KeyRound,
+  LogIn,
+  MoreHorizontal,
+  Pencil,
+  PauseCircle,
+  PlayCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -20,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import type { RowMenuItem } from '@/components/data-table/RowMenu';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -58,8 +67,14 @@ export function useUserActions() {
 
   const isSelf = useCallback((u: ActionableUser) => u.id === me?.id, [me?.id]);
   /** super admins can only be managed by super admins (backend: assertCanManage) */
-  const manageable = useCallback((u: ActionableUser) => !u.isSuperAdmin || isSuperAdmin, [isSuperAdmin]);
-  const canEdit = useCallback((u: ActionableUser) => can('users.update') && manageable(u), [can, manageable]);
+  const manageable = useCallback(
+    (u: ActionableUser) => !u.isSuperAdmin || isSuperAdmin,
+    [isSuperAdmin]
+  );
+  const canEdit = useCallback(
+    (u: ActionableUser) => can('users.update') && manageable(u),
+    [can, manageable]
+  );
   const canToggle = useCallback(
     (u: ActionableUser) => can('users.deactivate') && !isSelf(u) && !u.isSuperAdmin,
     [can, isSelf]
@@ -137,6 +152,47 @@ export function useUserActions() {
 
 export type UserActions = ReturnType<typeof useUserActions>;
 
+/** the same actions as a list — the users table's right-click menu uses it */
+export const userMenuItems = (
+  user: ActionableUser,
+  actions: UserActions,
+  open: (href: string) => void
+): RowMenuItem[] =>
+  [
+    { label: 'Open profile', icon: Eye, onSelect: () => open(`/admin/users/${user.id}`) },
+    actions.canEdit(user) && {
+      label: 'Edit',
+      icon: Pencil,
+      onSelect: () => actions.openEdit(user),
+    },
+    actions.canReset(user) && {
+      label: 'Reset password',
+      icon: KeyRound,
+      onSelect: () => actions.openReset(user),
+    },
+    actions.canImpersonate(user) && {
+      label: 'Sign in as user',
+      icon: LogIn,
+      onSelect: () => void actions.impersonate(user),
+    },
+    actions.canToggle(user) &&
+      (user.isActive
+        ? {
+            label: 'Deactivate',
+            icon: PauseCircle,
+            destructive: true,
+            separatorBefore: true,
+            onSelect: () => void actions.requestToggle(user),
+          }
+        : {
+            label: 'Reactivate',
+            icon: PlayCircle,
+            iconClass: 'text-success',
+            separatorBefore: true,
+            onSelect: () => void actions.requestToggle(user),
+          }),
+  ].filter(Boolean) as RowMenuItem[];
+
 /** "…" menu for a user row (or a detail header with showOpen={false}). */
 export function UserActionsMenu({
   user,
@@ -188,7 +244,10 @@ export function UserActionsMenu({
           <>
             <DropdownMenuSeparator />
             {user.isActive ? (
-              <DropdownMenuItem variant="destructive" onSelect={() => void actions.requestToggle(user)}>
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => void actions.requestToggle(user)}
+              >
                 <PauseCircle /> Deactivate
               </DropdownMenuItem>
             ) : (

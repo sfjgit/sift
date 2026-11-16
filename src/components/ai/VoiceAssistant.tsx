@@ -43,8 +43,18 @@ import { useUi } from '@/stores/ui';
 import { useBrowserValue } from '@/hooks/useBrowserValue';
 import { invalidateAiMe, quotaLabel, useAiMe, useRefreshAiMe } from '@/features/ai/useAi';
 import {
+  fixCrmWords,
   askMicPermission,
+  AI_CANCEL_EVENT,
+  AI_DOCK_CLOSE_EVENT,
+  AI_PREV_CANVAS_EVENT,
+  CANVAS_FOCUS_EVENT,
   CANVAS_RESULT_EVENT,
+  PAGE_STATS_EVENT,
+  VOICE_DRAFT_EVENT,
+  aiPending,
+  canvasFocus,
+  openAiDock,
   canSpeak,
   getSpeechCtor,
   micPermissionState,
@@ -53,7 +63,7 @@ import {
   stopSpeaking,
   type SpeechRecognizer,
 } from '@/features/ai/speech';
-import { isAnalytic, matchSuggestions, type Suggestion } from '@/features/ai/suggestions';
+import { isAnalytic, isCanvasFollowUp, matchSuggestions, type Suggestion } from '@/features/ai/suggestions';
 import { buildPageIndex, rememberCommand, resolveLocal, type LocalAnswer } from '@/features/ai/localIntents';
 import { smallTalk, soundsLikeCrm, type ChatAnswer } from '@/features/ai/smallTalk';
 import { startClapDetector } from '@/features/ai/clap';
@@ -99,7 +109,7 @@ const norm = (s: string) =>
     .trim();
 const WAKE = /^(?:(?:hey|hi|hello|ok|okay)\s+)?(?:ai|a i|jarvis|rahul|claude|cloud|clawed|hey i)\b\s*(.*)$/;
 const MUTE = /^(mute|mute yourself|turn off|stop listening|sleep|go to sleep|shut up|be quiet|silence)$/;
-const WAIT = /^(wait|hold on|hold|let me edit|edit|one sec|one second|wait a second|wait a minute)$/;
+const WAIT = /^(no |oh |hey )?(wait|hold on|hold|stop|let me edit|edit|one sec|one second|not yet|i am not done|i'm not done)( wait| edit| stop| please| a second| a minute| a sec| it| that| let me edit)*$/;
 const ON = /^(on|unmute|turn on|wake up|listen|resume|you there|are you there|are you on)$/;
 const STATUS = /^(status|quota|limit|how many left|how many commands left)$/;
 const HELP = /^(help|what can you do|what can i say|what can i ask|options|suggestions)$/;
@@ -109,7 +119,22 @@ const CLEAR = /^(clear|start over|reset|clear that|erase)$/;
 const NUMS: Record<string, number> = { one: 1, two: 2, to: 2, too: 2, three: 3, four: 4, for: 4, five: 5, '1': 1, '2': 2, '3': 3, '4': 4, '5': 5 };
 const PICK = /^(?:option|number|pick|choose|select)\s*(one|two|to|too|three|four|for|five|[1-5])$|^(one|two|three|four|five|[1-5])$/;
 
-const AUTO_MS = 2_500; // silence before it sends by itself
+const AUTO_MS = 4_000; // silence before it sends by itself (an unfinished sentence)
+const AUTO_FAST_MS = 2_400; // …when the sentence sounds finished
+/** Chrome can sit on a sentence for seconds before calling it final — after this much quiet we take it ourselves */
+const SETTLE_MS = 1_600;
+/** a recogniser session is refreshed after this long (long sessions get slow), only while nobody is talking */
+const REFRESH_MS = 50_000;
+const TRAILING = /\b(and|or|but|by|for|with|of|the|a|an|in|on|to|from|show|me|my|is|are|that|which|where|than|per|top)$/i;
+/** how long to wait before sending: short when it sounds complete, longer mid-thought */
+const autoMs = (text: string) => {
+  const t = text.trim();
+  return t.split(/\s+/).length >= 3 && !TRAILING.test(t) ? AUTO_FAST_MS : AUTO_MS;
+};
+/** loose (default, dev): whatever you say is sent, and you always get an answer or a question back.
+ *  strict (NEXT_PUBLIC_AI_STRICT=1, for UAT): speech that isn't about the CRM is dropped unsent. */
+const STRICT = process.env.NEXT_PUBLIC_AI_STRICT === '1';
+const joinText = (a: string, b: string) => [a.trimEnd(), b.trim()].filter(Boolean).join(' ');
 const HOLD_MS = 10_000; // after "wait" (each edit restarts it)
 const GREET_AFTER_MS = 10 * 60_000;
 const LAST_KEY = 'crm:ai-last';
@@ -194,6 +219,8 @@ export function VoiceAssistant() {
   const [interim, setInterim] = useState('');
   const [reply, setReply] = useState('');
   const [countdown, setCountdown] = useState<{ ms: number; key: number } | null>(null);
+  // the speech service dropped (network) — shown on the orb so it never just looks dead
+  const [reconnecting, setReconnecting] = useState(false);
 
   const recRef = useRef<SpeechRecognizer | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -206,6 +233,11 @@ export function VoiceAssistant() {
   const sendTimer = useRef<number | undefined>(undefined);
   const hideTimer = useRef<number | undefined>(undefined);
   const restarts = useRef<number[]>([]);
+  const interimRef = useRef('');
+  const settleTimer = useRef<number | undefined>(undefined);
+  const micStartedAt = useRef(0);
+  const sentRef = useRef('');
+  const runRef = useRef(0);
   const waitingCanvas = useRef<number | undefined>(undefined);
   const pagesRef = useRef(buildPageIndex([]));
   const live = useRef({ muted, talk, me, canvasOk, path, firstName: user?.firstName });
@@ -273,8 +305,28 @@ export function VoiceAssistant() {
 
   const stopMic = () => {
     want.current = false;
+    window.clearTimeout(settleTimer.current);
     recRef.current?.abort();
     recRef.current = null;
+  };
+
+  const setInterimBoth = (v: string) => {
+    interimRef.current = v;
+    setInterim(v);
+  };
+
+  /**
+   * Take the words on screen as said, without waiting for Chrome to call them
+   * final. The session is dropped (so its late "final" can't arrive twice) and
+   * a fresh one starts at once — which also keeps sessions short and quick.
+   */
+  const commitInterim = () => {
+    window.clearTimeout(settleTimer.current);
+    const heard = interimRef.current.trim();
+    if (!heard) return;
+    setInterimBoth('');
+    recRef.current?.abort();
+    onFinal(heard);
   };
 
   /** speak (mic paused so it doesn't hear itself), then go on in `after` */
@@ -314,6 +366,17 @@ export function VoiceAssistant() {
   const doLocal = (a: LocalAnswer, text: string) => {
     void aiApi.logLocal(text, a.kind === 'control' ? null : a.url, a.kind).catch(() => undefined);
     if (a.kind === 'control') {
+      // the assistant is open: "go back" = the previous report, filters / stats = change the report
+      if (canvasFocus.on) {
+        if (a.action === 'back') {
+          window.dispatchEvent(new Event(AI_PREV_CANVAS_EVENT));
+          return finish('Back to your previous report.');
+        }
+        if (a.action === 'clearFilters' || a.action === 'stats' || a.action === 'hideStats') {
+          openAiDock(text);
+          return awaitCanvas();
+        }
+      }
       const el = scrollTarget();
       const step = Math.round(window.innerHeight * 0.7);
       if (a.action === 'back') router.back();
@@ -323,6 +386,12 @@ export function VoiceAssistant() {
       if (a.action === 'top') el.scrollTo({ top: 0, behavior: 'smooth' });
       if (a.action === 'bottom') el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
       if (a.action === 'dark' || a.action === 'light') setTheme(a.action);
+      if (a.action === 'reload') window.setTimeout(() => window.location.reload(), 600);
+      if (a.action === 'clearFilters') navigate(window.location.pathname);
+      if (a.action === 'stats') window.dispatchEvent(new CustomEvent(PAGE_STATS_EVENT));
+      if (a.action === 'hideStats') window.dispatchEvent(new CustomEvent(PAGE_STATS_EVENT, { detail: false }));
+      if (a.action === 'openAssistant') openAiDock();
+      if (a.action === 'closeAssistant') window.dispatchEvent(new Event(AI_DOCK_CLOSE_EVENT));
       return finish(a.spoken || 'Done.');
     }
     navigate(a.url);
@@ -376,20 +445,28 @@ export function VoiceAssistant() {
     }
 
     // 2. credit guard: always-on listening hears the room — only CRM talk is sent
-    if (auto && !soundsLikeCrm(text) && !isAnalytic(text)) {
+    const forCanvas = isAnalytic(text) || isCanvasFollowUp(text) || (canvasFocus.on && soundsLikeCrm(text));
+    // loose: only a lone stray word is dropped; everything else is sent and gets an answer or a question
+    const stray = text.split(/\s+/).length < 2;
+    if (auto && !soundsLikeCrm(text) && !forCanvas && (STRICT || stray)) {
       setDraftBoth('');
-      setReply('Ignored — that didn’t sound like a CRM request (nothing was sent).');
+      setReply(stray ? '' : 'Ignored — that didn’t sound like a CRM request (nothing was sent).');
+      // with the assistant workspace open this box is hidden — say it where it can be seen
+      if (canvasFocus.on && !stray) toast.info('Ignored — that didn’t sound like a CRM request. Nothing was sent.');
       rest();
       return hideSoon(2_000);
     }
 
     go('processing');
     setReply('');
-    if (live.current.talk) void speak('Processing.');
+    sentRef.current = text;
+    const run = ++runRef.current;
+    if (live.current.talk) chime();
     const { me: m, canvasOk: cv } = live.current;
 
-    // 3. numbers / rankings / trends → AI Canvas
-    if (cv && isAnalytic(text)) {
+    // 3. the assistant (one brain): it filters the page, shows stats, explains or builds a report.
+    //    Words answers come back in a small card; the workspace opens only for a report.
+    if (cv) {
       try {
         if (!m?.active.canvas) {
           await aiApi.setPreference('CANVAS');
@@ -399,7 +476,8 @@ export function VoiceAssistant() {
         return finish(toApiError(e).message);
       }
       awaitCanvas();
-      navigate(`/ai-canvas?prompt=${encodeURIComponent(text)}`);
+      // stay on this page: the side panel answers (on /ai-canvas, the page does)
+      openAiDock(text);
       return;
     }
 
@@ -411,6 +489,7 @@ export function VoiceAssistant() {
       refreshMe();
       return finish(toApiError(e).message);
     }
+    if (run !== runRef.current) return; // "wait" / "cancel" came in meanwhile
     refreshMe(r.quota);
     switch (r.type) {
       case 'navigate': {
@@ -444,6 +523,22 @@ export function VoiceAssistant() {
     }
   };
 
+  // while the assistant workspace is on screen it owns the typing box — this floating one stays hidden
+  const [canvasOn, setCanvasOn] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setCanvasOn(!!(e as CustomEvent<boolean>).detail);
+    window.addEventListener(CANVAS_FOCUS_EVENT, on);
+    return () => window.removeEventListener(CANVAS_FOCUS_EVENT, on);
+  }, []);
+
+  // the workspace has its own box: what is being said shows up there, live
+  useEffect(() => {
+    if (!canvasOn) return;
+    window.dispatchEvent(
+      new CustomEvent(VOICE_DRAFT_EVENT, { detail: { text: joinText(draft, interim), sendInMs: interim ? null : (countdown?.ms ?? null), key: countdown?.key ?? 0 } })
+    );
+  }, [canvasOn, draft, interim, countdown]);
+
   // canvas results → speak them
   useEffect(() => {
     const onCanvas = (e: Event) => {
@@ -475,7 +570,7 @@ export function VoiceAssistant() {
     if (then) {
       show();
       insertSpoken(then);
-      return arm(AUTO_MS);
+      return arm(autoMs(draftRef.current));
     }
     show();
     if (Date.now() - lastActive() > GREET_AFTER_MS) void say('Yes, I am on. How can I help?', 'idle');
@@ -487,9 +582,33 @@ export function VoiceAssistant() {
   // ── what was heard ─────────────────────────────────────────────────────────
 
   const onFinal = (raw: string) => {
-    const t = norm(raw);
-    setInterim('');
+    const t = norm(fixCrmWords(raw));
+    window.clearTimeout(settleTimer.current);
+    setInterimBoth('');
     if (!t) return;
+    // an action card is asking "do it?" — yes / no / cancel answer it (not Jarvis's own go / cancel)
+    if (aiPending.action && /^(yes|yeah|yep|ok|okay|confirm|do it|go ahead|go|sure|proceed|haan|no|nope|cancel|stop|never ?mind|leave it)( please| it| do it)?$/.test(t)) {
+      openAiDock(t);
+      return;
+    }
+
+    // "wait" / "cancel" after it already went: stop it, drop the answer, give the words back
+    if (phaseRef.current === 'processing' && (WAIT.test(t) || CANCEL.test(t))) {
+      runRef.current++;
+      window.clearTimeout(waitingCanvas.current);
+      window.dispatchEvent(new Event(AI_CANCEL_EVENT));
+      if (CANCEL.test(t)) {
+        hide();
+        return rest();
+      }
+      setDraftBoth(sentRef.current);
+      caret.current = null;
+      show();
+      go('holding');
+      setReply('Stopped. Edit it — it sends when you say “go” or pause.');
+      inputRef.current?.focus();
+      return arm(HOLD_MS);
+    }
     if (speakingRef.current) {
       if (/^(stop|quiet|enough|jarvis stop|ai stop)$/.test(t)) stopSpeaking();
       return;
@@ -544,6 +663,13 @@ export function VoiceAssistant() {
         show();
         return void finish(!q || q.max == null ? 'You have unlimited commands.' : `You have used ${q.used} of ${q.max} commands ${q.period === 'DAY' ? 'today' : 'this period'}.`);
       }
+      // the screen itself ("go back", "reset filters", "show stats"): at once, no waiting for a pause
+      const control = resolveLocal(body, pagesRef.current);
+      if (control?.kind === 'control') {
+        show();
+        go('processing');
+        return void doLocal(control, body);
+      }
       if (HELP.test(body)) {
         show();
         go('idle');
@@ -570,22 +696,41 @@ export function VoiceAssistant() {
     rec.lang = 'en-IN';
     rec.continuous = true;
     rec.interimResults = true;
+    rec.onstart = () => {
+      micStartedAt.current = Date.now();
+      setReconnecting(false);
+    };
     rec.onresult = e => {
+      if (recRef.current !== rec) return; // a session we already dropped
       let heard = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const res = e.results[i]!;
         if (res.isFinal) onFinal(res[0].transcript);
-        else heard += res[0].transcript;
+        else heard += fixCrmWords(res[0].transcript);
       }
       if (heard && !live.current.muted) {
-        setInterim(heard);
+        setInterimBoth(heard);
         window.clearTimeout(sendTimer.current); // still talking — wait
         setCountdown(null);
         if (heard.trim().length > 3) show();
+        // quiet for a moment with words on screen → they're said; don't wait for Chrome
+        window.clearTimeout(settleTimer.current);
+        settleTimer.current = window.setTimeout(commitInterim, SETTLE_MS);
+      } else if (heard) {
+        // muted: still listen for the wake word in what is being said
+        interimRef.current = heard;
+        window.clearTimeout(settleTimer.current);
+        settleTimer.current = window.setTimeout(commitInterim, SETTLE_MS);
       }
     };
     rec.onerror = ev => {
-      if (ev.error !== 'not-allowed' && ev.error !== 'service-not-allowed') return;
+      if (ev.error === 'network') return setReconnecting(true); // onend follows and reconnects
+      if (ev.error === 'audio-capture') {
+        want.current = false;
+        go('off');
+        return void toast.error('No microphone found', { description: 'Plug one in or pick it in the browser, then turn voice on again.' });
+      }
+      if (ev.error !== 'not-allowed' && ev.error !== 'service-not-allowed') return; // no-speech / aborted: normal
       // "not allowed" is usually just "no click on the page yet" — wait for one.
       // Only a real Block in the browser stops it (and even that is not saved:
       // allowing the mic later and reloading brings voice back).
@@ -603,11 +748,14 @@ export function VoiceAssistant() {
       });
     };
     rec.onend = () => {
-      recRef.current = null;
+      if (recRef.current === rec) recRef.current = null;
       if (!want.current || speakingRef.current) return;
+      // reconnect at once; only a real storm of drops (bad network) is slowed, and only to 1 s
       const now = Date.now();
       restarts.current = [...restarts.current.filter(x => now - x < 10_000), now];
-      window.setTimeout(startMic, restarts.current.length > 5 ? 4_000 : 250);
+      const storm = restarts.current.length > 12;
+      if (storm) setReconnecting(true);
+      window.setTimeout(startMic, storm ? 1_000 : 0);
     };
     recRef.current = rec;
     try {
@@ -655,6 +803,23 @@ export function VoiceAssistant() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsTap]);
+
+  // watchdog: a mic that should be on but isn't is restarted within 2 s; an idle
+  // session older than REFRESH_MS is swapped for a fresh one (long ones get slow)
+  useEffect(() => {
+    if (!on || !available || !supported) return;
+    const id = window.setInterval(() => {
+      if (!want.current || speakingRef.current || document.visibilityState !== 'visible') return;
+      if (!recRef.current) return startMic();
+      const idle = !interimRef.current && phaseRef.current !== 'dictating' && phaseRef.current !== 'holding';
+      if (idle && micStartedAt.current && Date.now() - micStartedAt.current > REFRESH_MS) {
+        micStartedAt.current = Date.now();
+        recRef.current.abort(); // onend starts the next one
+      }
+    }, 2_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [on, available, supported]);
 
   // double clap: wakes it when muted, opens it when listening
   useEffect(() => {
@@ -711,9 +876,20 @@ export function VoiceAssistant() {
     if (live.current.talk) void speak('I am listening.');
   };
 
+  /** Enter / Send while words are still being heard: they count as typed (no voice commands read into them) */
+  const takeHeard = () => {
+    window.clearTimeout(settleTimer.current);
+    const heard = interimRef.current.trim();
+    if (!heard) return;
+    setInterimBoth('');
+    recRef.current?.abort();
+    insertSpoken(heard);
+  };
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      takeHeard();
       void submit(false);
     }
     if (e.key === 'Escape') {
@@ -728,6 +904,11 @@ export function VoiceAssistant() {
   const mood: OrbMood =
     phase === 'processing' ? 'thinking' : phase === 'speaking' ? 'speaking' : phase === 'muted' ? 'muted' : interim ? 'hearing' : 'listening';
   const liveOrb = phase !== 'off' && phase !== 'muted';
+  const statusText = needsTap
+    ? 'Click anywhere on the page to switch the mic on'
+    : reconnecting && phase !== 'off'
+      ? 'Reconnecting the microphone…'
+      : STATUS_TEXT[phase];
   const busy = phase === 'processing';
 
   return (
@@ -735,7 +916,7 @@ export function VoiceAssistant() {
       <style>{`@keyframes aiv-count { from { transform: scaleX(1) } to { transform: scaleX(0) } }`}</style>
 
       {/* ── the floating assistant (no box, no backdrop) ── */}
-      {open && (
+      {open && !canvasOn && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex flex-col items-center gap-1 px-4 print:hidden" role="region" aria-label="AI assistant">
           <div className="pointer-events-none -mb-6 drop-shadow-[0_0_30px_rgba(255,140,40,0.35)]">
             <AssistantOrb3D mood={mood} size={190} />
@@ -745,10 +926,16 @@ export function VoiceAssistant() {
             <div className="flex items-end gap-2 p-2">
               <textarea
                 ref={inputRef}
-                value={draft}
+                value={interim ? joinText(draft, interim) : draft}
                 rows={1}
                 maxLength={me?.maxInputChars ?? 500}
                 onChange={e => {
+                  // typing over words still being heard: keep what is on screen, drop the pending audio
+                  if (interimRef.current) {
+                    window.clearTimeout(settleTimer.current);
+                    setInterimBoth('');
+                    recRef.current?.abort();
+                  }
                   setDraftBoth(e.target.value);
                   caret.current = e.target.selectionStart;
                   // editing = they want time: hold, and restart the hold on each edit
@@ -762,7 +949,7 @@ export function VoiceAssistant() {
                   caret.current = el.selectionStart >= el.value.length ? null : el.selectionStart;
                 }}
                 onKeyDown={onKeyDown}
-                placeholder={phase === 'off' ? 'Type what you want to see… (Enter)' : 'Just talk — or type. It sends when you pause.'}
+                placeholder={phase === 'off' ? 'Type what you want to see… (Enter)' : 'Just talk — or type. It sends when you pause. Say “wait” to stop it.'}
                 className="field-sizing-content max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-lg leading-snug outline-none placeholder:text-muted-foreground/70"
                 aria-label="What you want"
                 disabled={busy}
@@ -770,8 +957,11 @@ export function VoiceAssistant() {
               <Button
                 size="icon"
                 className="mb-0.5 shrink-0 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white hover:opacity-90"
-                onClick={() => void submit(false)}
-                disabled={busy || !draft.trim()}
+                onClick={() => {
+                  takeHeard();
+                  void submit(false);
+                }}
+                disabled={busy || !(draft.trim() || interim.trim())}
                 aria-label="Send now"
                 title="Send now (Enter, or say “go”)"
               >
@@ -800,7 +990,6 @@ export function VoiceAssistant() {
                 />
               </div>
             )}
-            {interim && <p className="px-4 pt-1 text-sm text-muted-foreground italic">…{interim}</p>}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5 text-xs text-muted-foreground">
               <span className={cn('font-medium', busy || liveOrb ? 'text-amber-600' : '')}>
                 {countdown ? (phase === 'holding' ? `Sending in ${Math.round(countdown.ms / 1000)} s — say “go” to send now` : 'Sending… say “wait” to edit') : STATUS_TEXT[phase]}
@@ -845,8 +1034,8 @@ export function VoiceAssistant() {
           <PopoverTrigger asChild>
             <button
               type="button"
-              aria-label={`AI voice — ${needsTap ? 'Click anywhere on the page to switch the mic on' : STATUS_TEXT[phase]}`}
-              title={needsTap ? 'Click anywhere on the page to switch the mic on' : STATUS_TEXT[phase]}
+              aria-label={`AI voice — ${statusText}`}
+              title={statusText}
               className={cn(
                 'pointer-events-auto relative grid size-12 place-items-center overflow-hidden rounded-full border shadow-lg',
                 phase === 'off' && 'bg-card text-muted-foreground hover:text-foreground',
@@ -861,13 +1050,16 @@ export function VoiceAssistant() {
               ) : (
                 <MicOff className="size-5" />
               )}
+              {reconnecting && phase !== 'off' && (
+                <span className="absolute top-0.5 right-0.5 size-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-black" />
+              )}
             </button>
           </PopoverTrigger>
           <PopoverContent side="top" align="start" className="w-80 space-y-3">
             <div>
               <p className="text-sm font-semibold">Jarvis — voice assistant</p>
               <p className="text-xs text-muted-foreground">
-                {needsTap ? 'Click anywhere on the page to switch the mic on' : STATUS_TEXT[phase]}
+                {statusText}
               </p>
             </div>
             {!supported ? (
@@ -901,6 +1093,11 @@ export function VoiceAssistant() {
             <ul className="space-y-1 border-t pt-2 text-xs text-muted-foreground">
               <li>
                 Just talk — it types, then <b className="text-foreground">sends when you pause</b>.
+              </li>
+              <li>
+                Screen: <b className="text-foreground">“go back”</b>, <b className="text-foreground">“reset filters”</b>,{' '}
+                <b className="text-foreground">“show stats”</b>, <b className="text-foreground">“open / close assistant”</b>, “scroll down”,
+                “refresh”.
               </li>
               <li>
                 <b className="text-foreground">“wait”</b> = time to edit · <b className="text-foreground">“go”</b> = send now ·{' '}

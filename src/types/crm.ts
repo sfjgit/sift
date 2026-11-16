@@ -40,7 +40,13 @@ export type ClientActivityType =
   | 'SPOC_APPROVED'
   | 'SPOC_REJECTED'
   | 'OUTREACH_UPDATED'
-  | 'CLIENT_ASSIGNED';
+  | 'CLIENT_ASSIGNED'
+  | 'NOTE_UPDATED'
+  | 'TASK_ADDED'
+  | 'TASK_UPDATED'
+  | 'TASK_CLOSED'
+  | 'SALES_STATUS_CHANGED'
+  | 'INTERACTION_LOGGED';
 
 // ── clients ──────────────────────────────────────────────────────────────────
 
@@ -97,6 +103,14 @@ export interface ClientListItem {
   documents?: { id: string; fy: string; type: LookupRef }[];
   /** list rows only: what the CRM holds and the last pipeline run */
   coverage?: ClientCoverage;
+  /** sales marks */
+  csrEligible: boolean | null;
+  /** PROJECT lookup ids */
+  projectIds: string[];
+  projectSetAt: string | null;
+  projectSetBy: Person | null;
+  /** personal key-account stars — many users per client */
+  keyAccounts: { createdAt: string; user: Person }[];
 }
 
 export interface ClientAssignment {
@@ -172,8 +186,45 @@ export interface ClientNote {
   id: string;
   content: string;
   createdAt: string;
+  editedAt: string | null;
   author: Person;
+  /** set when the comment is about one SPOC */
+  spoc: Person | null;
 }
+
+// ── tasks / calls / meetings ─────────────────────────────────────────────────
+
+export type WorkTaskKind = 'TASK' | 'CALL' | 'MEETING';
+export type WorkTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';
+
+export interface WorkTask {
+  id: string;
+  kind: WorkTaskKind;
+  title: string;
+  notes: string | null;
+  dueAt: string | null;
+  status: WorkTaskStatus;
+  /** what happened (a meeting's minutes) */
+  closeNote: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignee: Person;
+  createdBy: Person;
+  closedBy: Person | null;
+  spoc: Person | null;
+}
+
+export interface WorkTaskInput {
+  spocId?: string | null;
+  kind?: WorkTaskKind;
+  title: string;
+  notes?: string | null;
+  dueAt?: string | null;
+  assigneeId?: string;
+}
+
+export type InteractionChannel = 'EMAIL' | 'CALL' | 'WHATSAPP' | 'LINKEDIN' | 'OTHER';
 
 export interface ClientDocument {
   id: string;
@@ -309,6 +360,9 @@ export interface ClientInput {
   businessUnitId?: string | null;
   /** replaces the client's whole set */
   serviceLineIds?: string[];
+  csrEligible?: boolean | null;
+  /** PROJECT lookup ids — replaces the whole set */
+  projectIds?: string[];
 }
 
 export interface LocationInput {
@@ -376,6 +430,66 @@ export interface Spoc {
   approvedAt: string | null;
   approvalNote: string | null;
   approvedBy: Person | null;
+  /** sales marks */
+  erp: string | null;
+  dataFlag: SpocDataFlag | null;
+  dataFlagAt: string | null;
+  dataFlagBy: Person | null;
+  /** one holder per SPOC */
+  keyAccountUser: Person | null;
+  /** PROJECT lookup ids */
+  projectIds: string[];
+  projectSetAt: string | null;
+  projectSetBy: Person | null;
+  /** CASPA SPOC profile */
+  phone2: string | null;
+  phone3: string | null;
+  state: string | null;
+  district: string | null;
+  city: string | null;
+  pincode: string | null;
+  address: string | null;
+  /** did the last call connect? */
+  callConnected: boolean | null;
+  roleCategory: LookupRef | null;
+  decisionAuthority: LookupRef | null;
+  orgType: LookupRef | null;
+  revenueBand: LookupRef | null;
+}
+
+export type SpocDataFlag = 'CONTACT_WRONG' | 'EMAIL_WRONG' | 'BOTH_WRONG';
+
+export interface StatBucket {
+  /** id / code; "_none" = not set */
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface ClientStats {
+  total: number;
+  capped: boolean;
+  spocs: number;
+  keyAccounts: number;
+  csrEligible: number;
+  /** null when you may not see CSR figures */
+  csrSpentRs: number | null;
+  has: Record<'website' | 'linkedin' | 'cin' | 'spocs' | 'state', number> & { csrFigures: number | null };
+  by: Record<'status' | 'industry' | 'category' | 'state' | 'businessUnit' | 'entityType', StatBucket[]>;
+}
+
+export interface SpocStats {
+  total: number;
+  capped: boolean;
+  clients: number;
+  keyAccounts: number;
+  flagged: number;
+  withProjects: number;
+  has: Record<'email' | 'phone' | 'linkedin' | 'designation' | 'salesStatus' | 'location', number>;
+  by: Record<
+    'salesStatus' | 'category' | 'state' | 'handler' | 'businessUnit' | 'approval' | 'band',
+    StatBucket[]
+  >;
 }
 
 export type SpocApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -415,6 +529,22 @@ export interface SpocInput {
   salesStatusId?: string | null;
   isPrimary?: boolean;
   notes?: string | null;
+  erp?: string | null;
+  dataFlag?: SpocDataFlag | null;
+  /** PROJECT lookup ids — replaces the whole set */
+  projectIds?: string[];
+  phone2?: string | null;
+  phone3?: string | null;
+  state?: string | null;
+  district?: string | null;
+  city?: string | null;
+  pincode?: string | null;
+  address?: string | null;
+  callConnected?: boolean | null;
+  roleCategoryId?: string | null;
+  decisionAuthorityId?: string | null;
+  orgTypeId?: string | null;
+  revenueBandId?: string | null;
 }
 
 export interface BulkResult {

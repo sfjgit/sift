@@ -81,40 +81,27 @@ export const MODULES = {
     description: 'CSR policies, annual reports and other filings.',
     actions: {
       read: { label: 'View / download', scoped: true, requires: ['clients.read'] },
-      upload: {
-        label: 'Upload',
-        scoped: true,
-        requires: ['client_documents.read'],
-        reserved: true,
-      },
-      delete: {
-        label: 'Delete',
-        scoped: true,
-        requires: ['client_documents.read'],
-        reserved: true,
-      },
+      upload: { label: 'Upload / replace', scoped: true, requires: ['client_documents.read'] },
+      delete: { label: 'Delete', scoped: true, requires: ['client_documents.read'] },
     },
   },
   client_financials: {
-    label: 'CSR financials',
+    label: 'Financials',
     group: 'CRM',
     order: 6,
-    description: 'Obligation, budget, spent and unspent figures per FY.',
+    description:
+      'CSR figures (obligation, budget, spent, unspent) and company figures (revenue, profit, capital) per FY.',
     actions: {
       read: { label: 'View', scoped: false, requires: ['clients.read'] },
-      update: {
-        label: 'Edit / lock',
-        scoped: true,
-        requires: ['client_financials.read'],
-        reserved: true,
-      },
+      update: { label: 'Edit / lock', scoped: true, requires: ['client_financials.read'] },
     },
   },
   client_programs: {
     label: 'CSR programmes',
     group: 'CRM',
     order: 7,
-    description: 'CSR projects a client funds per FY: sectors, where, how much, through which agency.',
+    description:
+      'CSR projects a client funds per FY: sectors, where, how much, through which agency.',
     actions: {
       read: { label: 'View', scoped: false, requires: ['clients.read'] },
       create: { label: 'Add', scoped: true, requires: ['client_programs.read'] },
@@ -183,8 +170,16 @@ export const MODULES = {
     actions: {
       command_use: { label: 'Use command mode', scoped: false },
       canvas_use: { label: 'Use AI Canvas (beta)', scoped: false, requires: ['reports.read'] },
-      canvas_export: { label: 'Export canvas (Excel / PDF / PPT)', scoped: false, requires: ['ai_assistant.canvas_use'] },
-      canvas_save_template: { label: 'Save canvas templates', scoped: false, requires: ['ai_assistant.canvas_use'] },
+      canvas_export: {
+        label: 'Export canvas (Excel / PDF / PPT)',
+        scoped: false,
+        requires: ['ai_assistant.canvas_use'],
+      },
+      canvas_save_template: {
+        label: 'Save canvas templates',
+        scoped: false,
+        requires: ['ai_assistant.canvas_use'],
+      },
       settings_manage: { label: 'Manage AI settings, quotas, budget', scoped: false },
       usage_view: { label: 'View AI usage & cost', scoped: false },
     },
@@ -281,6 +276,28 @@ export const MODULES = {
     actions: {
       view_login_history: { label: 'View login history', scoped: false },
       view_audit_log: { label: 'View audit log', scoped: false },
+    },
+  },
+  recycle_bin: {
+    label: 'Recycle bin & undo',
+    group: 'Administration',
+    order: 35.5,
+    description:
+      'Everything deleted or changed is kept — see it and put it back. Scope = whose changes.',
+    actions: {
+      read: { label: 'View', scoped: true },
+      restore: { label: 'Restore / undo', scoped: true, requires: ['recycle_bin.read'] },
+    },
+  },
+  support: {
+    label: 'Support tickets',
+    group: 'Administration',
+    order: 35.8,
+    description:
+      'Anyone can report a problem or suggest a feature and follow their own tickets. These grants are for the people who fix them.',
+    actions: {
+      manage: { label: 'See all tickets, triage, assign, ask to reproduce', scoped: false },
+      diagnose: { label: 'Run the AI diagnosis', scoped: false, requires: ['support.manage'] },
     },
   },
   help: {

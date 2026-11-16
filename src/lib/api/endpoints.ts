@@ -19,6 +19,12 @@ import type {
   AiUsageFilters,
   AiUsageMode,
   AiQuotaPeriod,
+  AiThread,
+  AiThreadListItem,
+  AiThreadRef,
+  AiThreadReply,
+  AiTurn,
+  AiCanvasView,
 } from '@/types/ai';
 import { createResource } from './resource';
 import type { ListParams } from '@/types/api';
@@ -51,6 +57,13 @@ import type {
   Spoc,
   SpocDetail,
   SpocApprovalStatus,
+  SpocDataFlag,
+  SpocStats,
+  ClientStats,
+  WorkTask,
+  WorkTaskInput,
+  WorkTaskStatus,
+  InteractionChannel,
   SpocInput,
   StartedRun,
   StartRunInput,
@@ -121,6 +134,12 @@ export const clientsApi = {
   bulkStatus: (clientIds: string[], status: ClientStatus) =>
     api.patch<BulkResult>('/clients/bulk-status', { clientIds, status }),
   assignments: (id: string) => api.get<ClientAssignment[]>(`/clients/${id}/assignments`),
+  /** counts for the Stats panel — same filters as the list */
+  stats: (params?: ListParams) => api.get<ClientStats>('/clients/stats', params),
+  toggleKeyAccount: (id: string) =>
+    api.post<{ starred: boolean; keyAccounts: ClientListItem['keyAccounts'] }>(
+      `/clients/${id}/key-account`
+    ),
   setAssignments: (id: string, userIds: string[], note?: string) =>
     api.put<{ added: number; removed: number }>(`/clients/${id}/assignments`, { userIds, note }),
   bulkAssign: (
@@ -140,8 +159,33 @@ export const clientsApi = {
     ),
   activities: (id: string, params?: ListParams) =>
     api.page<ClientActivity>(`/clients/${id}/activities`, params),
-  addNote: (id: string, content: string) =>
-    api.post<ClientNote>(`/clients/${id}/notes`, { content }),
+  addNote: (id: string, content: string, spocId?: string | null) =>
+    api.post<ClientNote>(`/clients/${id}/notes`, { content, ...(spocId && { spocId }) }),
+  updateNote: (id: string, noteId: string, content: string) =>
+    api.patch<ClientNote>(`/clients/${id}/notes/${noteId}`, { content }),
+  /** tasks, calls to make and meetings (one list, told apart by kind) */
+  tasks: (id: string, params?: { spocId?: string; status?: string }) =>
+    api.get<WorkTask[]>(`/clients/${id}/tasks`, params),
+  createTask: (id: string, body: WorkTaskInput) => api.post<WorkTask>(`/clients/${id}/tasks`, body),
+  updateTask: (
+    id: string,
+    taskId: string,
+    body: Partial<Omit<WorkTaskInput, 'spocId' | 'kind'>> & {
+      status?: WorkTaskStatus;
+      closeNote?: string | null;
+    }
+  ) => api.patch<WorkTask>(`/clients/${id}/tasks/${taskId}`, body),
+  deleteTask: (id: string, taskId: string) => api.delete(`/clients/${id}/tasks/${taskId}`),
+  /** "I emailed / called / WhatsApped them" */
+  logInteraction: (
+    id: string,
+    body: {
+      spocId?: string | null;
+      channel: InteractionChannel;
+      note?: string | null;
+      connected?: boolean;
+    }
+  ) => api.post<{ id: string }>(`/clients/${id}/interactions`, body),
   deleteNote: (id: string, noteId: string) => api.delete(`/clients/${id}/notes/${noteId}`),
   addLocation: (id: string, body: LocationInput) =>
     api.post<ClientLocation>(`/clients/${id}/locations`, body),
@@ -205,6 +249,20 @@ export const spocsApi = {
     api.patch<Spoc>(`/spocs/${id}/assign`, { assignToId, reason }),
   bulkAssign: (spocIds: string[], assignToId: string, reason?: string) =>
     api.patch<BulkResult>('/spocs/bulk-assign', { spocIds, assignToId, reason }),
+  toggleKeyAccount: (id: string) => api.post<Spoc>(`/spocs/${id}/key-account`),
+  /** counts for the Stats panel — same filters as the list */
+  stats: (params?: ListParams) => api.get<SpocStats>('/spocs/stats', params),
+  /** set any of these fields on many SPOCs; projects add / remove / replace */
+  bulkUpdate: (
+    spocIds: string[],
+    set: {
+      salesStatusId?: string | null;
+      dataFlag?: SpocDataFlag | null;
+      erp?: string | null;
+      projectIds?: string[];
+      projectMode?: 'add' | 'remove' | 'replace';
+    }
+  ) => api.patch<BulkResult>('/spocs/bulk-update', { spocIds, ...set }),
   decide: (spocIds: string[], decision: SpocApprovalStatus, note?: string) =>
     api.post<{ updated: number; unchanged: number; notFound: number }>('/spocs/approval', {
       spocIds,
@@ -216,6 +274,11 @@ export const spocsApi = {
 // ── users / roles / permissions ──────────────────────────────────────────────
 
 export const usersApi = {
+  /** the reporting tree with each person's clients / SPOCs / tasks */
+  orgTree: (root?: string) =>
+    api.get<{ root: import('@/features/org/types').OrgNode; total: number }>('/users/org-tree', {
+      root,
+    }),
   ...createResource<UserListItem, UserDetail, UserInput, Partial<UserInput>>('users', '/users', {
     updateMethod: 'put',
   }),
@@ -521,7 +584,7 @@ const saveBlob = (blob: Blob, fallbackName: string, disposition?: string) => {
 };
 
 /** a refused file download carries its JSON error inside a Blob — read it out */
-const blobRequest = async <T,>(run: () => Promise<T>): Promise<T> => {
+const blobRequest = async <T>(run: () => Promise<T>): Promise<T> => {
   try {
     return await run();
   } catch (err) {
@@ -529,7 +592,11 @@ const blobRequest = async <T,>(run: () => Promise<T>): Promise<T> => {
     if (data instanceof Blob) {
       try {
         const body = JSON.parse(await data.text()) as { message?: string; code?: string };
-        throw new ApiError((err as { response: { status: number } }).response.status, body.message ?? 'Export failed', body.code);
+        throw new ApiError(
+          (err as { response: { status: number } }).response.status,
+          body.message ?? 'Export failed',
+          body.code
+        );
       } catch (inner) {
         if (inner instanceof ApiError) throw inner;
       }
@@ -541,7 +608,10 @@ const blobRequest = async <T,>(run: () => Promise<T>): Promise<T> => {
 export const aiApi = {
   me: () => api.get<AiMe>('/ai/me'),
   setPreference: (mode: AiMode) =>
-    api.put<Pick<AiMe, 'enabled' | 'allowed' | 'active' | 'preference' | 'reason'>>('/ai/me/preference', { mode }),
+    api.put<Pick<AiMe, 'enabled' | 'allowed' | 'active' | 'preference' | 'reason'>>(
+      '/ai/me/preference',
+      { mode }
+    ),
   command: (input: string) => api.post<AiCommandResult>('/ai/command', { input }),
   /** free rule-based insights for a page (no AI call) */
   insights: (page: 'clients' | 'spocs' | 'pipeline' | 'overview') =>
@@ -551,6 +621,36 @@ export const aiApi = {
     api.post('/ai/command/local', { input, url, kind }),
 
   generate: (prompt: string) => api.post<AiCanvasResult>('/ai/canvas/generate', { prompt }),
+
+  // threads — saved conversations (follow-ups, explain, memory)
+  /** the one entry point: knows the page + its filters; filters it, shows stats, explains, or builds a report */
+  assist: (body: {
+    prompt: string;
+    threadId?: string;
+    page: { path: string; query?: string; canvasShown?: boolean; inCanvas?: boolean };
+    /** my last question and the request it was about — the reply continues it */
+    context?: { prompt: string; question: string };
+    /** the request that made the assistant ask "do you mean…" — it learns that it means this one */
+    learnFrom?: string;
+  }) => api.post<AiThreadReply>('/ai/assist', body),
+  /** my top 5 most-used requests + good ones for this page */
+  suggestions: (page: string) =>
+    api.get<{ mine: { text: string; uses: number }[]; starters: string[] }>('/ai/suggestions', {
+      page,
+    }),
+  threads: (search?: string) => api.get<AiThreadListItem[]>('/ai/threads', { search }),
+  thread: (id: string) => api.get<AiThread>(`/ai/threads/${id}`),
+  threadFromSpec: (spec: AiCanvasSpec, title?: string) =>
+    api.post<{ thread: AiThreadRef; canvas: AiCanvasView }>('/ai/threads', {
+      spec,
+      ...(title && { title }),
+    }),
+  patchThread: (id: string, body: { title?: string; pinned?: boolean }) =>
+    api.patch(`/ai/threads/${id}`, body),
+  /** the user changed the design by hand — saved as a step of the conversation, no AI call */
+  editThreadSpec: (id: string, spec: AiCanvasSpec, note: string) =>
+    api.put<{ turn: AiTurn; canvas: AiCanvasView }>(`/ai/threads/${id}/spec`, { spec, note }),
+  deleteThread: (id: string) => api.delete(`/ai/threads/${id}`),
   run: (spec: AiCanvasSpec, templateId?: string) =>
     api.post<AiCanvasResult>('/ai/canvas/run', { spec, ...(templateId && { templateId }) }),
   templates: () => api.get<AiReportTemplate[]>('/ai/canvas/templates'),
@@ -559,21 +659,37 @@ export const aiApi = {
   deleteTemplate: (id: string) => api.delete(`/ai/canvas/templates/${id}`),
   /** xlsx / pptx: downloads the file; pdf: checks + audits, returns the footer to print */
   exportCanvas: async (spec: AiCanvasSpec, format: 'xlsx' | 'pptx' | 'pdf') => {
-    if (format === 'pdf') return api.post<{ footer: string }>('/ai/canvas/export', { spec, format });
+    if (format === 'pdf')
+      return api.post<{ footer: string }>('/ai/canvas/export', { spec, format });
     const res = await blobRequest(() =>
       http.post('/ai/canvas/export', { spec, format }, { responseType: 'blob', timeout: 120_000 })
     );
-    saveBlob(res.data as Blob, `canvas.${format}`, res.headers['content-disposition'] as string | undefined);
+    saveBlob(
+      res.data as Blob,
+      `canvas.${format}`,
+      res.headers['content-disposition'] as string | undefined
+    );
     return null;
   },
 
   settings: () => api.get<AiSettings>('/ai/settings'),
-  updateSettings: (body: Partial<Pick<AiSettings['setting'], 'commandEnabled' | 'canvasEnabled' | 'monthlyBudgetInr' | 'alertThresholds'>>) =>
-    api.put<AiSettings['setting']>('/ai/settings', body),
+  updateSettings: (
+    body: Partial<
+      Pick<
+        AiSettings['setting'],
+        'commandEnabled' | 'canvasEnabled' | 'monthlyBudgetInr' | 'alertThresholds'
+      >
+    >
+  ) => api.put<AiSettings['setting']>('/ai/settings', body),
   upsertQuotas: (policies: (Omit<AiQuotaPolicy, 'id' | 'isActive'> & { isActive?: boolean })[]) =>
     api.put<AiQuotaPolicy[]>('/ai/settings/quotas', { policies }),
-  upsertOverride: (body: { userId: string; mode: AiUsageMode; period: AiQuotaPeriod; maxCount: number | null; reason?: string }) =>
-    api.post('/ai/settings/overrides', body),
+  upsertOverride: (body: {
+    userId: string;
+    mode: AiUsageMode;
+    period: AiQuotaPeriod;
+    maxCount: number | null;
+    reason?: string;
+  }) => api.post('/ai/settings/overrides', body),
   deleteOverride: (id: string) => api.delete(`/ai/settings/overrides/${id}`),
   addPricing: (body: {
     provider: string;
@@ -586,13 +702,115 @@ export const aiApi = {
     effectiveFrom?: string;
   }) => api.post('/ai/settings/pricing', body),
   commandTemplates: () => api.get<AiCommandTemplate[]>('/ai/settings/templates'),
-  setCommandTemplate: (id: string, isActive: boolean) => api.patch(`/ai/settings/templates/${id}`, { isActive }),
+  setCommandTemplate: (id: string, isActive: boolean) =>
+    api.patch(`/ai/settings/templates/${id}`, { isActive }),
 
   usage: (filters: AiUsageFilters) => api.get<AiUsage>('/ai/usage', filters),
   exportUsage: async (filters: AiUsageFilters) => {
     const res = await blobRequest(() =>
       http.get('/ai/usage/export', { params: filters, responseType: 'blob', timeout: 120_000 })
     );
-    saveBlob(res.data as Blob, 'ai-usage.xlsx', res.headers['content-disposition'] as string | undefined);
+    saveBlob(
+      res.data as Blob,
+      'ai-usage.xlsx',
+      res.headers['content-disposition'] as string | undefined
+    );
   },
+};
+
+// ── recycle bin & undo ───────────────────────────────────────────────────────
+
+export interface ChangeEntry {
+  id: string;
+  op: 'CREATE' | 'UPDATE' | 'DELETE';
+  model: string;
+  category: string;
+  label: string | null;
+  batchId: string;
+  source: string;
+  actor: string | null;
+  before: Record<string, unknown> | null;
+  after: { fields?: string[]; data?: Record<string, unknown> } | Record<string, unknown> | null;
+  restoredAt: string | null;
+  createdAt: string;
+}
+export interface RestoreResult {
+  restored: number;
+  failed: { id: string; label: string | null; reason: string }[];
+  batchId: string;
+}
+
+export const recycleApi = {
+  list: (params?: {
+    op?: string;
+    category?: string;
+    q?: string;
+    showRestored?: string;
+    page?: number;
+    limit?: number;
+  }) => api.page<ChangeEntry>('/recycle-bin', params),
+  categories: () =>
+    api.get<{ category: string; op: string; count: number }[]>('/recycle-bin/categories'),
+  restore: (id: string) => api.post<RestoreResult>(`/recycle-bin/${id}/restore`),
+  /** put back everything one action did */
+  undoBatch: (batchId: string) => api.post<RestoreResult>(`/recycle-bin/batches/${batchId}/undo`),
+};
+
+/**
+ * Run an action the assistant proposed — through the app's normal endpoints,
+ * with my own permissions. Returns the undo id of the request (recycle bin).
+ */
+export const runAiAction = async (p: import('@/types/ai').AiActionProposal) => {
+  const call =
+    p.type === 'assign_clients'
+      ? http.post('/clients/assign', p.body, { headers: { 'x-ai-action': '1' } })
+      : p.type === 'reassign_spocs'
+        ? http.patch('/spocs/bulk-assign', p.body, { headers: { 'x-ai-action': '1' } })
+        : http.patch('/spocs/bulk-update', p.body, { headers: { 'x-ai-action': '1' } });
+  const res = await call;
+  return {
+    batchId: (res.headers['x-change-batch'] as string | undefined) ?? null,
+    data: res.data?.data as Record<string, unknown> | undefined,
+  };
+};
+
+// ── support tickets (report a problem / suggest a feature) ───────────────────
+
+export const supportApi = {
+  list: (params?: {
+    kind?: string;
+    status?: string;
+    mine?: string;
+    q?: string;
+    page?: number;
+    limit?: number;
+  }) =>
+    http
+      .get<{
+        data: import('@/types/support').TicketListItem[];
+        meta: import('@/types/support').TicketListMeta;
+      }>('/tickets', { params })
+      .then(r => r.data),
+  get: (id: string) => api.get<import('@/types/support').TicketDetail>(`/tickets/${id}`),
+  create: (body: import('@/types/support').NewTicket) =>
+    http
+      .post<{ data: { id: string; number: number } }>('/tickets', body, { timeout: 120_000 })
+      .then(r => r.data.data),
+  attachment: (id: string, aid: string) =>
+    http
+      .get<ArrayBuffer>(`/tickets/${id}/attachments/${aid}`, { responseType: 'arraybuffer' })
+      .then(r => r.data),
+  addRecording: (
+    id: string,
+    body: { replay: string; replayMs?: number; context?: unknown; note?: string }
+  ) => http.post(`/tickets/${id}/attachments`, body, { timeout: 120_000 }),
+  comment: (id: string, body: string) => api.post(`/tickets/${id}/comments`, { body }),
+  update: (
+    id: string,
+    body: { status?: string; severity?: string | null; assigneeId?: string | null; note?: string }
+  ) => api.patch(`/tickets/${id}`, body),
+  requestRepro: (id: string, message?: string) =>
+    api.post(`/tickets/${id}/request-repro`, { message }),
+  diagnose: (id: string) =>
+    api.post<import('@/types/support').Diagnosis>(`/tickets/${id}/diagnose`),
 };

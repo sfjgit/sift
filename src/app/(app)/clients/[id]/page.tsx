@@ -12,8 +12,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
+  Activity,
+  CalendarClock,
   ChevronDown,
   Cpu,
   FileText,
@@ -21,7 +23,10 @@ import {
   IndianRupee,
   Mail,
   MapPin,
+  ListTodo,
+  MessageCircle,
   MessageSquareText,
+  Phone,
   Plus,
   Star,
   Users,
@@ -29,10 +34,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Breadcrumbs } from '@/components/common/PageHeader';
-import { Panel } from '@/components/common/Panel';
 import { ErrorState } from '@/components/common/states';
 import { DataTable, useTableState } from '@/components/data-table';
-import { ActivityTimeline } from '@/features/activity/ActivityTimeline';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { RunStepLauncher, type RunTarget } from '@/features/pipeline/RunStepLauncher';
@@ -43,7 +46,6 @@ import { ClientInfo } from '@/features/clients/detail/ClientInfo';
 import { CsrTab } from '@/features/clients/detail/CsrTab';
 import { DocumentsPanel } from '@/features/clients/detail/DocumentsPanel';
 import { LocationsTab } from '@/features/clients/detail/LocationsTab';
-import { NotesPanel } from '@/features/clients/detail/NotesPanel';
 import { OutreachList } from '@/features/clients/detail/OutreachList';
 import { PipelinePanel } from '@/features/pipeline/PipelinePanel';
 import { TechnologyTab } from '@/features/clients/detail/TechnologyTab';
@@ -52,13 +54,16 @@ import { tourTarget } from '@/features/tour/tour.constants';
 import { useTour } from '@/features/tour/useTour';
 import { clientDetailTour } from '@/features/tour/tours/catalog';
 import { clientHooks, spocHooks } from '@/hooks/queries';
-import { clientsApi } from '@/lib/api/endpoints';
+import { WorkPanel, useWorkTasks, type ComposeMode } from '@/features/work/WorkPanel';
+import { spocsApi } from '@/lib/api/endpoints';
+import { fullName } from '@/lib/format';
 import { useUi } from '@/stores/ui';
 import { cn } from '@/lib/utils';
 import type { ApiError } from '@/lib/api/client';
 import type { ClientDetail } from '@/types/crm';
 
 const SECTION_IDS = [
+  'activity',
   'info',
   'branches',
   'csr',
@@ -67,14 +72,13 @@ const SECTION_IDS = [
   'technology',
   'outreach',
   'pipeline',
-  'notes',
 ] as const;
 type SectionId = (typeof SECTION_IDS)[number];
 // old links (tabs of earlier versions)
 const ALIASES: Record<string, SectionId> = {
   overview: 'info',
   locations: 'branches',
-  activity: 'notes',
+  notes: 'activity',
 };
 
 const sectionFromUrl = (): SectionId | null => {
@@ -87,12 +91,12 @@ const sectionFromUrl = (): SectionId | null => {
 const scrollToSection = (id: SectionId) =>
   document.getElementById(`section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-const OPEN_KEY = 'crm:client-sections-v2';
+const OPEN_KEY = 'crm:client-sections-v3';
 
-/** open bars — "Client information" at first; remembered in this browser */
+/** open bars — "Activity & tasks" and "Client information" at first; remembered in this browser */
 function useOpenSections() {
   const [open, setOpen] = useState<SectionId[]>(() => {
-    let saved: SectionId[] = ['info'];
+    let saved: SectionId[] = ['activity', 'info'];
     try {
       const raw = localStorage.getItem(OPEN_KEY);
       if (raw) saved = JSON.parse(raw);
@@ -153,37 +157,11 @@ function ClientSpocs({ client }: { client: ClientDetail }) {
   );
 }
 
-function ActivityFull({ clientId }: { clientId: string }) {
-  const q = useInfiniteQuery({
-    queryKey: ['client-activity', clientId],
-    queryFn: ({ pageParam }) => clientsApi.activities(clientId, { page: pageParam, limit: 30 }),
-    initialPageParam: 1,
-    getNextPageParam: last => (last.meta.page < last.meta.pages ? last.meta.page + 1 : undefined),
-  });
-  const items = q.data?.pages.flatMap(p => p.data);
-  return (
-    <Panel description={q.data ? `${q.data.pages[0].meta.total} events` : undefined}>
-      <ActivityTimeline items={items} loading={q.isLoading} />
-      {q.hasNextPage && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4 w-full"
-          onClick={() => q.fetchNextPage()}
-          disabled={q.isFetchingNextPage}
-        >
-          {q.isFetchingNextPage ? 'Loading…' : 'Load older activity'}
-        </Button>
-      )}
-    </Panel>
-  );
-}
-
 interface SectionDef {
   id: SectionId;
   label: string;
   icon: typeof Users;
-  count?: number;
+  count?: number | string;
   hidden?: boolean;
   /** the pipeline steps that fill this section — their ▶ pills sit on its bar */
   steps?: string[];
@@ -275,11 +253,31 @@ function ClientPage() {
   const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
   const [openIds, setOpenIds] = useOpenSections();
   useTour(clientDetailTour, { ready: !!client });
+  const openTasks = (useWorkTasks(client?.id).data ?? []).filter(t => t.status !== 'DONE').length;
+  const [compose, setCompose] = useState<ComposeMode>('comment');
+  // the client's SPOCs, so a comment / call / task can be tagged to one of them
+  const canSeeSpocs = can('spocs.read');
+  const { data: spocPage } = useQuery({
+    queryKey: [...spocHooks.keys.all, 'of-client', id],
+    queryFn: () => spocsApi.list({ clientId: id, limit: 100 }),
+    enabled: !!client && canSeeSpocs,
+  });
+  const spocOptions = useMemo(
+    () => (spocPage?.data ?? []).map(s => ({ id: s.id, name: fullName(s) })),
+    [spocPage]
+  );
 
   const sections: SectionDef[] = useMemo(
     () =>
       client
         ? [
+            {
+              id: 'activity',
+              label: 'Activity & tasks',
+              icon: Activity,
+              count: openTasks ? `${openTasks} open` : undefined,
+              hint: 'Comments, calls, emails, WhatsApp, meetings and tasks',
+            },
             {
               id: 'info',
               label: 'Client information',
@@ -335,15 +333,9 @@ function ClientPage() {
               icon: GitBranch,
               hidden: !can('step_runs.read'),
             },
-            {
-              id: 'notes',
-              label: 'Notes & activity',
-              icon: MessageSquareText,
-              count: client.notes.length,
-            },
           ]
         : [],
-    [client, can]
+    [client, can, openTasks]
   );
 
   const toggle = useCallback(
@@ -391,8 +383,24 @@ function ClientPage() {
     );
   }
 
+  const visible = sections.filter(d => !d.hidden);
+  /** open the section if needed, then scroll to it */
+  const jumpTo = (sid: SectionId) => {
+    if (!openIds.includes(sid)) setOpenIds([...openIds, sid]);
+    requestAnimationFrame(() => scrollToSection(sid));
+  };
+
   const body: Record<SectionId, React.ReactNode> = {
-    info: <ClientInfo client={client} onEdit={() => setEditing(true)} />,
+    activity: (
+      <WorkPanel
+        clientId={client.id}
+        notes={client.notes}
+        spocs={spocOptions}
+        mode={compose}
+        onModeChange={setCompose}
+      />
+    ),
+    info: <ClientInfo client={client} />,
     branches: <LocationsTab client={client} />,
     csr: <CsrTab client={client} withDocuments={false} />,
     reports: <DocumentsPanel client={client} />,
@@ -400,12 +408,6 @@ function ClientPage() {
     technology: <TechnologyTab client={client} />,
     outreach: <OutreachList clientId={client.id} />,
     pipeline: <PipelinePanel clientId={client.id} clientName={client.name} />,
-    notes: (
-      <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
-        <NotesPanel clientId={client.id} notes={client.notes} />
-        <ActivityFull clientId={client.id} />
-      </div>
-    ),
   };
 
   return (
@@ -413,10 +415,70 @@ function ClientPage() {
       <Breadcrumbs crumbs={[{ label: 'Clients', href: '/clients' }, { label: client.name }]} />
       <ClientHeader client={client} onEdit={() => setEditing(true)} onRun={onRun} />
 
-      <div className="space-y-3" {...tourTarget('client-tabs')}>
-        {sections
-          .filter(d => !d.hidden)
-          .map(d => (
+      {/* quick log: opens the composer on that tab */}
+      {can('client_notes.create') && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Log / add</span>
+          <div className="flex overflow-hidden rounded-lg border bg-card">
+            {(
+              [
+                ['call', 'Call', Phone],
+                ['email', 'Email', Mail],
+                ['whatsapp', 'WhatsApp', MessageCircle],
+                ['comment', 'Comment', MessageSquareText],
+                ['meeting', 'Meeting', CalendarClock],
+                ['task', 'Task', ListTodo],
+              ] as const
+            ).map(([m, label, Icon]) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => {
+                  setCompose(m);
+                  jumpTo('activity');
+                }}
+                className="inline-flex items-center gap-1.5 border-r px-3 py-1.5 text-[13px] font-medium text-muted-foreground last:border-r-0 hover:bg-muted hover:text-foreground"
+              >
+                <Icon className="size-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[190px_minmax(0,1fr)]">
+        {/* left rail: jump to a section (opens it if closed) */}
+        <nav className="hidden self-start lg:sticky lg:top-4 lg:block">
+          <p className="mb-1 px-3 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+            On this page
+          </p>
+          <ul>
+            {visible.map(d => (
+              <li key={d.id}>
+                <button
+                  type="button"
+                  onClick={() => jumpTo(d.id)}
+                  className={cn(
+                    'flex w-full items-center justify-between gap-2 rounded-md border-l-2 px-3 py-1.5 text-left text-[13.5px] transition-colors',
+                    openIds.includes(d.id)
+                      ? 'border-primary font-medium text-foreground hover:bg-muted'
+                      : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  <span className="truncate">{d.label}</span>
+                  {d.count ? (
+                    <span className="shrink-0 text-xs tabular text-muted-foreground">
+                      {typeof d.count === 'number' ? d.count : d.count.replace(' open', '')}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="min-w-0 space-y-3" {...tourTarget('client-tabs')}>
+          {visible.map(d => (
             <Section
               key={d.id}
               def={d}
@@ -428,6 +490,7 @@ function ClientPage() {
               {body[d.id]}
             </Section>
           ))}
+        </div>
       </div>
 
       <RunStepLauncher target={runTarget} onClose={() => setRunTarget(null)} />

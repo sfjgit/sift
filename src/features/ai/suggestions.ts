@@ -84,6 +84,11 @@ export const isAnalytic = (text: string) => {
   return ANALYTIC.test(t);
 };
 
+const FOLLOW_UP =
+  /\b(explain|summar(y|ise|ize)|stats|statistics|clear (the )?filters?|make it|show it|change it|turn it|instead|as a (pie|bar|line|table)|pie chart|bar chart|line chart|only (the )?top|i meant|new (canvas|chat|report)|start over)\b/;
+/** "make it a pie", "explain this report", "no, I meant last year" — talk about the canvas on screen */
+export const isCanvasFollowUp = (text: string) => FOLLOW_UP.test(text.toLowerCase());
+
 const STOP = new Set(['the', 'and', 'with', 'for', 'show', 'open', 'give', 'me', 'all', 'of', 'in', 'my', 'a', 'an', 'to', 'by', 'ai', 'jarvis', 'please']);
 const words = (s: string) =>
   s
