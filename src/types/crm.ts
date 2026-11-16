@@ -466,6 +466,18 @@ export interface StatBucket {
   count: number;
 }
 
+export interface ClientStats {
+  total: number;
+  capped: boolean;
+  spocs: number;
+  keyAccounts: number;
+  csrEligible: number;
+  /** null when you may not see CSR figures */
+  csrSpentRs: number | null;
+  has: Record<'website' | 'linkedin' | 'cin' | 'spocs' | 'state', number> & { csrFigures: number | null };
+  by: Record<'status' | 'industry' | 'category' | 'state' | 'businessUnit' | 'entityType', StatBucket[]>;
+}
+
 export interface SpocStats {
   total: number;
   capped: boolean;

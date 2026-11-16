@@ -39,6 +39,7 @@
     "cn": "^0.4.0",
     "date-fns": "^4.1.0",
     "driver.js": "^1.8.0",
+    "html-to-image": "1.11.13",
     "husky": "^9.1.7",
     "lucide-react": "^0.577.0",
     "maplibre-gl": "6.15.0",
@@ -53,6 +54,8 @@
     "react-map-gl": "8.1.3",
     "react-resizable-panels": "^4.11.1",
     "recharts": "^3.8.0",
+    "rrweb": "2.2.0",
+    "rrweb-player": "2.2.0",
     "shadcn": "^4.1.0",
     "sonner": "^2.0.7",
     "swr": "^2.4.1",
@@ -74,5 +77,14 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "rrweb": "2.2.0",
+    "rrweb-snapshot": "2.2.0",
+    "rrdom": "2.2.0",
+    "@rrweb/types": "2.2.0",
+    "@rrweb/utils": "2.2.0",
+    "@rrweb/replay": "2.2.0",
+    "@rrweb/packer": "2.2.0"
   }
 }

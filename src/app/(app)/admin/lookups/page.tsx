@@ -9,15 +9,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Lock, MoreHorizontal, Pencil, PauseCircle, PlayCircle, Plus } from 'lucide-react';
+import { Lock, Pencil, PauseCircle, PlayCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -28,7 +21,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActiveBadge, Pill } from '@/components/common/badges';
 import { useConfirm } from '@/components/common/ConfirmProvider';
-import { DataTable, useTableState, type DataColumn, type FilterDef } from '@/components/data-table';
+import {
+  DataTable,
+  RowActionsButton,
+  menuItems,
+  useTableState,
+  type DataColumn,
+  type FilterDef,
+  type RowMenu,
+} from '@/components/data-table';
 import { useLocalQuery } from '@/components/data-table/useLocalQuery';
 import { RequirePermission } from '@/features/auth/RequirePermission';
 import { LookupFormDialog } from '@/features/admin/LookupFormDialog';
@@ -88,11 +89,21 @@ const TYPE_INFO: Partial<Record<LookupType, { label?: string; description: strin
   },
   PROJECT: {
     label: 'Projects',
-    description: 'Project tags on clients and SPOCs (NASSCOM, STPI, AWS-Restart…) — columns and filters.',
+    description:
+      'Project tags on clients and SPOCs (NASSCOM, STPI, AWS-Restart…) — columns and filters.',
   },
-  SPOC_ROLE: { label: 'SPOC role category', description: 'A SPOC’s part in the decision (Final Decision Maker, Influencer, Gatekeeper…).' },
-  DECISION_AUTHORITY: { label: 'Decision authority', description: 'What a SPOC can decide (Final Approval, Budget Owner…).' },
-  ORG_TYPE: { label: 'Organization type', description: 'Where the SPOC sits: Corporate, Corporate Foundation or Trust.' },
+  SPOC_ROLE: {
+    label: 'SPOC role category',
+    description: 'A SPOC’s part in the decision (Final Decision Maker, Influencer, Gatekeeper…).',
+  },
+  DECISION_AUTHORITY: {
+    label: 'Decision authority',
+    description: 'What a SPOC can decide (Final Approval, Budget Owner…).',
+  },
+  ORG_TYPE: {
+    label: 'Organization type',
+    description: 'Where the SPOC sits: Corporate, Corporate Foundation or Trust.',
+  },
   REVENUE_BAND: { label: 'SPOC revenue', description: 'Revenue bands a SPOC accounts for.' },
 };
 
@@ -166,6 +177,28 @@ function LookupsPage() {
     [confirm, toggleMutate]
   );
 
+  const rowMenu = useCallback<RowMenu<Lookup>>(
+    l => [
+      { label: 'Edit', icon: Pencil, onSelect: () => setDialog({ row: l }) },
+      !l.isSystem &&
+        (l.isActive
+          ? {
+              label: 'Deactivate',
+              icon: PauseCircle,
+              destructive: true,
+              separatorBefore: true,
+              onSelect: () => void askToggle(l),
+            }
+          : {
+              label: 'Activate',
+              icon: PlayCircle,
+              iconClass: 'text-success',
+              separatorBefore: true,
+              onSelect: () => void askToggle(l),
+            }),
+    ],
+    [askToggle]
+  );
   const columns = useMemo<DataColumn<Lookup>[]>(
     () => [
       {
@@ -216,42 +249,12 @@ function LookupsPage() {
         header: '',
         enableHiding: false,
         meta: { locked: true, label: 'Actions', width: 44 },
-        cell: ({ row }) => {
-          const l = row.original;
-          return (
-            <div data-no-row-click>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${l.label}`}>
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem onSelect={() => setDialog({ row: l })}>
-                    <Pencil /> Edit
-                  </DropdownMenuItem>
-                  {!l.isSystem && (
-                    <>
-                      <DropdownMenuSeparator />
-                      {l.isActive ? (
-                        <DropdownMenuItem variant="destructive" onSelect={() => void askToggle(l)}>
-                          <PauseCircle /> Deactivate
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem onSelect={() => void askToggle(l)}>
-                          <PlayCircle className="text-success" /> Activate
-                        </DropdownMenuItem>
-                      )}
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          );
-        },
+        cell: ({ row }) => (
+          <RowActionsButton items={menuItems(rowMenu, row.original)} label={row.original.label} />
+        ),
       },
     ],
-    [askToggle]
+    [rowMenu]
   );
 
   const pickType = (t: LookupType) => {
@@ -313,6 +316,8 @@ function LookupsPage() {
             </p>
           </div>
           <DataTable
+            rowMenu={rowMenu}
+            rowLabel={l => l.label}
             title="Pick-lists"
             titleHint="The options people choose from across the CRM. Deactivate instead of deleting — old records keep their value."
             id="lookups"

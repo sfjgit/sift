@@ -4,7 +4,7 @@
 // Empty / error / loading placeholders used by tables, panels and pages.
 
 import type { ReactNode } from 'react';
-import { AlertTriangle, Inbox, Loader2, RotateCw, type LucideIcon } from 'lucide-react';
+import { Bug, AlertTriangle, Inbox, Loader2, RotateCw, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -69,11 +69,26 @@ export function ErrorState({
         <p className="text-sm font-semibold">{title}</p>
         {message && <p className="max-w-sm text-[14px] text-muted-foreground">{message}</p>}
       </div>
-      {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RotateCw /> Try again
+      <div className="flex gap-2">
+        {onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RotateCw /> Try again
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            void import('@/features/support/ReportProblem').then(m =>
+              m.openReport('BUG', {
+                title: `${title}${message ? `: ${message}` : ''}`.slice(0, 200),
+              })
+            )
+          }
+        >
+          <Bug /> Report this
         </Button>
-      )}
+      </div>
     </div>
   );
 }

@@ -18,9 +18,9 @@ import { cn } from '@/lib/utils';
 import type { ListParams } from '@/types/api';
 import type { SpocStats as Stats, StatBucket } from '@/types/crm';
 
-const pct = (n: number, of: number) => (of ? Math.round((n / of) * 100) : 0);
+export const pct = (n: number, of: number) => (of ? Math.round((n / of) * 100) : 0);
 
-function Kpi({
+export function Kpi({
   label,
   value,
   icon: Icon,
@@ -48,7 +48,7 @@ function Kpi({
 }
 
 /** has / missing for one field, as a thin split bar */
-function Coverage({ label, has, total }: { label: string; has: number; total: number }) {
+export function Coverage({ label, has, total }: { label: string; has: number; total: number }) {
   const p = pct(has, total);
   return (
     <div>
@@ -66,7 +66,7 @@ function Coverage({ label, has, total }: { label: string; has: number; total: nu
 }
 
 /** top-N list with bars; a row is clickable when it maps to a table filter */
-function TopList({
+export function TopList({
   title,
   buckets,
   total,

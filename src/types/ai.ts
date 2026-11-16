@@ -42,7 +42,7 @@ export type AiCommandResult = (
 
 // ── canvas ───────────────────────────────────────────────────────────────────
 
-export type AiComponent = 'kpi' | 'bar' | 'line' | 'pie' | 'table';
+export type AiComponent = 'kpi' | 'bar' | 'line' | 'pie' | 'table' | 'org';
 export type AiWidth = 'full' | 'half' | 'third';
 export type AiValueFormat = 'number' | 'money' | 'percent';
 
@@ -60,7 +60,8 @@ export type AiQueryResult =
       series: { key: string; label: string }[];
       points: ({ label: string } & Record<string, number | string>)[];
     }
-  | { kind: 'rows'; columns: AiColumn[]; rows: Record<string, string | number | null>[]; total: number };
+  | { kind: 'rows'; columns: AiColumn[]; rows: Record<string, string | number | null>[]; total: number }
+  | { kind: 'tree'; root: import('@/features/org/types').OrgNode; total: number };
 
 export interface AiSpecBlock {
   id: string;
@@ -87,6 +88,79 @@ export type AiCanvasResult = (
   | { type: 'rejected'; message: string }
   | { type: 'error'; message: string }
 ) & { quota?: AiQuota };
+
+// ── threads (saved conversations) ────────────────────────────────────────────
+
+export type AiTurnKind = 'canvas' | 'clarify' | 'rejected' | 'error' | 'explain' | 'edit' | 'new' | 'action';
+
+/** an action the assistant proposes; it runs only when the person confirms */
+export interface AiActionProposal {
+  type: 'assign_clients' | 'reassign_spocs' | 'set_sales_status';
+  title: string;
+  detail: string;
+  count: number;
+  sample: string[];
+  body: Record<string, unknown>;
+}
+
+export interface AiTurn {
+  id: string;
+  seq: number;
+  input: string;
+  kind: AiTurnKind;
+  /** what the assistant said: what changed, the question, the explanation (markdown) */
+  message: string | null;
+  /** clarify: the "do you mean" choices */
+  options: string[] | null;
+  /** llm | memory | local — memory and local cost nothing */
+  tier: string;
+  createdAt: string;
+}
+
+export interface AiThreadRef {
+  id: string;
+  title: string;
+  page: string | null;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiThreadListItem extends AiThreadRef {
+  _count: { turns: number };
+}
+
+export interface AiCanvasView {
+  spec: AiCanvasSpec;
+  blocks: AiRenderedBlock[];
+}
+
+export interface AiThread extends AiThreadRef {
+  turns: AiTurn[];
+  canvas: AiCanvasView | null;
+  /** the saved canvas no longer fits your access or the catalog */
+  stale: boolean;
+}
+
+export interface AiThreadReply {
+  kind: AiTurnKind;
+  /** null when nothing was saved (a failed first message, or "new chat") */
+  thread: AiThreadRef | null;
+  turn: AiTurn | null;
+  message: string | null;
+  options?: string[];
+  canvas?: AiCanvasView;
+  matched?: { label: string; kind: string }[];
+  /** a new topic: it went to a new thread, the old one is kept */
+  startedNew?: boolean;
+  /** answered from memory or locally — no AI call */
+  free: boolean;
+  /** something to do on the page: re-filter / open a page, or open its stats view */
+  action?: { type: 'navigate'; url: string; samePage: boolean } | { type: 'stats' };
+  /** an action to confirm (assign, set status) */
+  proposal?: AiActionProposal;
+  quota?: AiQuota;
+}
 
 export interface AiReportTemplate {
   id: string;

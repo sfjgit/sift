@@ -4,3 +4,4 @@
 export { DataTable, type DataTableProps } from './DataTable';
 export { useTableState, type TableController } from './useTableState';
 export type { DataColumn, FilterDef, GroupTone, TableViewConfig } from './types';
+export { RowActionsButton, menuItems, type RowMenu, type RowMenuItem } from './RowMenu';

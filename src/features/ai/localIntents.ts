@@ -15,7 +15,13 @@ import type { NavItem } from '@/config/navigation';
 export type LocalAnswer =
   | { kind: 'page'; url: string; spoken: string }
   | { kind: 'repeat'; url: string; spoken: string }
-  | { kind: 'control'; action: 'back' | 'forward' | 'up' | 'down' | 'top' | 'bottom' | 'dark' | 'light'; spoken: string };
+  | {
+      kind: 'control';
+      action:
+        | 'back' | 'forward' | 'up' | 'down' | 'top' | 'bottom' | 'dark' | 'light'
+        | 'reload' | 'clearFilters' | 'stats' | 'hideStats' | 'openAssistant' | 'closeAssistant';
+      spoken: string;
+    };
 
 const norm = (s: string) =>
   s
@@ -55,8 +61,15 @@ export const buildPageIndex = (items: NavItem[]) => {
 };
 
 const CONTROLS: [RegExp, Extract<LocalAnswer, { kind: 'control' }>['action'], string][] = [
-  [/^(go )?back$|^previous page$/, 'back', 'Going back.'],
+  // the screen itself — done in the browser, at once, never sent anywhere
+  [/^(please )?(go |take me |move |get )?back( please| again| once)?$|^(please )?(go |take me )?(back )?(to )?(the )?(previous|last|earlier) (page|screen)( please)?$/, 'back', 'Going back.'],
   [/^(go )?forward$|^next page$/, 'forward', 'Going forward.'],
+  [/^(please )?(refresh|reload)( the| this)?( page| screen)?$/, 'reload', 'Refreshing.'],
+  [/^(please )?(clear|reset|remove|clean|drop)( all| the| my| these| those)* (filters?|search|filter and search)( please)?$|^(show|see) (me )?(all|everything)$|^no filters?$/, 'clearFilters', 'Filters cleared.'],
+  [/^(please )?(show|open|see|give)( me)?( the| some)? (stats|statistics)( please)?$|^stats$/, 'stats', 'Here are the stats for what is on screen.'],
+  [/^(hide|close|remove)( the)? (stats|statistics)$/, 'hideStats', 'Stats hidden.'],
+  [/^(open|show|bring up)( the| my)? (assistant|canvas|chat|conversation|history)$/, 'openAssistant', ''],
+  [/^(close|hide|dismiss|exit|minimi[sz]e)( the| this| that| it)*( assistant| canvas| chat| panel| card| answer| report| window)?$/, 'closeAssistant', ''],
   [/^scroll up$|^up$|^page up$/, 'up', ''],
   [/^scroll down$|^down$|^page down$/, 'down', ''],
   [/^(scroll to |go to )?(the )?top$/, 'top', ''],
