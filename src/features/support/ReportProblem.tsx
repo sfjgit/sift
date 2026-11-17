@@ -202,8 +202,19 @@ function ReportDialog() {
         replayMs,
       });
       s.set({ open: false, busy: false, ...BLANK });
+      // the link can be shared with a teammate ("same problem as #12")
+      const link = `${location.origin}/support/${t.id}`;
       toast.success(`${bug ? 'Problem' : 'Idea'} #${t.number} sent — thank you!`, {
-        action: { label: 'View', onClick: () => (location.href = `/support/${t.id}`) },
+        description: 'Share the link so others can follow it or add to it.',
+        duration: 10_000,
+        action: {
+          label: 'Copy link',
+          onClick: () =>
+            void navigator.clipboard
+              .writeText(link)
+              .then(() => toast.success(`Link to #${t.number} copied`)),
+        },
+        cancel: { label: 'View', onClick: () => (location.href = `/support/${t.id}`) },
       });
     } catch (e) {
       s.set({ busy: false });

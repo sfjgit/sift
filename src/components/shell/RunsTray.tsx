@@ -4,13 +4,26 @@
 // Floating window (bottom right, every page): the runs you started that are
 // still going — any engine — with progress, time so far and about how long is
 // left (from how long the step usually takes), plus the ones that just
-// finished. Click one to open its run sheet. Hidden when there is nothing.
+// finished. Click a running / failed one to open its run sheet, a finished one
+// to open its results page. When a run ends while you are here, a pop-up offers
+// its results (new / changed / already there). Hidden when there is nothing.
 
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePathname, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2, X, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { clientHooks } from '@/hooks/queries';
@@ -47,6 +60,10 @@ export function RunsTray() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [ready, setReady] = useState<TrayRun[]>([]); // finished while you were here → pop-up
+  const router = useRouter();
+  const pathname = usePathname();
+  const results = (id: string) => `/pipeline-runs/${id}`;
 
   const q = useQuery({
     queryKey: ['step-runs', 'tray', user?.id],
@@ -81,12 +98,62 @@ export function RunsTray() {
     if (ended.length) {
       void qc.invalidateQueries({ queryKey: clientHooks.keys.all });
       void qc.invalidateQueries({ queryKey: ['step-runs', 'overview'] });
+      // the results are in: offer them (nothing new → a short note instead)
+      const all = (q.data?.data ?? []) as TrayRun[];
+      for (const id of ended) {
+        const r = all.find(x => x.id === id);
+        if (!r || r.parentRunId || pathname === results(r.id)) continue;
+        if (r.status === 'DONE') setReady(list => [...list, r]);
+        else if (r.status === 'EMPTY')
+          toast.info(`${r.step.label} — ${r.client.name}`, {
+            description: r.note ?? 'Nothing new found',
+            action: { label: 'See results', onClick: () => router.push(results(r.id)) },
+          });
+      }
     }
     seen.current = active;
   }, [running.map(r => r.id).join(','), qc]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const next = ready[0];
+  const popup = next && (
+    <Dialog open onOpenChange={o => !o && setReady(l => l.slice(1))}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle2 className="size-5 text-success" /> Results are in
+          </DialogTitle>
+          <DialogDescription>
+            {next.step.label} finished for <b className="text-foreground">{next.client.name}</b>.
+          </DialogDescription>
+        </DialogHeader>
+        {next.note && <p className="rounded-lg bg-surface px-3 py-2 text-sm">{next.note}</p>}
+        <p className="text-xs text-muted-foreground">
+          The results page marks what is new, what changed (old → new) and what was already there.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setReady(l => l.slice(1))}>
+            Later
+          </Button>
+          <Button
+            onClick={() => {
+              setReady(l => l.slice(1));
+              router.push(results(next.id));
+            }}
+          >
+            See results
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (!runs.length)
-    return <RunSheet runId={sheet} onOpenChange={o => !o && setSheet(null)} onOpenRun={setSheet} />;
+    return (
+      <>
+        {popup}
+        <RunSheet runId={sheet} onOpenChange={o => !o && setSheet(null)} onOpenRun={setSheet} />
+      </>
+    );
 
   return (
     <>
@@ -122,7 +189,9 @@ export function RunsTray() {
                 <li key={r.id} className="group relative">
                   <button
                     type="button"
-                    onClick={() => setSheet(r.id)}
+                    onClick={() =>
+                      active || failed ? setSheet(r.id) : router.push(results(r.id))
+                    }
                     className="w-full px-3 py-2.5 text-left hover:bg-muted/50"
                   >
                     <div className="flex items-center justify-between gap-2 pr-5">
@@ -173,6 +242,7 @@ export function RunsTray() {
           </ul>
         )}
       </div>
+      {popup}
       <RunSheet runId={sheet} onOpenChange={o => !o && setSheet(null)} onOpenRun={setSheet} />
     </>
   );

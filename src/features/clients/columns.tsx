@@ -11,6 +11,7 @@ import { UserAvatar } from '@/components/common/UserAvatar';
 import { isActive } from '@/app/(app)/pipeline-runs/_components/runFormat';
 import { STEP_META } from '@/features/pipeline/stepMeta';
 import { BranchesCount } from './BranchesDialog';
+import { CsrHistoryCell } from './CsrHistoryDialog';
 import type { DataTab } from './ClientDataSheet';
 import type { DataColumn, FilterDef, GroupTone } from '@/components/data-table';
 import { fmtDate, fmtInr, fmtNumber, fmtRelative, fullName, hostOf } from '@/lib/format';
@@ -495,12 +496,13 @@ export const clientFilterKeys = clientFilters.map(f => f.key);
 // chips, and that layout is kept per user. No CSR / B2B switch.
 
 /** bump with every change to the defaults below — everyone's columns reset once */
-export const CLIENT_LAYOUT_VERSION = 3;
+export const CLIENT_LAYOUT_VERSION = 4;
 
 export const CLIENT_DEFAULT_COLUMNS = [
   'name',
   'keyAccount',
   'category',
+  'csrFy',
   'csrSpent',
   'projects',
   'industry',
@@ -546,6 +548,7 @@ const GROUPS: { label: string; tone: GroupTone; test: (id: string) => boolean }[
         'csrEligible',
         'projects',
         'category',
+        'csrFy',
         'csrSpent',
         'industry',
         'shortName',
@@ -585,7 +588,6 @@ const GROUPS: { label: string; tone: GroupTone; test: (id: string) => boolean }[
         'figureYears',
         'paidUpCapital',
         'authorisedCapital',
-        'csrFy',
         'csrObligation',
         'csrBudget',
         'csrUnspent',
@@ -754,33 +756,43 @@ export const clientColumns = ({
     cell: ({ row }) => text(row.original.category?.label),
   },
 
+  // latest CSR year and its spend — two columns, each sortable; a click shows every year
   {
-    id: 'csrSpent',
-    accessorFn: c => num(c.csrSpentRs) ?? '',
-    header: 'CSR spent',
-    meta: { label: 'CSR spent (₹)', sortKey: 'csrSpentRs', align: 'right' },
+    id: 'csrFy',
+    accessorKey: 'csrFy',
+    header: 'CSR year',
+    meta: { label: 'CSR year (latest)', sortKey: 'csrFy', sortDescFirst: true },
     cell: ({ row }) =>
-      row.original.csrSpentRs ? (
-        <span className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-          {row.original.csrFy && (
-            <span className="rounded-full bg-violet-100 px-1.5 py-px text-[11px] font-semibold text-violet-700 dark:bg-violet-950 dark:text-violet-300">
-              {row.original.csrFy}
-            </span>
-          )}
-          <span className="font-semibold text-success tabular">
-            {fmtInr(row.original.csrSpentRs)}
+      row.original.csrFy ? (
+        <CsrHistoryCell clientId={row.original.id} clientName={row.original.name}>
+          <span className="rounded-full bg-violet-100 px-1.5 py-px text-[11.5px] font-semibold whitespace-nowrap text-violet-700 tabular dark:bg-violet-950 dark:text-violet-300">
+            {row.original.csrFy}
           </span>
-        </span>
+        </CsrHistoryCell>
       ) : (
         <Dash />
       ),
   },
   {
-    id: 'csrFy',
-    accessorKey: 'csrFy',
-    header: 'CSR FY',
-    meta: { label: 'CSR spent — FY' },
-    cell: ({ row }) => text(row.original.csrFy),
+    id: 'csrSpent',
+    accessorFn: c => num(c.csrSpentRs) ?? '',
+    header: 'CSR spent',
+    meta: {
+      label: 'CSR spent (₹, latest year)',
+      sortKey: 'csrSpentRs',
+      sortDescFirst: true,
+      align: 'right',
+    },
+    cell: ({ row }) =>
+      row.original.csrSpentRs ? (
+        <CsrHistoryCell clientId={row.original.id} clientName={row.original.name} align="right">
+          <span className="font-semibold whitespace-nowrap text-success tabular">
+            {fmtInr(row.original.csrSpentRs)}
+          </span>
+        </CsrHistoryCell>
+      ) : (
+        <Dash />
+      ),
   },
   {
     id: 'csrObligation',
@@ -1145,7 +1157,14 @@ export const clientColumns = ({
     'figures',
     onOpenData
   ),
-  countColumn('programs', 'Programmes', 'CSR / skilling programmes', v => v.programs, 'figures', onOpenData),
+  countColumn(
+    'programs',
+    'Programmes',
+    'CSR / skilling programmes',
+    v => v.programs,
+    'figures',
+    onOpenData
+  ),
   countColumn(
     'emailPacks',
     'Email packs',

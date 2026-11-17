@@ -482,10 +482,10 @@ export function DataTable<T>({
     setSelectedCache({});
   };
 
-  const toggleSort = (sortKey: string) => {
+  const toggleSort = (sortKey: string, descFirst = false) => {
     const s = state.sort;
-    if (!s || s.id !== sortKey) actions.setSort({ id: sortKey, desc: false });
-    else if (!s.desc) actions.setSort({ id: sortKey, desc: true });
+    if (!s || s.id !== sortKey) actions.setSort({ id: sortKey, desc: descFirst });
+    else if (s.desc === descFirst) actions.setSort({ id: sortKey, desc: !descFirst });
     else actions.setSort(null);
   };
 
@@ -957,7 +957,7 @@ export function DataTable<T>({
                               ) : h.isPlaceholder ? null : sortKey ? (
                                 <button
                                   type="button"
-                                  onClick={() => toggleSort(sortKey)}
+                                  onClick={() => toggleSort(sortKey, !!meta?.sortDescFirst)}
                                   className={cn(
                                     '-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground',
                                     sorted && 'text-foreground'

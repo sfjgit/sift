@@ -41,7 +41,8 @@ import { CopyGuard } from '@/features/auth/CopyGuard';
 import { ScreenGuard } from '@/features/auth/ScreenGuard';
 import { NotificationsPopover } from './Notifications';
 import { PinToggle, SidebarContent } from './Sidebar';
-import { HelpMenu, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
+import { HelpMenu,
+  ReportBugButton, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
 import { announceLayoutChange, useAutoHideDesktop, useEdgeReveal } from './useEdgeReveal';
 
 function ImpersonationBanner() {
@@ -260,6 +261,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="ml-auto flex items-center gap-1">
               <AiTopbarControl />
               <QuickAddMenu />
+              <ReportBugButton />
               <HelpMenu />
               <NotificationsPopover />
               {autoHide && (

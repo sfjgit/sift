@@ -49,6 +49,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toApiError } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import type { AiActionProposal, AiCanvasResult, AiTurnKind } from '@/types/ai';
+import { useReport } from '@/features/support/ReportProblem';
 
 interface Card {
   prompt: string;
@@ -106,6 +107,14 @@ export function AiDock() {
   const router = useRouter();
   const onCanvasPage = pathname.startsWith('/ai-canvas');
   const [open, setOpen] = useState(false);
+  // reporting a problem: the dock closes so the AI stays out of it
+  useEffect(
+    () =>
+      useReport.subscribe(st => {
+        if (st.open || st.recording) setOpen(false);
+      }),
+    []
+  );
   const [incoming, setIncoming] = useState<Incoming | null>(null);
   const [card, setCard] = useState<Card | null>(null);
   const cardRef = useRef<Card | null>(null);

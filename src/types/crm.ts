@@ -815,6 +815,20 @@ export interface RunViewData {
   }[];
   skipped?: { kind: string; name?: string; reason: string; [k: string]: unknown }[];
   flaggedFigures?: { fy: string; reviewReason?: string; [k: string]: unknown }[];
+  /** what the run did to each row (runs from 17 Nov 2026 on) */
+  changes?: RunChange[];
+}
+
+export type RunChangeKind = 'spocs' | 'offices' | 'financials' | 'programs' | 'documents' | 'outreach';
+/** added = new row · updated = values changed · same = already there · kept = CRM value kept, engine said otherwise · locked = a person's value, not touched */
+export type RunChangeType = 'added' | 'updated' | 'same' | 'kept' | 'locked';
+export interface RunChange {
+  kind: RunChangeKind;
+  change: RunChangeType;
+  id?: string | null;
+  label: string;
+  sub?: string | null;
+  fields?: { field: string; from: string | null; to: string | null }[];
 }
 
 // ── integrations (admin) ─────────────────────────────────────────────────────
