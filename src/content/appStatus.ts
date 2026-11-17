@@ -1102,6 +1102,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'AI: ask or show is decided by the words, not guessed — a question ("which team is working on this client?", "how many offices does it have?") is answered in words and the canvas stays; "show / add / list …" adds a block to the canvas and keeps the others. "This client", "it", "its" mean the client the canvas is about.',
       'New AI reports about a client: its offices (head office / branches / factories), who works on it (assigned people, SPOC handlers, who acted lately, with role, manager, team lead, business unit), its CSR programmes, and recent activity.',
       'Report a problem: the AI assistant (voice mic, clap wake-up, panels) is switched off while the form is open or steps are recorded, and back on after. The recording is the page only (rrweb: clicks, scrolling, what is on screen) — no sound, no camera, no video.',
+      'AI limits: the super admin is never limited — no daily command / canvas / export quota, no per-minute limit, and the "monthly budget used up" basic mode does not apply to them (usage is still counted on the usage page). Everyone else keeps their limits.',
       'Security: removed a startup log line that printed the backend secrets (JWT secret, SMTP password) to the console.',
     ],
   },
