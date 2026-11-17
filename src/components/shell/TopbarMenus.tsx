@@ -6,6 +6,7 @@
 
 'use client';
 
+import { AccentDots } from '@/features/theme/accent';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -50,6 +51,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Kbd } from '@/components/ui/kbd';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -59,6 +61,29 @@ import { getTourForPath } from '@/features/tour/tours';
 import { openReport } from '@/features/support/ReportProblem';
 import { fullName } from '@/lib/format';
 import { useUi } from '@/stores/ui';
+
+/** the top bar's "Report bug" — one click from any page (also Ctrl⇧B) */
+export function ReportBugButton() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => void openReport('BUG')}
+          aria-label="Report a bug"
+          className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Bug />
+          <span className="hidden lg:inline">Report bug</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        Report a bug — the screen is captured for you <Kbd>Ctrl⇧B</Kbd>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function QuickAddMenu() {
   const { can } = usePermissions();
@@ -199,6 +224,10 @@ export function UserMenu() {
             <Monitor /> System
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuLabel>Colour</DropdownMenuLabel>
+        <div className="px-2 pb-2">
+          <AccentDots size="sm" />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

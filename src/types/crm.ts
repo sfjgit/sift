@@ -190,7 +190,23 @@ export interface ClientNote {
   author: Person;
   /** set when the comment is about one SPOC */
   spoc: Person | null;
+  /** set when the comment is about one section of the client page */
+  section?: NoteSection | null;
 }
+
+/** client-page sections that take their own comments (CASPA tab comments) */
+export type NoteSection =
+  | 'info'
+  | 'branches'
+  | 'skilling'
+  | 'sales_assets'
+  | 'marketing_assets'
+  | 'csr'
+  | 'reports'
+  | 'spocs'
+  | 'technology'
+  | 'outreach'
+  | 'meetings';
 
 // ── tasks / calls / meetings ─────────────────────────────────────────────────
 
@@ -272,6 +288,8 @@ export interface ClientCsrProgram {
   mode: CsrImplementationMode | null;
   agency: CsrAgency | null;
   beneficiaries: string | null;
+  /** UN SDGs 1–17 */
+  sdgs?: number[];
   sourceUrl: string | null;
   isLocked: boolean;
   updatedAt: string;
@@ -300,6 +318,9 @@ export interface CsrProgramInput {
   agencyName?: string | null;
   agencyRegistrationNo?: string | null;
   beneficiaries: string | null;
+  /** sector as written, when no Schedule VII activity matches (imports) */
+  sectorText?: string | null;
+  sdgs?: number[];
   sourceUrl: string | null;
   isLocked?: boolean;
 }
@@ -343,6 +364,13 @@ export interface ClientDetail extends Omit<ClientListItem, 'locations'> {
   /** Present only with client_financials.read */
   csrFinancials?: ClientCsrFinancial[];
   corporateFinancials?: ClientCorporateFinancial[];
+  // CASPA ICP facts
+  foundationName?: string | null;
+  foundationWebsite?: string | null;
+  isListed?: boolean | null;
+  subCategory?: string | null;
+  linkedinEmployees?: number | null;
+  marketCapRs?: string | null;
 }
 
 export interface ClientInput {
@@ -363,6 +391,12 @@ export interface ClientInput {
   csrEligible?: boolean | null;
   /** PROJECT lookup ids — replaces the whole set */
   projectIds?: string[];
+  foundationName?: string | null;
+  foundationWebsite?: string | null;
+  isListed?: boolean | null;
+  subCategory?: string | null;
+  linkedinEmployees?: number | null;
+  marketCapRs?: number | null;
 }
 
 export interface LocationInput {
@@ -374,6 +408,8 @@ export interface LocationInput {
   state?: string | null;
   country?: string | null;
   pincode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   isPrimary?: boolean;
   dmEvidence?: string | null;
 }
@@ -779,6 +815,20 @@ export interface RunViewData {
   }[];
   skipped?: { kind: string; name?: string; reason: string; [k: string]: unknown }[];
   flaggedFigures?: { fy: string; reviewReason?: string; [k: string]: unknown }[];
+  /** what the run did to each row (runs from 17 Nov 2026 on) */
+  changes?: RunChange[];
+}
+
+export type RunChangeKind = 'spocs' | 'offices' | 'financials' | 'programs' | 'documents' | 'outreach';
+/** added = new row · updated = values changed · same = already there · kept = CRM value kept, engine said otherwise · locked = a person's value, not touched */
+export type RunChangeType = 'added' | 'updated' | 'same' | 'kept' | 'locked';
+export interface RunChange {
+  kind: RunChangeKind;
+  change: RunChangeType;
+  id?: string | null;
+  label: string;
+  sub?: string | null;
+  fields?: { field: string; from: string | null; to: string | null }[];
 }
 
 // ── integrations (admin) ─────────────────────────────────────────────────────

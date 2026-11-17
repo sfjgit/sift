@@ -255,7 +255,7 @@ function ResultSummary({ value }: { value: unknown }) {
 }
 
 // what the CRM did not take from the pipeline, for a person to look at
-function ReviewItems({ value }: { value: unknown }) {
+export function ReviewItems({ value }: { value: unknown }) {
   const v = (isPlainObject(value) ? value : {}) as RunViewData;
   const conflicts = v.conflicts ?? [];
   const skipped = v.skipped ?? [];

@@ -84,6 +84,7 @@ import { PageTitle } from '@/components/common/PageHeader';
 import { Pagination, PagingControl, type PagingMode } from './Pagination';
 import { ViewsMenu } from './ViewsMenu';
 import { menuItems, type RowMenu } from './RowMenu';
+import { usePermissions } from '@/features/auth/usePermissions';
 import type { DataColumn, FilterDef, GroupTone } from './types';
 import { GROUP_BAND } from './groupTones';
 import type { TableController } from './useTableState';
@@ -481,10 +482,10 @@ export function DataTable<T>({
     setSelectedCache({});
   };
 
-  const toggleSort = (sortKey: string) => {
+  const toggleSort = (sortKey: string, descFirst = false) => {
     const s = state.sort;
-    if (!s || s.id !== sortKey) actions.setSort({ id: sortKey, desc: false });
-    else if (!s.desc) actions.setSort({ id: sortKey, desc: true });
+    if (!s || s.id !== sortKey) actions.setSort({ id: sortKey, desc: descFirst });
+    else if (s.desc === descFirst) actions.setSort({ id: sortKey, desc: !descFirst });
     else actions.setSort(null);
   };
 
@@ -545,6 +546,8 @@ export function DataTable<T>({
       /* not remembered */
     }
   };
+  // exports and copying are for the super admin only
+  const { isSuperAdmin } = usePermissions();
   const copy = (text: string, what: string) =>
     navigator.clipboard
       .writeText(text)
@@ -687,6 +690,8 @@ export function DataTable<T>({
             />
           )}
           <ColumnsButton open={columnBar.open} onToggle={columnBar.toggle} />
+          {isSuperAdmin && (
+            <>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" {...tourTarget('table-export')}>
@@ -718,6 +723,8 @@ export function DataTable<T>({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+            </>
+          )}
           {full ? (
             <Button size="sm" onClick={() => setFull(false)} title="Back to the page (Esc)">
               <Minimize2 /> Exit full screen
@@ -950,7 +957,7 @@ export function DataTable<T>({
                               ) : h.isPlaceholder ? null : sortKey ? (
                                 <button
                                   type="button"
-                                  onClick={() => toggleSort(sortKey)}
+                                  onClick={() => toggleSort(sortKey, !!meta?.sortDescFirst)}
                                   className={cn(
                                     '-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground',
                                     sorted && 'text-foreground'
@@ -1095,7 +1102,7 @@ export function DataTable<T>({
                         onSelect={
                           bulkActions ? () => table.getRow(ctx.rowId).toggleSelected() : undefined
                         }
-                        copy={copy}
+                        {...(isSuperAdmin && { copy })}
                         rowText={() =>
                           table
                             .getRow(ctx.rowId)
@@ -1228,7 +1235,8 @@ function RowContextMenu<T>({
   column?: import('@tanstack/react-table').Column<T, unknown>;
   selected: boolean;
   onSelect?: () => void;
-  copy: (text: string, what: string) => void;
+  /** absent = copying is off (everyone but the super admin) */
+  copy?: (text: string, what: string) => void;
   rowText: () => string;
 }) {
   const colLabel = column?.columnDef.meta?.label ?? ctx.colId;
@@ -1256,14 +1264,16 @@ function RowContextMenu<T>({
           <ExternalLink /> Open in new tab
         </ContextMenuItem>
       )}
-      {isData && ctx.text && (
+      {copy && isData && ctx.text && (
         <ContextMenuItem onSelect={() => copy(ctx.text, colLabel)}>
           <Copy /> <span className="truncate">Copy {colLabel}</span>
         </ContextMenuItem>
       )}
-      <ContextMenuItem onSelect={() => copy(rowText(), 'Row')}>
-        <Copy /> Copy row
-      </ContextMenuItem>
+      {copy && (
+        <ContextMenuItem onSelect={() => copy(rowText(), 'Row')}>
+          <Copy /> Copy row
+        </ContextMenuItem>
+      )}
       {onSelect && (
         <ContextMenuItem onSelect={onSelect}>
           <CheckSquare /> {selected ? 'Unselect row' : 'Select row'}

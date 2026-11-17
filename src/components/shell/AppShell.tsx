@@ -37,9 +37,12 @@ import { VoiceAssistant } from '@/components/ai/VoiceAssistant';
 import { AiTopbarControl } from '@/components/ai/AiModeToggle';
 import { AiDock } from '@/components/ai/AiDock';
 import { SupportRoot } from '@/features/support/ReportProblem';
+import { CopyGuard } from '@/features/auth/CopyGuard';
+import { ScreenGuard } from '@/features/auth/ScreenGuard';
 import { NotificationsPopover } from './Notifications';
 import { PinToggle, SidebarContent } from './Sidebar';
-import { HelpMenu, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
+import { HelpMenu,
+  ReportBugButton, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
 import { announceLayoutChange, useAutoHideDesktop, useEdgeReveal } from './useEdgeReveal';
 
 function ImpersonationBanner() {
@@ -258,6 +261,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="ml-auto flex items-center gap-1">
               <AiTopbarControl />
               <QuickAddMenu />
+              <ReportBugButton />
               <HelpMenu />
               <NotificationsPopover />
               {autoHide && (
@@ -279,6 +283,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <VoiceAssistant />
       <AiDock />
       <SupportRoot />
+      <CopyGuard />
+      <ScreenGuard />
       <ShortcutsLayer />
       <ClientFormDialog />
       <SpocFormDialog />

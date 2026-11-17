@@ -7,7 +7,16 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, ExternalLink, FileText, Paperclip, Trash2, Upload } from 'lucide-react';
+import {
+  Download,
+  ExternalLink,
+  Eye,
+  FileText,
+  Paperclip,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,25 +29,33 @@ import { usePermissions } from '@/features/auth/usePermissions';
 import { useAction } from '@/hooks/useResource';
 import { clientHooks } from '@/hooks/queries';
 import { clientsApi } from '@/lib/api/endpoints';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtInr } from '@/lib/format';
 import { FY_PATTERN, lastClosedFy } from '@/lib/fy';
+import { csrBand } from './ClientInfo';
 import type { ApiError } from '@/lib/api/client';
 import type { ClientDetail, ClientDocument } from '@/types/crm';
 
 const MAX_MB = 25;
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg,.webp';
 
-function UploadDialog({
+// CASPA "Saved attachments — by financial year": one column per report type.
+// BRSR applies to listed companies only.
+const YEAR_COLUMNS = ['BRSR', 'CSR_REPORT', 'IMPACT_REPORT', 'ANNUAL_REPORT', 'CSR_ACTION_PLAN'];
+
+export function UploadDialog({
   client,
   open,
   onOpenChange,
+  preset,
 }: {
   client: ClientDetail;
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  /** opened from a cell of the by-year grid */
+  preset?: { typeId: string; fy: string };
 }) {
-  const [typeId, setTypeId] = useState<string | null>(null);
-  const [fy, setFy] = useState(lastClosedFy);
+  const [typeId, setTypeId] = useState<string | null>(preset?.typeId ?? null);
+  const [fy, setFy] = useState(preset?.fy ?? lastClosedFy);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -131,7 +148,7 @@ function UploadDialog({
 export function DocumentsPanel({ client, limit }: { client: ClientDetail; limit?: number }) {
   const { can } = usePermissions();
   const confirm = useConfirm();
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<false | { typeId: string; fy: string } | true>(false);
   const docs = [...(client.documents ?? [])].sort(
     (a, b) => a.type.label.localeCompare(b.type.label) || b.fy.localeCompare(a.fy)
   );
@@ -158,11 +175,13 @@ export function DocumentsPanel({ client, limit }: { client: ClientDetail; limit?
       title="Reports & attachments"
       description={`${docs.length} file${docs.length === 1 ? '' : 's'} — annual reports, CSR reports, filings and anything uploaded`}
       actions={
-        can('client_documents.upload') && (
-          <Button size="sm" variant="outline" onClick={() => setUploading(true)}>
-            <Upload /> Upload
-          </Button>
-        )
+        <>
+          {can('client_documents.upload') && (
+            <Button size="sm" variant="outline" onClick={() => setUploading(true)}>
+              <Upload /> Upload
+            </Button>
+          )}
+        </>
       }
     >
       {docs.length === 0 ? (
@@ -260,7 +279,143 @@ export function DocumentsPanel({ client, limit }: { client: ClientDetail; limit?
           {docs.length - limit} more on the Financials &amp; reports tab.
         </p>
       )}
-      {uploading && <UploadDialog client={client} open onOpenChange={setUploading} />}
+      {uploading && (
+        <UploadDialog
+          client={client}
+          open
+          onOpenChange={o => !o && setUploading(false)}
+          {...(typeof uploading === 'object' && { preset: uploading })}
+        />
+      )}
     </SubSection>
+  );
+}
+
+/** rows = financial years, columns = report types, plus the CSR figures of that year */
+export function YearGrid({
+  client,
+  types,
+  onOpen,
+  onUpload,
+}: {
+  client: ClientDetail;
+  types: { id: string; code: string; label: string }[];
+  onOpen: (d: ClientDocument) => void;
+  onUpload?: (typeId: string, fy: string) => void;
+}) {
+  const docs = client.documents ?? [];
+  const fin = client.csrFinancials;
+  const hasBrsr = docs.some(d => d.type.code === 'BRSR');
+  const cols = YEAR_COLUMNS.filter(c => c !== 'BRSR' || client.isListed || hasBrsr)
+    .map(code => types.find(t => t.code === code))
+    .filter((t): t is { id: string; code: string; label: string } => !!t);
+  const others = docs.filter(d => !YEAR_COLUMNS.includes(d.type.code));
+  const years = [
+    ...new Set([...docs.map(d => d.fy), ...(fin ?? []).map(f => f.fy), lastClosedFy()]),
+  ].sort((a, b) => b.localeCompare(a));
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        {client.isListed
+          ? 'Listed company — BRSR applies.'
+          : 'BRSR applies to listed companies only (set “Listed” under Client information).'}
+        {onUpload && ' Click + in a cell to upload that report for that year.'}
+      </p>
+      <div className="crm-box overflow-x-auto">
+        <table className="crm-sheet">
+          <thead>
+            <tr>
+              {fin && <th>CSR spent category</th>}
+              <th>FY</th>
+              {cols.map(c => (
+                <th key={c.id} className="text-center whitespace-nowrap">
+                  {c.label}
+                </th>
+              ))}
+              {others.length > 0 && <th>Other files</th>}
+              {fin && (
+                <>
+                  <th className="text-right">CSR budget</th>
+                  <th className="text-right">CSR spent</th>
+                  <th className="text-right">CSR unspent</th>
+                </>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {years.map(fy => {
+              const f = fin?.find(x => x.fy === fy);
+              const extra = others.filter(d => d.fy === fy);
+              return (
+                <tr key={fy}>
+                  {fin && <td className="whitespace-nowrap">{csrBand(f?.spentRs) ?? '—'}</td>}
+                  <td className="whitespace-nowrap tabular font-medium">{fy}</td>
+                  {cols.map(c => {
+                    const d = docs.find(x => x.type.id === c.id && x.fy === fy);
+                    return (
+                      <td key={c.id} className="text-center">
+                        {d ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpen(d)}
+                            title={d.fileName ?? c.label}
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            <Eye className="size-3.5" /> View
+                          </button>
+                        ) : onUpload ? (
+                          <button
+                            type="button"
+                            onClick={() => onUpload(c.id, fy)}
+                            aria-label={`Upload ${c.label} for FY ${fy}`}
+                            className="rounded p-0.5 text-muted-foreground/60 hover:bg-muted hover:text-primary"
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  {others.length > 0 && (
+                    <td>
+                      {extra.length ? (
+                        <span className="flex flex-wrap gap-x-2">
+                          {extra.map(d => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => onOpen(d)}
+                              className="text-primary hover:underline"
+                            >
+                              {d.type.label}
+                            </button>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  )}
+                  {fin && (
+                    <>
+                      <td className="text-right tabular">
+                        {f?.budgetRs ? fmtInr(f.budgetRs) : '—'}
+                      </td>
+                      <td className="text-right tabular">{f?.spentRs ? fmtInr(f.spentRs) : '—'}</td>
+                      <td className="text-right tabular">
+                        {f?.unspentRs ? fmtInr(f.unspentRs) : '—'}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

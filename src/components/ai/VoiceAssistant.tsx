@@ -67,6 +67,7 @@ import { isAnalytic, isCanvasFollowUp, matchSuggestions, type Suggestion } from 
 import { buildPageIndex, rememberCommand, resolveLocal, type LocalAnswer } from '@/features/ai/localIntents';
 import { smallTalk, soundsLikeCrm, type ChatAnswer } from '@/features/ai/smallTalk';
 import { startClapDetector } from '@/features/ai/clap';
+import { useReport } from '@/features/support/ReportProblem';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { JarvisSphere } from './JarvisSphere';
 import type { OrbMood } from './AssistantOrb3D';
@@ -206,6 +207,9 @@ export function VoiceAssistant() {
   const refreshMe = useRefreshAiMe();
   const { sections, footer } = useVisibleNav();
   const { on, muted, talk, set } = useVoicePrefs();
+  // a problem report is being written or its steps recorded: the assistant is off
+  // (mic, clap detector, panel) so nothing said or clicked there reaches it — back on after
+  const reporting = useReport(s => s.open || !!s.recording);
   const open = useUi(s => s.aiOpen);
   const setOpen = useUi(s => s.setAiOpen);
   const supported = useBrowserValue(() => !!getSpeechCtor(), false);
@@ -768,7 +772,7 @@ export function VoiceAssistant() {
   // mic runs by default while: voice on + command mode active + tab visible
   useEffect(() => {
     const sync = () => {
-      const should = on && available && supported && document.visibilityState === 'visible';
+      const should = on && !reporting && available && supported && document.visibilityState === 'visible';
       if (should) {
         want.current = true;
         // not allowed yet: Chrome asks only after a click — wait for one instead of failing
@@ -788,9 +792,17 @@ export function VoiceAssistant() {
     document.addEventListener('visibilitychange', sync);
     return () => document.removeEventListener('visibilitychange', sync);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [on, available, supported]);
+  }, [on, reporting, available, supported]);
 
   useEffect(() => () => stopMic(), []);
+
+  // reporting a problem: close the panel too (it would show in the screen replay)
+  useEffect(() => {
+    if (!reporting) return;
+    if (useUi.getState().aiOpen) setOpen(false);
+    if (on) toast('AI assistant paused while you report the problem', { description: 'It switches back on when you send or close the report.' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reporting]);
 
   // waiting for a click: the first click / key press anywhere starts the mic
   useEffect(() => {
@@ -807,7 +819,7 @@ export function VoiceAssistant() {
   // watchdog: a mic that should be on but isn't is restarted within 2 s; an idle
   // session older than REFRESH_MS is swapped for a fresh one (long ones get slow)
   useEffect(() => {
-    if (!on || !available || !supported) return;
+    if (!on || reporting || !available || !supported) return;
     const id = window.setInterval(() => {
       if (!want.current || speakingRef.current || document.visibilityState !== 'visible') return;
       if (!recRef.current) return startMic();
@@ -819,11 +831,11 @@ export function VoiceAssistant() {
     }, 2_000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [on, available, supported]);
+  }, [on, reporting, available, supported]);
 
   // double clap: wakes it when muted, opens it when listening
   useEffect(() => {
-    if (!on || !available || !supported) return;
+    if (!on || reporting || !available || !supported) return;
     let stop: (() => void) | null = null;
     let cancelled = false;
     startClapDetector(() => {
@@ -841,7 +853,7 @@ export function VoiceAssistant() {
       stop?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [on, available, supported]);
+  }, [on, reporting, available, supported]);
 
   // Ctrl/⌘+J — open for typing (the top bar auto-hides, so the key matters)
   useEffect(() => {

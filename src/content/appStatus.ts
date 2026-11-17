@@ -45,7 +45,7 @@ export interface ChangelogEntry {
   inProgress?: string[];
 }
 
-export const LAST_UPDATED = '2026-11-16';
+export const LAST_UPDATED = '2026-11-17';
 
 // ── features by area ─────────────────────────────────────────────────────────
 
@@ -208,6 +208,33 @@ export const AREAS: Area[] = [
         description: 'Every step run on this client with its result.',
         status: 'done',
         where: '/clients/[id]',
+      },
+      {
+        title: 'Meetings',
+        description:
+          'Every meeting with the client: when, SPOC, agenda, who, status, minutes; Excel export.',
+        status: 'done',
+        where: '/clients/[id] → Meetings',
+      },
+      {
+        title: 'Comments / observations per section',
+        description: 'A comment box under each section, as in CASPA; they also appear in Activity.',
+        status: 'done',
+        where: '/clients/[id]',
+      },
+      {
+        title: 'Import from Excel (branches, programmes)',
+        description:
+          'Download the template, pick a file, preview, import; bad rows are listed with the reason.',
+        status: 'done',
+        where: '/clients/[id] → Branch offices / CSR programmes',
+      },
+      {
+        title:
+          'Sales & marketing assets (pitch deck, sales brief, LinkedIn / WhatsApp templates, request campaign)',
+        description: 'CASPA built these per client and per SPOC with approval steps.',
+        status: 'not-started',
+        note: 'Needs the engine to build them; order to decide.',
       },
     ],
   },
@@ -740,60 +767,187 @@ export const AREAS: Area[] = [
 export const CASPA_PARITY: { page: string; source: string; rows: ParityRow[] }[] = [
   {
     page: 'Client page',
-    source: 'update_d_csr_sales.php, view_d_csr.php',
+    source:
+      'update_d_csr_sales.php (6,616 lines, checked section by section on 16 Nov), view_d_csr.php',
     rows: [
       {
-        old: 'Client name, category, address, state / district / pincode, GPS',
-        now: 'Client information block, inline edit',
+        old: 'CSR Skilling Programs (last 2 years) as its own section: attachments by FY, add / replace attachments, saved programmes, add programmes, bulk upload',
+        now: 'CSR skilling programmes section in the same order (summary table like CASPA, or all details)',
         status: 'done',
       },
       {
-        old: 'Branch offices list',
+        old: 'Page layout: collapsible coloured cards, each with its own Save',
+        now: 'One card per topic, open/closed remembered, left jump rail, edit in place (no Save buttons)',
+        status: 'done',
+      },
+      {
+        old: 'ICP firmographics: name, state, district, industry, category, CIN, employee size, pincode, address, website, LinkedIn, country',
+        now: 'Client information (inline edit); address from the head office',
+        status: 'done',
+      },
+      {
+        old: 'Sub category, LinkedIn employees, Listed (Yes/No)',
+        now: 'Client information',
+        status: 'done',
+      },
+      {
+        old: 'Foundation name and foundation website',
+        now: 'Client information',
+        status: 'done',
+      },
+      {
+        old: 'Latitude / longitude of the client',
+        now: 'GPS row (from the head office, opens Google Maps)',
+        status: 'done',
+      },
+      {
+        old: 'Approx. distance (km) from our office',
+        now: '—',
+        status: 'not-started',
+      },
+      {
+        old: 'Company logo upload',
+        now: '—',
+        status: 'not-started',
+      },
+      {
+        old: 'Financials: revenue, market cap, paid-up and authorised capital',
+        now: 'Client information → Financials (market cap editable; the rest per FY under CSR figures)',
+        status: 'done',
+      },
+      {
+        old: 'CSR spent category band (0–50 Cr … > 1000 Cr)',
+        now: 'Worked out from the latest CSR spend',
+        status: 'done',
+      },
+      {
+        old: 'No. of beneficiaries',
+        now: 'Total of all programmes',
+        status: 'done',
+      },
+      {
+        old: 'Technographics: HRMS, LMS, CRM, cloud, ERP',
+        now: 'Taken off the client page for now (16 Nov, your call); data kept',
+        status: 'partial',
+      },
+      {
+        old: 'Branch offices: saved list with state / district / pincode / lat / lng',
         now: 'Branch offices section + map + branch finder',
         status: 'done',
       },
-      { old: 'CSR budget / spent / unspent by FY', now: 'CSR figures by FY', status: 'done' },
       {
-        old: 'CSR programmes (name, budget, beneficiaries, implementor, locations, sector)',
-        now: 'CSR programmes with sectors, locations, agency',
+        old: 'Add several branch offices by hand',
+        now: 'Add office',
         status: 'done',
       },
-      { old: 'SDG mapping on programmes', now: '—', status: 'not-started' },
       {
-        old: 'Programmes file upload (.xlsx / .csv)',
-        now: 'Pipeline "figures" step fills programmes; no manual file import',
+        old: 'Branch offices bulk upload (Excel / CSV) + template',
+        now: 'Import from Excel (template, preview, skipped rows with reasons)',
+        status: 'done',
+      },
+      {
+        old: 'CSR budget / spent / unspent per FY',
+        now: 'CSR figures per FY with chart',
+        status: 'done',
+      },
+      {
+        old: 'Saved attachments by FY: BRS (listed only), CSR report, impact assessment, annual report, CSR action plan + budget/spent/unspent',
+        now: 'CSR skilling programmes → Attachments by financial year (+ CSR spent category per year)',
+        status: 'done',
+      },
+      {
+        old: 'CSR programmes: FY, name, sector, locations, budget, beneficiaries, implementor, report link, totals row',
+        now: 'CSR programmes table with totals',
+        status: 'done',
+      },
+      {
+        old: 'SDG mapping on programmes',
+        now: 'SDG picker on the programme, SDGs column, in the Excel export',
+        status: 'done',
+      },
+      {
+        old: 'Programmes export to Excel',
+        now: 'Export to Excel',
+        status: 'done',
+      },
+      {
+        old: 'Programmes bulk upload (Excel / CSV)',
+        now: 'Import from Excel (sector matched to Schedule VII; SDGs read from numbers)',
+        status: 'done',
+      },
+      {
+        old: 'Existing SPOCs table with “select the fields to display”, drag to reorder',
+        now: 'SPOC details = the full SPOCs table (columns, filters, right-click, export)',
+        status: 'done',
+      },
+      {
+        old: 'Download all SPOC data (admin)',
+        now: 'Export on the SPOC table',
+        status: 'done',
+      },
+      {
+        old: 'SPOC step icons (LinkedIn, contact, validate, email pack)',
+        now: 'Run pills on the section + pipeline runs',
+        status: 'done',
+      },
+      {
+        old: 'New SPOC form on the page',
+        now: 'Add SPOC',
+        status: 'done',
+      },
+      {
+        old: 'Comments / observations under every section',
+        now: 'Comments / observations under every section (also shown in Activity)',
+        status: 'done',
+      },
+      {
+        old: 'Existing meetings table',
+        now: 'Meetings section (when, SPOC, agenda, with, status, minutes) + Excel export',
+        status: 'done',
+      },
+      {
+        old: 'Meeting MOM files, proposal, MOU, GPS check-in, lead approval',
+        now: 'Meeting notes and minutes only',
         status: 'partial',
       },
-      { old: 'Foundation name / website, land line', now: '—', status: 'not-started' },
       {
-        old: 'SPOC list on the client (name, mobile, email, designation, primary SPOC, added by)',
-        now: 'SPOC details section',
+        old: 'Ask AI about this client',
+        now: 'AI assistant on every page (page-aware)',
         status: 'done',
       },
       {
-        old: 'Sales status per SPOC',
-        now: 'Sales status on SPOC page and table, with history',
+        old: 'Run enrichment / re-check branches buttons',
+        now: 'Run all steps + per-section run pills',
         status: 'done',
       },
       {
-        old: 'Pipeline step "Run this step?" buttons',
-        now: 'Run pills per section + Run all',
-        status: 'done',
+        old: 'Sales assets: pitch deck (PPT) request → build → publish, sales brief',
+        now: 'Sales assets section with both cards (work in progress — engine not connected)',
+        status: 'partial',
       },
       {
-        old: 'Internal sales brief / fresh mail subject + body',
-        now: 'Outreach drafts per SPOC',
-        status: 'done',
-      },
-      { old: 'Sender emails, campaign stages', now: '—', status: 'not-started' },
-      {
-        old: 'Comments',
-        now: 'Activity & tasks (comments, calls, emails, WhatsApp, meetings, tasks)',
-        status: 'done',
+        old: 'Marketing assets per SPOC: generic, personalised, LinkedIn, WhatsApp templates with approve / remove / restore',
+        now: 'Marketing assets section: SPOC picker + 4 cards; personalised email shows the real draft; the rest work in progress',
+        status: 'partial',
       },
       {
-        old: 'Meetings with MOM, proposal, MOU',
-        now: 'Simple meeting with notes only',
+        old: 'Request marketing asset / request PPT for ticked SPOCs',
+        now: '—',
+        status: 'not-started',
+      },
+      {
+        old: 'Request campaign with send summary (precheck)',
+        now: 'Button in place (coming soon)',
+        status: 'partial',
+      },
+      {
+        old: 'Enrichment pending approval (approve / reject sections)',
+        now: '—',
+        status: 'not-started',
+      },
+      {
+        old: 'CSR data approvals: chat-researched values with sources, approve writes with backup',
+        now: 'Recycle bin + undo keeps old values; no proposal / approval queue',
         status: 'partial',
       },
       {
@@ -801,7 +955,6 @@ export const CASPA_PARITY: { page: string; source: string; rows: ParityRow[] }[]
         now: 'Sales marks',
         status: 'done',
       },
-      { old: 'Attachments', now: 'Reports & attachments', status: 'done' },
     ],
   },
   {
@@ -889,6 +1042,18 @@ export const PENDING: PendingItem[] = [
     title: 'Full CASPA meetings (MOM, proposal, MOU, GPS check-in, lead approval)',
     waitsOn: 'dev',
   },
+  {
+    title:
+      'Client page — CASPA sales & marketing assets: pitch deck + sales brief, LinkedIn / WhatsApp templates with approval, request campaign',
+    waitsOn: 'user',
+    note: 'Needs the engine to build decks / templates; decide order.',
+  },
+  {
+    title:
+      'Client page — approval queues: enrichment sections, AI-researched field values with sources',
+    waitsOn: 'user',
+  },
+  { title: 'Client page — company logo, approx. distance from our office', waitsOn: 'dev' },
   { title: '"My tasks" page', waitsOn: 'dev' },
   { title: 'SPOCs table settings like Clients (bands, defaults, column access)', waitsOn: 'dev' },
   { title: 'Explain & stats on the other pages', waitsOn: 'dev' },
@@ -922,6 +1087,25 @@ export const PENDING: PendingItem[] = [
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-11-17',
+    items: [
+      'Clients list: "CSR year" and "CSR spent" are separate columns, both show the latest year and both sort from the header (newest year / biggest spend first). Clicking either opens every year’s CSR figures in a dialog.',
+      'Top bar: a red "Report bug" button on every page (screen captured for you, Ctrl⇧B still works). After sending, "Copy link" shares the ticket.',
+      'Run results page (/pipeline-runs/<run>): every row a run touched, marked New / Changed (old → new, struck through) / Already there / Kept CRM value / Locked, with All · New · Changed · Unchanged filters. Offices also list the ones already on file that the run did not find. "Run all steps" shows each step in turn.',
+      'When a run you started finishes, a "Results are in" pop-up offers "See results"; a run that found nothing shows a short note. The finished-run notification and the runs tray open the results page too.',
+      'Each run now records what it did to every row (viewData.changes), including the old value it replaced — before this, replaced CSR figures, programmes and report files kept no old value.',
+      'AI understanding layer: (1) financial years — "2025 26", "2025-26", "FY 24-25", "25-26" all work, and year filters now actually match the stored years (every year-filtered report used to come back empty); for CSR, "this year" = latest full year, "last year" = the one before, "this FY" = the running year. (2) a client named in the request filters every block to that client; partial names ("tata consultancy") find the one client they belong to. (3) "open <client>" goes to its page; "<client> details / report" builds a one-client report — both without an AI call. (4) cities and states (Bangalore / Bengaluru, Karnataka) are recognised and always applied. (5) "CSR" next to money words means CSR money, not the CSR service line.',
+      'New AI reports: CSR money by industry / category / business unit / state; "clients that spent more than 10 crore" (amount range). The client page "generate a report" now shows CSR by year + SPOCs.',
+      'AI honesty: an answer whose blocks are all empty is logged as "empty" (not success) and never remembered; the extra list under a chart is no longer added when it would show the wrong clients.',
+      'AI answers questions: "what is CSR obligation", "how much did they spend", "how many SPOCs does this client have", "which client spent the most in 2024-25" are answered in words from live numbers (amounts in crore / lakh) — the canvas on screen is not changed. "What is …" questions about CRM words (obligation, budget, spent, unspent, Schedule VII, implementing agency, FY, SPOC, not set, data quality) are answered instantly without an AI call, with the matching figure from the canvas.',
+      'A CSR figure no client has is shown as "not recorded", never ₹0 (KPI boxes), and left out of the CSR-by-year chart. Note: CSR obligation is not recorded for any client yet (0 of 156 years) — the pipeline does not read it.',
+      'AI: ask or show is decided by the words, not guessed — a question ("which team is working on this client?", "how many offices does it have?") is answered in words and the canvas stays; "show / add / list …" adds a block to the canvas and keeps the others. "This client", "it", "its" mean the client the canvas is about.',
+      'New AI reports about a client: its offices (head office / branches / factories), who works on it (assigned people, SPOC handlers, who acted lately, with role, manager, team lead, business unit), its CSR programmes, and recent activity.',
+      'Report a problem: the AI assistant (voice mic, clap wake-up, panels) is switched off while the form is open or steps are recorded, and back on after. The recording is the page only (rrweb: clicks, scrolling, what is on screen) — no sound, no camera, no video.',
+      'Security: removed a startup log line that printed the backend secrets (JWT secret, SMTP password) to the console.',
+    ],
+  },
+  {
     date: '2026-11-16',
     items: [
       'Right-click menu on every table row (actions, copy, open in new tab, select, hide column) with a one-time tip; the ⋯ button stays.',
@@ -932,6 +1116,19 @@ export const CHANGELOG: ChangelogEntry[] = [
       'This "What\'s built" page.',
       'Report a problem / Suggest a feature: screenshot, ~2-minute screen replay, errors, failed calls and clicks attached; "Record the steps"; automatic diagnosis matched to server errors; optional AI diagnosis; separate bug and idea pipelines; /support pages.',
       'Every API response carries X-Request-Id; the server keeps its last 300 errors for bug tickets.',
+      'Client page vs old CASPA page re-checked section by section; added: sub category, LinkedIn employees, Listed, foundation name / website, market cap, CSR spent band, total beneficiaries, head-office GPS.',
+      'Reports & attachments “By year” grid (BRSR for listed only, CSR report, impact, annual report, action plan + CSR budget / spent / unspent), + in a cell uploads for that year.',
+      'SDG mapping on CSR programmes (picker, column, export).',
+      'Import from Excel / CSV for branch offices and CSR programmes (template, preview, skipped rows with reasons).',
+      'Comments / observations under every client-page section; Meetings section on the client page.',
+      'Client page re-ordered: Client information first, then sales Activity & tasks, then the rest. Technographics taken off the page.',
+      'New "CSR skilling programmes" section like CASPA: attachments by year, add / replace for a year (amounts + files, one Save), saved programmes (summary or all details), add programmes in rows, Excel import.',
+      'Sales assets and Marketing assets sections (pitch deck, sales brief, generic / personalised email, LinkedIn, WhatsApp) — work-in-progress cards; the personalised email shows the real draft.',
+      'Engine activity (pipeline runs, machine-made log entries) hidden by default — "Show engine activity" buttons on the client page and in Activity.',
+      'Exports (tables, reports, AI canvas, client export details, AI usage) are for the super admin only — hidden in the app and refused by the server.',
+      'Copying is off for everyone but the super admin: no text selection, copy / cut blocked (input boxes still work), copy items removed from menus.',
+      'Colour themes: Blue, Indigo, Violet, Teal, Rose, Orange, Graphite — pick from the account menu or Settings → Preferences; works in light and dark, remembered per device. Graphite is now the default.',
+      'Screenshot protection for everyone but the super admin: a faint watermark on every page (name, employee ID, email, date and time), printing / Save as PDF prints a blank page, and the page blurs while the window is out of focus.',
     ],
   },
   {

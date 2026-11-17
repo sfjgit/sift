@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { MapPin, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { FileSpreadsheet, MapPin, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Pill } from '@/components/common/badges';
+import { ImportSheetDialog, type SheetRow } from '@/components/common/ImportSheetDialog';
 import { EmptyState } from '@/components/common/states';
 import { useConfirm } from '@/components/common/ConfirmProvider';
 import { FormDialog, FormSection } from '@/components/forms/FormDialog';
@@ -65,11 +66,47 @@ const toValues = (l?: ClientLocation | null, first = false): LocationValues => (
   dmEvidence: l?.dmEvidence ?? '',
 });
 
+// CASPA branch-office sheet: Branch Office · State · District · Pincode · Latitude · Longitude
+const BRANCH_COLUMNS = [
+  {
+    key: 'name',
+    label: 'Branch office',
+    required: true,
+    example: 'Mumbai branch',
+    aliases: ['Branch', 'Office', 'Name'],
+  },
+  { key: 'addressLine', label: 'Address', example: 'Plot 12, MIDC, Andheri East' },
+  { key: 'city', label: 'City', example: 'Mumbai', aliases: ['Location'] },
+  { key: 'district', label: 'District', example: 'Mumbai Suburban' },
+  { key: 'state', label: 'State', example: 'Maharashtra' },
+  { key: 'pincode', label: 'Pincode', example: '400093', aliases: ['PIN', 'Pin code'] },
+  { key: 'latitude', label: 'Latitude', example: '19.1136', aliases: ['Lat'] },
+  { key: 'longitude', label: 'Longitude', example: '72.8697', aliases: ['Lng', 'Long'] },
+];
+
+const branchFromRow = (r: SheetRow) => {
+  const lat = r.latitude ? Number(r.latitude) : null;
+  const lng = r.longitude ? Number(r.longitude) : null;
+  const coords = lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng);
+  return {
+    name: r.name || null,
+    addressLine: r.addressLine || null,
+    city: r.city || null,
+    district: r.district || null,
+    state: r.state || null,
+    pincode: r.pincode || null,
+    country: 'India',
+    ...(coords && { latitude: lat, longitude: lng }),
+  };
+};
+
 export function LocationsTab({ client }: { client: ClientDetail }) {
   const { can } = usePermissions();
   const confirm = useConfirm();
   const [editing, setEditing] = useState<ClientLocation | 'new' | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const qc = useQueryClient();
   const canAdd = can('client_locations.create');
   const canEdit = can('client_locations.update');
   const canRemove = can('client_locations.delete');
@@ -98,6 +135,11 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
           {client.locations.length > 0 && (
             <Button size="sm" variant="outline" onClick={() => setShowMap(v => !v)}>
               <MapPin /> {showMap ? 'Hide map' : 'Show map'}
+            </Button>
+          )}
+          {canAdd && (
+            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
+              <FileSpreadsheet /> Import from Excel
             </Button>
           )}
           {canAdd && (
@@ -231,6 +273,18 @@ export function LocationsTab({ client }: { client: ClientDetail }) {
         open={editing !== null}
         onOpenChange={o => !o && setEditing(null)}
       />
+      {importing && (
+        <ImportSheetDialog
+          open
+          onOpenChange={setImporting}
+          title="Import branch offices"
+          description={`Adds offices to ${client.name} from an Excel or CSV file.`}
+          templateName="branch-offices-template"
+          columns={BRANCH_COLUMNS}
+          addRow={r => clientsApi.addLocation(client.id, branchFromRow(r))}
+          onDone={() => void qc.invalidateQueries({ queryKey: clientHooks.keys.all })}
+        />
+      )}
     </div>
   );
 }

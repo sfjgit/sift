@@ -12,6 +12,8 @@ declare module '@tanstack/react-table' {
     label?: string;
     /** Backend sortBy value — column is sortable only when set */
     sortKey?: string;
+    /** first click sorts high → low (newest year, biggest amount) */
+    sortDescFirst?: boolean;
     align?: 'left' | 'right' | 'center';
     /** Hidden until the user turns it on */
     defaultHidden?: boolean;
