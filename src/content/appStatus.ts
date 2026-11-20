@@ -45,7 +45,7 @@ export interface ChangelogEntry {
   inProgress?: string[];
 }
 
-export const LAST_UPDATED = '2026-11-17';
+export const LAST_UPDATED = '2026-11-19';
 
 // ── features by area ─────────────────────────────────────────────────────────
 
@@ -1033,6 +1033,16 @@ export const CASPA_PARITY: { page: string; source: string; rows: ParityRow[] }[]
 
 export const PENDING: PendingItem[] = [
   {
+    title: 'Apply migration 20261119100000_meeting_details (MeetingDetail + MeetingFile) to the database',
+    waitsOn: 'user',
+    note: 'cd crm-core-service && npx prisma migrate deploy — additive only; the full meeting form needs it.',
+  },
+  {
+    title: 'Placements made / trainings executed for a client (CASPA spoc_edit.php sections)',
+    waitsOn: 'owner',
+    note: 'No table for them in the new CRM yet — where should this data come from?',
+  },
+  {
     title:
       'Give "Support tickets" grants (support.manage / support.diagnose) to the people who fix bugs',
     waitsOn: 'user',
@@ -1086,6 +1096,40 @@ export const PENDING: PendingItem[] = [
 // ── changelog, newest first ──────────────────────────────────────────────────
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    date: '2026-11-19',
+    items: [
+      'Phone app — hold any client or person for quick actions (Call, WhatsApp / SMS, Email, Add follow-up, Schedule meeting, Star, Pin, Open client). Email asks Outlook / other mail app / copy; WhatsApp asks WhatsApp / SMS / copy.',
+      'Phone app — lists: cards, 2-per-row grid, or table with a Columns chooser (every column, remembered); Filters (clients: status, category, industry, key account, CSR eligible, branches, pipeline; people: sales status, key account, email check, data quality, inactive).',
+      'Phone app — side menu (☰) with My team (everyone below you with clients / open / overdue; tap for their clients and SPOCs), Reports (by person, BU, service line, sales status; clients by status / category / industry; period chips), This week (pops up once a week).',
+      'Phone app — client page adds Details (every field), CSR by year + programmes, Docs (open reports), Outreach, In charge (assignments + key accounts); SPOC page adds Details (every field) and Edit; Work panel has All · Follow-ups · Calls · Meetings · Overdue chips.',
+      'Phone app — fingerprint / face app lock (Me › Settings) and, for super admins, Sign in as a user with an “Acting as …” banner; every change made meanwhile is audited under the admin (API: X-Client: mobile on /admin/users/:id/impersonate and /admin/impersonation/stop, X-Impersonation-Log header).',
+      'Phone app — next APK builds for 64-bit ARM phones only (~35–40 MB instead of 99 MB).',
+      'Phone app — Email / WhatsApp / SMS open Android’s own app chooser (every mail app, WhatsApp + WhatsApp Business); permissions are asked with Android’s own pop-up only when a feature first needs them (no custom permission screen).',
+      'Phone app — fingerprint sign-in: offered once after a password sign-in; when the session runs out the phone’s fingerprint / face prompt signs you back in (login kept in the phone’s secure hardware). App lock on open stays.',
+      'Meetings — full CASPA meeting form (backend + phone): mode, link, attendees both sides, minutes 1–4 (with mic), meeting / proposal status, proposal date / amount, tentative date, current sales SPOC, category, MOU (shared, credit signed date, programme dates, semesters, credits, students, courses), files (MOM, RFP, proposal, MOU, credit letter, sales pitch), client visit check-in (photo + GPS → address / pincode). Completed → task closed and sent to the lead, who approves in the app. New tables MeetingDetail + MeetingFile (migration 20261119100000_meeting_details).',
+      'Phone app — SPOC page matches CASPA spoc_edit.php: Details and Edit cover role category, decision authority, org type, revenue band, three mobiles, address / district / pincode, distance, call status, ERP; plus Client (firmographics, technographics), Programmes & CSR, Attachments; Work has a Log button (email / WhatsApp / call sent outside the app).',
+    ],
+  },
+  {
+    date: '2026-11-18',
+    items: [
+      'Tables (Clients, SPOCs and every list): the toolbar keeps to one line — title · search · Filters · Templates · rows · page action · More (⋯). Filter panel, Columns, Full screen, Export and the page’s Stats moved into the More menu. Filters / Templates show as icons until the screen is wide (a template’s name still shows when one is on).',
+      'Phones first: every table shows its rows as cards (first column = card title, the next six fields as label / value, "N more fields" for the rest, ⋯ actions and selection on each card); "Fields on the cards" in More picks which columns appear. Search gets its own full-width row; the SPOCs quick switch scrolls on its own row.',
+      'Phones: a bottom tab bar (Dashboard, Clients, SPOCs, Office map / Reports — whichever you may open — and Menu for the rest). Report a problem / Suggest a feature / Help center moved into the account menu on phones. Floating trays, the AI orb and the bulk bar sit above the tab bar; the app draws under the notch (safe areas).',
+      'Phone app started (crm-mobile/, React Native + Expo, Android first, private — no store). Slice 1: sign-in (session in the phone’s secure storage), Today (your client counts, pins, recently updated), People (clients: Mine / My team / All, search, endless scroll, long-press to pin), client page (Call, WhatsApp, Mail, Visit, Web; SPOCs; offices & branches; timeline), SPOC page, Me / sign out. Runs on Android through Expo Go for now.',
+      'API for the phone app: clients list takes assignedTo=team (you + everyone reporting to you); login / refresh return the token pair in the body when the app sends X-Client: mobile (web unchanged).',
+      'Org chart: the super admin is the top of the tree; everyone with no manager (or a manager who is no longer active) sits under them. The duplicate “Siva Sarathy” from the CASPA import was merged into the real login (6 reports, 13 clients, 25 SPOCs moved; old copy deactivated; backup in crm-core-service/data-fixes/).',
+      'Phone app slice 2: tabs Today · Clients · Ask AI · People (SPOCs) · Me. People = SPOCs with Mine / My team / All (API: /spocs?handledBy=me|team) and + Add SPOC (also from a client page). Cards or table view for both lists. Ask AI chat (same assistant as the web; answers as text, choices, number / bar / table cards). Me: theme System / Light / Dark, list style, permissions. A one-time welcome asks for location (km to each client office) and microphone, each with why.',
+      'Phone app — client & SPOC pages now do the work: Work (follow-ups, calls to make, meetings: add, mark done with minutes, move), Notes (a SPOC’s notes are tagged to them), key-account star, SPOC sales status (tap to change). Client page sections: Work · SPOCs · Notes · Offices · Timeline.',
+      'Phone app — every Call button is tracked: back in the app, one sheet asks Connected / No answer / Busy / Wrong number + note + “remind me to call back”; Save logs it on the client timeline as a connected / not-connected call. Nothing is saved without a tap.',
+      'Phone app — Today shows what is due today (overdue included) and meetings this week; a Meetings screen lists upcoming meetings by day and schedules new ones (pick client → when). Phone reminders 30 min before meetings and at the due time of follow-ups (local notifications, kept in step with the server, cleared on sign-out). API: GET /me/work (my open / done work across clients).',
+      'Phone app — voice: a mic next to Ask AI, notes, call notes and meeting minutes turns speech into text with the phone’s own (free) engine; language in Me › Settings (English, हिंदी, ಕನ್ನಡ, தமிழ், తెలుగు, मराठी). Installed app only (Expo Go keeps the keyboard mic).',
+      'Phone app — Android call log (opt-in): after a call made from the app, the result sheet is filled in from the phone’s own record of that one call (connected + duration, or not connected). Personal calls are never read; nothing is saved without a tap.',
+      'Phone app — installable APK built in Expo’s cloud (project @sfjbs/sfjbs-sales), talking to the deployed core service.',
+      'AI (web and phone) was failing because the Anthropic API key in core-service was rejected (401 invalid x-api-key) — needs a new key in .env and on Cloud Run.',
+    ],
+  },
   {
     date: '2026-11-17',
     items: [

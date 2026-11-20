@@ -157,7 +157,7 @@ export function RunsTray() {
 
   return (
     <>
-      <div className="fixed right-4 bottom-4 z-40 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-card shadow-lg">
+      <div className="fixed right-4 bottom-[calc(1rem+var(--mobile-nav-h))] z-40 w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-card shadow-lg">
         <button
           type="button"
           onClick={() => setOpen(o => !o)}

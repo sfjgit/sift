@@ -25,6 +25,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // phones: draw under the notch / home bar; the tab bar pads itself (safe-area insets)
+  viewportFit: 'cover',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f8fafc' },
     { media: '(prefers-color-scheme: dark)', color: '#0b1220' },

@@ -14,6 +14,7 @@
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { RunsTray } from './RunsTray';
+import { MobileTabBar } from './MobileTabBar';
 import { WebsitePopup } from '@/features/website/WebsitePopup';
 import { useRouter } from 'next/navigation';
 import { Building2, Menu, Search, UserRoundX } from 'lucide-react';
@@ -234,7 +235,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <header
             ref={topRef}
             className={cn(
-              'flex h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur-md md:px-6',
+              'flex h-14 items-center gap-2 border-b bg-background/85 px-2 backdrop-blur-md md:gap-3 md:px-6',
               topFloat
                 ? cn(
                     'fixed top-0 right-0 z-40 transition-[transform,opacity,box-shadow,left]',
@@ -261,19 +262,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="ml-auto flex items-center gap-1">
               <AiTopbarControl />
               <QuickAddMenu />
-              <ReportBugButton />
-              <HelpMenu />
+              {/* phones: these two live in the account menu */}
+              <span className="hidden md:contents">
+                <ReportBugButton />
+                <HelpMenu />
+              </span>
               <NotificationsPopover />
               {autoHide && (
                 <PinToggle pinned={topbarPinned} onToggle={onTopbarPin} what="top bar" />
               )}
-              <div className="mx-1 h-6 w-px bg-border" />
+              <div className="mx-1 hidden h-6 w-px bg-border md:block" />
               <UserMenu />
             </div>
           </header>
 
           {/* every page uses the full width — no empty side margins */}
-          <main className="w-full flex-1 px-4 py-3 md:px-5">{children}</main>
+          {/* phones: bottom padding clears the tab bar */}
+          <main className="w-full flex-1 px-3 pt-3 pb-[calc(0.75rem+var(--mobile-nav-h))] md:px-5 md:pb-3">
+            {children}
+          </main>
+          <MobileTabBar onMenu={() => setMobileOpen(true)} />
           <RunsTray />
           <WebsitePopup />
         </div>

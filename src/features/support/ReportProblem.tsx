@@ -429,7 +429,7 @@ function RecordingPill() {
   return (
     <div
       data-support-ui=""
-      className="fixed bottom-24 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-full border border-destructive/40 bg-popover py-1.5 pr-1.5 pl-4 shadow-float"
+      className="fixed bottom-[calc(6rem+var(--mobile-nav-h))] left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-full border border-destructive/40 bg-popover py-1.5 pr-1.5 pl-4 shadow-float"
     >
       <span className="relative flex size-2.5">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-destructive/60" />

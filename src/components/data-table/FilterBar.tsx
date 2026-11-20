@@ -260,9 +260,16 @@ export function FilterButton({
 }) {
   const count = activeCount(filters, table);
   return (
-    <Button variant="outline" size="sm" onClick={onOpen} {...tourTarget('table-filters')}>
+    <Button
+      variant="outline"
+      size="sm"
+      className="shrink-0 max-md:h-9"
+      onClick={onOpen}
+      title="Filters"
+      {...tourTarget('table-filters')}
+    >
       <ListFilter />
-      Filters
+      <span className="max-sm:hidden">Filters</span>
       {count > 0 && (
         <span className="ml-0.5 rounded-full bg-primary px-1.5 text-[11px] leading-4 font-semibold text-primary-foreground">
           {count}

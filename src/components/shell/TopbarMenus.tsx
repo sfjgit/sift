@@ -188,7 +188,7 @@ export function UserMenu() {
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
+      <DropdownMenuContent align="end" className="max-h-[calc(100svh-5rem)] w-64 overflow-y-auto">
         <div className="flex items-center gap-3 px-2 py-2">
           <UserAvatar person={user} size="lg" />
           <div className="min-w-0">
@@ -209,6 +209,19 @@ export function UserMenu() {
         <DropdownMenuItem asChild>
           <Link href="/settings?tab=preferences">
             <Settings /> Preferences
+          </Link>
+        </DropdownMenuItem>
+        {/* phones: the top bar has no room for Report bug / Help — they live here */}
+        <DropdownMenuSeparator className="md:hidden" />
+        <DropdownMenuItem className="md:hidden" onSelect={() => void openReport('BUG')}>
+          <Bug /> Report a problem
+        </DropdownMenuItem>
+        <DropdownMenuItem className="md:hidden" onSelect={() => void openReport('FEATURE')}>
+          <Lightbulb /> Suggest a feature
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild className="md:hidden">
+          <Link href="/help">
+            <LifeBuoy /> Help center & FAQs
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
