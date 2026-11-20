@@ -929,7 +929,7 @@ export function VoiceAssistant() {
 
       {/* ── the floating assistant (no box, no backdrop) ── */}
       {open && !canvasOn && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex flex-col items-center gap-1 px-4 print:hidden" role="region" aria-label="AI assistant">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(1.5rem+var(--mobile-nav-h))] z-[60] flex flex-col items-center gap-1 px-4 print:hidden" role="region" aria-label="AI assistant">
           <div className="pointer-events-none -mb-6 drop-shadow-[0_0_30px_rgba(255,140,40,0.35)]">
             <AssistantOrb3D mood={mood} size={190} />
           </div>
@@ -1041,7 +1041,7 @@ export function VoiceAssistant() {
       )}
 
       {/* ── the small orb (bottom-left): status light + settings ── */}
-      <div className="pointer-events-none fixed bottom-5 left-5 z-40 print:hidden">
+      <div className="pointer-events-none fixed bottom-[calc(1.25rem+var(--mobile-nav-h))] left-5 z-40 print:hidden">
         <Popover>
           <PopoverTrigger asChild>
             <button

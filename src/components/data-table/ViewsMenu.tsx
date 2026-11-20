@@ -132,9 +132,18 @@ export function ViewsMenu({ module, controller }: { module: string; controller: 
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="max-w-52" {...tourTarget('table-views')}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="max-w-36 shrink-0 max-md:h-9 md:max-w-52"
+            title="Templates — saved filters and columns"
+            {...tourTarget('table-views')}
+          >
             <Bookmark />
-            <span className="truncate">{active?.name ?? 'Templates'}</span>
+            {/* icon only until the screen is wide, unless a template is on */}
+            <span className={active ? 'truncate' : 'truncate max-xl:hidden'}>
+              {active?.name ?? 'Templates'}
+            </span>
             <ChevronDown className="opacity-60" />
           </Button>
         </DropdownMenuTrigger>

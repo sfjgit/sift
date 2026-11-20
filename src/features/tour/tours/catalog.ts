@@ -128,17 +128,10 @@ export const clientsTour = defineTour({
       placement: 'bottom',
     },
     {
-      id: 'columns',
-      target: 'table-columns',
-      title: 'Make the table yours',
-      body: 'Show, hide and drag columns into the order you like, and switch to compact rows for more on screen.',
-      placement: 'left',
-    },
-    {
-      id: 'export',
-      target: 'table-export',
-      title: 'Export',
-      body: 'Download this page or every matching client as CSV or Excel — only the columns you’re showing.',
+      id: 'more',
+      target: 'table-more',
+      title: 'More: columns, export, stats',
+      body: 'Show, hide and reorder columns, export this page or every matching client to CSV / Excel, open Stats or go full screen.',
       placement: 'left',
     },
     {

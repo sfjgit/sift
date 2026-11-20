@@ -39,10 +39,11 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  Columns3,
   Maximize2,
   Minimize2,
+  MoreHorizontal,
   Plus,
-  PanelLeftClose,
   PanelLeftOpen,
   Search,
   X,
@@ -53,10 +54,14 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -74,7 +79,9 @@ import { EmptyState, ErrorState } from '@/components/common/states';
 import { tourTarget } from '@/features/tour/tour.constants';
 import { cn } from '@/lib/utils';
 import type { ListParams, Paginated } from '@/types/api';
-import { ColumnBar, ColumnsButton, useColumnBar } from './ColumnsMenu';
+import { ColumnBar, useColumnBar } from './ColumnsMenu';
+import { MobileCards } from './MobileCards';
+import { useIsPhone } from '@/hooks/useMediaQuery';
 import { downloadRecords, rowsToRecords, type ExportFormat, type ExportSheet } from './exporter';
 import { FilterButton, FilterChips } from './FilterBar';
 import { FilterPanel } from './FilterPanel';
@@ -125,6 +132,9 @@ export interface DataTableProps<T> {
   titleHint?: string;
   /** right after the title (the clients' CSR / B2G view switch) */
   titleAddon?: ReactNode;
+  /** menu items (DropdownMenuItem…) shown first in the toolbar's More (⋯) menu — page extras
+   *  used now and then (Stats…), so the toolbar keeps to one line */
+  moreItems?: ReactNode;
   /** the page's main buttons (New client…), at the end of the toolbar */
   actions?: ReactNode;
   /** the column order everyone starts with (ids); others follow in definition order */
@@ -213,6 +223,7 @@ export function DataTable<T>({
   quickToggle,
   columnAccess,
   actions: pageActions,
+  moreItems,
   defaultColumnOrder,
   exportSheets,
   fetchAll,
@@ -254,6 +265,8 @@ export function DataTable<T>({
     open: false,
   });
   const [full, setFull] = useState(false);
+  // phones get one card per row instead of the wide grid
+  const phone = useIsPhone();
   // column chips under the toolbar: open by default on full-page tables
   const columnBar = useColumnBar(id);
 
@@ -345,7 +358,7 @@ export function DataTable<T>({
   const totalPages = query.data?.meta.pages ?? 1;
   const moreToLoad = scrollMode && state.page < totalPages;
   // a row under the last one: when it scrolls into view, load the next page
-  const sentinelRef = useRef<HTMLTableRowElement>(null);
+  const sentinelRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !moreToLoad) return;
@@ -358,7 +371,7 @@ export function DataTable<T>({
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [moreToLoad, query.isFetching, loaded, state.page, actions]);
+  }, [moreToLoad, query.isFetching, loaded, state.page, actions, phone]);
 
   const fits = fit || full;
 
@@ -625,31 +638,21 @@ export function DataTable<T>({
         full ? 'fixed inset-0 z-50 gap-2 bg-background p-3' : cn('gap-3', className)
       )}
     >
-      {/* toolbar */}
+      {/* toolbar — few buttons: title · search + filters · paging · page actions · More (⋯).
+          Phone: row 1 title + actions, row 2 a full-width search. */}
       <div className="flex flex-wrap items-center gap-2">
         {title && <PageTitle hint={titleHint}>{title}</PageTitle>}
         {titleAddon}
-        {filterPanel && filters.length > 0 && (
-          <Button
-            variant={panelOpen ? 'secondary' : 'outline'}
-            size="sm"
-            onClick={togglePanel}
-            aria-pressed={panelOpen}
-            title={panelOpen ? 'Hide the filter panel' : 'Show the filter panel'}
-          >
-            {panelOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
-            <span className="hidden sm:inline">Filter panel</span>
-          </Button>
-        )}
+        <div className="order-last flex w-full min-w-0 items-center gap-2 md:order-none md:w-auto md:max-w-xl md:flex-1">
         {searchable && (
-          <div className="relative w-full sm:w-72" {...tourTarget('table-search')}>
+          <div className="relative min-w-0 flex-1" {...tourTarget('table-search')}>
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchRef}
               value={searchDraft}
               onChange={e => setSearchDraft(e.target.value)}
               placeholder={searchPlaceholder}
-              className="h-8 pr-14 pl-8"
+              className="h-8 pr-14 pl-8 max-md:h-9 max-md:text-base"
             />
             <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
               {searchDraft ? (
@@ -662,7 +665,7 @@ export function DataTable<T>({
                   <X className="size-3.5" />
                 </button>
               ) : (
-                <Kbd>/</Kbd>
+                <Kbd className="max-md:hidden">/</Kbd>
               )}
             </span>
           </div>
@@ -675,8 +678,14 @@ export function DataTable<T>({
           />
         )}
         {savedViews && !embedded && <ViewsMenu module={id} controller={controller} />}
-        <div className="ml-auto flex items-center gap-2">
-          {toolbar}
+        </div>
+        {/* page extras (SPOCs' quick switch): right side on wide screens, own scrollable row on phones */}
+        {toolbar && (
+          <div className="max-md:order-last max-md:-mx-1 max-md:w-full max-md:overflow-x-auto max-md:px-1 md:ml-auto">
+            {toolbar}
+          </div>
+        )}
+        <div className={cn('flex shrink-0 items-center gap-2', toolbar ? 'max-md:ml-auto' : 'ml-auto')}>
           {autoFooter && (
             <PagingControl
               meta={query.data?.meta}
@@ -689,58 +698,87 @@ export function DataTable<T>({
               shown={rows.length}
             />
           )}
-          <ColumnsButton open={columnBar.open} onToggle={columnBar.toggle} />
-          {isSuperAdmin && (
-            <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" {...tourTarget('table-export')}>
-                <Download />
-                <span className="hidden sm:inline">Export</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel>This page ({rows.length})</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => void runExport('csv', false)}>
-                <FileText /> CSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void runExport('xlsx', false)}>
-                <FileSpreadsheet /> Excel
-              </DropdownMenuItem>
-              {fetchAll && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>
-                    All matching ({(query.data?.meta.total ?? 0).toLocaleString('en-IN')})
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem onSelect={() => void runExport('csv', true)}>
-                    <FileText /> CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void runExport('xlsx', true)}>
-                    <FileSpreadsheet /> Excel
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-            </>
-          )}
-          {full ? (
+          {full && (
             <Button size="sm" onClick={() => setFull(false)} title="Back to the page (Esc)">
-              <Minimize2 /> Exit full screen
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setFull(true)}
-              title="Use the whole screen for this table"
-            >
-              <Maximize2 />
-              <span className="hidden sm:inline">Full screen</span>
+              <Minimize2 /> <span className="hidden sm:inline">Exit full screen</span>
             </Button>
           )}
           {pageActions}
+          {/* everything used now and then lives here — keeps the toolbar to one line */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="max-md:size-9"
+                aria-label="More table options"
+                title="Columns, export, full screen and more"
+                {...tourTarget('table-more')}
+              >
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              {moreItems && (
+                <>
+                  {moreItems}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuLabel>Table</DropdownMenuLabel>
+              {filterPanel && filters.length > 0 && (
+                // the side panel only fits on wide screens (lg+)
+                <DropdownMenuCheckboxItem
+                  className="max-lg:hidden"
+                  checked={panelOpen}
+                  onCheckedChange={togglePanel}
+                >
+                  <PanelLeftOpen /> Filter panel
+                </DropdownMenuCheckboxItem>
+              )}
+              <DropdownMenuCheckboxItem
+                checked={columnBar.open}
+                onCheckedChange={columnBar.toggle}
+              >
+                <Columns3 /> {phone ? 'Fields on the cards' : 'Columns'}
+              </DropdownMenuCheckboxItem>
+              {!full && (
+                <DropdownMenuItem onSelect={() => setFull(true)}>
+                  <Maximize2 /> Full screen
+                </DropdownMenuItem>
+              )}
+              {isSuperAdmin && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Download /> Export
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-56">
+                    <DropdownMenuLabel>This page ({rows.length})</DropdownMenuLabel>
+                    <DropdownMenuItem onSelect={() => void runExport('csv', false)}>
+                      <FileText /> CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => void runExport('xlsx', false)}>
+                      <FileSpreadsheet /> Excel
+                    </DropdownMenuItem>
+                    {fetchAll && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel>
+                          All matching ({(query.data?.meta.total ?? 0).toLocaleString('en-IN')})
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => void runExport('csv', true)}>
+                          <FileText /> CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void runExport('xlsx', true)}>
+                          <FileSpreadsheet /> Excel
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -800,7 +838,7 @@ export function DataTable<T>({
             style={fits && boxHeight ? { height: boxHeight } : undefined}
           >
             {/* always on the right edge: open the column bar / hide it — no scrolling to find it */}
-            <div className="absolute top-1/2 right-0 z-30 flex -translate-y-1/2 flex-col overflow-hidden rounded-l-md text-[12px] font-medium text-primary-foreground shadow-md">
+            <div className="absolute top-1/2 right-0 z-30 flex -translate-y-1/2 max-md:hidden flex-col overflow-hidden rounded-l-md text-[12px] font-medium text-primary-foreground shadow-md">
               <button
                 type="button"
                 onClick={() => columnBar.set(true)}
@@ -827,7 +865,7 @@ export function DataTable<T>({
                 <div className="h-full w-1/3 animate-[progress_1s_ease-in-out_infinite] bg-primary" />
               </div>
             )}
-            {scrollWidth > 0 && (
+            {!phone && scrollWidth > 0 && (
               <div
                 ref={topBarRef}
                 onScroll={() => syncScroll('top')}
@@ -846,6 +884,27 @@ export function DataTable<T>({
                 fits && (hasRows ? 'min-h-0 flex-1' : 'shrink-0')
               )}
             >
+              {phone ? (
+                <MobileCards
+                  table={table}
+                  loading={query.isLoading}
+                  rowMenu={rowMenu}
+                  rowLabel={rowLabel}
+                  onOpen={open}
+                  clickable={!!(rowHref || onRowClick)}
+                  footer={
+                    moreToLoad &&
+                    !query.isLoading && (
+                      <li
+                        ref={sentinelRef as React.Ref<HTMLLIElement>}
+                        className="py-3 text-center text-[13px] text-muted-foreground"
+                      >
+                        {query.isFetching ? 'Loading more…' : 'Scroll for more'}
+                      </li>
+                    )
+                  }
+                />
+              ) : (
               <HeaderDnd
                 ids={table.getHeaderGroups()[0]?.headers.map(h => h.column.id) ?? []}
                 fixed={fixedCols}
@@ -1070,7 +1129,7 @@ export function DataTable<T>({
                           ))}
                         {/* scroll mode: reaching this row loads the next page */}
                         {moreToLoad && !query.isLoading && (
-                          <tr ref={sentinelRef} aria-hidden>
+                          <tr ref={sentinelRef as React.Ref<HTMLTableRowElement>} aria-hidden>
                             <td
                               colSpan={visibleCols.length}
                               className="h-10 border-b px-3 text-[13px] text-muted-foreground"
@@ -1119,6 +1178,7 @@ export function DataTable<T>({
                   </ContextMenu>
                 </table>
               </HeaderDnd>
+              )}
             </div>
 
             {!query.isLoading && query.error ? (
@@ -1153,7 +1213,7 @@ export function DataTable<T>({
               </div>
             )}
 
-            {!tipSeen && rows.length > 0 && (rowMenu || rowHref) && (
+            {!phone && !tipSeen && rows.length > 0 && (rowMenu || rowHref) && (
               <div className="flex items-center gap-2 border-t bg-primary/5 py-1.5 pr-16 pl-20 text-[12.5px]">
                 <MousePointerClick className="size-3.5 text-primary" />
                 <span>
@@ -1191,7 +1251,7 @@ export function DataTable<T>({
       {bulkActions && selectedRows.length > 0 && (
         <div
           {...tourTarget('table-bulk')}
-          className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 animate-fade-up items-center gap-3 rounded-xl border bg-popover py-2 pr-2 pl-4 shadow-float"
+          className="fixed bottom-[calc(1rem+var(--mobile-nav-h))] left-1/2 z-40 flex max-w-[calc(100vw-1rem)] -translate-x-1/2 animate-fade-up items-center gap-3 overflow-x-auto rounded-xl border bg-popover py-2 pr-2 pl-4 shadow-float md:bottom-6"
         >
           <span className="text-sm font-medium whitespace-nowrap">
             {selectedRows.length} selected

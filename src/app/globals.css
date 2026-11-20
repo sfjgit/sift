@@ -99,6 +99,17 @@
   }
 }
 
+/* phones: height of the bottom tab bar (MobileTabBar) — page padding and floating
+   widgets sit above it; 0 on tablets / desktops */
+:root {
+  --mobile-nav-h: 0px;
+}
+@media (max-width: 767.98px) {
+  :root {
+    --mobile-nav-h: calc(3.75rem + env(safe-area-inset-bottom));
+  }
+}
+
 /* light theme: slate neutrals + clean blue (Nov 2026, from the user's reference) */
 :root {
   --radius: 0.625rem;

@@ -305,7 +305,7 @@ export function AiDock() {
         <aside
           role="status"
           aria-label="Assistant answer"
-          className="fixed right-5 bottom-24 z-[55] flex max-h-[70vh] w-[min(460px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl print:hidden"
+          className="fixed right-5 bottom-[calc(6rem+var(--mobile-nav-h))] z-[55] flex max-h-[70vh] w-[min(460px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-xl border bg-card shadow-2xl print:hidden"
         >
           <header className="flex shrink-0 items-center gap-2 border-b bg-surface px-3 py-2">
             <Sparkles className="size-4 shrink-0 text-primary" />

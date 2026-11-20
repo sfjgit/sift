@@ -19,6 +19,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenuCheckboxItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Kbd } from '@/components/ui/kbd';
 import { Segmented } from '@/components/ui/segmented';
 import { HelpButton } from '@/features/help/HelpSheet';
@@ -163,21 +164,28 @@ function SpocsPage() {
         }
         title="SPOCs"
         titleHint="Your contacts across every client — who owns them, how reachable they are, and where they stand."
+        moreItems={
+          <>
+            <DropdownMenuLabel>SPOCs</DropdownMenuLabel>
+            <DropdownMenuCheckboxItem checked={statsOpen} onCheckedChange={toggleStats}>
+              <BarChart3 /> Stats — counts for these SPOCs
+            </DropdownMenuCheckboxItem>
+          </>
+        }
         actions={
           <>
-            <HelpButton module="spocs" />
-            <Button
-              size="sm"
-              variant={statsOpen ? 'secondary' : 'outline'}
-              onClick={toggleStats}
-              title="Counts for the SPOCs below — they follow your filters"
-            >
-              <BarChart3 /> Stats
-            </Button>
+            <HelpButton module="spocs" className="max-md:hidden" />
             {can('spocs.create') && (
-              <Button size="sm" onClick={() => openSpocDialog({})} {...tourTarget('spocs-new')}>
-                <Plus /> New SPOC
-                <Kbd className="ml-1 border-white/20 bg-white/15 text-primary-foreground">N</Kbd>
+              <Button
+                size="sm"
+                className="max-md:h-9"
+                onClick={() => openSpocDialog({})}
+                {...tourTarget('spocs-new')}
+              >
+                <Plus /> New<span className="max-sm:hidden"> SPOC</span>
+                <Kbd className="ml-1 border-white/20 bg-white/15 text-primary-foreground max-md:hidden">
+                  N
+                </Kbd>
               </Button>
             )}
           </>

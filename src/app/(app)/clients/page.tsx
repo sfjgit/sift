@@ -18,6 +18,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenuCheckboxItem, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { useLookups } from '@/hooks/queries';
 import { Kbd } from '@/components/ui/kbd';
 import { HelpButton } from '@/features/help/HelpSheet';
@@ -201,25 +202,28 @@ function ClientsPage() {
           )
         }
         titleHint="Every organisation you work with — its profile, CSR figures, offices, reports and who works it. Status (pending / active / inactive) is in Filters."
+        moreItems={
+          <>
+            <DropdownMenuLabel>Clients</DropdownMenuLabel>
+            <DropdownMenuCheckboxItem checked={statsOpen} onCheckedChange={toggleStats}>
+              <BarChart3 /> Stats — counts for these clients
+            </DropdownMenuCheckboxItem>
+          </>
+        }
         actions={
           <>
-            <HelpButton module="clients" />
-            <Button
-              size="sm"
-              variant={statsOpen ? 'secondary' : 'outline'}
-              onClick={toggleStats}
-              title="Counts for the clients below — they follow your filters"
-            >
-              <BarChart3 /> Stats
-            </Button>
+            <HelpButton module="clients" className="max-md:hidden" />
             {can('clients.create') && (
               <Button
                 size="sm"
+                className="max-md:h-9"
                 onClick={() => openClientDialog(true)}
                 {...tourTarget('clients-new')}
               >
-                <Plus /> New client
-                <Kbd className="ml-1 border-white/20 bg-white/15 text-primary-foreground">N</Kbd>
+                <Plus /> New<span className="max-sm:hidden"> client</span>
+                <Kbd className="ml-1 border-white/20 bg-white/15 text-primary-foreground max-md:hidden">
+                  N
+                </Kbd>
               </Button>
             )}
           </>
