@@ -10,7 +10,14 @@
 
 'use client';
 
+import { ClientReport } from '@/features/clients/detail/ClientReport';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  RecordEditBar,
+  RecordModeProvider,
+  RecordToolbar,
+  useRecordMode,
+} from '@/components/record/RecordMode';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -42,8 +49,7 @@ import { RequirePermission } from '@/features/auth/RequirePermission';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { RunStepLauncher, type RunTarget } from '@/features/pipeline/RunStepLauncher';
 import { StepRunButtons } from '@/features/clients/detail/StepRunButtons';
-import { ClientFormDialog } from '@/features/clients/ClientFormDialog';
-import { ClientHeader } from '@/features/clients/detail/ClientHeader';
+import { ClientEditBar, ClientHeader } from '@/features/clients/detail/ClientHeader';
 import { ClientInfo } from '@/features/clients/detail/ClientInfo';
 import { CsrTab } from '@/features/clients/detail/CsrTab';
 import { DocumentsPanel } from '@/features/clients/detail/DocumentsPanel';
@@ -127,6 +133,16 @@ function useOpenSections() {
   return [open, save] as const;
 }
 
+/** sections the view-mode report covers (shown as sections again in edit mode) */
+const REPORT_SECTIONS = new Set<string>([
+  'info',
+  'branches',
+  'skilling',
+  'csr',
+  'reports',
+  'spocs',
+]);
+
 function ClientSpocs({ client }: { client: ClientDetail }) {
   const openSpocDialog = useUi(s => s.openSpocDialog);
   const { can } = usePermissions();
@@ -197,8 +213,10 @@ function Section({
     <section
       id={`section-${def.id}`}
       className={cn(
-        'scroll-mt-4 overflow-hidden rounded-xl border bg-card shadow-card transition-shadow',
-        open && 'border-l-[3px] border-l-primary'
+        'scroll-mt-4 overflow-hidden rounded-xl border bg-card shadow-card transition-shadow print:break-inside-auto print:border-0 print:shadow-none',
+        open && 'border-l-[3px] border-l-primary',
+        // the PDF holds the sections that are open
+        !open && 'print:hidden'
       )}
     >
       {/* header row: click anywhere on it to open / close; run pills don't toggle */}
@@ -257,9 +275,13 @@ function ClientPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = usePermissions();
   const { data: client, isLoading, error, refetch } = clientHooks.useDetail(id);
-  const [editing, setEditing] = useState(
-    () => !!new URLSearchParams(window.location.search).get('edit')
-  );
+  // ?edit=1 (the list's row menu "Edit") opens the page in edit mode
+  const record = useRecordMode();
+  const startEdit = record?.start;
+  const hasClient = !!client;
+  useEffect(() => {
+    if (hasClient && new URLSearchParams(window.location.search).get('edit')) startEdit?.();
+  }, [hasClient, startEdit]);
   const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
   const [openIds, setOpenIds] = useOpenSections();
   useTour(clientDetailTour, { ready: !!client });
@@ -419,7 +441,17 @@ function ClientPage() {
     );
   }
 
-  const visible = sections.filter(d => !d.hidden);
+  // view mode: the client's data reads as one report (ClientReport); the daily-work sections follow it.
+  // Edit mode: every section as before, with its forms.
+  // Edit mode: only the data sections, all open, under one slim bar (work stays in view mode).
+  const reporting = !!record && !record.editing;
+  const editingData = !!record?.editing;
+  const visible = sections.filter(
+    d =>
+      !d.hidden &&
+      !(reporting && REPORT_SECTIONS.has(d.id)) &&
+      !(editingData && !REPORT_SECTIONS.has(d.id))
+  );
   /** open the section if needed, then scroll to it */
   const jumpTo = (sid: SectionId) => {
     if (!openIds.includes(sid)) setOpenIds([...openIds, sid]);
@@ -512,12 +544,28 @@ function ClientPage() {
 
   return (
     <div className="space-y-4 pb-[20vh]">
-      <Breadcrumbs crumbs={[{ label: 'Clients', href: '/clients' }, { label: client.name }]} />
-      <ClientHeader client={client} onEdit={() => setEditing(true)} onRun={onRun} />
+      {/* view mode: the report only (it carries the name, status …) — one Edit button above it */}
+      {reporting ? (
+        <div className="flex justify-end print:hidden">
+          <RecordToolbar
+            canEdit={can('clients.update')}
+            pdfName={`${client.name} – Client report`}
+          />
+        </div>
+      ) : editingData ? (
+        // edit mode: one slim bar — the client, More (run / status / add SPOC / delete), Cancel / Save
+        <ClientEditBar client={client} onRun={onRun} />
+      ) : (
+        <>
+          <Breadcrumbs crumbs={[{ label: 'Clients', href: '/clients' }, { label: client.name }]} />
+          <ClientHeader client={client} onRun={onRun} />
+          <RecordEditBar />
+        </>
+      )}
 
       {/* quick log: opens the composer on that tab */}
-      {can('client_notes.create') && (
-        <div className="flex flex-wrap items-center gap-2">
+      {!reporting && !editingData && can('client_notes.create') && (
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
           <span className="text-xs font-medium text-muted-foreground">Log / add</span>
           <div className="flex overflow-hidden rounded-lg border bg-card">
             {(
@@ -546,9 +594,14 @@ function ClientPage() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[190px_minmax(0,1fr)]">
+      <div className={cn('grid gap-4', !record && 'lg:grid-cols-[190px_minmax(0,1fr)]')}>
         {/* left rail: jump to a section (opens it if closed) */}
-        <nav className="hidden self-start lg:sticky lg:top-4 lg:block">
+        <nav
+          className={cn(
+            'hidden self-start lg:sticky lg:top-4 lg:block print:hidden',
+            !!record && 'lg:hidden'
+          )}
+        >
           <p className="mb-1 px-3 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
             On this page
           </p>
@@ -578,19 +631,20 @@ function ClientPage() {
         </nav>
 
         <div className="min-w-0 space-y-3" {...tourTarget('client-tabs')}>
+          {reporting && <ClientReport client={client} />}
           {visible.map(d => (
             <Section
               key={d.id}
-              def={d}
-              open={openIds.includes(d.id)}
-              onToggle={() => toggle(d.id)}
+              def={editingData ? { ...d, steps: undefined } : d}
+              open={editingData || openIds.includes(d.id)}
+              onToggle={() => !editingData && toggle(d.id)}
               clientId={client.id}
               onRun={onRun}
             >
               {body[d.id]}
             </Section>
           ))}
-          {can('step_runs.read') && (
+          {!editingData && can('step_runs.read') && (
             <div className="flex justify-center pt-1">
               <Button
                 variant="ghost"
@@ -610,7 +664,6 @@ function ClientPage() {
       </div>
 
       <RunStepLauncher target={runTarget} onClose={() => setRunTarget(null)} />
-      <ClientFormDialog client={client} open={editing} onOpenChange={setEditing} />
     </div>
   );
 }
@@ -619,7 +672,10 @@ export default function Page() {
   return (
     <RequirePermission perm="clients.read">
       <OpenWebsiteFix />
-      <ClientPage />
+      {/* reads like a document; Edit turns the page into a form (filled values: super admin only) */}
+      <RecordModeProvider>
+        <ClientPage />
+      </RecordModeProvider>
     </RequirePermission>
   );
 }

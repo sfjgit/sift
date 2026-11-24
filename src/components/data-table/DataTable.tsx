@@ -50,6 +50,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { HeaderFilter, type FacetFetcher } from './HeaderFilter';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -160,6 +161,9 @@ export interface DataTableProps<T> {
    * header, and blank grid rows down to the bottom of the screen */
   variant?: 'default' | 'sheet';
   /** every filter in a panel left of the grid (Zoho style); title like "Filter clients by" */
+  /** sort / filter from each column heading (columns with meta.headerFilter or sortKey);
+   *  facets = the "values with counts" source for meta.headerFilter type "values" */
+  headerFilters?: { facets?: FacetFetcher };
   filterPanel?: {
     title: string;
     /** first visit, before the user toggles it */ defaultOpen?: boolean;
@@ -201,6 +205,33 @@ const selectColumn = <T,>(): DataColumn<T> => ({
   ),
 });
 
+/** a heading's label (sort button) with the filter funnel beside it */
+function HeadCell({
+  withFilter,
+  align,
+  filter,
+  children,
+}: {
+  withFilter: boolean;
+  align?: 'left' | 'right' | 'center';
+  filter: ReactNode;
+  children: ReactNode;
+}) {
+  if (!withFilter) return <>{children}</>;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1',
+        align === 'right' && 'flex-row-reverse',
+        align === 'center' && 'justify-center'
+      )}
+    >
+      {children}
+      {filter}
+    </span>
+  );
+}
+
 export function DataTable<T>({
   id,
   table: controller,
@@ -230,6 +261,7 @@ export function DataTable<T>({
   exportName,
   empty,
   savedViews = true,
+  headerFilters,
   embedded = false,
   fit = !embedded,
   variant = 'sheet',
@@ -644,40 +676,40 @@ export function DataTable<T>({
         {title && <PageTitle hint={titleHint}>{title}</PageTitle>}
         {titleAddon}
         <div className="order-last flex w-full min-w-0 items-center gap-2 md:order-none md:w-auto md:max-w-xl md:flex-1">
-        {searchable && (
-          <div className="relative min-w-0 flex-1" {...tourTarget('table-search')}>
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              value={searchDraft}
-              onChange={e => setSearchDraft(e.target.value)}
-              placeholder={searchPlaceholder}
-              className="h-8 pr-14 pl-8 max-md:h-9 max-md:text-base"
+          {searchable && (
+            <div className="relative min-w-0 flex-1" {...tourTarget('table-search')}>
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                value={searchDraft}
+                onChange={e => setSearchDraft(e.target.value)}
+                placeholder={searchPlaceholder}
+                className="h-8 pr-14 pl-8 max-md:h-9 max-md:text-base"
+              />
+              <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
+                {searchDraft ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchDraft('')}
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                ) : (
+                  <Kbd className="max-md:hidden">/</Kbd>
+                )}
+              </span>
+            </div>
+          )}
+          {filters.length > 0 && (
+            <FilterButton
+              filters={filters}
+              table={controller}
+              onOpen={() => setFilterSheet({ open: true })}
             />
-            <span className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
-              {searchDraft ? (
-                <button
-                  type="button"
-                  onClick={() => setSearchDraft('')}
-                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                  aria-label="Clear search"
-                >
-                  <X className="size-3.5" />
-                </button>
-              ) : (
-                <Kbd className="max-md:hidden">/</Kbd>
-              )}
-            </span>
-          </div>
-        )}
-        {filters.length > 0 && (
-          <FilterButton
-            filters={filters}
-            table={controller}
-            onOpen={() => setFilterSheet({ open: true })}
-          />
-        )}
-        {savedViews && !embedded && <ViewsMenu module={id} controller={controller} />}
+          )}
+          {savedViews && !embedded && <ViewsMenu module={id} controller={controller} />}
         </div>
         {/* page extras (SPOCs' quick switch): right side on wide screens, own scrollable row on phones */}
         {toolbar && (
@@ -685,7 +717,9 @@ export function DataTable<T>({
             {toolbar}
           </div>
         )}
-        <div className={cn('flex shrink-0 items-center gap-2', toolbar ? 'max-md:ml-auto' : 'ml-auto')}>
+        <div
+          className={cn('flex shrink-0 items-center gap-2', toolbar ? 'max-md:ml-auto' : 'ml-auto')}
+        >
           {autoFooter && (
             <PagingControl
               meta={query.data?.meta}
@@ -736,10 +770,7 @@ export function DataTable<T>({
                   <PanelLeftOpen /> Filter panel
                 </DropdownMenuCheckboxItem>
               )}
-              <DropdownMenuCheckboxItem
-                checked={columnBar.open}
-                onCheckedChange={columnBar.toggle}
-              >
+              <DropdownMenuCheckboxItem checked={columnBar.open} onCheckedChange={columnBar.toggle}>
                 <Columns3 /> {phone ? 'Fields on the cards' : 'Columns'}
               </DropdownMenuCheckboxItem>
               {!full && (
@@ -905,279 +936,305 @@ export function DataTable<T>({
                   }
                 />
               ) : (
-              <HeaderDnd
-                ids={table.getHeaderGroups()[0]?.headers.map(h => h.column.id) ?? []}
-                fixed={fixedCols}
-                onMove={moveColumn}
-              >
-                <table
-                  className={cn(
-                    'w-full caption-bottom border-separate border-spacing-0',
-                    sheet ? 'text-[14.5px]' : 'text-[14px]'
-                  )}
+                <HeaderDnd
+                  ids={table.getHeaderGroups()[0]?.headers.map(h => h.column.id) ?? []}
+                  fixed={fixedCols}
+                  onMove={moveColumn}
                 >
-                  <thead className="sticky top-0 z-10">
-                    {groupBands && (
-                      <tr>
-                        {groupBands.map((b, i) => (
-                          <th
-                            key={i}
-                            colSpan={b.span}
-                            className={cn(
-                              'h-7 border-r border-b-2 px-3 text-left text-[11px] font-bold tracking-wider whitespace-nowrap uppercase last:border-r-0',
-                              b.label ? GROUP_BAND[b.tone] : 'bg-card'
-                            )}
-                          >
-                            {b.label}
-                          </th>
-                        ))}
-                      </tr>
+                  <table
+                    className={cn(
+                      'w-full caption-bottom border-separate border-spacing-0',
+                      sheet ? 'text-[14.5px]' : 'text-[14px]'
                     )}
-                    {table.getHeaderGroups().map(hg => (
-                      <tr key={hg.id}>
-                        {hg.headers.map(h => {
-                          const meta = h.column.columnDef.meta;
-                          const sortKey = meta?.sortKey;
-                          const sorted =
-                            sortKey && state.sort?.id === sortKey
-                              ? state.sort.desc
-                                ? 'desc'
-                                : 'asc'
-                              : null;
-                          const sticky = meta?.sticky || h.column.id === firstDataCol;
-                          return (
-                            <DragTh
-                              key={h.id}
-                              id={h.column.id}
-                              draggable={!fixedCols.has(h.column.id)}
-                              style={{
-                                width:
-                                  meta?.width ??
-                                  (h.column.id === '__select'
-                                    ? quickToggle
-                                      ? 64
-                                      : 36
-                                    : undefined),
-                              }}
+                  >
+                    <thead className="sticky top-0 z-10">
+                      {groupBands && (
+                        <tr>
+                          {groupBands.map((b, i) => (
+                            <th
+                              key={i}
+                              colSpan={b.span}
                               className={cn(
-                                'border-b text-left whitespace-nowrap',
-                                sheet
-                                  ? cn(
-                                      'h-11 border-r border-b-2 border-b-primary/30 px-3 text-[13.5px] font-semibold text-[color-mix(in_oklch,var(--foreground),var(--primary)_40%)] last:border-r-0',
-                                      HEAD_BG
-                                    )
-                                  : 'h-9 bg-surface px-3 text-xs font-medium text-muted-foreground',
-                                meta?.align === 'right' && 'text-right',
-                                meta?.align === 'center' && 'text-center',
-                                h.column.id === '__select' && cn(selW, 'px-0 pl-3'),
-                                sticky && 'sticky z-10',
-                                h.column.id === '__select'
-                                  ? 'left-0'
-                                  : sticky && (bulkActions ? afterSel : 'left-0')
+                                'h-7 border-r border-b-2 px-3 text-left text-[11px] font-bold tracking-wider whitespace-nowrap uppercase last:border-r-0',
+                                b.label ? GROUP_BAND[b.tone] : 'bg-card'
                               )}
                             >
-                              {h.column.id === '__actions' ? (
-                                <button
-                                  type="button"
-                                  onClick={columnBar.toggle}
-                                  className="inline-flex items-center gap-0.5 rounded-md bg-primary px-1.5 py-0.5 text-[12px] font-medium text-primary-foreground hover:brightness-110"
-                                  title={
-                                    columnBar.open
-                                      ? 'Hide the column bar'
-                                      : 'Show more columns, hide or move them'
-                                  }
-                                >
-                                  {columnBar.open ? (
-                                    <EyeOff className="size-3" />
-                                  ) : (
-                                    <Plus className="size-3" />
-                                  )}
-                                  Columns
-                                </button>
-                              ) : h.column.id === '__select' && quickToggle ? (
-                                <span className="flex items-center gap-1.5">
-                                  {flexRender(h.column.columnDef.header, h.getContext())}
+                              {b.label}
+                            </th>
+                          ))}
+                        </tr>
+                      )}
+                      {table.getHeaderGroups().map(hg => (
+                        <tr key={hg.id}>
+                          {hg.headers.map(h => {
+                            const meta = h.column.columnDef.meta;
+                            const sortKey = meta?.sortKey;
+                            const sorted =
+                              sortKey && state.sort?.id === sortKey
+                                ? state.sort.desc
+                                  ? 'desc'
+                                  : 'asc'
+                                : null;
+                            const sticky = meta?.sticky || h.column.id === firstDataCol;
+                            return (
+                              <DragTh
+                                key={h.id}
+                                id={h.column.id}
+                                draggable={!fixedCols.has(h.column.id)}
+                                style={{
+                                  width:
+                                    meta?.width ??
+                                    (h.column.id === '__select'
+                                      ? quickToggle
+                                        ? 64
+                                        : 36
+                                      : undefined),
+                                }}
+                                className={cn(
+                                  'border-b text-left whitespace-nowrap',
+                                  sheet
+                                    ? cn(
+                                        'h-11 border-r border-b-2 border-b-primary/30 px-3 text-[13.5px] font-semibold text-[color-mix(in_oklch,var(--foreground),var(--primary)_40%)] last:border-r-0',
+                                        HEAD_BG
+                                      )
+                                    : 'h-9 bg-surface px-3 text-xs font-medium text-muted-foreground',
+                                  meta?.align === 'right' && 'text-right',
+                                  meta?.align === 'center' && 'text-center',
+                                  h.column.id === '__select' && cn(selW, 'px-0 pl-3'),
+                                  sticky && 'sticky z-10',
+                                  h.column.id === '__select'
+                                    ? 'left-0'
+                                    : sticky && (bulkActions ? afterSel : 'left-0')
+                                )}
+                              >
+                                {h.column.id === '__actions' ? (
                                   <button
                                     type="button"
-                                    onClick={toggleQuick}
-                                    aria-pressed={quickOn}
-                                    title={`${quickOn ? 'Hide' : 'Show'} ${quickToggle.label}`}
-                                    aria-label={quickToggle.label}
+                                    onClick={columnBar.toggle}
+                                    className="inline-flex items-center gap-0.5 rounded-md bg-primary px-1.5 py-0.5 text-[12px] font-medium text-primary-foreground hover:brightness-110"
+                                    title={
+                                      columnBar.open
+                                        ? 'Hide the column bar'
+                                        : 'Show more columns, hide or move them'
+                                    }
+                                  >
+                                    {columnBar.open ? (
+                                      <EyeOff className="size-3" />
+                                    ) : (
+                                      <Plus className="size-3" />
+                                    )}
+                                    Columns
+                                  </button>
+                                ) : h.column.id === '__select' && quickToggle ? (
+                                  <span className="flex items-center gap-1.5">
+                                    {flexRender(h.column.columnDef.header, h.getContext())}
+                                    <button
+                                      type="button"
+                                      onClick={toggleQuick}
+                                      aria-pressed={quickOn}
+                                      title={`${quickOn ? 'Hide' : 'Show'} ${quickToggle.label}`}
+                                      aria-label={quickToggle.label}
+                                      className={cn(
+                                        'flex size-6 items-center justify-center rounded-md transition-colors',
+                                        quickOn
+                                          ? 'bg-primary text-primary-foreground shadow-sm'
+                                          : 'text-primary hover:bg-primary/10'
+                                      )}
+                                    >
+                                      <quickToggle.icon className="size-3.5" />
+                                    </button>
+                                  </span>
+                                ) : h.isPlaceholder ? null : (
+                                  <HeadCell
+                                    withFilter={
+                                      !!headerFilters && !!(meta?.headerFilter || sortKey)
+                                    }
+                                    align={meta?.align}
+                                    filter={
+                                      headerFilters && (
+                                        <HeaderFilter
+                                          tableId={id}
+                                          label={meta?.label ?? h.column.id}
+                                          def={meta?.headerFilter}
+                                          sortKey={sortKey}
+                                          numeric={meta?.align === 'right'}
+                                          sort={state.sort}
+                                          setSort={actions.setSort}
+                                          filters={state.filters}
+                                          setFilter={actions.setFilter}
+                                          params={controller.params}
+                                          facets={headerFilters.facets}
+                                        />
+                                      )
+                                    }
+                                  >
+                                    {sortKey ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleSort(sortKey, !!meta?.sortDescFirst)}
+                                        className={cn(
+                                          '-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground',
+                                          sorted && 'text-foreground'
+                                        )}
+                                      >
+                                        {flexRender(h.column.columnDef.header, h.getContext())}
+                                        {sorted === 'asc' ? (
+                                          <ArrowUp className="size-3" />
+                                        ) : sorted === 'desc' ? (
+                                          <ArrowDown className="size-3" />
+                                        ) : (
+                                          <ArrowUpDown className="size-3 opacity-40" />
+                                        )}
+                                      </button>
+                                    ) : (
+                                      flexRender(h.column.columnDef.header, h.getContext())
+                                    )}
+                                  </HeadCell>
+                                )}
+                              </DragTh>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </thead>
+                    <ContextMenu
+                      onOpenChange={o => {
+                        if (!o) return;
+                        if (!tipSeen) dismissTip();
+                      }}
+                    >
+                      <ContextMenuTrigger asChild disabled={query.isLoading}>
+                        <tbody>
+                          {query.isLoading &&
+                            Array.from({ length: Math.min(state.limit, 8) }).map((_, i) => (
+                              <tr key={`sk-${i}`}>
+                                {visibleCols.map(c => (
+                                  <td
+                                    key={c.id}
                                     className={cn(
-                                      'flex size-6 items-center justify-center rounded-md transition-colors',
-                                      quickOn
-                                        ? 'bg-primary text-primary-foreground shadow-sm'
-                                        : 'text-primary hover:bg-primary/10'
+                                      'border-b px-3',
+                                      sheet || compact ? 'h-10' : 'h-12'
                                     )}
                                   >
-                                    <quickToggle.icon className="size-3.5" />
-                                  </button>
+                                    <Skeleton
+                                      className={cn(
+                                        'h-3.5',
+                                        c.id === '__select' ? 'w-4' : i % 2 ? 'w-24' : 'w-32'
+                                      )}
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          {!query.isLoading &&
+                            table.getRowModel().rows.map((row, i) => (
+                              <tr
+                                key={row.id}
+                                onClick={e => open(row.original, e)}
+                                onContextMenu={e => {
+                                  const td = (e.target as HTMLElement).closest('td');
+                                  setCtx({
+                                    row: row.original,
+                                    rowId: row.id,
+                                    colId: td?.dataset.col ?? '',
+                                    text: (td?.innerText ?? '').trim(),
+                                  });
+                                }}
+                                data-state={row.getIsSelected() ? 'selected' : undefined}
+                                {...(i === 0 ? tourTarget('table-row') : {})}
+                                className={cn(
+                                  'group/row transition-colors',
+                                  (rowHref || onRowClick) && 'cursor-pointer',
+                                  sheet && i % 2 === 1 && BAND_BG,
+                                  sheet ? HOVER_BG : 'hover:bg-accent/40',
+                                  'data-[state=selected]:bg-accent/60'
+                                )}
+                              >
+                                {row.getVisibleCells().map(cell => {
+                                  const meta = cell.column.columnDef.meta;
+                                  const sticky = meta?.sticky || cell.column.id === firstDataCol;
+                                  return (
+                                    <td
+                                      key={cell.id}
+                                      data-col={cell.column.id}
+                                      className={cn(
+                                        'border-b align-middle group-last/row:border-b-0',
+                                        sheet
+                                          ? 'h-10 max-w-80 truncate border-r px-3 py-0 last:border-r-0'
+                                          : cn('px-3', compact ? 'h-9 py-1' : 'h-12 py-2'),
+                                        meta?.align === 'right' && 'text-right tabular',
+                                        meta?.align === 'center' && 'text-center',
+                                        cell.column.id === '__select' && cn(selW, 'px-0 pl-3'),
+                                        sticky &&
+                                          cn(
+                                            'sticky z-[1] font-medium',
+                                            sheet && i % 2 === 1 ? BAND_BG : 'bg-card',
+                                            sheet
+                                              ? STICKY_HOVER
+                                              : 'group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_40%)] group-data-[state=selected]/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_60%)]'
+                                          ),
+                                        cell.column.id === '__select'
+                                          ? 'left-0'
+                                          : sticky && (bulkActions ? afterSel : 'left-0')
+                                      )}
+                                    >
+                                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          {/* scroll mode: reaching this row loads the next page */}
+                          {moreToLoad && !query.isLoading && (
+                            <tr ref={sentinelRef as React.Ref<HTMLTableRowElement>} aria-hidden>
+                              <td
+                                colSpan={visibleCols.length}
+                                className="h-10 border-b px-3 text-[13px] text-muted-foreground"
+                              >
+                                <span className="sticky left-3">
+                                  {query.isFetching ? 'Loading more…' : 'Scroll for more'}
                                 </span>
-                              ) : h.isPlaceholder ? null : sortKey ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleSort(sortKey, !!meta?.sortDescFirst)}
-                                  className={cn(
-                                    '-mx-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground',
-                                    sorted && 'text-foreground'
-                                  )}
-                                >
-                                  {flexRender(h.column.columnDef.header, h.getContext())}
-                                  {sorted === 'asc' ? (
-                                    <ArrowUp className="size-3" />
-                                  ) : sorted === 'desc' ? (
-                                    <ArrowDown className="size-3" />
-                                  ) : (
-                                    <ArrowUpDown className="size-3 opacity-40" />
-                                  )}
-                                </button>
-                              ) : (
-                                flexRender(h.column.columnDef.header, h.getContext())
-                              )}
-                            </DragTh>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </thead>
-                  <ContextMenu
-                    onOpenChange={o => {
-                      if (!o) return;
-                      if (!tipSeen) dismissTip();
-                    }}
-                  >
-                    <ContextMenuTrigger asChild disabled={query.isLoading}>
-                      <tbody>
-                        {query.isLoading &&
-                          Array.from({ length: Math.min(state.limit, 8) }).map((_, i) => (
-                            <tr key={`sk-${i}`}>
+                              </td>
+                            </tr>
+                          )}
+                          {/* spreadsheet: empty grid rows fill the space under the data */}
+                          {Array.from({ length: moreToLoad ? 0 : fillerRows }).map((_, i) => (
+                            <tr key={`fill-${i}`} aria-hidden>
                               {visibleCols.map(c => (
-                                <td
-                                  key={c.id}
-                                  className={cn(
-                                    'border-b px-3',
-                                    sheet || compact ? 'h-10' : 'h-12'
-                                  )}
-                                >
-                                  <Skeleton
-                                    className={cn(
-                                      'h-3.5',
-                                      c.id === '__select' ? 'w-4' : i % 2 ? 'w-24' : 'w-32'
-                                    )}
-                                  />
-                                </td>
+                                <td key={c.id} className="h-10 border-r border-b last:border-r-0" />
                               ))}
                             </tr>
                           ))}
-                        {!query.isLoading &&
-                          table.getRowModel().rows.map((row, i) => (
-                            <tr
-                              key={row.id}
-                              onClick={e => open(row.original, e)}
-                              onContextMenu={e => {
-                                const td = (e.target as HTMLElement).closest('td');
-                                setCtx({
-                                  row: row.original,
-                                  rowId: row.id,
-                                  colId: td?.dataset.col ?? '',
-                                  text: (td?.innerText ?? '').trim(),
-                                });
-                              }}
-                              data-state={row.getIsSelected() ? 'selected' : undefined}
-                              {...(i === 0 ? tourTarget('table-row') : {})}
-                              className={cn(
-                                'group/row transition-colors',
-                                (rowHref || onRowClick) && 'cursor-pointer',
-                                sheet && i % 2 === 1 && BAND_BG,
-                                sheet ? HOVER_BG : 'hover:bg-accent/40',
-                                'data-[state=selected]:bg-accent/60'
-                              )}
-                            >
-                              {row.getVisibleCells().map(cell => {
-                                const meta = cell.column.columnDef.meta;
-                                const sticky = meta?.sticky || cell.column.id === firstDataCol;
-                                return (
-                                  <td
-                                    key={cell.id}
-                                    data-col={cell.column.id}
-                                    className={cn(
-                                      'border-b align-middle group-last/row:border-b-0',
-                                      sheet
-                                        ? 'h-10 max-w-80 truncate border-r px-3 py-0 last:border-r-0'
-                                        : cn('px-3', compact ? 'h-9 py-1' : 'h-12 py-2'),
-                                      meta?.align === 'right' && 'text-right tabular',
-                                      meta?.align === 'center' && 'text-center',
-                                      cell.column.id === '__select' && cn(selW, 'px-0 pl-3'),
-                                      sticky &&
-                                        cn(
-                                          'sticky z-[1] font-medium',
-                                          sheet && i % 2 === 1 ? BAND_BG : 'bg-card',
-                                          sheet
-                                            ? STICKY_HOVER
-                                            : 'group-hover/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_40%)] group-data-[state=selected]/row:bg-[color-mix(in_oklch,var(--card),var(--accent)_60%)]'
-                                        ),
-                                      cell.column.id === '__select'
-                                        ? 'left-0'
-                                        : sticky && (bulkActions ? afterSel : 'left-0')
-                                    )}
-                                  >
-                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        {/* scroll mode: reaching this row loads the next page */}
-                        {moreToLoad && !query.isLoading && (
-                          <tr ref={sentinelRef as React.Ref<HTMLTableRowElement>} aria-hidden>
-                            <td
-                              colSpan={visibleCols.length}
-                              className="h-10 border-b px-3 text-[13px] text-muted-foreground"
-                            >
-                              <span className="sticky left-3">
-                                {query.isFetching ? 'Loading more…' : 'Scroll for more'}
-                              </span>
-                            </td>
-                          </tr>
-                        )}
-                        {/* spreadsheet: empty grid rows fill the space under the data */}
-                        {Array.from({ length: moreToLoad ? 0 : fillerRows }).map((_, i) => (
-                          <tr key={`fill-${i}`} aria-hidden>
-                            {visibleCols.map(c => (
-                              <td key={c.id} className="h-10 border-r border-b last:border-r-0" />
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </ContextMenuTrigger>
-                    {ctx && (
-                      <RowContextMenu
-                        ctx={ctx}
-                        label={rowLabel?.(ctx.row)}
-                        items={menuItems(rowMenu, ctx.row)}
-                        href={rowHref?.(ctx.row)}
-                        column={table.getColumn(ctx.colId) ?? undefined}
-                        selected={!!rowSelection[ctx.rowId]}
-                        onSelect={
-                          bulkActions ? () => table.getRow(ctx.rowId).toggleSelected() : undefined
-                        }
-                        {...(isSuperAdmin && { copy })}
-                        rowText={() =>
-                          table
-                            .getRow(ctx.rowId)
-                            .getVisibleCells()
-                            .filter(c => !c.column.id.startsWith('__'))
-                            .map(c => {
-                              const v = c.getValue();
-                              return v == null ? '' : String(v);
-                            })
-                            .join('\t')
-                        }
-                      />
-                    )}
-                  </ContextMenu>
-                </table>
-              </HeaderDnd>
+                        </tbody>
+                      </ContextMenuTrigger>
+                      {ctx && (
+                        <RowContextMenu
+                          ctx={ctx}
+                          label={rowLabel?.(ctx.row)}
+                          items={menuItems(rowMenu, ctx.row)}
+                          href={rowHref?.(ctx.row)}
+                          column={table.getColumn(ctx.colId) ?? undefined}
+                          selected={!!rowSelection[ctx.rowId]}
+                          onSelect={
+                            bulkActions ? () => table.getRow(ctx.rowId).toggleSelected() : undefined
+                          }
+                          {...(isSuperAdmin && { copy })}
+                          rowText={() =>
+                            table
+                              .getRow(ctx.rowId)
+                              .getVisibleCells()
+                              .filter(c => !c.column.id.startsWith('__'))
+                              .map(c => {
+                                const v = c.getValue();
+                                return v == null ? '' : String(v);
+                              })
+                              .join('\t')
+                          }
+                        />
+                      )}
+                    </ContextMenu>
+                  </table>
+                </HeaderDnd>
               )}
             </div>
 

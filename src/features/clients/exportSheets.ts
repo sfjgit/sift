@@ -31,7 +31,12 @@ export interface ExportDetails {
     spentRs: number | null;
     unspentRs: number | null;
   })[];
-  reports: (Row & { type: string | null; fy: string; fileName: string | null; sourceUrl: string | null })[];
+  reports: (Row & {
+    type: string | null;
+    fy: string;
+    fileName: string | null;
+    sourceUrl: string | null;
+  })[];
   spocs: (Row & {
     firstName: string;
     lastName: string | null;
@@ -57,7 +62,10 @@ const partsFor = (shown: string[]): ExportPart[] => {
 
 const v = (x: unknown) => (x === null || x === undefined ? '' : (x as string | number));
 
-export async function clientExportSheets(rows: ClientListItem[], shown: string[]): Promise<ExportSheet[]> {
+export async function clientExportSheets(
+  rows: ClientListItem[],
+  shown: string[]
+): Promise<ExportSheet[]> {
   const parts = partsFor(shown);
   if (!parts.length || !rows.length) return [];
   const d = await clientsApi.exportDetails(
@@ -88,7 +96,7 @@ export async function clientExportSheets(rows: ClientListItem[], shown: string[]
         Client: f.client,
         FY: f.fy,
         'CSR obligation (₹)': v(f.obligationRs),
-        'CSR budget (₹)': v(f.budgetRs),
+        'CSR fund (₹)': v(f.budgetRs),
         'CSR spent (₹)': v(f.spentRs),
         'CSR unspent (₹)': v(f.unspentRs),
       })),

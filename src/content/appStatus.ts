@@ -1097,6 +1097,32 @@ export const PENDING: PendingItem[] = [
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-11-23',
+    items: [
+      'New client and New SPOC are full pages (/clients/new, /spocs/new) instead of pop-ups — section cards with a sticky Create / Cancel bar. The client page has Contact & group, Registration (companies), CSR profile and Government body (government) sections. Every New client / Add SPOC button, quick-add, ⌘K and the N key lead there; “Add SPOC” on a client preselects it.',
+      'Data map: links to Client drawn bold in each area’s colour; bookkeeping links (tenant, user, engine run, pick-list) faint until a table is picked.',
+      'Admin › Data map (super admins): the whole database as a picture — 9 colour-coded areas (Client core, add-ons, people & SPOCs, CSR, daily work, engines & outreach, organisation & access, AI, system), every table with its key fields and links (arrows start at the table holding the key), ⓘ on every area / table / key field explaining what it is and why it exists; click a table to light up its links and see all fields, links in / out and its change history; search, area toggles, minimap. History tab: all 69 schema changes since 12 Mar 2026 (tables added / removed, fields added / removed / changed, by commit) — saved as docs/schema/history.json in crm-core-service, rebuilt by npm run docs:schema (part of docs:api), no running cost.',
+      'Client restructure: Client holds only what every client has (name, type, status, website, industry, category, employees, business unit, company group, office email / phone). Topics are add-ons any client can have: Registration (CIN, ownership read from the CIN, incorporation year, listing, market cap), CSR profile (role: donor / implementing agency / foundation, CSR eligible, foundation), Government (tier, body type, parent body, ministry, department, state skill body, sector, scheme type, budget, tender portal / authority, priority). Existing values moved; nothing lost (backup in crm-core-service/data-import/backups/).',
+      'Service lines are automatic: a client’s KaaS / TaaS / CSR = the lines of its active SPOCs (filters, counts and the list follow). The manual service-line pickers are gone.',
+      'People: a person is stored once and can be a SPOC at several clients — 2,831 SPOC rows → 2,693 people; 96 people work with several clients (e.g. Infosys + Infosys Foundation); the 131 emails the CASPA import had left out are back. A SPOC page shows “Also works with”; a contact change follows the person to their other clients. Merging needs the same personal email AND the same name (office mailboxes like dg.icar@nic.in never join different officers), or the same name + mobile.',
+      'B2G imported from CASPA (CPSU + SPSU sheets): 98 government bodies (20 ministries, 28 central departments, 36 state PSUs, transport / water boards …) with tier, type, ministry, state skill body, tender portal, priority, office contact, 197 offices, 665 technology rows, 38 named officers as SPOCs, 52 assignments. KPCL and KPTCL already existed as companies — completed, not duplicated.',
+      'Clients list: the CSR / B2B / B2G / B2I switch works — each sets its filter and its own columns; new columns Company group, Ownership, CSR role, Office email / phone and a Government group (tier, body type, ministry, department, state skill body, sector, scheme type, tender portal, priority), with header filters and counts.',
+      'Client page: report and edit form show Registration, CSR profile and Government sections; phone app client details show them too, and its SPOC screen lists “Also works with”.',
+      'Financial years stored in one form (2025-2026); 11 clients that had the same year twice were merged.',
+    ],
+  },
+  {
+    date: '2026-11-21',
+    items: [
+      'Clients list — every column heading has a funnel: sort (A → Z / Z → A, Low → High / High → Low) and filter right there. Fixed values (status, type, industry, category, CSR year, business unit, service lines, employee size, country / state / city, added by) tick from a list with how many clients have each — counts follow the other filters; name, short name, CIN, website, district search “contains”; CSR spent from / to (₹ crore); added on / last run from / to. Filters show as chips and save with views. Other tables can switch it on (DataTable headerFilters).',
+      'Clients list — every value list has a search box that asks the server (finds values beyond the first 500); every money column (CSR obligation, CSR fund, CSR unspent, revenue, net profit, net worth, paid-up and authorised capital — latest FY) sorts and filters by a from / to range in ₹ crore; employees from / to; address, PIN code, assigned to and projects filter from their headings.',
+      '“CSR budget” renamed “CSR fund” everywhere (table, client page, CSR tab, edit form, exports, AI).',
+      'Client and SPOC pages open as a styled multi-page report on screen (A4 sheets with running header, section number, page x of y): client — 1 Company profile, 2 CSR & financials, 3 CSR programmes, 4 Offices & technology, 5 People & documents; SPOC — 1 Profile & contact, 2 Role & company, 3 Ownership & record. Activity, meetings, outreach stay under the report. Download PDF prints one sheet per page. Edit turns the whole page into forms — Save / Cancel at the top, unsaved-change warning; ?edit=1 opens it in edit mode.',
+      'Edit rule (API-enforced, web + phone): only a super admin changes or removes filled data. Others fill empty fields (filled ones show a lock) and add new offices, CSR years, programmes, documents, technologies — editing / deleting existing rows, deleting a client, deactivating a SPOC and replacing a filed website are super-admin only. Daily work stays open: client status, CSR eligible, projects, service lines (add), SPOC sales status, call connected, primary, notes, tasks, meetings, assignments, approvals.',
+      'CASPA sheets imported: 693 new clients + 2,354 new SPOCs (38 clients and 24 SPOCs had empty fields filled), with offices, CSR years, company financials, programmes, assignments, notes and tasks. Undo files in crm-core-service/data-import/reports/.',
+    ],
+  },
+  {
     date: '2026-11-19',
     items: [
       'Phone app — hold any client or person for quick actions (Call, WhatsApp / SMS, Email, Add follow-up, Schedule meeting, Star, Pin, Open client). Email asks Outlook / other mail app / copy; WhatsApp asks WhatsApp / SMS / copy.',

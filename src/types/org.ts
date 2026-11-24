@@ -157,7 +157,10 @@ export type LookupType =
   | 'SPOC_ROLE'
   | 'DECISION_AUTHORITY'
   | 'ORG_TYPE'
-  | 'REVENUE_BAND';
+  | 'REVENUE_BAND'
+  // client add-ons (23 Nov 2026)
+  | 'CSR_ROLE'
+  | 'GOVT_ORG_TYPE';
 
 export interface Lookup {
   id: string;

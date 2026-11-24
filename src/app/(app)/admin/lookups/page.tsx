@@ -56,6 +56,8 @@ const FALLBACK_TYPES: LookupType[] = [
   'DECISION_AUTHORITY',
   'ORG_TYPE',
   'REVENUE_BAND',
+  'CSR_ROLE',
+  'GOVT_ORG_TYPE',
 ];
 
 const TYPE_INFO: Partial<Record<LookupType, { label?: string; description: string }>> = {
@@ -105,6 +107,14 @@ const TYPE_INFO: Partial<Record<LookupType, { label?: string; description: strin
     description: 'Where the SPOC sits: Corporate, Corporate Foundation or Trust.',
   },
   REVENUE_BAND: { label: 'SPOC revenue', description: 'Revenue bands a SPOC accounts for.' },
+  CSR_ROLE: {
+    label: 'CSR role',
+    description: 'A client’s part in CSR — donor, implementing agency, foundation.',
+  },
+  GOVT_ORG_TYPE: {
+    label: 'Government body type',
+    description: 'Ministry, department, PSU, skill mission, ULB … (B2G clients).',
+  },
 };
 
 const lookupTypeLabel = (t: LookupType) => TYPE_INFO[t]?.label ?? titleCase(t);

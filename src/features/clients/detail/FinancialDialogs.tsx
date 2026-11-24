@@ -117,7 +117,7 @@ export function CsrFigureDialog({
           placeholder="e.g. 12.5"
           inputMode="decimal"
         />
-        <TextField form={form} name="budget" label="Budget" inputMode="decimal" />
+        <TextField form={form} name="budget" label="CSR fund" inputMode="decimal" />
         <TextField form={form} name="spent" label="Spent" inputMode="decimal" />
         <TextField form={form} name="unspent" label="Unspent" inputMode="decimal" />
       </FormGrid>

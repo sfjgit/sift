@@ -6,6 +6,7 @@
 
 'use client';
 
+import { useRecordCan } from '@/components/record/RecordMode';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -101,7 +102,8 @@ const branchFromRow = (r: SheetRow) => {
 };
 
 export function LocationsTab({ client }: { client: ClientDetail }) {
-  const { can } = usePermissions();
+  const { can: rawCan } = usePermissions();
+  const can = useRecordCan(rawCan);
   const confirm = useConfirm();
   const [editing, setEditing] = useState<ClientLocation | 'new' | null>(null);
   const [showMap, setShowMap] = useState(false);

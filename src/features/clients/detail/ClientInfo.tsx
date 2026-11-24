@@ -29,7 +29,13 @@ import { WebsiteHistory } from '@/features/website/WebsiteHistory';
 import { clientHooks } from '@/hooks/queries';
 import { clientsApi } from '@/lib/api/endpoints';
 import { fmtDate, fmtInr, fmtNumber, fullName, hostOf } from '@/lib/format';
-import type { ClientDetail, ClientEntityType, ClientInput } from '@/types/crm';
+import type {
+  ClientDetail,
+  ClientEntityType,
+  ClientInput,
+  ClientOwnership,
+  GovtLevel,
+} from '@/types/crm';
 
 function Heading({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
@@ -78,6 +84,99 @@ const Read = ({ label, value, wide }: { label: string; value: ReactNode; wide?: 
     </div>
   </FieldRow>
 );
+
+export const OWNERSHIP: Record<ClientOwnership, string> = {
+  PRIVATE: 'Private',
+  CENTRAL_GOVT: 'Central government',
+  STATE_GOVT: 'State government',
+};
+const OWNERSHIP_OPTIONS = (Object.keys(OWNERSHIP) as ClientOwnership[]).map(v => ({
+  value: v,
+  label: OWNERSHIP[v],
+}));
+export const GOVT_LEVEL: Record<GovtLevel, string> = {
+  CENTRAL: 'Central',
+  STATE: 'State',
+  DISTRICT: 'District',
+  LOCAL: 'Local body',
+};
+const LEVEL_OPTIONS = (Object.keys(GOVT_LEVEL) as GovtLevel[]).map(v => ({
+  value: v,
+  label: GOVT_LEVEL[v],
+}));
+export const PRIORITY: Record<'H' | 'M' | 'L', string> = { H: 'High', M: 'Medium', L: 'Low' };
+const PRIORITY_OPTIONS = (['H', 'M', 'L'] as const).map(v => ({ value: v, label: PRIORITY[v] }));
+
+/** the government add-on (B2G bodies) — tier, type, ministry, procurement */
+function GovtFields({
+  client,
+  canEdit,
+  save,
+}: {
+  client: ClientDetail;
+  canEdit: boolean;
+  save: (body: Partial<ClientInput>) => Promise<void>;
+}) {
+  const g = client.govt;
+  const govt = (field: keyof NonNullable<ClientInput['govt']>) => (v: string | null) =>
+    save({ govt: { [field]: v } });
+  const text = (
+    label: string,
+    field: keyof NonNullable<ClientInput['govt']>,
+    value?: string | null
+  ) => <InlineText label={label} value={value} canEdit={canEdit} onSave={govt(field)} />;
+  return (
+    <>
+      <Heading hint="government body">Government</Heading>
+      <FieldGrid>
+        <InlinePick
+          label="Tier"
+          value={g?.level ?? null}
+          display={g?.level ? GOVT_LEVEL[g.level] : undefined}
+          canEdit={canEdit}
+          onSave={govt('level')}
+          render={p => <EnumPicker options={LEVEL_OPTIONS} {...p} />}
+        />
+        <InlinePick
+          label="Body type"
+          value={g?.orgType?.id ?? null}
+          display={g?.orgType?.label}
+          canEdit={canEdit}
+          onSave={govt('orgTypeId')}
+          render={p => <LookupPicker type="GOVT_ORG_TYPE" {...p} />}
+        />
+        {g?.parent ? (
+          <Read
+            label="Parent body"
+            value={
+              <a href={`/clients/${g.parent.id}`} className="text-primary hover:underline">
+                {g.parent.name}
+              </a>
+            }
+          />
+        ) : null}
+        {text('Ministry', 'ministryName', g?.ministryName)}
+        {text('Department', 'departmentName', g?.departmentName)}
+        {text('State skill body', 'stateSkillBody', g?.stateSkillBody)}
+        {text('Sector', 'sector', g?.sector)}
+        {text('Scheme type', 'schemeType', g?.schemeType)}
+        {text('Estimated budget', 'estimatedBudget', g?.estimatedBudget)}
+        {text('Tender portal', 'tenderPortal', g?.tenderPortal)}
+        {text('Tender authority', 'tenderAuthority', g?.tenderAuthority)}
+        <InlinePick
+          work
+          label="Priority"
+          value={g?.priority ?? null}
+          display={g?.priority ? PRIORITY[g.priority] : undefined}
+          canEdit={canEdit}
+          onSave={govt('priority')}
+          render={p => <EnumPicker options={PRIORITY_OPTIONS} {...p} />}
+        />
+        {text('Digital maturity', 'digitalMaturity', g?.digitalMaturity)}
+      </FieldGrid>
+    </>
+  );
+}
 
 export function ClientInfo({ client }: { client: ClientDetail }) {
   const { can } = usePermissions();
@@ -280,12 +379,84 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           canEdit={canEdit}
           onSave={url('foundationWebsite')}
         />
+        {/* automatic: the service lines of the client's active SPOCs */}
         <Read
           label="Service lines"
-          value={(client.serviceLines ?? []).map(s => s.serviceLine.name).join(' · ')}
+          value={
+            (client.serviceLines ?? []).map(s => s.serviceLine.name).join(' · ') || (
+              <span className="text-muted-foreground">None yet — follows the SPOCs added</span>
+            )
+          }
+        />
+        <InlineText
+          label="Company group"
+          value={client.groupName}
+          placeholder="e.g. Adani Group"
+          canEdit={canEdit}
+          onSave={text('groupName')}
+        />
+        <InlineText
+          label="Office email"
+          type="email"
+          value={client.email}
+          canEdit={canEdit}
+          onSave={text('email')}
+        />
+        <InlineText
+          label="Office phone"
+          type="tel"
+          value={client.phone}
+          canEdit={canEdit}
+          onSave={text('phone')}
         />
         <Read label="Status" value={CLIENT_STATUS[client.status].label} />
       </FieldGrid>
+
+      <Heading hint="company registration (MCA)">Registration</Heading>
+      <FieldGrid>
+        <InlinePick
+          label="Ownership"
+          value={client.registration?.ownership ?? null}
+          display={
+            client.registration?.ownership ? OWNERSHIP[client.registration.ownership] : undefined
+          }
+          canEdit={canEdit}
+          onSave={v => save({ ownership: (v as ClientOwnership | null) ?? null })}
+          render={p => <EnumPicker options={OWNERSHIP_OPTIONS} {...p} />}
+        />
+        <InlineText
+          label="Company class"
+          value={client.registration?.companyClass}
+          placeholder="e.g. Company limited by shares"
+          canEdit={canEdit}
+          onSave={text('companyClass')}
+        />
+        <InlineText
+          label="Incorporated (year)"
+          type="number"
+          value={client.registration?.yearOfIncorporation}
+          canEdit={canEdit}
+          onSave={v => save({ yearOfIncorporation: v ? Number(v) : null })}
+        />
+      </FieldGrid>
+
+      <Heading hint="the client's part in CSR">CSR profile</Heading>
+      <FieldGrid>
+        <InlinePick
+          label="CSR role"
+          value={client.csr?.csrRole?.id ?? null}
+          display={client.csr?.csrRole?.label}
+          canEdit={canEdit}
+          onSave={v => save({ csrRoleId: v })}
+          render={p => <LookupPicker type="CSR_ROLE" {...p} />}
+        />
+      </FieldGrid>
+
+      {(client.govt ||
+        client.entityType === 'GOVERNMENT' ||
+        client.businessUnit?.name === 'B2G') && (
+        <GovtFields client={client} canEdit={canEdit} save={save} />
+      )}
 
       <Heading hint="from the head office — change it under Branch offices">Head office</Heading>
       <FieldGrid>
@@ -378,7 +549,7 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
               value={csr?.obligationRs && fmtInr(csr.obligationRs)}
             />
             <Read
-              label={`CSR budget${csr ? ` (FY ${csr.fy})` : ''}`}
+              label={`CSR fund${csr ? ` (FY ${csr.fy})` : ''}`}
               value={csr?.budgetRs && fmtInr(csr.budgetRs)}
             />
             <Read

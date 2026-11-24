@@ -61,6 +61,12 @@ import { clientsApi } from '@/lib/api/endpoints';
 import { fetchAllPages } from '@/lib/api/resource';
 import { useUi } from '@/stores/ui';
 import type { ClientListItem, ClientStatus } from '@/types/crm';
+import type { ListParams } from '@/types/api';
+
+// sort + filter from each column heading; value lists come with client counts
+const CLIENT_HEADER_FILTERS = {
+  facets: (field: string, params: ListParams) => clientsApi.facets(field, params),
+};
 
 function ClientsPage() {
   const router = useRouter();
@@ -188,10 +194,16 @@ function ClientsPage() {
       {/* one row: title · status tabs · actions — the sheet gets the height */}
       <DataTable
         id="clients"
+        headerFilters={CLIENT_HEADER_FILTERS}
         rowMenu={rowMenu}
         rowLabel={c => c.name}
         title="Clients"
-        titleAddon={<BusinessViewSelect />}
+        titleAddon={
+          <BusinessViewSelect
+            table={table}
+            columnIds={columns.map(c => c.id ?? '').filter(Boolean)}
+          />
+        }
         banner={
           statsOpen && (
             <ClientStats

@@ -7,6 +7,7 @@
 
 'use client';
 
+import { useRecordActions, useRecordCan } from '@/components/record/RecordMode';
 import { useState } from 'react';
 import {
   Download,
@@ -464,8 +465,12 @@ export function CsrTab({
   /** the client page shows programmes under "CSR skilling programmes" */
   withPrograms?: boolean;
 }) {
-  const { can, isSuperAdmin } = usePermissions();
+  const { can: rawCan, isSuperAdmin } = usePermissions();
+  const can = useRecordCan(rawCan);
+  const recordActions = useRecordActions();
   const confirm = useConfirm();
+  // adding a year = add rule; editing / deleting a year = change rule
+  const canAddYear = recordActions.add(rawCan('client_financials.update'));
   const canEdit = can('client_financials.update');
   const fin = client.csrFinancials ?? [];
   const corp = client.corporateFinancials ?? [];
@@ -527,7 +532,7 @@ export function CsrTab({
             actions={
               <>
                 {fin.length > 0 && <Legend series={FIN_SERIES} />}
-                {canEdit && (
+                {canAddYear && (
                   <Button size="sm" variant="outline" onClick={() => setCsrDialog({ row: null })}>
                     <Plus /> Add year
                   </Button>
@@ -546,7 +551,7 @@ export function CsrTab({
                   rows={fin}
                   columns={[
                     { label: 'Obligation', value: r => r.obligationRs },
-                    { label: 'Budget', value: r => r.budgetRs },
+                    { label: 'Fund', value: r => r.budgetRs },
                     { label: 'Spent', value: r => r.spentRs, strong: true },
                     { label: 'Unspent', value: r => r.unspentRs },
                   ]}
@@ -563,7 +568,7 @@ export function CsrTab({
             title="Company financials"
             description="Revenue, profit and capital per financial year"
             actions={
-              canEdit && (
+              canAddYear && (
                 <Button size="sm" variant="outline" onClick={() => setCorpDialog({ row: null })}>
                   <Plus /> Add year
                 </Button>

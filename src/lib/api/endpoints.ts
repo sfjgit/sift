@@ -5,6 +5,8 @@
 // createResource; anything bespoke is a small typed function next to it.
 
 import { api, ApiError, http, toApiError } from './client';
+import type { Facet } from '@/components/data-table/types';
+import type { SchemaMap } from '@/features/schema/types';
 import type {
   AiCanvasResult,
   AiCanvasSpec,
@@ -137,6 +139,9 @@ export const clientsApi = {
   assignments: (id: string) => api.get<ClientAssignment[]>(`/clients/${id}/assignments`),
   /** counts for the Stats panel — same filters as the list */
   stats: (params?: ListParams) => api.get<ClientStats>('/clients/stats', params),
+  /** one column's values + client counts (column-header filters); same filters as the list */
+  facets: (field: string, params?: ListParams) =>
+    api.get<Facet[]>('/clients/facets', { ...params, field }),
   toggleKeyAccount: (id: string) =>
     api.post<{ starred: boolean; keyAccounts: ClientListItem['keyAccounts'] }>(
       `/clients/${id}/key-account`
@@ -744,6 +749,11 @@ export interface RestoreResult {
   failed: { id: string; label: string | null; reason: string }[];
   batchId: string;
 }
+
+/** Admin › Data map: the database structure, explained, with its history (super admins) */
+export const schemaMapApi = {
+  get: () => api.get<SchemaMap>('/schema-map'),
+};
 
 export const recycleApi = {
   list: (params?: {

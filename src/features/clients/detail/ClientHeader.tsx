@@ -15,6 +15,7 @@ import {
   Globe,
   MoreHorizontal,
   Pencil,
+  Rocket,
   Star,
   Trash2,
   UserPlus,
@@ -25,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CLIENT_STATUS, ClientStatusBadge, Pill } from '@/components/common/badges';
@@ -37,21 +39,20 @@ import { clientsApi } from '@/lib/api/endpoints';
 import { fmtDate, hostOf, placeOf } from '@/lib/format';
 import { useUi } from '@/stores/ui';
 import { StepRunButtons } from './StepRunButtons';
+import { RecordToolbar, useRecordMode } from '@/components/record/RecordMode';
 import type { ClientDetail, ClientStatus } from '@/types/crm';
 
 export function ClientHeader({
   client,
-  onEdit,
   onRun,
 }: {
   client: ClientDetail;
-  onEdit: () => void;
   /** Run all steps was clicked */
   onRun: (stepKey: string) => void;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { can } = usePermissions();
+  const { can, isSuperAdmin } = usePermissions();
   const openSpocDialog = useUi(s => s.openSpocDialog);
   const primary = client.locations.find(l => l.isPrimary) ?? client.locations[0];
 
@@ -136,12 +137,10 @@ export function ClientHeader({
             <UserPlus /> Add SPOC
           </Button>
         )}
-        {can('clients.update') && (
-          <Button variant="outline" size="sm" className="bg-card" onClick={onEdit}>
-            <Pencil /> Edit
-          </Button>
-        )}
-        {can('clients.delete') && (
+        {/* Download PDF + Edit (the page turns into a form), or Cancel / Save while editing */}
+        <RecordToolbar canEdit={can('clients.update')} />
+        {/* deleting is a super-admin action (the edit rule) */}
+        {can('clients.delete') && isSuperAdmin && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="More actions">
@@ -170,6 +169,104 @@ export function ClientHeader({
           </DropdownMenu>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * edit mode's only header: one slim sticky bar — the client, what the rule is, the occasional
+ * actions tucked in "More", Cancel / Save
+ */
+export function ClientEditBar({
+  client,
+  onRun,
+}: {
+  client: ClientDetail;
+  onRun: (stepKey: string) => void;
+}) {
+  const router = useRouter();
+  const confirm = useConfirm();
+  const record = useRecordMode();
+  const { can, isSuperAdmin } = usePermissions();
+  const openSpocDialog = useUi(s => s.openSpocDialog);
+  const setStatus = useAction((status: ClientStatus) => clientsApi.setStatus(client.id, status), {
+    success: (_, s) => `Client marked ${CLIENT_STATUS[s].label.toLowerCase()}`,
+    invalidate: [clientHooks.keys.all, ['reports']],
+  });
+  const remove = useAction(() => clientsApi.remove(client.id), {
+    success: 'Client deleted',
+    invalidate: [clientHooks.keys.all],
+    onSuccess: () => router.replace('/clients'),
+  });
+
+  return (
+    <div className="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card/95 px-4 py-2.5 shadow-card backdrop-blur print:hidden">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-semibold">
+          <Pencil className="mr-1.5 inline size-3.5 text-primary" />
+          Editing {client.name}
+        </p>
+        <p className="text-[12px] text-muted-foreground">
+          {record?.superAdmin
+            ? 'You can change any field.'
+            : 'Fill empty fields and add new entries — filled values are locked (super admin only).'}
+        </p>
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="bg-card">
+            More <ChevronDown className="opacity-70" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onSelect={() => onRun('run_all')}>
+            <Rocket /> Run all steps
+          </DropdownMenuItem>
+          {can('spocs.create') && (
+            <DropdownMenuItem
+              onSelect={() => openSpocDialog({ clientId: client.id, clientName: client.name })}
+            >
+              <UserPlus /> Add SPOC
+            </DropdownMenuItem>
+          )}
+          {can('clients.approve') && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Status</DropdownMenuLabel>
+              {(Object.keys(CLIENT_STATUS) as ClientStatus[])
+                .filter(s => s !== client.status)
+                .map(s => (
+                  <DropdownMenuItem key={s} onSelect={() => setStatus.mutate(s)}>
+                    <ClientStatusBadge status={s} />
+                  </DropdownMenuItem>
+                ))}
+            </>
+          )}
+          {can('clients.delete') && isSuperAdmin && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={async () => {
+                  if (
+                    await confirm({
+                      title: `Delete ${client.name}?`,
+                      description:
+                        'It disappears from lists and reports. History is kept for audit.',
+                      destructive: true,
+                      confirmLabel: 'Delete client',
+                    })
+                  )
+                    remove.mutate(undefined);
+                }}
+              >
+                <Trash2 /> Delete client
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <RecordToolbar />
     </div>
   );
 }

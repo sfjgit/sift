@@ -67,7 +67,7 @@ function Body({ clientId }: { clientId: string }) {
             <tr>
               <th>FY</th>
               <th className="text-right">Obligation</th>
-              <th className="text-right">Budget</th>
+              <th className="text-right">Fund</th>
               <th className="text-right">Spent</th>
               <th className="text-right">Unspent</th>
               <th>Category</th>

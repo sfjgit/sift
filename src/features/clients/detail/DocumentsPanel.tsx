@@ -6,6 +6,7 @@
 
 'use client';
 
+import { useRecordCan } from '@/components/record/RecordMode';
 import { useRef, useState } from 'react';
 import {
   Download,
@@ -146,7 +147,8 @@ export function UploadDialog({
 }
 
 export function DocumentsPanel({ client, limit }: { client: ClientDetail; limit?: number }) {
-  const { can } = usePermissions();
+  const { can: rawCan } = usePermissions();
+  const can = useRecordCan(rawCan);
   const confirm = useConfirm();
   const [uploading, setUploading] = useState<false | { typeId: string; fy: string } | true>(false);
   const docs = [...(client.documents ?? [])].sort(
@@ -336,7 +338,7 @@ export function YearGrid({
               {others.length > 0 && <th>Other files</th>}
               {fin && (
                 <>
-                  <th className="text-right">CSR budget</th>
+                  <th className="text-right">CSR fund</th>
                   <th className="text-right">CSR spent</th>
                   <th className="text-right">CSR unspent</th>
                 </>

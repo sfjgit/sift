@@ -6,6 +6,7 @@
 
 'use client';
 
+import { useRecordActions, useRecordCan } from '@/components/record/RecordMode';
 import { useState } from 'react';
 import { Cpu, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,9 @@ import { cn } from '@/lib/utils';
 import type { ClientDetail } from '@/types/crm';
 
 export function TechnologyTab({ client }: { client: ClientDetail }) {
-  const { can } = usePermissions();
+  const { can: rawCan } = usePermissions();
+  const can = useRecordCan(rawCan);
+  const recordActions = useRecordActions();
   const confirm = useConfirm();
   const { data: categories = [], isLoading } = useLookups('TECH_CATEGORY');
   const [editing, setEditing] = useState<{
@@ -89,7 +92,7 @@ export function TechnologyTab({ client }: { client: ClientDetail }) {
                   <td className="whitespace-pre-line">
                     {t ? (
                       t.details
-                    ) : canEdit ? (
+                    ) : recordActions.add(rawCan('client_technologies.update')) ? (
                       <button
                         type="button"
                         onClick={() =>

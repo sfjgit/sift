@@ -198,6 +198,21 @@ export const NAV_SECTIONS: NavSection[] = [
         keywords: ['audit', 'auth logs'],
       },
       {
+        label: 'Data map',
+        href: '/admin/data-map',
+        icon: Network,
+        superAdmin: true,
+        keywords: [
+          'schema',
+          'database',
+          'tables',
+          'structure',
+          'data model',
+          'architecture',
+          'links',
+        ],
+      },
+      {
         label: 'Recycle bin',
         href: '/admin/recycle-bin',
         icon: ArchiveRestore,

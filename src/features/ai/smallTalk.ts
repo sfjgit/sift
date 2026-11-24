@@ -71,7 +71,7 @@ export const smallTalk = (raw: string, ctx: { path: string; firstName?: string |
   if (/^(what can you do|what can i (ask|say)|help me|how do i use you)$/.test(t))
     return {
       kind: 'say',
-      text: 'Ask for a page, like open clients. Or a list, like active clients in Banking. Or a report, like top three clients by CSR budget. You can also ask what I think about this page.',
+      text: 'Ask for a page, like open clients. Or a list, like active clients in Banking. Or a report, like top three clients by CSR fund. You can also ask what I think about this page.',
       then: 'help',
     };
   if (/\b(what time is it|what'?s the time|time now|current time)\b/.test(t))
