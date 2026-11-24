@@ -10,6 +10,7 @@
 
 'use client';
 
+import { useRecordCan } from '@/components/record/RecordMode';
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -80,7 +81,8 @@ function fyOptions(client: ClientDetail) {
 }
 
 export function CsrSkilling({ client }: { client: ClientDetail }) {
-  const { can, isSuperAdmin } = usePermissions();
+  const { can: rawCan, isSuperAdmin } = usePermissions();
+  const can = useRecordCan(rawCan);
   const confirm = useConfirm();
   const { data: types = [] } = useLookups('DOCUMENT_TYPE');
   const programs = client.csrPrograms ?? [];
@@ -367,7 +369,7 @@ function YearForm({
             </SelectContent>
           </Select>
         </label>
-        {money('budget', 'Total CSR budget (₹)')}
+        {money('budget', 'Total CSR fund (₹)')}
         {money('spent', 'Total CSR spent (₹)')}
         {money('unspent', 'Total CSR unspent (₹)')}
       </div>

@@ -20,6 +20,23 @@ import type { ClientCoverage, ClientEntityType, ClientListItem } from '@/types/c
 import { ClientKeyStar, CsrEligibleToggle, ProjectTags } from '@/features/marks/SalesMarks';
 import { clientsApi } from '@/lib/api/endpoints';
 
+const OWNERSHIP_LABEL: Record<string, string> = {
+  PRIVATE: 'Private',
+  CENTRAL_GOVT: 'Central government',
+  STATE_GOVT: 'State government',
+};
+const GOVT_LEVEL_LABEL: Record<string, string> = {
+  CENTRAL: 'Central',
+  STATE: 'State',
+  DISTRICT: 'District',
+  LOCAL: 'Local body',
+};
+const PRIORITY_LABEL: Record<string, string> = { H: 'High', M: 'Medium', L: 'Low' };
+
+const STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(CLIENT_STATUS).map(([k, v]) => [k, v.label])
+);
+
 export const ENTITY_TYPE: Record<ClientEntityType, string> = {
   COMPANY: 'Company',
   GOVERNMENT: 'Government',
@@ -179,6 +196,7 @@ export const clientFilters: FilterDef[] = [
     key: 'status',
     label: 'Status',
     type: 'select',
+    multi: true,
     group: 'Ownership',
     options: [
       { value: 'PENDING', label: 'Pending approval' },
@@ -475,6 +493,85 @@ export const clientFilters: FilterDef[] = [
     hint: 'Clients with at least one email pack in any of these states.',
   },
 
+  // ── add-ons + group (also from the column headings and the business view)
+  { key: 'groupName', label: 'Company group', type: 'text', group: 'Search by column' },
+  {
+    key: 'ownership',
+    label: 'Ownership',
+    type: 'select',
+    multi: true,
+    group: 'Ownership',
+    options: [
+      { value: 'PRIVATE', label: 'Private' },
+      { value: 'CENTRAL_GOVT', label: 'Central government' },
+      { value: 'STATE_GOVT', label: 'State government' },
+    ],
+  },
+  {
+    key: 'csrRoleId',
+    label: 'CSR role',
+    type: 'lookup',
+    lookupType: 'CSR_ROLE',
+    multi: true,
+    group: 'Ownership',
+  },
+  {
+    key: 'govtLevel',
+    label: 'Government tier',
+    type: 'select',
+    multi: true,
+    group: 'Government',
+    options: [
+      { value: 'CENTRAL', label: 'Central' },
+      { value: 'STATE', label: 'State' },
+      { value: 'DISTRICT', label: 'District' },
+      { value: 'LOCAL', label: 'Local body' },
+    ],
+  },
+  {
+    key: 'govtOrgTypeId',
+    label: 'Body type',
+    type: 'lookup',
+    lookupType: 'GOVT_ORG_TYPE',
+    multi: true,
+    group: 'Government',
+  },
+
+  // ── latest-FY money ranges (₹ crore) and employees — set from the column headings
+  ...(
+    [
+      ['csrObligation', 'CSR obligation'],
+      ['csrFund', 'CSR fund'],
+      ['csrUnspent', 'CSR unspent'],
+      ['revenue', 'Revenue'],
+      ['netProfit', 'Net profit'],
+      ['netWorth', 'Net worth'],
+      ['paidUpCapital', 'Paid-up capital'],
+      ['authorisedCapital', 'Authorised capital'],
+    ] as const
+  ).flatMap(([k, l]): FilterDef[] => [
+    { key: `${k}MinCr`, label: `${l} from (₹ cr)`, type: 'text', group: 'Figures (latest FY)' },
+    { key: `${k}MaxCr`, label: `${l} up to (₹ cr)`, type: 'text', group: 'Figures (latest FY)' },
+  ]),
+  { key: 'employeeMin', label: 'Employees from', type: 'text', group: 'Figures (latest FY)' },
+  { key: 'employeeMax', label: 'Employees up to', type: 'text', group: 'Figures (latest FY)' },
+  { key: 'address', label: 'Address contains', type: 'text', group: 'Search by column' },
+  { key: 'pincode', label: 'PIN code starts with', type: 'text', group: 'Search by column' },
+
+  // ── column searches (also from the column headings)
+  { key: 'name', label: 'Name contains', type: 'text', group: 'Search by column' },
+  { key: 'shortName', label: 'Short name contains', type: 'text', group: 'Search by column' },
+  { key: 'cin', label: 'CIN contains', type: 'text', group: 'Search by column' },
+  { key: 'website', label: 'Website contains', type: 'text', group: 'Search by column' },
+  {
+    key: 'csrFy',
+    label: 'CSR year (latest)',
+    type: 'text',
+    group: 'Search by column',
+    placeholder: '2024-25',
+    hint: 'One or more years, like 2024-25,2023-24',
+  },
+
   // ── dates
   { key: 'createdFrom', label: 'Added from', type: 'date', group: 'Dates' },
   { key: 'createdTo', label: 'Added until', type: 'date', group: 'Dates' },
@@ -558,8 +655,14 @@ const GROUPS: { label: string; tone: GroupTone; test: (id: string) => boolean }[
         'businessUnit',
         'serviceLines',
         'assignees',
+        'groupName',
+        'ownership',
+        'csrRole',
+        'officeEmail',
+        'officePhone',
       ].includes(id),
   },
+  { label: 'Government', tone: 'amber', test: id => id.startsWith('govt_') },
   {
     label: 'Demographics',
     tone: 'green',
@@ -641,6 +744,20 @@ const money = (v?: string | null) =>
   v ? <span className="tabular whitespace-nowrap">{fmtInr(v)}</span> : <Dash />;
 const text = (v?: string | number | null) =>
   v === null || v === undefined || v === '' ? <Dash /> : <span className="truncate">{v}</span>;
+/** latest-FY money columns: sort (biggest first) + from / to range in ₹ crore, filter keys <key>MinCr / <key>MaxCr */
+const figureMeta = (label: string, key: string) => ({
+  label,
+  align: 'right' as const,
+  sortKey: key,
+  sortDescFirst: true,
+  headerFilter: {
+    type: 'range' as const,
+    minKey: `${key}MinCr`,
+    maxKey: `${key}MaxCr`,
+    unit: '₹ crore',
+  },
+});
+
 const latestCsr = (c: ClientListItem) => c.csrFinancials?.[0];
 const latestCorp = (c: ClientListItem) => c.corporateFinancials?.[0];
 const num = (v?: string | null) => (v ? Number(v) : null);
@@ -672,7 +789,12 @@ export const clientColumns = ({
     id: 'name',
     accessorKey: 'name',
     header: 'Client',
-    meta: { label: 'Client', sortKey: 'name', locked: true },
+    meta: {
+      label: 'Client',
+      sortKey: 'name',
+      locked: true,
+      headerFilter: { type: 'text', key: 'name' },
+    },
     cell: ({ row }) => {
       const c = row.original;
       return (
@@ -692,21 +814,47 @@ export const clientColumns = ({
     id: 'keyAccount',
     accessorFn: c => (c.keyAccounts ?? []).map(k => fullName(k.user)).join(', '),
     header: 'Key account',
-    meta: { label: 'Key account', width: 90 },
+    meta: {
+      label: 'Key account',
+      width: 90,
+      headerFilter: {
+        type: 'options',
+        key: 'keyAccount',
+        options: [
+          { value: 'me', label: 'My key accounts' },
+          { value: 'any', label: 'Anyone’s key account' },
+          { value: 'none', label: 'Nobody’s key account' },
+        ],
+      },
+    },
     cell: ({ row }) => <ClientKeyStar client={row.original} />,
   },
   {
     id: 'csrEligible',
     accessorFn: c => (c.csrEligible === null ? '' : c.csrEligible ? 'Yes' : 'No'),
     header: 'CSR eligible',
-    meta: { label: 'CSR eligible' },
+    meta: {
+      label: 'CSR eligible',
+      headerFilter: {
+        type: 'options',
+        key: 'csrEligible',
+        options: [
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+          { value: 'unset', label: 'Not marked' },
+        ],
+      },
+    },
     cell: ({ row }) => <CsrEligibleToggle client={row.original} canEdit={canEdit} />,
   },
   {
     id: 'projects',
     accessorFn: c => projectLabels(c.projectIds ?? []).join(', '),
     header: 'Projects',
-    meta: { label: 'Projects' },
+    meta: {
+      label: 'Projects',
+      headerFilter: { type: 'values', key: 'projectId', facet: 'projectId' },
+    },
     cell: ({ row }) => (
       <ProjectTags
         ids={row.original.projectIds ?? []}
@@ -724,35 +872,56 @@ export const clientColumns = ({
     id: 'shortName',
     accessorKey: 'shortName',
     header: 'Short name',
-    meta: { label: 'Short name' },
+    meta: {
+      label: 'Short name',
+      sortKey: 'shortName',
+      headerFilter: { type: 'text', key: 'shortName' },
+    },
     cell: ({ row }) => text(row.original.shortName),
   },
   {
     id: 'entityType',
     accessorFn: c => ENTITY_TYPE[c.entityType],
     header: 'Type',
-    meta: { label: 'Organisation type' },
+    meta: {
+      label: 'Organisation type',
+      sortKey: 'entityType',
+      headerFilter: { type: 'values', key: 'entityType', facet: 'entityType', labels: ENTITY_TYPE },
+    },
     cell: ({ row }) => ENTITY_TYPE[row.original.entityType],
   },
   {
     id: 'status',
     accessorKey: 'status',
     header: 'Status',
-    meta: { label: 'Status', sortKey: 'status', exportValue: c => CLIENT_STATUS[c.status].label },
+    meta: {
+      label: 'Status',
+      sortKey: 'status',
+      exportValue: c => CLIENT_STATUS[c.status].label,
+      headerFilter: { type: 'values', key: 'status', facet: 'status', labels: STATUS_LABELS },
+    },
     cell: ({ row }) => <ClientStatusBadge status={row.original.status} />,
   },
   {
     id: 'industry',
     accessorFn: c => c.industry?.label ?? '',
     header: 'Industry',
-    meta: { label: 'Industry' },
+    meta: {
+      label: 'Industry',
+      sortKey: 'industry',
+      headerFilter: { type: 'values', key: 'industryId', facet: 'industryId' },
+    },
     cell: ({ row }) => text(row.original.industry?.label),
   },
   {
     id: 'category',
     accessorFn: c => c.category?.label ?? '',
     header: 'Category',
-    meta: { label: 'Client category' },
+    meta: {
+      label: 'Client category',
+      sortKey: 'category',
+      headerFilter: { type: 'values', key: 'categoryId', facet: 'categoryId' },
+    },
     cell: ({ row }) => text(row.original.category?.label),
   },
 
@@ -761,7 +930,12 @@ export const clientColumns = ({
     id: 'csrFy',
     accessorKey: 'csrFy',
     header: 'CSR year',
-    meta: { label: 'CSR year (latest)', sortKey: 'csrFy', sortDescFirst: true },
+    meta: {
+      label: 'CSR year (latest)',
+      sortKey: 'csrFy',
+      sortDescFirst: true,
+      headerFilter: { type: 'values', key: 'csrFy', facet: 'csrFy' },
+    },
     cell: ({ row }) =>
       row.original.csrFy ? (
         <CsrHistoryCell clientId={row.original.id} clientName={row.original.name}>
@@ -782,6 +956,12 @@ export const clientColumns = ({
       sortKey: 'csrSpentRs',
       sortDescFirst: true,
       align: 'right',
+      headerFilter: {
+        type: 'range',
+        minKey: 'csrSpentMinCr',
+        maxKey: 'csrSpentMaxCr',
+        unit: '₹ crore',
+      },
     },
     cell: ({ row }) =>
       row.original.csrSpentRs ? (
@@ -798,63 +978,190 @@ export const clientColumns = ({
     id: 'csrObligation',
     accessorFn: c => num(latestCsr(c)?.obligationRs) ?? '',
     header: 'CSR obligation',
-    meta: { label: 'CSR obligation (latest FY)', align: 'right' },
+    meta: figureMeta('CSR obligation (latest FY)', 'csrObligation'),
     cell: ({ row }) => money(latestCsr(row.original)?.obligationRs),
   },
   {
     id: 'csrBudget',
     accessorFn: c => num(latestCsr(c)?.budgetRs) ?? '',
-    header: 'CSR budget',
-    meta: { label: 'CSR budget (latest FY)', align: 'right' },
+    header: 'CSR fund',
+    meta: figureMeta('CSR fund (latest FY)', 'csrFund'),
     cell: ({ row }) => money(latestCsr(row.original)?.budgetRs),
   },
   {
     id: 'csrUnspent',
     accessorFn: c => num(latestCsr(c)?.unspentRs) ?? '',
     header: 'CSR unspent',
-    meta: { label: 'CSR unspent (latest FY)', align: 'right' },
+    meta: figureMeta('CSR unspent (latest FY)', 'csrUnspent'),
     cell: ({ row }) => money(latestCsr(row.original)?.unspentRs),
   },
   {
     id: 'revenue',
     accessorFn: c => num(latestCorp(c)?.revenueRs) ?? '',
     header: 'Revenue',
-    meta: { label: 'Revenue (latest FY)', align: 'right' },
+    meta: figureMeta('Revenue (latest FY)', 'revenue'),
     cell: ({ row }) => money(latestCorp(row.original)?.revenueRs),
   },
   {
     id: 'netProfit',
     accessorFn: c => num(latestCorp(c)?.netProfitRs) ?? '',
     header: 'Net profit',
-    meta: { label: 'Net profit (latest FY)', align: 'right' },
+    meta: figureMeta('Net profit (latest FY)', 'netProfit'),
     cell: ({ row }) => money(latestCorp(row.original)?.netProfitRs),
   },
   {
     id: 'netWorth',
     accessorFn: c => num(latestCorp(c)?.netWorthRs) ?? '',
     header: 'Net worth',
-    meta: { label: 'Net worth (latest FY)', align: 'right' },
+    meta: figureMeta('Net worth (latest FY)', 'netWorth'),
     cell: ({ row }) => money(latestCorp(row.original)?.netWorthRs),
   },
   {
     id: 'paidUpCapital',
     accessorFn: c => num(latestCorp(c)?.paidUpCapitalRs) ?? '',
     header: 'Paid-up capital',
-    meta: { label: 'Paid-up capital (latest FY)', align: 'right' },
+    meta: figureMeta('Paid-up capital (latest FY)', 'paidUpCapital'),
     cell: ({ row }) => money(latestCorp(row.original)?.paidUpCapitalRs),
   },
   {
     id: 'authorisedCapital',
     accessorFn: c => num(latestCorp(c)?.authorisedCapitalRs) ?? '',
     header: 'Authorised capital',
-    meta: { label: 'Authorised capital (latest FY)', align: 'right' },
+    meta: figureMeta('Authorised capital (latest FY)', 'authorisedCapital'),
     cell: ({ row }) => money(latestCorp(row.original)?.authorisedCapitalRs),
+  },
+  {
+    id: 'groupName',
+    accessorFn: c => c.groupName ?? '',
+    header: 'Group',
+    meta: {
+      label: 'Company group',
+      headerFilter: { type: 'values', key: 'groupName', facet: 'groupName' },
+    },
+    cell: ({ row }) => text(row.original.groupName),
+  },
+  {
+    id: 'ownership',
+    accessorFn: c => (c.registration?.ownership ? OWNERSHIP_LABEL[c.registration.ownership] : ''),
+    header: 'Ownership',
+    meta: {
+      label: 'Ownership (from CIN)',
+      headerFilter: {
+        type: 'values',
+        key: 'ownership',
+        facet: 'ownership',
+        labels: OWNERSHIP_LABEL,
+      },
+    },
+    cell: ({ row }) =>
+      text(
+        row.original.registration?.ownership && OWNERSHIP_LABEL[row.original.registration.ownership]
+      ),
+  },
+  {
+    id: 'csrRole',
+    accessorFn: c => c.csr?.csrRole?.label ?? '',
+    header: 'CSR role',
+    meta: {
+      label: 'CSR role',
+      headerFilter: { type: 'values', key: 'csrRoleId', facet: 'csrRoleId' },
+    },
+    cell: ({ row }) => text(row.original.csr?.csrRole?.label),
+  },
+  {
+    id: 'officeEmail',
+    accessorFn: c => c.email ?? '',
+    header: 'Office email',
+    meta: { label: 'Office email' },
+    cell: ({ row }) => text(row.original.email),
+  },
+  {
+    id: 'officePhone',
+    accessorFn: c => c.phone ?? '',
+    header: 'Office phone',
+    meta: { label: 'Office phone' },
+    cell: ({ row }) => text(row.original.phone),
+  },
+  {
+    id: 'govt_level',
+    accessorFn: c => (c.govt?.level ? GOVT_LEVEL_LABEL[c.govt.level] : ''),
+    header: 'Tier',
+    meta: {
+      label: 'Government tier',
+      headerFilter: {
+        type: 'values',
+        key: 'govtLevel',
+        facet: 'govtLevel',
+        labels: GOVT_LEVEL_LABEL,
+      },
+    },
+    cell: ({ row }) => text(row.original.govt?.level && GOVT_LEVEL_LABEL[row.original.govt.level]),
+  },
+  {
+    id: 'govt_type',
+    accessorFn: c => c.govt?.orgType?.label ?? '',
+    header: 'Body type',
+    meta: {
+      label: 'Body type',
+      headerFilter: { type: 'values', key: 'govtOrgTypeId', facet: 'govtOrgTypeId' },
+    },
+    cell: ({ row }) => text(row.original.govt?.orgType?.label),
+  },
+  {
+    id: 'govt_ministry',
+    accessorFn: c => c.govt?.parent?.name ?? c.govt?.ministryName ?? '',
+    header: 'Ministry',
+    meta: { label: 'Ministry / parent body' },
+    cell: ({ row }) => text(row.original.govt?.parent?.name ?? row.original.govt?.ministryName),
+  },
+  {
+    id: 'govt_department',
+    accessorFn: c => c.govt?.departmentName ?? '',
+    header: 'Department',
+    meta: { label: 'Department' },
+    cell: ({ row }) => text(row.original.govt?.departmentName),
+  },
+  {
+    id: 'govt_skillBody',
+    accessorFn: c => c.govt?.stateSkillBody ?? '',
+    header: 'State skill body',
+    meta: { label: 'State skill body' },
+    cell: ({ row }) => text(row.original.govt?.stateSkillBody),
+  },
+  {
+    id: 'govt_sector',
+    accessorFn: c => c.govt?.sector ?? '',
+    header: 'Sector',
+    meta: { label: 'Sector (government)' },
+    cell: ({ row }) => text(row.original.govt?.sector),
+  },
+  {
+    id: 'govt_scheme',
+    accessorFn: c => c.govt?.schemeType ?? '',
+    header: 'Scheme type',
+    meta: { label: 'Scheme type' },
+    cell: ({ row }) => text(row.original.govt?.schemeType),
+  },
+  {
+    id: 'govt_tenderPortal',
+    accessorFn: c => c.govt?.tenderPortal ?? '',
+    header: 'Tender portal',
+    meta: { label: 'Tender portal' },
+    cell: ({ row }) => text(row.original.govt?.tenderPortal),
+  },
+  {
+    id: 'govt_priority',
+    accessorFn: c => c.govt?.priority ?? '',
+    header: 'Priority',
+    meta: { label: 'Priority (government)' },
+    cell: ({ row }) =>
+      text(row.original.govt?.priority && PRIORITY_LABEL[row.original.govt.priority]),
   },
   {
     id: 'cin',
     accessorKey: 'cin',
     header: 'CIN',
-    meta: { label: 'CIN' },
+    meta: { label: 'CIN', sortKey: 'cin', headerFilter: { type: 'text', key: 'cin' } },
     cell: ({ row }) =>
       row.original.cin ? (
         <span className="font-mono text-[13px]">{row.original.cin}</span>
@@ -866,56 +1173,74 @@ export const clientColumns = ({
     id: 'address',
     accessorFn: c => primaryOf(c)?.addressLine ?? '',
     header: 'Address',
-    meta: { label: 'Head office address' },
+    meta: { label: 'Head office address', headerFilter: { type: 'text', key: 'address' } },
     cell: ({ row }) => text(primaryOf(row.original)?.addressLine),
   },
   {
     id: 'city',
     accessorFn: c => primaryOf(c)?.city ?? '',
     header: 'City',
-    meta: { label: 'City' },
+    meta: { label: 'City', headerFilter: { type: 'values', key: 'city', facet: 'city' } },
     cell: ({ row }) => text(primaryOf(row.original)?.city),
   },
   {
     id: 'district',
     accessorFn: c => primaryOf(c)?.district ?? '',
     header: 'District',
-    meta: { label: 'District' },
+    meta: { label: 'District', headerFilter: { type: 'text', key: 'district' } },
     cell: ({ row }) => text(primaryOf(row.original)?.district),
   },
   {
     id: 'state',
     accessorFn: c => primaryOf(c)?.state ?? '',
     header: 'State',
-    meta: { label: 'State' },
+    meta: { label: 'State', headerFilter: { type: 'values', key: 'state', facet: 'state' } },
     cell: ({ row }) => text(primaryOf(row.original)?.state),
   },
   {
     id: 'country',
     accessorFn: c => primaryOf(c)?.country ?? '',
     header: 'Country',
-    meta: { label: 'Country' },
+    meta: { label: 'Country', headerFilter: { type: 'values', key: 'country', facet: 'country' } },
     cell: ({ row }) => text(primaryOf(row.original)?.country),
   },
   {
     id: 'pincode',
     accessorFn: c => primaryOf(c)?.pincode ?? '',
     header: 'PIN',
-    meta: { label: 'PIN code' },
+    meta: {
+      label: 'PIN code',
+      headerFilter: { type: 'text', key: 'pincode', placeholder: 'PIN starts with…' },
+    },
     cell: ({ row }) => text(primaryOf(row.original)?.pincode),
   },
   {
     id: 'employeeSize',
     accessorFn: c => c.employeeSize?.label ?? '',
     header: 'Employee size',
-    meta: { label: 'Employee size', sortKey: 'employeeCount' },
+    meta: {
+      label: 'Employee size',
+      sortKey: 'employeeSize',
+      headerFilter: { type: 'values', key: 'employeeSizeId', facet: 'employeeSizeId' },
+    },
     cell: ({ row }) => text(row.original.employeeSize?.label),
   },
   {
     id: 'employeeCount',
     accessorFn: c => c.employeeCount ?? '',
     header: 'Employees',
-    meta: { label: 'Employees (count)', align: 'right' },
+    meta: {
+      label: 'Employees (count)',
+      align: 'right',
+      sortKey: 'employeeCount',
+      sortDescFirst: true,
+      headerFilter: {
+        type: 'range',
+        minKey: 'employeeMin',
+        maxKey: 'employeeMax',
+        unit: 'employees',
+      },
+    },
     cell: ({ row }) =>
       row.original.employeeCount === null ? <Dash /> : fmtNumber(row.original.employeeCount),
   },
@@ -923,7 +1248,7 @@ export const clientColumns = ({
     id: 'website',
     accessorKey: 'website',
     header: 'Website',
-    meta: { label: 'Website' },
+    meta: { label: 'Website', headerFilter: { type: 'text', key: 'website' } },
     cell: ({ row }) => {
       const w = row.original.coverage?.website;
       return (
@@ -987,7 +1312,18 @@ export const clientColumns = ({
     id: 'branches',
     accessorFn: c => c._count.branches,
     header: 'Branch offices',
-    meta: { label: 'Branch offices', align: 'right' },
+    meta: {
+      label: 'Branch offices',
+      align: 'right',
+      headerFilter: {
+        type: 'options',
+        key: 'hasBranches',
+        options: [
+          { value: 'true', label: 'Has branch offices' },
+          { value: 'false', label: 'No branch offices' },
+        ],
+      },
+    },
     // the count opens the offices as a table; finding them is its own column (Find offices)
     cell: ({ row }) => (
       <BranchesCount
@@ -1074,7 +1410,11 @@ export const clientColumns = ({
     id: 'businessUnit',
     accessorFn: c => c.businessUnit?.name ?? '',
     header: 'BU',
-    meta: { label: 'Business unit' },
+    meta: {
+      label: 'Business unit',
+      sortKey: 'businessUnit',
+      headerFilter: { type: 'values', key: 'businessUnitId', facet: 'businessUnitId' },
+    },
     cell: ({ row }) =>
       row.original.businessUnit ? (
         <span className="whitespace-nowrap" title={row.original.businessUnit.name}>
@@ -1088,7 +1428,10 @@ export const clientColumns = ({
     id: 'serviceLines',
     accessorFn: c => c.serviceLines.map(s => s.serviceLine.name).join(', '),
     header: 'Service lines',
-    meta: { label: 'Service lines' },
+    meta: {
+      label: 'Service lines',
+      headerFilter: { type: 'values', key: 'serviceLineId', facet: 'serviceLineId' },
+    },
     cell: ({ row }) => {
       const sls = row.original.serviceLines;
       if (!sls.length) return <Dash />;
@@ -1107,7 +1450,10 @@ export const clientColumns = ({
     id: 'assignees',
     accessorFn: c => c.assignments.map(a => fullName(a.user)).join(', '),
     header: 'Assigned to',
-    meta: { label: 'Assigned to' },
+    meta: {
+      label: 'Assigned to',
+      headerFilter: { type: 'values', key: 'assignedToId', facet: 'assignedToId' },
+    },
     cell: ({ row }) => <AssigneesCell c={row.original} />,
   },
   {
@@ -1236,7 +1582,10 @@ export const clientColumns = ({
     id: 'lastRunAt',
     accessorFn: c => (c.coverage?.lastRun ? fmtDate(c.coverage.lastRun.createdAt) : ''),
     header: 'Run on',
-    meta: { label: 'Last run on' },
+    meta: {
+      label: 'Last run on',
+      headerFilter: { type: 'dates', fromKey: 'lastRunFrom', toKey: 'lastRunTo' },
+    },
     cell: ({ row }) => {
       const r = row.original.coverage?.lastRun;
       return r ? (
@@ -1252,14 +1601,21 @@ export const clientColumns = ({
     id: 'createdBy',
     accessorFn: c => fullName(c.createdBy),
     header: 'Added by',
-    meta: { label: 'Added by' },
+    meta: {
+      label: 'Added by',
+      headerFilter: { type: 'values', key: 'createdById', facet: 'createdById' },
+    },
     cell: ({ row }) => fullName(row.original.createdBy),
   },
   {
     id: 'createdAt',
     accessorFn: c => fmtDate(c.createdAt),
     header: 'Added',
-    meta: { label: 'Added on', sortKey: 'createdAt' },
+    meta: {
+      label: 'Added on',
+      sortKey: 'createdAt',
+      headerFilter: { type: 'dates', fromKey: 'createdFrom', toKey: 'createdTo' },
+    },
     cell: ({ row }) => (
       <span className="whitespace-nowrap text-muted-foreground">
         {fmtDate(row.original.createdAt)}

@@ -60,7 +60,7 @@ export const SUGGESTIONS: Suggestion[] = [
   C('open outreach'),
   C('open notifications'),
   // canvas reports
-  R('top 3 clients by CSR budget', CV),
+  R('top 3 clients by CSR fund', CV),
   R('top 10 clients by CSR spent', CV),
   R('CSR spent by FY', CV),
   R('total CSR spent this FY', CV),

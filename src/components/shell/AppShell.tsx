@@ -15,6 +15,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { RunsTray } from './RunsTray';
 import { MobileTabBar } from './MobileTabBar';
+import { CreateRedirects } from './CreateRedirects';
 import { WebsitePopup } from '@/features/website/WebsitePopup';
 import { useRouter } from 'next/navigation';
 import { Building2, Menu, Search, UserRoundX } from 'lucide-react';
@@ -29,8 +30,6 @@ import { refreshSession } from '@/lib/api/client';
 import { TourEngine } from '@/features/tour/TourEngine';
 import { PendingTourStarter } from '@/features/tour/PendingTourStarter';
 import { tourTarget } from '@/features/tour/tour.constants';
-import { ClientFormDialog } from '@/features/clients/ClientFormDialog';
-import { SpocFormDialog } from '@/features/spocs/SpocFormDialog';
 import { cn } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import { CommandPalette } from './CommandPalette';
@@ -42,8 +41,7 @@ import { CopyGuard } from '@/features/auth/CopyGuard';
 import { ScreenGuard } from '@/features/auth/ScreenGuard';
 import { NotificationsPopover } from './Notifications';
 import { PinToggle, SidebarContent } from './Sidebar';
-import { HelpMenu,
-  ReportBugButton, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
+import { HelpMenu, ReportBugButton, QuickAddMenu, ShortcutsLayer, UserMenu } from './TopbarMenus';
 import { announceLayoutChange, useAutoHideDesktop, useEdgeReveal } from './useEdgeReveal';
 
 function ImpersonationBanner() {
@@ -294,8 +292,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <CopyGuard />
       <ScreenGuard />
       <ShortcutsLayer />
-      <ClientFormDialog />
-      <SpocFormDialog />
+      {/* create forms are full pages now (/clients/new, /spocs/new) */}
+      <CreateRedirects />
       <TourEngine />
       <PendingTourStarter />
     </div>

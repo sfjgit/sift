@@ -50,11 +50,63 @@ export type ClientActivityType =
 
 // ── clients ──────────────────────────────────────────────────────────────────
 
+export type ClientOwnership = 'PRIVATE' | 'CENTRAL_GOVT' | 'STATE_GOVT';
+export type GovtLevel = 'CENTRAL' | 'STATE' | 'DISTRICT' | 'LOCAL';
+
+/** add-on: company registration (MCA) */
+export interface ClientRegistrationInfo {
+  cin: string | null;
+  ownership: ClientOwnership | null;
+  companyClass: string | null;
+  yearOfIncorporation: number | null;
+  isListed: boolean | null;
+  marketCapRs: string | null;
+  subCategory: string | null;
+  updatedAt: string;
+}
+/** add-on: CSR profile */
+export interface ClientCsrInfo {
+  csrRole: LookupRef | null;
+  csrEligible: boolean | null;
+  foundationName: string | null;
+  foundationWebsite: string | null;
+  updatedAt: string;
+}
+/** add-on: government body (B2G) */
+export interface ClientGovtInfo {
+  level: GovtLevel | null;
+  orgType: LookupRef | null;
+  parent: { id: string; name: string } | null;
+  nodalMinistry: { id: string; name: string } | null;
+  ministryName: string | null;
+  departmentName: string | null;
+  stateSkillBody: string | null;
+  sector: string | null;
+  skillFamily: string | null;
+  isNational: boolean | null;
+  schemeType: string | null;
+  estimatedBudget: string | null;
+  tenderPortal: string | null;
+  tenderAuthority: string | null;
+  priority: 'H' | 'M' | 'L' | null;
+  digitalMaturity: string | null;
+  updatedAt: string;
+}
+
 export interface ClientListItem {
   id: string;
   entityType: ClientEntityType;
   name: string;
   shortName: string | null;
+  /** company group (Adani Group …) */
+  groupName: string | null;
+  /** the organisation's own office email / phone */
+  email: string | null;
+  phone: string | null;
+  /** add-ons (null when the client has none) — cin / csrEligible below are read from them */
+  registration: ClientRegistrationInfo | null;
+  csr: ClientCsrInfo | null;
+  govt: ClientGovtInfo | null;
   cin: string | null;
   website: string | null;
   linkedinUrl: string | null;
@@ -386,8 +438,6 @@ export interface ClientInput {
   /** null with a count = picked from the count */
   employeeSizeId?: string | null;
   businessUnitId?: string | null;
-  /** replaces the client's whole set */
-  serviceLineIds?: string[];
   csrEligible?: boolean | null;
   /** PROJECT lookup ids — replaces the whole set */
   projectIds?: string[];
@@ -397,6 +447,32 @@ export interface ClientInput {
   subCategory?: string | null;
   linkedinEmployees?: number | null;
   marketCapRs?: number | null;
+  groupName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  ownership?: ClientOwnership | null;
+  companyClass?: string | null;
+  yearOfIncorporation?: number | null;
+  csrRoleId?: string | null;
+  /** only the government fields sent are saved */
+  govt?: Partial<{
+    level: GovtLevel | null;
+    orgTypeId: string | null;
+    parentClientId: string | null;
+    nodalMinistryId: string | null;
+    ministryName: string | null;
+    departmentName: string | null;
+    stateSkillBody: string | null;
+    sector: string | null;
+    skillFamily: string | null;
+    isNational: boolean | null;
+    schemeType: string | null;
+    estimatedBudget: string | null;
+    tenderPortal: string | null;
+    tenderAuthority: string | null;
+    priority: 'H' | 'M' | 'L' | null;
+    digitalMaturity: string | null;
+  }>;
 }
 
 export interface LocationInput {
@@ -429,6 +505,8 @@ export interface ClientActivity {
 
 export interface Spoc {
   id: string;
+  /** the human behind this role — one person can be a SPOC at several clients */
+  personId?: string | null;
   firstName: string;
   lastName: string | null;
   /** null when the caller lacks spocs.view_contact */
@@ -510,8 +588,13 @@ export interface ClientStats {
   csrEligible: number;
   /** null when you may not see CSR figures */
   csrSpentRs: number | null;
-  has: Record<'website' | 'linkedin' | 'cin' | 'spocs' | 'state', number> & { csrFigures: number | null };
-  by: Record<'status' | 'industry' | 'category' | 'state' | 'businessUnit' | 'entityType', StatBucket[]>;
+  has: Record<'website' | 'linkedin' | 'cin' | 'spocs' | 'state', number> & {
+    csrFigures: number | null;
+  };
+  by: Record<
+    'status' | 'industry' | 'category' | 'state' | 'businessUnit' | 'entityType',
+    StatBucket[]
+  >;
 }
 
 export interface SpocStats {
@@ -542,6 +625,14 @@ export interface SpocAssignment {
 export interface SpocDetail extends Spoc {
   validationChecks: Record<string, unknown> | null;
   assignments?: SpocAssignment[];
+  /** the same person's roles at other clients (only clients you may see) */
+  alsoWorksWith?: {
+    id: string;
+    designation: string | null;
+    isActive: boolean;
+    client: { id: string; name: string };
+    serviceLine: { id: string; name: string };
+  }[];
 }
 
 export interface SpocInput {
@@ -819,7 +910,13 @@ export interface RunViewData {
   changes?: RunChange[];
 }
 
-export type RunChangeKind = 'spocs' | 'offices' | 'financials' | 'programs' | 'documents' | 'outreach';
+export type RunChangeKind =
+  | 'spocs'
+  | 'offices'
+  | 'financials'
+  | 'programs'
+  | 'documents'
+  | 'outreach';
 /** added = new row · updated = values changed · same = already there · kept = CRM value kept, engine said otherwise · locked = a person's value, not touched */
 export type RunChangeType = 'added' | 'updated' | 'same' | 'kept' | 'locked';
 export interface RunChange {

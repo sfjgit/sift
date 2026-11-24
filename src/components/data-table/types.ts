@@ -25,10 +25,35 @@ declare module '@tanstack/react-table' {
     /** Band above the headers (CASPA style); neighbouring columns of one group share it */
     group?: string;
     groupTone?: GroupTone;
+    /** Filter from the column heading (needs DataTable's headerFilters) */
+    headerFilter?: HeaderFilter;
     /** Plain value for CSV / Excel; defaults to the accessor value */
     exportValue?: (row: TData) => string | number | null | undefined;
   }
 }
+
+/** one value of a column with how many rows have it (GET …/facets) */
+export interface Facet {
+  value: string | null;
+  label: string | null;
+  count: number;
+}
+
+/**
+ * What the funnel in a column heading offers (the key(s) are list filter keys):
+ * - values: tick values from a list with counts (fixed values — status, industry, state…)
+ * - options: a few fixed choices (no counts)
+ * - text:   "contains" search
+ * - range:  from / to numbers
+ * - dates:  from / to days
+ */
+export type HeaderFilter =
+  | { type: 'values'; key: string; facet: string; labels?: Record<string, string> }
+  /** a few fixed choices without counts; multi = several at once */
+  | { type: 'options'; key: string; options: { value: string; label: string }[]; multi?: boolean }
+  | { type: 'text'; key: string; placeholder?: string }
+  | { type: 'range'; minKey: string; maxKey: string; unit?: string }
+  | { type: 'dates'; fromKey: string; toKey: string };
 
 export type DataColumn<T> = ColumnDef<T, unknown>;
 
@@ -53,7 +78,13 @@ export type FilterDef = FilterBase &
     | { type: 'user'; purpose?: 'assign' | 'filter'; multi?: boolean }
     | { type: 'client' }
     /** country → state → city; a level lists only what fits the picked parents (by their filter keys) */
-    | { type: 'geo'; level: 'country' | 'state' | 'city'; multi?: boolean; countryKey?: string; stateKey?: string }
+    | {
+        type: 'geo';
+        level: 'country' | 'state' | 'city';
+        multi?: boolean;
+        countryKey?: string;
+        stateKey?: string;
+      }
     | { type: 'date'; placeholder?: string }
     | { type: 'text'; placeholder?: string }
     | { type: 'boolean'; trueLabel?: string; falseLabel?: string }

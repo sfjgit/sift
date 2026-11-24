@@ -10,6 +10,13 @@
 
 'use client';
 
+import {
+  RecordEditBar,
+  RecordModeProvider,
+  RecordToolbar,
+  useRecordMode,
+} from '@/components/record/RecordMode';
+import { SpocReport } from '@/features/spocs/SpocReport';
 import Link from 'next/link';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -28,6 +35,7 @@ import {
   Building2,
   CheckCircle2,
   CircleDashed,
+  ChevronDown,
   CircleSlash,
   Contact,
   Copy,
@@ -84,11 +92,7 @@ import { clientsApi, spocsApi } from '@/lib/api/endpoints';
 import { fmtDate, fmtDateTime, fmtRelative, fullName, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { ApiError } from '@/lib/api/client';
-import type {
-  SpocApprovalStatus,
-  SpocDetail,
-  SpocInput,
-} from '@/types/crm';
+import type { SpocApprovalStatus, SpocDetail, SpocInput } from '@/types/crm';
 
 // ── layout pieces ────────────────────────────────────────────────────────────
 
@@ -106,6 +110,18 @@ type BlockId =
   | 'quality'
   | 'ownership'
   | 'runs';
+
+const REPORTED_BLOCKS = new Set<BlockId>([
+  'info',
+  'contact',
+  'location',
+  'business',
+  'profile',
+  'marks',
+  'description',
+  'system',
+  'ownership',
+]);
 
 /** one white card; `id` is the jump target from the left rail */
 function Block({
@@ -126,6 +142,11 @@ function Block({
   /** no inner padding (lists that bring their own) */
   flush?: boolean;
 }) {
+  // view mode: these blocks are read in the SPOC report instead (back as forms in edit mode)
+  const record = useRecordMode();
+  if (record && !record.editing && REPORTED_BLOCKS.has(id)) return null;
+  // edit mode: only the data blocks (work — activity, drafts, quality, runs — is in view mode)
+  if (record?.editing && !REPORTED_BLOCKS.has(id)) return null;
   return (
     <section id={`b-${id}`} className="scroll-mt-4 rounded-xl border bg-card shadow-card">
       <header className="flex items-center gap-2.5 border-b px-4 py-2.5">
@@ -289,7 +310,9 @@ function Quality({ spoc }: { spoc: SpocDetail }) {
             {entries.map(([k, v]) => (
               <li key={k} className="flex items-center gap-2 text-[14px]">
                 {icon(v)}
-                <span className="truncate">{CHECK_LABELS[k] ?? titleCase(k.replace(/^v_/, ''))}</span>
+                <span className="truncate">
+                  {CHECK_LABELS[k] ?? titleCase(k.replace(/^v_/, ''))}
+                </span>
               </li>
             ))}
           </ul>
@@ -316,8 +339,11 @@ function SpocPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { can } = usePermissions();
+  const { can, isSuperAdmin: superAdmin } = usePermissions();
   const { data: spoc, isLoading, error, refetch } = spocHooks.useDetail(id);
+  // view mode: the page is the SPOC report only (+ the work blocks under it) — one Edit button on top
+  const record = useRecordMode();
+  const reporting = !!record && !record.editing;
   const [assigning, setAssigning] = useState(false);
 
   // the client's offices for "Works at"
@@ -343,7 +369,11 @@ function SpocPage() {
 
   const decide = useAction((decision: SpocApprovalStatus) => spocsApi.decide([id], decision), {
     success: (_r, d) =>
-      d === 'APPROVED' ? 'Approved for outreach' : d === 'REJECTED' ? 'Rejected' : 'Back to pending',
+      d === 'APPROVED'
+        ? 'Approved for outreach'
+        : d === 'REJECTED'
+          ? 'Rejected'
+          : 'Back to pending',
     invalidate: [spocHooks.keys.all],
   });
   const deactivate = useAction(() => spocsApi.remove(id), {
@@ -361,7 +391,8 @@ function SpocPage() {
   const saveText = (field: keyof SpocInput) => (v: string | null) => save({ [field]: v });
   const saveYears = (field: 'totalExpYears' | 'currentOrgExpYears') => (v: string | null) => {
     const n = v === null ? null : Number(v);
-    if (n !== null && (isNaN(n) || n < 0 || n >= 100)) throw new Error('Enter years between 0 and 99');
+    if (n !== null && (isNaN(n) || n < 0 || n >= 100))
+      throw new Error('Enter years between 0 and 99');
     return save({ [field]: n });
   };
 
@@ -401,7 +432,9 @@ function SpocPage() {
     {
       title: 'Work',
       items: [
-        ...(seeActivity ? [{ id: 'activity' as const, label: 'Activity & tasks', count: openTasks }] : []),
+        ...(seeActivity
+          ? [{ id: 'activity' as const, label: 'Activity & tasks', count: openTasks }]
+          : []),
         ...(can('outreach.read') ? [{ id: 'emails' as const, label: 'Email drafts' }] : []),
       ],
     },
@@ -430,204 +463,304 @@ function SpocPage() {
 
   return (
     <div className="space-y-3">
-      <Breadcrumbs
-        crumbs={[
-          { label: 'SPOCs', href: '/spocs' },
-          { label: spoc.client.name, href: `/clients/${spoc.client.id}` },
-          { label: fullName(spoc) },
-        ]}
-      />
-
-      {/* ── header ── */}
-      <div className="rounded-xl border bg-card px-5 py-4 shadow-card">
-        <div className="flex flex-wrap items-start gap-4">
-          <UserAvatar person={spoc} size="xl" />
+      {reporting ? (
+        <div className="flex justify-end print:hidden">
+          <RecordToolbar
+            canEdit={can('spocs.update')}
+            pdfName={`${fullName(spoc)} (${spoc.client.name}) – SPOC report`}
+          />
+        </div>
+      ) : record?.editing ? (
+        // edit mode: one slim bar — the SPOC, More (approve / reassign / deactivate), Cancel / Save
+        <div className="sticky top-0 z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border bg-card/95 px-4 py-2.5 shadow-card backdrop-blur print:hidden">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold">{fullName(spoc)}</h1>
-              <SpocKeyStar spoc={spoc} canEdit={canEdit} />
-              {spoc.isPrimary && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-warning/12 px-2 py-px text-[11px] font-medium text-warning">
-                  <Star className="size-2.5 fill-current" /> Primary
-                </span>
-              )}
-              {!spoc.isActive && (
-                <span className="rounded-full bg-muted px-2 py-px text-[11px] font-medium">Inactive</span>
-              )}
-            </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {spoc.designation ?? 'No designation'} at{' '}
-              <Link
-                href={`/clients/${spoc.client.id}`}
-                className="inline-flex items-center gap-1 font-medium text-foreground hover:text-primary"
-              >
-                <Building2 className="size-3.5" /> {spoc.client.name}
-              </Link>
+            <p className="truncate text-[15px] font-semibold">
+              Editing {fullName(spoc)}{' '}
+              <span className="font-normal text-muted-foreground">· {spoc.client.name}</span>
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
-              {contactHidden ? null : spoc.email ? (
-                <a href={`mailto:${spoc.email}`} className="inline-flex items-center gap-1.5 hover:text-primary">
-                  <Mail className="size-3.5" /> {spoc.email}
-                </a>
-              ) : null}
-              {!contactHidden && spoc.phone && (
-                <a href={`tel:${spoc.phone}`} className="inline-flex items-center gap-1.5 hover:text-primary">
-                  <Phone className="size-3.5" /> {spoc.phone}
-                </a>
-              )}
-              {spoc.linkedinUrl && (
-                <a
-                  href={spoc.linkedinUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 hover:text-primary"
-                >
-                  <Linkedin className="size-3.5" /> LinkedIn
-                </a>
-              )}
-              <span className="inline-flex items-center gap-1.5">
-                <UserRound className="size-3.5" /> {fullName(spoc.handler)}
-              </span>
-              <span>Updated {fmtRelative(spoc.updatedAt)}</span>
-            </div>
+            <p className="text-[12px] text-muted-foreground">
+              {superAdmin
+                ? 'You can change any field.'
+                : 'Fill empty fields — filled values are locked (super admin only). Sales status, call connected and notes stay open.'}
+            </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {seeActivity && can('client_notes.create') && (
-              <div className="flex overflow-hidden rounded-lg border">
-                {(
-                  [
-                    ['call', 'Call', Phone],
-                    ['email', 'Email', Mail],
-                    ['whatsapp', 'WhatsApp', MessageCircle],
-                    ['comment', 'Comment', MessageSquareText],
-                    ['meeting', 'Meeting', CalendarClock],
-                    ['task', 'Task', ListTodo],
-                  ] as const
-                ).map(([m, label, Icon]) => (
-                  <button
-                    key={m}
-                    type="button"
-                    title={`Log / add: ${label}`}
-                    onClick={() => startCompose(m)}
-                    className="inline-flex items-center gap-1.5 border-r px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground last:border-r-0 hover:bg-muted hover:text-foreground"
-                  >
-                    <Icon className="size-3.5" /> {label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {can('spocs.approve') && spoc.isActive && spoc.approvalStatus !== 'APPROVED' && (
-              <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate('APPROVED')}>
-                <BadgeCheck /> Approve
-              </Button>
-            )}
-            {can('spocs.approve') && spoc.isActive && spoc.approvalStatus === 'PENDING' && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={decide.isPending}
-                onClick={() => decide.mutate('REJECTED')}
-              >
-                <CircleSlash /> Reject
-              </Button>
-            )}
-            {can('spocs.assign') && spoc.isActive && (
-              <Button variant="outline" size="sm" onClick={() => setAssigning(true)}>
-                <ArrowRightLeft /> Reassign
-              </Button>
-            )}
-            {can('spocs.delete') && spoc.isActive && (
+          {spoc.isActive &&
+            (can('spocs.approve') ||
+              can('spocs.assign') ||
+              (can('spocs.delete') && superAdmin)) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="More">
-                    <MoreHorizontal />
+                  <Button variant="outline" size="sm" className="bg-card">
+                    More <ChevronDown className="opacity-70" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: `Deactivate ${fullName(spoc)}?`,
-                          description: 'They leave active lists; history is kept.',
-                          destructive: true,
-                          confirmLabel: 'Deactivate',
-                        })
-                      )
-                        deactivate.mutate(undefined, { onSuccess: () => router.push('/spocs') });
-                    }}
-                  >
-                    <Trash2 /> Deactivate
-                  </DropdownMenuItem>
+                <DropdownMenuContent align="end" className="w-52">
+                  {can('spocs.approve') && spoc.approvalStatus !== 'APPROVED' && (
+                    <DropdownMenuItem onSelect={() => decide.mutate('APPROVED')}>
+                      <BadgeCheck /> Approve
+                    </DropdownMenuItem>
+                  )}
+                  {can('spocs.approve') && spoc.approvalStatus === 'PENDING' && (
+                    <DropdownMenuItem onSelect={() => decide.mutate('REJECTED')}>
+                      <CircleSlash /> Reject
+                    </DropdownMenuItem>
+                  )}
+                  {can('spocs.assign') && (
+                    <DropdownMenuItem onSelect={() => setAssigning(true)}>
+                      <ArrowRightLeft /> Reassign
+                    </DropdownMenuItem>
+                  )}
+                  {can('spocs.delete') && superAdmin && (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={async () => {
+                        if (
+                          await confirm({
+                            title: `Deactivate ${fullName(spoc)}?`,
+                            description: 'They leave active lists; history is kept.',
+                            destructive: true,
+                            confirmLabel: 'Deactivate',
+                          })
+                        )
+                          deactivate.mutate(undefined, { onSuccess: () => router.push('/spocs') });
+                      }}
+                    >
+                      <Trash2 /> Deactivate
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-          </div>
+          <RecordToolbar />
         </div>
+      ) : (
+        <>
+          <Breadcrumbs
+            crumbs={[
+              { label: 'SPOCs', href: '/spocs' },
+              { label: spoc.client.name, href: `/clients/${spoc.client.id}` },
+              { label: fullName(spoc) },
+            ]}
+          />
 
-        {/* status strip: the four things a salesperson checks first */}
-        <div className="mt-4 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-card px-3 py-2">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Sales status
-            </p>
-            {canEdit ? (
-              <LookupPicker
-                type="SALES_STATUS"
-                size="sm"
-                value={spoc.salesStatus?.id ?? null}
-                placeholder="Set status"
-                className="mt-1 border-transparent px-1 font-medium hover:border-input"
-                onChange={v =>
-                  save({ salesStatusId: v }).then(
-                    () => toast.success('Status updated'),
-                    e => toast.error((e as ApiError).message)
-                  )
-                }
-              />
-            ) : (
-              <p className="mt-1 text-sm font-medium">{spoc.salesStatus?.label ?? '—'}</p>
+          {/* ── header ── */}
+          <div className="rounded-xl border bg-card px-5 py-4 shadow-card">
+            <div className="flex flex-wrap items-start gap-4">
+              <UserAvatar person={spoc} size="xl" />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold">{fullName(spoc)}</h1>
+                  <SpocKeyStar spoc={spoc} canEdit={canEdit} />
+                  {spoc.isPrimary && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-warning/12 px-2 py-px text-[11px] font-medium text-warning">
+                      <Star className="size-2.5 fill-current" /> Primary
+                    </span>
+                  )}
+                  {!spoc.isActive && (
+                    <span className="rounded-full bg-muted px-2 py-px text-[11px] font-medium">
+                      Inactive
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {spoc.designation ?? 'No designation'} at{' '}
+                  <Link
+                    href={`/clients/${spoc.client.id}`}
+                    className="inline-flex items-center gap-1 font-medium text-foreground hover:text-primary"
+                  >
+                    <Building2 className="size-3.5" /> {spoc.client.name}
+                  </Link>
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+                  {contactHidden ? null : spoc.email ? (
+                    <a
+                      href={`mailto:${spoc.email}`}
+                      className="inline-flex items-center gap-1.5 hover:text-primary"
+                    >
+                      <Mail className="size-3.5" /> {spoc.email}
+                    </a>
+                  ) : null}
+                  {!contactHidden && spoc.phone && (
+                    <a
+                      href={`tel:${spoc.phone}`}
+                      className="inline-flex items-center gap-1.5 hover:text-primary"
+                    >
+                      <Phone className="size-3.5" /> {spoc.phone}
+                    </a>
+                  )}
+                  {spoc.linkedinUrl && (
+                    <a
+                      href={spoc.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 hover:text-primary"
+                    >
+                      <Linkedin className="size-3.5" /> LinkedIn
+                    </a>
+                  )}
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserRound className="size-3.5" /> {fullName(spoc.handler)}
+                  </span>
+                  <span>Updated {fmtRelative(spoc.updatedAt)}</span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {seeActivity && can('client_notes.create') && (
+                  <div className="flex overflow-hidden rounded-lg border">
+                    {(
+                      [
+                        ['call', 'Call', Phone],
+                        ['email', 'Email', Mail],
+                        ['whatsapp', 'WhatsApp', MessageCircle],
+                        ['comment', 'Comment', MessageSquareText],
+                        ['meeting', 'Meeting', CalendarClock],
+                        ['task', 'Task', ListTodo],
+                      ] as const
+                    ).map(([m, label, Icon]) => (
+                      <button
+                        key={m}
+                        type="button"
+                        title={`Log / add: ${label}`}
+                        onClick={() => startCompose(m)}
+                        className="inline-flex items-center gap-1.5 border-r px-2.5 py-1.5 text-[13px] font-medium text-muted-foreground last:border-r-0 hover:bg-muted hover:text-foreground"
+                      >
+                        <Icon className="size-3.5" /> {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {can('spocs.approve') && spoc.isActive && spoc.approvalStatus !== 'APPROVED' && (
+                  <Button
+                    size="sm"
+                    disabled={decide.isPending}
+                    onClick={() => decide.mutate('APPROVED')}
+                  >
+                    <BadgeCheck /> Approve
+                  </Button>
+                )}
+                {can('spocs.approve') && spoc.isActive && spoc.approvalStatus === 'PENDING' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={decide.isPending}
+                    onClick={() => decide.mutate('REJECTED')}
+                  >
+                    <CircleSlash /> Reject
+                  </Button>
+                )}
+                {can('spocs.assign') && spoc.isActive && (
+                  <Button variant="outline" size="sm" onClick={() => setAssigning(true)}>
+                    <ArrowRightLeft /> Reassign
+                  </Button>
+                )}
+                {/* Download PDF + Edit (the page turns into a form), or Cancel / Save while editing */}
+                <RecordToolbar
+                  canEdit={can('spocs.update')}
+                  pdfName={`${fullName(spoc)} (${spoc.client.name}) – SPOC report`}
+                />
+                {/* deactivating is a super-admin action (the edit rule) */}
+                {can('spocs.delete') && superAdmin && spoc.isActive && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label="More">
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={async () => {
+                          if (
+                            await confirm({
+                              title: `Deactivate ${fullName(spoc)}?`,
+                              description: 'They leave active lists; history is kept.',
+                              destructive: true,
+                              confirmLabel: 'Deactivate',
+                            })
+                          )
+                            deactivate.mutate(undefined, {
+                              onSuccess: () => router.push('/spocs'),
+                            });
+                        }}
+                      >
+                        <Trash2 /> Deactivate
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+            <RecordEditBar />
+
+            {/* status strip: the four things a salesperson checks first */}
+            <div className="mt-4 grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 lg:grid-cols-4">
+              <div className="bg-card px-3 py-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Sales status
+                </p>
+                {canEdit ? (
+                  <LookupPicker
+                    type="SALES_STATUS"
+                    size="sm"
+                    value={spoc.salesStatus?.id ?? null}
+                    placeholder="Set status"
+                    className="mt-1 border-transparent px-1 font-medium hover:border-input"
+                    onChange={v =>
+                      save({ salesStatusId: v }).then(
+                        () => toast.success('Status updated'),
+                        e => toast.error((e as ApiError).message)
+                      )
+                    }
+                  />
+                ) : (
+                  <p className="mt-1 text-sm font-medium">{spoc.salesStatus?.label ?? '—'}</p>
+                )}
+              </div>
+              <div className="bg-card px-3 py-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Approval
+                </p>
+                <div className="mt-1.5">
+                  <ApprovalBadge status={spoc.approvalStatus} />
+                </div>
+              </div>
+              <div className="bg-card px-3 py-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Data quality
+                </p>
+                <div className="mt-1.5">
+                  <BandBadge band={spoc.validationBand} score={spoc.validationScore} />
+                </div>
+              </div>
+              <div className="bg-card px-3 py-2">
+                <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  Email
+                </p>
+                <div className="mt-1.5">
+                  <EmailStatusBadge status={spoc.emailStatus} />
+                </div>
+              </div>
+            </div>
+            {spoc.reviewFlag && spoc.reviewReason && (
+              <p className="mt-2 text-xs text-warning">Needs review: {spoc.reviewReason}</p>
             )}
           </div>
-          <div className="bg-card px-3 py-2">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Approval
-            </p>
-            <div className="mt-1.5">
-              <ApprovalBadge status={spoc.approvalStatus} />
-            </div>
-          </div>
-          <div className="bg-card px-3 py-2">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Data quality
-            </p>
-            <div className="mt-1.5">
-              <BandBadge band={spoc.validationBand} score={spoc.validationScore} />
-            </div>
-          </div>
-          <div className="bg-card px-3 py-2">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-              Email
-            </p>
-            <div className="mt-1.5">
-              <EmailStatusBadge status={spoc.emailStatus} />
-            </div>
-          </div>
-        </div>
-        {spoc.reviewFlag && spoc.reviewReason && (
-          <p className="mt-2 text-xs text-warning">Needs review: {spoc.reviewReason}</p>
-        )}
-      </div>
+        </>
+      )}
 
       {/* ── body ── */}
-      <div className="grid gap-4 lg:grid-cols-[190px_minmax(0,1fr)]">
-        <Rail groups={rail} />
+      <div className={cn('grid gap-4', !record && 'lg:grid-cols-[190px_minmax(0,1fr)]')}>
+        {!record && <Rail groups={rail} />}
 
         <div className="min-w-0 space-y-4">
           {seeActivity && (
-            <Block id="activity" title="Activity & tasks" icon={Activity} count={openTasks ? `${openTasks} open` : undefined}>
+            <Block
+              id="activity"
+              title="Activity & tasks"
+              icon={Activity}
+              count={openTasks ? `${openTasks} open` : undefined}
+            >
               <WorkPanel
                 clientId={spoc.client.id}
                 spocId={spoc.id}
@@ -638,15 +771,38 @@ function SpocPage() {
             </Block>
           )}
 
+          <ReportWhenViewing spoc={spoc} />
+
           <Block id="info" title="SPOC information" icon={UserRound}>
             <FieldGrid>
-              <InlineText label="First name" value={spoc.firstName} canEdit={canEdit} onSave={v => {
-                if (!v) throw new Error('First name is required');
-                return save({ firstName: v });
-              }} />
-              <InlineText label="Last name" value={spoc.lastName} canEdit={canEdit} onSave={saveText('lastName')} />
-              <InlineText label="Designation" value={spoc.designation} canEdit={canEdit} onSave={saveText('designation')} placeholder="e.g. Head of CSR" />
-              <InlineText label="Department" value={spoc.department} canEdit={canEdit} onSave={saveText('department')} />
+              <InlineText
+                label="First name"
+                value={spoc.firstName}
+                canEdit={canEdit}
+                onSave={v => {
+                  if (!v) throw new Error('First name is required');
+                  return save({ firstName: v });
+                }}
+              />
+              <InlineText
+                label="Last name"
+                value={spoc.lastName}
+                canEdit={canEdit}
+                onSave={saveText('lastName')}
+              />
+              <InlineText
+                label="Designation"
+                value={spoc.designation}
+                canEdit={canEdit}
+                onSave={saveText('designation')}
+                placeholder="e.g. Head of CSR"
+              />
+              <InlineText
+                label="Department"
+                value={spoc.department}
+                canEdit={canEdit}
+                onSave={saveText('department')}
+              />
               <InlinePick
                 label="Seniority"
                 value={spoc.seniority}
@@ -656,13 +812,20 @@ function SpocPage() {
                 render={p => (
                   <Combobox
                     {...p}
-                    options={['C-level', 'VP', 'Director', 'Head', 'Manager', 'Lead', 'Individual contributor'].map(
-                      s => ({ value: s, label: s })
-                    )}
+                    options={[
+                      'C-level',
+                      'VP',
+                      'Director',
+                      'Head',
+                      'Manager',
+                      'Lead',
+                      'Individual contributor',
+                    ].map(s => ({ value: s, label: s }))}
                   />
                 )}
               />
               <InlineBool
+                work
                 label="Primary SPOC"
                 value={spoc.isPrimary}
                 canEdit={canEdit}
@@ -672,7 +835,9 @@ function SpocPage() {
                 label="Total experience"
                 type="number"
                 value={spoc.totalExpYears === null ? null : Number(spoc.totalExpYears)}
-                display={spoc.totalExpYears !== null ? `${Number(spoc.totalExpYears)} yrs` : undefined}
+                display={
+                  spoc.totalExpYears !== null ? `${Number(spoc.totalExpYears)} yrs` : undefined
+                }
                 canEdit={canEdit}
                 onSave={saveYears('totalExpYears')}
               />
@@ -681,13 +846,18 @@ function SpocPage() {
                 type="number"
                 value={spoc.currentOrgExpYears === null ? null : Number(spoc.currentOrgExpYears)}
                 display={
-                  spoc.currentOrgExpYears !== null ? `${Number(spoc.currentOrgExpYears)} yrs` : undefined
+                  spoc.currentOrgExpYears !== null
+                    ? `${Number(spoc.currentOrgExpYears)} yrs`
+                    : undefined
                 }
                 canEdit={canEdit}
                 onSave={saveYears('currentOrgExpYears')}
               />
               <FieldRow label="Client">
-                <Link href={`/clients/${spoc.client.id}`} className="inline-block py-1 font-medium hover:text-primary">
+                <Link
+                  href={`/clients/${spoc.client.id}`}
+                  className="inline-block py-1 font-medium hover:text-primary"
+                >
                   {spoc.client.name}
                 </Link>
               </FieldRow>
@@ -747,8 +917,22 @@ function SpocPage() {
                 canEdit={canEdit}
                 onSave={saveText('phone')}
               />
-              <InlineText label="Mobile 2" type="tel" value={spoc.phone2} locked={contactHidden} canEdit={canEdit} onSave={saveText('phone2')} />
-              <InlineText label="Mobile 3" type="tel" value={spoc.phone3} locked={contactHidden} canEdit={canEdit} onSave={saveText('phone3')} />
+              <InlineText
+                label="Mobile 2"
+                type="tel"
+                value={spoc.phone2}
+                locked={contactHidden}
+                canEdit={canEdit}
+                onSave={saveText('phone2')}
+              />
+              <InlineText
+                label="Mobile 3"
+                type="tel"
+                value={spoc.phone3}
+                locked={contactHidden}
+                canEdit={canEdit}
+                onSave={saveText('phone3')}
+              />
               <InlineText
                 label="LinkedIn"
                 type="url"
@@ -781,11 +965,38 @@ function SpocPage() {
 
           <Block id="location" title="Location" icon={MapPin}>
             <FieldGrid>
-              <InlineText label="State" value={spoc.state} canEdit={canEdit} onSave={saveText('state')} />
-              <InlineText label="District" value={spoc.district} canEdit={canEdit} onSave={saveText('district')} />
-              <InlineText label="City" value={spoc.city} canEdit={canEdit} onSave={saveText('city')} />
-              <InlineText label="Pincode" value={spoc.pincode} canEdit={canEdit} onSave={saveText('pincode')} />
-              <InlineText label="Address" wide multiline value={spoc.address} canEdit={canEdit} onSave={saveText('address')} />
+              <InlineText
+                label="State"
+                value={spoc.state}
+                canEdit={canEdit}
+                onSave={saveText('state')}
+              />
+              <InlineText
+                label="District"
+                value={spoc.district}
+                canEdit={canEdit}
+                onSave={saveText('district')}
+              />
+              <InlineText
+                label="City"
+                value={spoc.city}
+                canEdit={canEdit}
+                onSave={saveText('city')}
+              />
+              <InlineText
+                label="Pincode"
+                value={spoc.pincode}
+                canEdit={canEdit}
+                onSave={saveText('pincode')}
+              />
+              <InlineText
+                label="Address"
+                wide
+                multiline
+                value={spoc.address}
+                canEdit={canEdit}
+                onSave={saveText('address')}
+              />
             </FieldGrid>
           </Block>
 
@@ -814,6 +1025,7 @@ function SpocPage() {
                 render={p => <MasterPicker kind="service-lines" {...p} clearable={false} />}
               />
               <InlinePick
+                work
                 label="Sales status"
                 value={spoc.salesStatus?.id}
                 display={spoc.salesStatus?.label}
@@ -837,7 +1049,9 @@ function SpocPage() {
                   <Combobox
                     {...p}
                     options={locationOptions}
-                    placeholder={locationOptions.length ? 'Select office' : 'No offices on this client'}
+                    placeholder={
+                      locationOptions.length ? 'Select office' : 'No offices on this client'
+                    }
                   />
                 )}
               />
@@ -865,6 +1079,7 @@ function SpocPage() {
                 onSave={saveText('erp')}
               />
               <InlineBool
+                work
                 label="Call connected"
                 value={spoc.callConnected}
                 canEdit={canEdit}
@@ -948,6 +1163,7 @@ function SpocPage() {
           <Block id="description" title="Description" icon={FileText}>
             <FieldGrid>
               <InlineText
+                work
                 label="Notes"
                 wide
                 multiline
@@ -1038,9 +1254,14 @@ function SpocPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px]">
                       <span className="font-medium">{fullName(a.assignedTo)}</span>
-                      <span className="text-muted-foreground"> · given by {fullName(a.assignedBy)}</span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        · given by {fullName(a.assignedBy)}
+                      </span>
                     </p>
-                    {a.reason && <p className="text-xs italic text-muted-foreground">“{a.reason}”</p>}
+                    {a.reason && (
+                      <p className="text-xs italic text-muted-foreground">“{a.reason}”</p>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground" title={fmtDateTime(a.assignedAt)}>
                     {fmtDate(a.assignedAt)} → {a.endedAt ? fmtDate(a.endedAt) : 'now'}
@@ -1070,11 +1291,19 @@ function SpocPage() {
   );
 }
 
+/** the printed-style SPOC report, in view mode only */
+function ReportWhenViewing({ spoc }: { spoc: SpocDetail }) {
+  const record = useRecordMode();
+  return record && !record.editing ? <SpocReport spoc={spoc} /> : null;
+}
+
 export default function Page() {
   return (
     <RequirePermission perm="spocs.read">
-      <SpocPage />
+      {/* reads like a document; Edit turns the page into a form (filled values: super admin only) */}
+      <RecordModeProvider>
+        <SpocPage />
+      </RecordModeProvider>
     </RequirePermission>
   );
 }
-

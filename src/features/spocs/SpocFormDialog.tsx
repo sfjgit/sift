@@ -14,7 +14,14 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FormDialog, FormGrid, FormSection } from '@/components/forms/FormDialog';
-import { PickerField, SwitchField, TextAreaField, TextField, applyServerErrors, blankToNull } from '@/components/forms/fields';
+import {
+  PickerField,
+  SwitchField,
+  TextAreaField,
+  TextField,
+  applyServerErrors,
+  blankToNull,
+} from '@/components/forms/fields';
 import { Combobox } from '@/components/pickers/Combobox';
 import { ClientPicker, LookupPicker, MasterPicker, UserPicker } from '@/components/pickers/pickers';
 import { clientsApi, spocsApi } from '@/lib/api/endpoints';
@@ -42,7 +49,11 @@ const schema = z.object({
   handlerId: z.string({ error: 'Handler is required' }).min(1, 'Handler is required'),
   firstName: z.string().trim().min(1, 'First name is required').max(100),
   lastName: z.string().trim().max(100),
-  email: z.string().trim().toLowerCase().refine(v => !v || z.email().safeParse(v).success, 'Invalid email'),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine(v => !v || z.email().safeParse(v).success, 'Invalid email'),
   phone: z.string().trim().max(30),
   designation: z.string().trim().max(200),
   department: z.string().trim().max(200),
@@ -50,7 +61,9 @@ const schema = z.object({
   linkedinUrl: optUrl,
   totalExpYears: years,
   currentOrgExpYears: years,
-  businessUnitId: z.string({ error: 'Business unit is required' }).min(1, 'Business unit is required'),
+  businessUnitId: z
+    .string({ error: 'Business unit is required' })
+    .min(1, 'Business unit is required'),
   serviceLineId: z.string({ error: 'Service line is required' }).min(1, 'Service line is required'),
   locationId: z.string().nullable(),
   sourceId: z.string().nullable(),
@@ -63,7 +76,15 @@ const schema = z.object({
 type Values = z.input<typeof schema>;
 type Output = z.output<typeof schema>;
 
-const SENIORITY = ['C-level', 'VP', 'Director', 'Head', 'Manager', 'Lead', 'Individual contributor'];
+const SENIORITY = [
+  'C-level',
+  'VP',
+  'Director',
+  'Head',
+  'Manager',
+  'Lead',
+  'Individual contributor',
+];
 
 const toDefaults = (s?: SpocDetail | null, clientId?: string, meId?: string): Values => ({
   clientId: s?.client.id ?? clientId ?? '',
@@ -92,10 +113,15 @@ export function SpocFormDialog({
   spoc,
   open: openProp,
   onOpenChange: onOpenChangeProp,
+  asPage,
+  pageClientId,
 }: {
   spoc?: SpocDetail | null;
   open?: boolean;
   onOpenChange?: (o: boolean) => void;
+  /** the /spocs/new page (?clientId= preselects the client) */
+  asPage?: boolean;
+  pageClientId?: string;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -103,16 +129,22 @@ export function SpocFormDialog({
   const draft = useUi(s => s.spocDialog);
   const openSpocDialog = useUi(s => s.openSpocDialog);
   const isEdit = !!spoc;
-  const open = openProp ?? (!isEdit && !!draft);
-  const onOpenChange = onOpenChangeProp ?? ((o: boolean) => !o && openSpocDialog(null));
+  const open = asPage ? true : (openProp ?? (!isEdit && !!draft));
+  const onOpenChange = asPage
+    ? (o: boolean) => !o && router.back()
+    : (onOpenChangeProp ?? ((o: boolean) => !o && openSpocDialog(null)));
+  const presetClientId = asPage ? pageClientId : draft?.clientId;
 
-  const form = useForm<Values, unknown, Output>({ resolver: zodResolver(schema), defaultValues: toDefaults(spoc) });
+  const form = useForm<Values, unknown, Output>({
+    resolver: zodResolver(schema),
+    defaultValues: toDefaults(spoc),
+  });
   const busy = form.formState.isSubmitting;
   const clientId = useWatch({ control: form.control, name: 'clientId' });
 
   useEffect(() => {
-    if (open) form.reset(toDefaults(spoc, draft?.clientId, user?.id));
-  }, [open, spoc, draft, user, form]);
+    if (open) form.reset(toDefaults(spoc, presetClientId, user?.id));
+  }, [open, spoc, presetClientId, user, form]);
 
   // locations of the chosen client for the "works at" picker
   const { data: client } = useQuery({
@@ -134,10 +166,21 @@ export function SpocFormDialog({
         await spocsApi.update(spoc.id, body);
         toast.success('SPOC updated');
       } else {
-        const created = await spocsApi.create({ ...body, clientId: cid, handlerId, firstName: v.firstName });
+        const created = await spocsApi.create({
+          ...body,
+          clientId: cid,
+          handlerId,
+          firstName: v.firstName,
+        });
         toast.success(`${fullName(created)} added`, {
           action: { label: 'Open', onClick: () => router.push(`/spocs/${created.id}`) },
         });
+        if (asPage) {
+          qc.invalidateQueries({ queryKey: spocHooks.keys.all });
+          qc.invalidateQueries({ queryKey: clientHooks.keys.all });
+          router.replace(`/spocs/${created.id}`);
+          return;
+        }
       }
       qc.invalidateQueries({ queryKey: spocHooks.keys.all });
       qc.invalidateQueries({ queryKey: clientHooks.keys.all });
@@ -154,11 +197,14 @@ export function SpocFormDialog({
       size="lg"
       title={isEdit ? `Edit ${fullName(spoc)}` : 'New SPOC'}
       description={
-        isEdit ? undefined : 'A SPOC is a contact at a client, owned by one handler for a business unit + service line.'
+        isEdit
+          ? undefined
+          : 'A SPOC is a contact at a client, owned by one handler for a business unit + service line.'
       }
       onSubmit={submit}
       submitLabel={isEdit ? 'Save changes' : 'Add SPOC'}
       busy={busy}
+      asPage={asPage}
     >
       {!isEdit && (
         <FormSection title="Ownership">
@@ -187,7 +233,12 @@ export function SpocFormDialog({
               required
               hint="Who owns this relationship."
               render={p => (
-                <UserPicker {...p} purpose="assign" clearable={false} selectedLabel={p.value === user?.id ? `${fullName(user)} (you)` : undefined} />
+                <UserPicker
+                  {...p}
+                  purpose="assign"
+                  clearable={false}
+                  selectedLabel={p.value === user?.id ? `${fullName(user)} (you)` : undefined}
+                />
               )}
             />
           </FormGrid>
@@ -200,13 +251,34 @@ export function SpocFormDialog({
           <TextField form={form} name="lastName" label="Last name" />
         </FormGrid>
         <FormGrid>
-          <TextField form={form} name="designation" label="Designation" placeholder="e.g. Head of CSR" />
+          <TextField
+            form={form}
+            name="designation"
+            label="Designation"
+            placeholder="e.g. Head of CSR"
+          />
           <TextField form={form} name="department" label="Department" />
         </FormGrid>
         <FormGrid cols={3}>
-          <TextField form={form} name="seniority" label="Seniority" list="spoc-seniority" autoComplete="off" />
-          <TextField form={form} name="totalExpYears" label="Total exp. (yrs)" inputMode="decimal" />
-          <TextField form={form} name="currentOrgExpYears" label="At this org (yrs)" inputMode="decimal" />
+          <TextField
+            form={form}
+            name="seniority"
+            label="Seniority"
+            list="spoc-seniority"
+            autoComplete="off"
+          />
+          <TextField
+            form={form}
+            name="totalExpYears"
+            label="Total exp. (yrs)"
+            inputMode="decimal"
+          />
+          <TextField
+            form={form}
+            name="currentOrgExpYears"
+            label="At this org (yrs)"
+            inputMode="decimal"
+          />
         </FormGrid>
         <datalist id="spoc-seniority">
           {SENIORITY.map(s => (
@@ -217,10 +289,21 @@ export function SpocFormDialog({
 
       <FormSection title="Contact">
         <FormGrid>
-          <TextField form={form} name="email" label="Email" type="email" hint="Must be unique across all SPOCs." />
+          <TextField
+            form={form}
+            name="email"
+            label="Email"
+            type="email"
+            hint="Must be unique across all SPOCs."
+          />
           <TextField form={form} name="phone" label="Phone" type="tel" />
         </FormGrid>
-        <TextField form={form} name="linkedinUrl" label="LinkedIn" placeholder="linkedin.com/in/…" />
+        <TextField
+          form={form}
+          name="linkedinUrl"
+          label="LinkedIn"
+          placeholder="linkedin.com/in/…"
+        />
       </FormSection>
 
       <FormSection title="Business">
@@ -257,13 +340,22 @@ export function SpocFormDialog({
                 {...p}
                 options={locationOptions}
                 disabled={!clientId}
-                placeholder={locationOptions.length || !clientId ? 'Select location' : 'No locations on this client'}
+                placeholder={
+                  locationOptions.length || !clientId
+                    ? 'Select location'
+                    : 'No locations on this client'
+                }
               />
             )}
           />
         </FormGrid>
         <FormGrid>
-          <PickerField form={form} name="sourceId" label="Source" render={p => <LookupPicker type="SPOC_SOURCE" {...p} />} />
+          <PickerField
+            form={form}
+            name="sourceId"
+            label="Source"
+            render={p => <LookupPicker type="SPOC_SOURCE" {...p} />}
+          />
           <PickerField
             form={form}
             name="emailSourceId"
@@ -271,8 +363,19 @@ export function SpocFormDialog({
             render={p => <LookupPicker type="EMAIL_SOURCE" {...p} />}
           />
         </FormGrid>
-        <SwitchField form={form} name="isPrimary" label="Primary SPOC" hint="The main contact for this client." />
-        <TextAreaField form={form} name="notes" label="Notes" rows={3} placeholder="Context, preferences, how you met…" />
+        <SwitchField
+          form={form}
+          name="isPrimary"
+          label="Primary SPOC"
+          hint="The main contact for this client."
+        />
+        <TextAreaField
+          form={form}
+          name="notes"
+          label="Notes"
+          rows={3}
+          placeholder="Context, preferences, how you met…"
+        />
       </FormSection>
     </FormDialog>
   );
