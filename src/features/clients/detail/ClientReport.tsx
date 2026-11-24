@@ -112,36 +112,47 @@ export function ClientReport({ client: c }: { client: ClientDetail }) {
               value: cr(c.csrSpentRs),
               note: c.csrFy ? `FY ${c.csrFy}` : undefined,
             },
-            {
-              label: 'Employees',
-              value: c.employeeCount ? fmtNumber(c.employeeCount) : c.employeeSize?.label,
-            },
+            c.govt && !c.hasCompany
+              ? { label: 'Tier', value: c.govt.level ? GOVT_LEVEL[c.govt.level] : null }
+              : {
+                  label: 'Employees',
+                  value: c.employeeCount ? fmtNumber(c.employeeCount) : c.employeeSize?.label,
+                },
             { label: 'Offices', value: branches.length || null },
             { label: 'SPOCs', value: can('spocs.read') ? peopleTotal || null : null },
           ]}
         />
-        <ReportSection title="Identity & classification">
+        <ReportSection title="Organisation">
           <ReportKV
             rows={[
               ['Legal name', c.name],
               ['Short name', c.shortName],
               ['Organisation type', ENTITY_TYPE[c.entityType]],
-              ['Company group', c.groupName],
-              ['CIN', c.cin && <span className="font-mono">{c.cin}</span>],
-              ['Ownership', c.registration?.ownership && OWNERSHIP[c.registration.ownership]],
-              ['Incorporated', c.registration?.yearOfIncorporation],
-              ['Company class', c.registration?.companyClass],
-              ['Industry', c.industry?.label],
-              ['Category', c.category?.label],
-              ['Sub category', c.subCategory],
-              ['Employee size', c.employeeSize?.label],
-              ['Employees', c.employeeCount && fmtNumber(c.employeeCount)],
-              ['LinkedIn employees', c.linkedinEmployees && fmtNumber(c.linkedinEmployees)],
-              ['Listed', yesNo(c.isListed)],
-              ['Market cap', cr(c.marketCapRs)],
             ]}
           />
         </ReportSection>
+        {/* company facts only for companies — a ministry has no CIN, industry or head count */}
+        {(c.entityType === 'COMPANY' || c.hasCompany) && (
+          <ReportSection title="Company details">
+            <ReportKV
+              rows={[
+                ['Company group', c.groupName],
+                ['CIN', c.cin && <span className="font-mono">{c.cin}</span>],
+                ['Ownership', c.company?.ownership && OWNERSHIP[c.company.ownership]],
+                ['Incorporated', c.company?.yearOfIncorporation],
+                ['Company class', c.company?.companyClass],
+                ['Industry', c.industry?.label],
+                ['Category', c.category?.label],
+                ['Sub category', c.subCategory],
+                ['Employee size', c.employeeSize?.label],
+                ['Employees', c.employeeCount && fmtNumber(c.employeeCount)],
+                ['LinkedIn employees', c.linkedinEmployees && fmtNumber(c.linkedinEmployees)],
+                ['Listed', yesNo(c.isListed)],
+                ['Market cap', cr(c.marketCapRs)],
+              ]}
+            />
+          </ReportSection>
+        )}
         <ReportSection title="Online presence">
           <ReportKV
             rows={[

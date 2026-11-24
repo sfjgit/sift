@@ -216,7 +216,7 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
 
   return (
     <div className="pb-1">
-      <Heading>Firmographics</Heading>
+      <Heading>Organisation</Heading>
       <FieldGrid>
         <InlineText
           label="Client name"
@@ -234,37 +234,6 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           onSave={text('shortName')}
         />
         <InlinePick
-          label="Industry"
-          value={client.industry?.id}
-          display={client.industry?.label}
-          canEdit={canEdit}
-          onSave={v => save({ industryId: v })}
-          render={p => <LookupPicker type="INDUSTRY" {...p} />}
-        />
-        <InlinePick
-          label="Client category"
-          value={client.category?.id}
-          display={client.category?.label}
-          canEdit={canEdit}
-          onSave={v => save({ categoryId: v })}
-          render={p => <LookupPicker type="CLIENT_CATEGORY" {...p} />}
-        />
-        <InlineText
-          label="Sub category"
-          value={client.subCategory}
-          canEdit={canEdit}
-          onSave={text('subCategory')}
-        />
-        <InlineText
-          label="CIN"
-          value={client.cin}
-          display={
-            client.cin ? <span className="font-mono text-[13px]">{client.cin}</span> : undefined
-          }
-          canEdit={canEdit}
-          onSave={text('cin')}
-        />
-        <InlinePick
           label="Organisation type"
           value={client.entityType}
           display={ENTITY_TYPE[client.entityType]}
@@ -280,29 +249,6 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
               options={Object.entries(ENTITY_TYPE).map(([value, label]) => ({ value, label }))}
             />
           )}
-        />
-        <InlineText
-          label="Employees"
-          type="number"
-          value={client.employeeCount}
-          display={
-            client.employeeCount !== null || client.employeeSize
-              ? [
-                  client.employeeCount !== null && `${fmtNumber(client.employeeCount)} people`,
-                  client.employeeSize?.label,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
-              : undefined
-          }
-          canEdit={canEdit}
-          onSave={v => {
-            const n = v === null ? null : Number(v);
-            if (n !== null && (!Number.isInteger(n) || n < 0))
-              throw new Error('Enter a whole number');
-            // the size band follows the count
-            return save({ employeeCount: n, employeeSizeId: null });
-          }}
         />
         <InlinePick
           label="Business unit"
@@ -336,27 +282,159 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           onSave={url('linkedinUrl')}
         />
         <InlineText
-          label="LinkedIn employees"
-          type="number"
-          value={client.linkedinEmployees}
-          display={
-            client.linkedinEmployees != null ? fmtNumber(client.linkedinEmployees) : undefined
-          }
+          label="Office email"
+          type="email"
+          value={client.email}
           canEdit={canEdit}
-          onSave={v => {
-            const n = v === null ? null : Number(v);
-            if (n !== null && (!Number.isInteger(n) || n < 0))
-              throw new Error('Enter a whole number');
-            return save({ linkedinEmployees: n });
-          }}
+          onSave={text('email')}
         />
-        <InlineBool
-          label="Listed"
-          value={client.isListed}
+        <InlineText
+          label="Office phone"
+          type="tel"
+          value={client.phone}
           canEdit={canEdit}
-          onSave={v => save({ isListed: v })}
-          yes="Listed"
-          no="Not listed"
+          onSave={text('phone')}
+        />
+        {/* automatic: the service lines of the client's active SPOCs */}
+        <Read
+          label="Service lines"
+          value={
+            (client.serviceLines ?? []).map(s => s.serviceLine.name).join(' · ') || (
+              <span className="text-muted-foreground">None yet — follows the SPOCs added</span>
+            )
+          }
+        />
+        <Read label="Status" value={CLIENT_STATUS[client.status].label} />
+      </FieldGrid>
+
+      {/* company facts — only for companies (a ministry has no CIN, industry or head count) */}
+      {(client.entityType === 'COMPANY' || client.hasCompany) && (
+        <>
+          <Heading hint="registration (MCA), industry, size, group">Company details</Heading>
+          <FieldGrid>
+            <InlinePick
+              label="Industry"
+              value={client.industry?.id}
+              display={client.industry?.label}
+              canEdit={canEdit}
+              onSave={v => save({ industryId: v })}
+              render={p => <LookupPicker type="INDUSTRY" {...p} />}
+            />
+            <InlinePick
+              label="Client category"
+              value={client.category?.id}
+              display={client.category?.label}
+              canEdit={canEdit}
+              onSave={v => save({ categoryId: v })}
+              render={p => <LookupPicker type="CLIENT_CATEGORY" {...p} />}
+            />
+            <InlineText
+              label="Sub category"
+              value={client.subCategory}
+              canEdit={canEdit}
+              onSave={text('subCategory')}
+            />
+            <InlineText
+              label="CIN"
+              value={client.cin}
+              display={
+                client.cin ? <span className="font-mono text-[13px]">{client.cin}</span> : undefined
+              }
+              canEdit={canEdit}
+              onSave={text('cin')}
+            />
+            <InlineText
+              label="Employees"
+              type="number"
+              value={client.employeeCount}
+              display={
+                client.employeeCount !== null || client.employeeSize
+                  ? [
+                      client.employeeCount !== null && `${fmtNumber(client.employeeCount)} people`,
+                      client.employeeSize?.label,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : undefined
+              }
+              canEdit={canEdit}
+              onSave={v => {
+                const n = v === null ? null : Number(v);
+                if (n !== null && (!Number.isInteger(n) || n < 0))
+                  throw new Error('Enter a whole number');
+                // the size band follows the count
+                return save({ employeeCount: n, employeeSizeId: null });
+              }}
+            />
+            <InlineText
+              label="LinkedIn employees"
+              type="number"
+              value={client.linkedinEmployees}
+              display={
+                client.linkedinEmployees != null ? fmtNumber(client.linkedinEmployees) : undefined
+              }
+              canEdit={canEdit}
+              onSave={v => {
+                const n = v === null ? null : Number(v);
+                if (n !== null && (!Number.isInteger(n) || n < 0))
+                  throw new Error('Enter a whole number');
+                return save({ linkedinEmployees: n });
+              }}
+            />
+            <InlineBool
+              label="Listed"
+              value={client.isListed}
+              canEdit={canEdit}
+              onSave={v => save({ isListed: v })}
+              yes="Listed"
+              no="Not listed"
+            />
+            <InlineText
+              label="Company group"
+              value={client.groupName}
+              placeholder="e.g. Adani Group"
+              canEdit={canEdit}
+              onSave={text('groupName')}
+            />
+            <InlinePick
+              label="Ownership"
+              value={client.registration?.ownership ?? null}
+              display={
+                client.registration?.ownership
+                  ? OWNERSHIP[client.registration.ownership]
+                  : undefined
+              }
+              canEdit={canEdit}
+              onSave={v => save({ ownership: (v as ClientOwnership | null) ?? null })}
+              render={p => <EnumPicker options={OWNERSHIP_OPTIONS} {...p} />}
+            />
+            <InlineText
+              label="Company class"
+              value={client.registration?.companyClass}
+              placeholder="e.g. Company limited by shares"
+              canEdit={canEdit}
+              onSave={text('companyClass')}
+            />
+            <InlineText
+              label="Incorporated (year)"
+              type="number"
+              value={client.registration?.yearOfIncorporation}
+              canEdit={canEdit}
+              onSave={v => save({ yearOfIncorporation: v ? Number(v) : null })}
+            />
+          </FieldGrid>
+        </>
+      )}
+
+      <Heading hint="the client's part in CSR">CSR profile</Heading>
+      <FieldGrid>
+        <InlinePick
+          label="CSR role"
+          value={client.csr?.csrRole?.id ?? null}
+          display={client.csr?.csrRole?.label}
+          canEdit={canEdit}
+          onSave={v => save({ csrRoleId: v })}
+          render={p => <LookupPicker type="CSR_ROLE" {...p} />}
         />
         <InlineText
           label="Foundation name"
@@ -378,77 +456,6 @@ export function ClientInfo({ client }: { client: ClientDetail }) {
           }
           canEdit={canEdit}
           onSave={url('foundationWebsite')}
-        />
-        {/* automatic: the service lines of the client's active SPOCs */}
-        <Read
-          label="Service lines"
-          value={
-            (client.serviceLines ?? []).map(s => s.serviceLine.name).join(' · ') || (
-              <span className="text-muted-foreground">None yet — follows the SPOCs added</span>
-            )
-          }
-        />
-        <InlineText
-          label="Company group"
-          value={client.groupName}
-          placeholder="e.g. Adani Group"
-          canEdit={canEdit}
-          onSave={text('groupName')}
-        />
-        <InlineText
-          label="Office email"
-          type="email"
-          value={client.email}
-          canEdit={canEdit}
-          onSave={text('email')}
-        />
-        <InlineText
-          label="Office phone"
-          type="tel"
-          value={client.phone}
-          canEdit={canEdit}
-          onSave={text('phone')}
-        />
-        <Read label="Status" value={CLIENT_STATUS[client.status].label} />
-      </FieldGrid>
-
-      <Heading hint="company registration (MCA)">Registration</Heading>
-      <FieldGrid>
-        <InlinePick
-          label="Ownership"
-          value={client.registration?.ownership ?? null}
-          display={
-            client.registration?.ownership ? OWNERSHIP[client.registration.ownership] : undefined
-          }
-          canEdit={canEdit}
-          onSave={v => save({ ownership: (v as ClientOwnership | null) ?? null })}
-          render={p => <EnumPicker options={OWNERSHIP_OPTIONS} {...p} />}
-        />
-        <InlineText
-          label="Company class"
-          value={client.registration?.companyClass}
-          placeholder="e.g. Company limited by shares"
-          canEdit={canEdit}
-          onSave={text('companyClass')}
-        />
-        <InlineText
-          label="Incorporated (year)"
-          type="number"
-          value={client.registration?.yearOfIncorporation}
-          canEdit={canEdit}
-          onSave={v => save({ yearOfIncorporation: v ? Number(v) : null })}
-        />
-      </FieldGrid>
-
-      <Heading hint="the client's part in CSR">CSR profile</Heading>
-      <FieldGrid>
-        <InlinePick
-          label="CSR role"
-          value={client.csr?.csrRole?.id ?? null}
-          display={client.csr?.csrRole?.label}
-          canEdit={canEdit}
-          onSave={v => save({ csrRoleId: v })}
-          render={p => <LookupPicker type="CSR_ROLE" {...p} />}
         />
       </FieldGrid>
 

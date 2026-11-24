@@ -269,48 +269,58 @@ export function ClientFormDialog({
         />
         <FormGrid>
           <TextField form={form} name="shortName" label="Short name" placeholder="ASM" />
-          <TextField
-            form={form}
-            name="cin"
-            label="CIN"
-            placeholder="L85110KA1992PLC013421"
-            className="uppercase"
-          />
         </FormGrid>
-        <FormGrid>
-          <PickerField
-            form={form}
-            name="industryId"
-            label="Industry"
-            render={p => <LookupPicker type="INDUSTRY" placeholder="Select industry" {...p} />}
-          />
-          <PickerField
-            form={form}
-            name="categoryId"
-            label="Category"
-            render={p => (
-              <LookupPicker type="CLIENT_CATEGORY" placeholder="Select category" {...p} />
-            )}
-          />
-        </FormGrid>
-        <FormGrid>
-          <TextField
-            form={form}
-            name="employeeCount"
-            label="Employees"
-            placeholder="e.g. 1,200"
-            inputMode="numeric"
-          />
-          <PickerField
-            form={form}
-            name="employeeSizeId"
-            label="Employee size"
-            hint="Left blank, it is picked from the number of employees."
-            render={p => (
-              <LookupPicker type="EMPLOYEE_SIZE" placeholder="From the count" clearable {...p} />
-            )}
-          />
-        </FormGrid>
+        {/* company facts — only for companies */}
+        {entityType === 'COMPANY' && (
+          <>
+            <TextField
+              form={form}
+              name="cin"
+              label="CIN"
+              placeholder="L85110KA1992PLC013421"
+              className="uppercase"
+            />
+            <FormGrid>
+              <PickerField
+                form={form}
+                name="industryId"
+                label="Industry"
+                render={p => <LookupPicker type="INDUSTRY" placeholder="Select industry" {...p} />}
+              />
+              <PickerField
+                form={form}
+                name="categoryId"
+                label="Category"
+                render={p => (
+                  <LookupPicker type="CLIENT_CATEGORY" placeholder="Select category" {...p} />
+                )}
+              />
+            </FormGrid>
+            <FormGrid>
+              <TextField
+                form={form}
+                name="employeeCount"
+                label="Employees"
+                placeholder="e.g. 1,200"
+                inputMode="numeric"
+              />
+              <PickerField
+                form={form}
+                name="employeeSizeId"
+                label="Employee size"
+                hint="Left blank, it is picked from the number of employees."
+                render={p => (
+                  <LookupPicker
+                    type="EMPLOYEE_SIZE"
+                    placeholder="From the count"
+                    clearable
+                    {...p}
+                  />
+                )}
+              />
+            </FormGrid>
+          </>
+        )}
       </FormSection>
       <FormSection title="Ownership">
         <FormGrid>

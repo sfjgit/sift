@@ -1097,6 +1097,14 @@ export const PENDING: PendingItem[] = [
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: '2026-11-24',
+    items: [
+      'Client holds only what every client has. Industry, category, employees, size band, LinkedIn employees and company group moved to Company details (with CIN, ownership, listing, market cap); the latest CSR year / spent moved to the CSR profile. Client page, report and the new-client page show Company details only for companies (and PSUs with a CIN) — a ministry has no empty company rows.',
+      'Flags hasCompany / isCsr / isGovt on every client (kept by the database): sorting by a company or CSR field lists those clients first and stays fast at crores of rows. Service lines are a stored link again, kept by the database from the client’s active SPOCs.',
+      'Client restructure finished: the old CIN / listing / market cap / sub-category / CSR eligible / foundation columns on Client and the unused client–service-line table are removed — the add-ons are the only home (nothing lost: checked first, backup in crm-core-service/data-import/backups/2026-11-24-before-drop-legacy-columns/). Screens and API unchanged.',
+    ],
+  },
+  {
     date: '2026-11-23',
     items: [
       'New client and New SPOC are full pages (/clients/new, /spocs/new) instead of pop-ups — section cards with a sticky Create / Cancel bar. The client page has Contact & group, Registration (companies), CSR profile and Government body (government) sections. Every New client / Add SPOC button, quick-add, ⌘K and the N key lead there; “Add SPOC” on a client preselects it.',

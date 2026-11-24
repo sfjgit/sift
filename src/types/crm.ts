@@ -103,7 +103,13 @@ export interface ClientListItem {
   /** the organisation's own office email / phone */
   email: string | null;
   phone: string | null;
-  /** add-ons (null when the client has none) — cin / csrEligible below are read from them */
+  /** which add-ons the client has (true / false, kept by the database) */
+  hasCompany: boolean;
+  isCsr: boolean;
+  isGovt: boolean;
+  /** add-ons (null when the client has none) — cin / industry / csrSpentRs … below are read from them.
+   *  company = registration (old name, same object) */
+  company: ClientRegistrationInfo | null;
   registration: ClientRegistrationInfo | null;
   csr: ClientCsrInfo | null;
   govt: ClientGovtInfo | null;
